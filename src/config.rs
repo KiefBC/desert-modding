@@ -14,6 +14,9 @@ pub struct Config {
     pub gather_unarmed: bool,
     /// Pick up basic ground items (ore chunks, `item_basic_*` records).
     pub gather_items: bool,
+    /// Assumed per-stack ceiling used only when the bag is full: a pickup that
+    /// would push an existing stack past this is refused.
+    pub stack_limit: u32,
     /// Inventory tab id treated as the bag (tab 1 on build 25116796, the one
     /// the HUD shows as n/132); None = the largest tab.
     pub bag_tab: Option<i16>,
@@ -39,6 +42,7 @@ impl Default for Config {
             gather_unarmed: true,
             gather_items: true,
             bag_tab: Some(1),
+            stack_limit: 999,
             gather_interval_ms: 500,
             node_cooldown_ms: 8000,
             key_toggle: 0x79, // F10
@@ -121,6 +125,10 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "autogather" => cfg.auto_gather = bool_of(v),
             "gatherunarmed" => cfg.gather_unarmed = bool_of(v),
             "gatheritems" => cfg.gather_items = bool_of(v),
+            "stacklimit" => match v.parse::<u32>() {
+                Ok(n) if (10..=1_000_000).contains(&n) => cfg.stack_limit = n,
+                _ => warnings.push(format!("StackLimit: bad value {v:?}, keeping {}", cfg.stack_limit)),
+            },
             "bagtab" => match v.parse::<i16>() {
                 Ok(id) if id >= 0 => cfg.bag_tab = Some(id),
                 Ok(_) => cfg.bag_tab = None,

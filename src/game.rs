@@ -119,7 +119,31 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
         map.count, entries.len(), actors::actor_eid(player).unwrap_or(0), ppos.x, ppos.y, ppos.z
     );
     match actors::inventory_tabs(player) {
-        Some(tabs) => crate::log!("[survey] inventory tabs (id:used/max): {}", tabs_summary(&tabs)),
+        Some(tabs) => {
+            crate::log!("[survey] inventory tabs (id:used/max): {}", tabs_summary(&tabs));
+            if let Some(bag) = actors::bag_tab(&tabs, Some(1)) {
+                match actors::tab_slots(&bag) {
+                    Some(slots) => {
+                        let shown: Vec<String> = slots
+                            .iter()
+                            .take(if debug { 200 } else { 12 })
+                            .map(|sl| {
+                                let rec = crate::tables::item_record(m, sl.item_index);
+                                let key = rec.and_then(crate::tables::item_record_key).unwrap_or(0);
+                                let name = rec.and_then(crate::tables::item_record_name).unwrap_or_else(|| "?".into());
+                                let tab = rec.and_then(crate::tables::item_record_tab).unwrap_or(-2);
+                                format!("[{}] {name} key={key} x{} tab={tab}", sl.slot, sl.count)
+                            })
+                            .collect();
+                        crate::log!("[survey] bag: {} stacks; {}", slots.len(), shown.join("; "));
+                        if debug {
+                            dump_item_records(m, &tabs, &slots);
+                        }
+                    }
+                    None => crate::log!("[survey] bag slots unreadable (tab ptr 0x{:X})", bag.ptr),
+                }
+            }
+        }
         None => crate::log!("[survey] inventory not readable via player+0x68->+0xB8"),
     }
     let mut near: Vec<(f32, usize, u32, Vec3)> = entries
@@ -644,6 +668,7 @@ pub fn hunt_keys(m: &MainModule, actor: usize, keys: &std::collections::HashMap<
 #[derive(Debug, Clone)]
 pub struct GatherTarget {
     pub eid: u32,
+    pub record: u16,
     pub actor: usize,
     pub player_actor: usize,
     pub dist: f32,
@@ -758,6 +783,7 @@ pub fn nearest_gather(
         };
         return Ok(GatherTarget {
             eid,
+            record: id.index,
             actor: a,
             player_actor: sc.player,
             dist: d,
@@ -773,4 +799,26 @@ pub fn nearest_gather(
         return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
     }
     Err(format!("no Gather node within {range:.1} m"))
+}
+
+/// Debug: raw item records for a few bag stacks and a few equipment-tab
+/// entries, to locate the stack-limit field by comparison (a material should
+/// show a large limit where gear shows 1).
+pub fn dump_item_records(m: &MainModule, tabs: &[actors::InventoryTab], bag: &[actors::InventorySlot]) {
+    let mut picks: Vec<(String, actors::InventorySlot)> = bag.iter().take(4).map(|s| ("bag".to_string(), *s)).collect();
+    for t in tabs.iter().filter(|t| t.id != 1 && t.used > 0).take(3) {
+        if let Some(slots) = actors::tab_slots(t) {
+            for s in slots.iter().take(2) {
+                picks.push((format!("tab{}", t.id), *s));
+            }
+        }
+    }
+    for (label, sl) in picks {
+        let Some(rec) = crate::tables::item_record(m, sl.item_index) else { continue };
+        let name = crate::tables::item_record_name(rec).unwrap_or_else(|| "?".into());
+        crate::log!("[itemrec] {label} slot {} {name} x{} rec=0x{rec:X} idx={}", sl.slot, sl.count, sl.item_index);
+        for line in 0..(0x480 / 32) {
+            crate::log!("[itemrec]   +0x{:03X}: {}", line * 32, hexascii(rec + line * 32, 32));
+        }
+    }
 }

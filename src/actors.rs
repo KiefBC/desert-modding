@@ -605,9 +605,46 @@ const MAX_INVENTORY_TABS: u32 = 64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InventoryTab {
+    pub ptr: usize,
     pub id: i16,
     pub used: i16,
     pub max: i16,
+}
+
+/// One occupied slot of a tab. Layout from the game's per-tab item counter
+/// (`FUN_14234E1F0`): `tab+0x00` slot array, `tab+0x08` low i16 = slot
+/// capacity, slots are 200 bytes: `i16 item record index @+0x08` (-1 = empty),
+/// `i64 count @+0x10`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InventorySlot {
+    pub slot: u16,
+    pub item_index: u16,
+    pub count: i64,
+}
+
+pub const SLOT_STRIDE: usize = 200;
+const MAX_SLOTS: i16 = 2000;
+
+pub fn tab_slots(tab: &InventoryTab) -> Option<Vec<InventorySlot>> {
+    let arr = safe::read_ptr(tab.ptr)?;
+    let cap: i16 = safe::read(tab.ptr + 8)?;
+    if cap <= 0 || cap > MAX_SLOTS {
+        return None;
+    }
+    let mut out = Vec::new();
+    for i in 0..cap as usize {
+        let s = arr + i * SLOT_STRIDE;
+        let idx: u16 = safe::read(s + 8)?;
+        if idx == 0xFFFF {
+            continue;
+        }
+        let count: i64 = safe::read(s + 0x10)?;
+        if count <= 0 {
+            continue;
+        }
+        out.push(InventorySlot { slot: i as u16, item_index: idx, count });
+    }
+    Some(out)
 }
 
 impl InventoryTab {
@@ -630,7 +667,7 @@ pub fn inventory_tabs(actor: usize) -> Option<Vec<InventoryTab>> {
         let id: i16 = safe::read(tab + 0x10)?;
         let used: i16 = safe::read(tab + 0x12)?;
         let max: i16 = safe::read(tab + 0x14)?;
-        out.push(InventoryTab { id, used, max });
+        out.push(InventoryTab { ptr: tab, id, used, max });
     }
     Some(out)
 }

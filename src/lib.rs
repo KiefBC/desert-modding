@@ -168,6 +168,13 @@ mod entry {
                     d.name, d.id, d.payload_size, d.dispatch, d.ptr, t.elapsed().as_secs_f64() * 1000.0
                 );
                 events::set_descriptor(d);
+                match events::find_descriptor(module, api, events::HANDLE_GAME_EVENT) {
+                    Ok(h) => {
+                        crate::log!("[event] {} id={} payload={} (yield learning armed)", h.name, h.id, h.payload_size);
+                        events::set_handle_descriptor(h.ptr);
+                    }
+                    Err(e) => crate::log!("[event] {}: {e}; yields will not be learned", events::HANDLE_GAME_EVENT),
+                }
                 true
             }
             Err(e) => {
@@ -175,6 +182,31 @@ mod entry {
                 false
             }
         }
+    }
+
+    /// `DesertLooter.yields` beside the log: one `record=item` pair per line.
+    fn yields_path() -> std::path::PathBuf {
+        log::exe_dir().join("DesertLooter.yields")
+    }
+
+    fn load_yields() {
+        let Ok(text) = std::fs::read_to_string(yields_path()) else { return };
+        let pairs: Vec<(u16, u32, u32)> = text
+            .lines()
+            .filter_map(|l| {
+                let (r, rest) = l.trim().split_once('=')?;
+                let (i, c) = rest.split_once(',').unwrap_or((rest, "1"));
+                Some((r.trim().parse().ok()?, i.trim().parse().ok()?, c.trim().parse().unwrap_or(1)))
+            })
+            .collect();
+        crate::log!("[yield] {} learned record->item pairs loaded", pairs.len());
+        events::load_yields(pairs);
+    }
+
+    fn save_yields() {
+        let body: String = events::yields_snapshot().iter().map(|(r, i, c)| format!("{r}={i},{c}\n")).collect();
+        // Best effort; the file is a cache and is rebuilt by playing.
+        let _ = std::fs::write(yields_path(), body);
     }
 
     fn tid_now() -> u32 {
@@ -211,10 +243,10 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} BagTab={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8,
-            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
+            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         );
         if !cfg.enabled {
             crate::log!("Enabled=0, staying idle");
@@ -242,6 +274,7 @@ mod entry {
         MessageBeep(MB_OK);
 
         let mut gatherer = Gatherer::new(&cfg);
+        load_yields();
         // Give the game its loading phase before we start walking heap pointers.
         let mut world: Option<game::World> = None;
         let boot_grace = std::time::Duration::from_secs(20);
@@ -303,6 +336,9 @@ mod entry {
                 if let Some(w) = &world {
                     gatherer.tick(&module, w);
                 }
+            }
+            if events::take_yield_dirty() {
+                save_yields();
             }
             if k_scan.pressed() {
                 MessageBeep(MB_OK);

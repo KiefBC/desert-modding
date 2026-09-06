@@ -125,6 +125,8 @@ pub fn find_descriptor(m: &MainModule, api: &EventApi, name: &str) -> Result<Des
 #[derive(Debug, Clone, Copy)]
 pub struct PickupRequest {
     pub target_eid: u32,
+    /// Gimmick record index of the target, for yield learning.
+    pub record: u16,
     pub mode: PickupMode,
     pub player_eid: u32,
     pub route: u32,
@@ -155,6 +157,91 @@ pub fn api() -> Option<EventApi> {
 
 pub fn set_descriptor(d: Descriptor) {
     let _ = DESCRIPTOR.set(d);
+}
+
+// ---------------------------------------------------------------------------
+// Yield learning. After a pickup the game queues
+// `TrocTrHandleGameEventOnceTimer` (115 bytes) whose payload, for an item
+// received, has zeros at 11..19, the item key (u32) at 19, a 2 at 23 and the
+// count (u32) at 27 (observed live: copper chunk 720004 x1, vein x10). We
+// pair it with the node sent in the previous two seconds and remember
+// record -> item key, so the stacking rule can be applied before a send.
+
+pub const HANDLE_GAME_EVENT: &str = "TrocTrHandleGameEventOnceTimer";
+static HANDLE_DESC: OnceLock<usize> = OnceLock::new();
+static LAST_SENT: Mutex<Option<(u16, std::time::Instant)>> = Mutex::new(None);
+static YIELDS: Mutex<Vec<(u16, u32, u32)>> = Mutex::new(Vec::new());
+static YIELD_DIRTY: AtomicBool = AtomicBool::new(false);
+const YIELD_PAIR_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
+
+pub fn set_handle_descriptor(ptr: usize) {
+    let _ = HANDLE_DESC.set(ptr);
+}
+
+/// (item key, count received last time) for a gimmick record, if learned.
+pub fn yield_of(record: u16) -> Option<(u32, u32)> {
+    YIELDS.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(r, _, _)| *r == record).map(|(_, k, c)| (*k, *c))
+}
+
+pub fn yields_snapshot() -> Vec<(u16, u32, u32)> {
+    YIELDS.lock().unwrap_or_else(|e| e.into_inner()).clone()
+}
+
+pub fn load_yields(pairs: Vec<(u16, u32, u32)>) {
+    *YIELDS.lock().unwrap_or_else(|e| e.into_inner()) = pairs;
+}
+
+/// True once after something new was learned; the caller persists.
+pub fn take_yield_dirty() -> bool {
+    YIELD_DIRTY.swap(false, Ordering::AcqRel)
+}
+
+fn note_received(item: u32, count: u32) {
+    let sent = LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()).take();
+    let Some((record, when)) = sent else { return };
+    if when.elapsed() > YIELD_PAIR_WINDOW {
+        return;
+    }
+    let mut y = YIELDS.lock().unwrap_or_else(|e| e.into_inner());
+    match y.iter_mut().find(|(r, _, _)| *r == record) {
+        Some(e) => {
+            // Keep the largest count seen: the stacking rule uses it as a margin.
+            if e.1 == item && count > e.2 {
+                e.2 = count;
+                YIELD_DIRTY.store(true, Ordering::Release);
+            }
+        }
+        None => {
+            y.push((record, item, count));
+            YIELD_DIRTY.store(true, Ordering::Release);
+            crate::log!("[yield] record {record} gives item {item} (x{count}); learned");
+        }
+    }
+}
+
+fn watch_received(desc: usize, ev: usize) {
+    if HANDLE_DESC.get().copied() != Some(desc) {
+        return;
+    }
+    let size: u16 = safe::read(ev + 0x68).unwrap_or(0);
+    if size < 40 {
+        return;
+    }
+    let Some(buf) = safe::read_ptr(ev + 0x70) else { return };
+    let mut p = [0u8; 40];
+    if !safe::read_into(buf, &mut p) {
+        return;
+    }
+    if p[11..19].iter().any(|&b| b != 0) {
+        return;
+    }
+    let item = u32::from_le_bytes([p[19], p[20], p[21], p[22]]);
+    let kind = u32::from_le_bytes([p[23], p[24], p[25], p[26]]);
+    let count = u32::from_le_bytes([p[27], p[28], p[29], p[30]]);
+    if kind != 2 || item == 0 || count == 0 || count > 10_000 {
+        return;
+    }
+    note_received(item, count);
 }
 
 pub fn descriptor() -> Option<&'static Descriptor> {
@@ -223,6 +310,7 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
         match send_pickup(&r) {
             Ok(ev) => {
                 SENT.fetch_add(1, Ordering::Relaxed);
+                *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some((r.record, std::time::Instant::now()));
                 crate::log!("[event] enqueued PickUpItem ({:?}) for eid={:08X}: event 0x{ev:X}", r.mode, r.target_eid);
             }
             Err(e) => crate::log!("[event] NOT sent for eid={:08X}: {e}", r.target_eid),
@@ -347,6 +435,7 @@ pub fn toggle_recording() -> bool {
 /// Callback on the game's `enqueue(queue, ev, desc, flag)`. Runs on whatever
 /// thread queues the event, before the original. Must never panic.
 pub unsafe extern "system" fn on_enqueue(_queue: usize, ev: usize, desc: usize, flag: usize) {
+    watch_received(desc, ev);
     if !RECORDING.load(Ordering::Acquire) {
         return;
     }

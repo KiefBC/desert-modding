@@ -22,6 +22,9 @@ pub struct Gatherer {
     unarmed: bool,
     items: bool,
     bag_tab: Option<i16>,
+    stack_limit: u32,
+    /// item key -> item record index, filled lazily (a table scan each).
+    item_index_cache: Vec<(u32, u16)>,
     /// Logged once per fill so a full bag does not spam the log.
     bag_full_reported: bool,
     interval: Duration,
@@ -55,6 +58,8 @@ impl Gatherer {
             unarmed: cfg.gather_unarmed,
             items: cfg.gather_items,
             bag_tab: cfg.bag_tab,
+            stack_limit: cfg.stack_limit,
+            item_index_cache: Vec::new(),
             bag_full_reported: false,
             interval: Duration::from_millis(cfg.gather_interval_ms as u64),
             cooldown: Duration::from_millis(cfg.node_cooldown_ms as u64),
@@ -73,12 +78,24 @@ impl Gatherer {
         self.auto
     }
 
+    fn item_index(&mut self, m: &MainModule, key: u32) -> Option<u16> {
+        if let Some((_, i)) = self.item_index_cache.iter().find(|(k, _)| *k == key) {
+            return Some(*i);
+        }
+        let i = crate::tables::item_index_by_key(m, key)?;
+        self.item_index_cache.push((key, i));
+        Some(i)
+    }
+
     /// The game's own interaction UI refuses when the bag is full, but the
     /// forged event bypasses that UI and the gather path does not check on
-    /// the server side (133/132 was observed). So we check first.
-    fn bag_has_room(&mut self, sc: &Scene, why: &str) -> bool {
+    /// the server side (133/132 was observed). So we check first. A full bag
+    /// still accepts a pickup that stacks onto an existing stack, which the
+    /// game allows: we take that only when the node's yield is known, the
+    /// bag holds a real stack of it (count >= 2 proves it stacks), and the
+    /// result stays under `StackLimit`.
+    fn bag_has_room(&mut self, m: &MainModule, sc: &Scene, target: &game::GatherTarget, why: &str) -> bool {
         let Some(tabs) = sc.tabs.as_ref() else {
-            // Cannot tell: send anyway, as before, but say so once.
             if !self.bag_full_reported {
                 crate::log!("[gather] {why}: inventory unreadable; sending without a bag check");
             }
@@ -97,14 +114,41 @@ impl Gatherer {
             }
             return true;
         }
-        if !self.bag_full_reported {
-            self.bag_full_reported = true;
-            crate::log!(
-                "[gather] {why}: bag full ({}/{} in tab {}; all tabs [{}]); not sending",
-                bag.used, bag.max, bag.id, game::tabs_summary(tabs)
-            );
+        // Full: can it stack?
+        let verdict: Result<String, String> = (|| {
+            let (item, count) = events::yield_of(target.record).ok_or("yield of this node not learned yet")?;
+            let idx = self.item_index(m, item).ok_or_else(|| format!("item {item} not in the item table"))?;
+            let slots = actors::tab_slots(&bag).ok_or("bag slots unreadable")?;
+            let stack = slots
+                .iter()
+                .filter(|s| s.item_index == idx)
+                .max_by_key(|s| s.count)
+                .ok_or_else(|| format!("no stack of item {item} in the bag"))?;
+            if stack.count < 2 {
+                return Err(format!("item {item} is in the bag as a single, not proven stackable"));
+            }
+            let after = stack.count + count as i64;
+            if after > self.stack_limit as i64 {
+                return Err(format!("stack of item {item} is {} and +{count} would pass StackLimit {}", stack.count, self.stack_limit));
+            }
+            Ok(format!("stacks onto item {item} ({} -> {after})", stack.count))
+        })();
+        match verdict {
+            Ok(note) => {
+                crate::log!("[gather] {why}: bag full ({}/{}) but {note}", bag.used, bag.max);
+                true
+            }
+            Err(reason) => {
+                if !self.bag_full_reported {
+                    self.bag_full_reported = true;
+                    crate::log!(
+                        "[gather] {why}: bag full ({}/{} in tab {}): {reason}; not sending",
+                        bag.used, bag.max, bag.id
+                    );
+                }
+                false
+            }
         }
-        false
     }
 
     fn ready_to_send(&self) -> Result<(), &'static str> {
@@ -172,6 +216,7 @@ impl Gatherer {
     fn send(&mut self, target: &game::GatherTarget, why: &str) {
         let req = events::PickupRequest {
             target_eid: target.eid,
+            record: target.record,
             mode: target.mode,
             player_eid: target.player_eid,
             route: target.route,
@@ -206,12 +251,13 @@ impl Gatherer {
             crate::log!("[gather] manual: {e}; not sending");
             return;
         }
-        if !self.bag_has_room(&sc, "manual") {
-            return;
-        }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
         match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
-            Ok(t) => self.send(&t, "manual"),
+            Ok(t) => {
+                if self.bag_has_room(m, &sc, &t, "manual") {
+                    self.send(&t, "manual");
+                }
+            }
             Err(e) => crate::log!("[gather] manual: {e} (excluding {} on cooldown)", self.done.len()),
         }
     }
@@ -234,14 +280,16 @@ impl Gatherer {
         if !send_due || self.ready_to_send().is_err() {
             return;
         }
-        if !self.bag_has_room(&sc, "auto") {
-            // Keep the cadence; the "room again" line will show when it clears.
-            self.last_send = Some(Instant::now());
-            return;
-        }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
         match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
-            Ok(t) => self.send(&t, "auto"),
+            Ok(t) => {
+                if self.bag_has_room(m, &sc, &t, "auto") {
+                    self.send(&t, "auto");
+                } else {
+                    // Keep the cadence; the "room again" line shows when it clears.
+                    self.last_send = Some(Instant::now());
+                }
+            }
             Err(_) => {
                 // Nothing eligible: keep the cadence but stay quiet.
                 self.last_send = Some(Instant::now());

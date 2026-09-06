@@ -204,3 +204,47 @@ pub fn gimmick_record_name(rec: usize) -> Option<String> {
     let q = safe::read_ptr(p)?;
     safe::read_cstr(q, 64).filter(|s| s.len() >= 3)
 }
+
+/// Item record by index (the u16 an inventory slot stores at +0x08).
+pub fn item_record(m: &MainModule, index: u16) -> Option<usize> {
+    let mgr = manager_at(m, ITEM_INFO_SLOT)?;
+    let count: u32 = safe::read(mgr + 8)?;
+    if index as u32 >= count {
+        return None;
+    }
+    let arr = safe::read_ptr(mgr + 0x58)?;
+    safe::read_ptr(arr + index as usize * 8)
+}
+
+/// Item records: `u32 key @0`, name `**(rec+0x08)`, and the default inventory
+/// tab id as `i16 @0x428` (read by the game's cross-tab item counter
+/// `FUN_14207F770`, -1 = none).
+pub const ITEM_TAB_OFF: usize = 0x428;
+
+pub fn item_record_key(rec: usize) -> Option<u32> {
+    safe::read(rec)
+}
+
+pub fn item_record_name(rec: usize) -> Option<String> {
+    let p = safe::read_ptr(rec + 8)?;
+    let q = safe::read_ptr(p)?;
+    safe::read_cstr(q, 64).filter(|s| s.len() >= 3)
+}
+
+pub fn item_record_tab(rec: usize) -> Option<i16> {
+    safe::read(rec + ITEM_TAB_OFF)
+}
+
+/// Item record index for a key, by scanning the table (a few thousand reads;
+/// call rarely and cache).
+pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
+    let mgr = manager_at(m, ITEM_INFO_SLOT)?;
+    let count: u32 = safe::read(mgr + 8)?;
+    if count == 0 || count >= 0x40000 {
+        return None;
+    }
+    let arr = safe::read_ptr(mgr + 0x58)?;
+    (0..count).find(|&i| {
+        safe::read_ptr(arr + i as usize * 8).and_then(|r| safe::read::<u32>(r)) == Some(key)
+    }).map(|i| i as u16)
+}
