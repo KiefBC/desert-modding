@@ -7,8 +7,10 @@ This is the **first write** stage. On load it resolves the game-side anchors
 (byte signatures and the actor-manager RTTI vtable), hooks the per-frame sweep
 function for a game-thread callback, logs to `DesertLooter.log` in `bin64`,
 reads `DesertLooter.ini` from the same folder, and reacts to three hotkeys:
-F10 toggle, F11 survey (read-only), F9 gather the nearest node by forging one
-PickUpItem event on the game thread.
+F10 toggles automatic gathering, F11 surveys (read-only), F9 gathers the
+nearest node once. Gathering forges one PickUpItem event per node on the game
+thread; auto mode paces sends by `GatherInterval` and leaves each node alone
+for `NodeCooldown` before retrying it.
 
 ## What an ASI is
 

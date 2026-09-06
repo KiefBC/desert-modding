@@ -22,6 +22,8 @@ pub mod events;
 #[cfg(windows)]
 pub mod game;
 #[cfg(windows)]
+pub mod gatherer;
+#[cfg(windows)]
 pub mod hook;
 #[cfg(windows)]
 pub mod hotkey;
@@ -54,6 +56,7 @@ mod entry {
     use crate::config::{self, Config};
     use crate::hotkey::Hotkey;
     use crate::module::MainModule;
+    use crate::gatherer::Gatherer;
     use crate::{events, game, hook, log};
 
     /// The `area_sweep` signature hits 15 bytes into the function; the
@@ -140,42 +143,6 @@ mod entry {
         }
     }
 
-    fn gather_once(module: &MainModule, w: &game::World, range: f32) {
-        let t = std::time::Instant::now();
-        let target = match game::nearest_gather(module, w, range) {
-            Ok(t) => t,
-            Err(e) => {
-                crate::log!("[gather] {e}");
-                return;
-            }
-        };
-        let route90: Option<u32> = crate::safe::read(target.player_actor + game::PLAYER_ROUTE_MOD_OFF);
-        crate::log!(
-            "[gather] target {} ({:?}) eid={:08X} at {:.1} m; player eid={:08X} route(+0x58)=0x{:X} (+0x90 reads {:?}); picked in {:.1} ms",
-            target.name, target.family, target.eid, target.dist, target.player_eid, target.route,
-            route90.map(|v| format!("0x{v:X}")), t.elapsed().as_secs_f64() * 1000.0
-        );
-        if events::descriptor().is_none() {
-            crate::log!("[gather] descriptor not resolved; not sending");
-            return;
-        }
-        if events::game_thread_id() == 0 {
-            crate::log!("[gather] sweep hook has not fired yet; not sending");
-            return;
-        }
-        let req = events::PickupRequest {
-            target_eid: target.eid,
-            player_eid: target.player_eid,
-            route: target.route,
-            flag: 0,
-        };
-        if events::request(req) {
-            crate::log!("[gather] request parked for the game thread (sweep calls so far: {})", events::sweep_calls());
-        } else {
-            crate::log!("[gather] a request is still pending; ignored");
-        }
-    }
-
     fn tid_now() -> u32 {
         unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() }
     }
@@ -210,9 +177,9 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X}",
-            cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range,
-            cfg.key_toggle, cfg.key_scan, cfg.key_gather
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X}",
+            cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
+            cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather
         );
         if !cfg.enabled {
             crate::log!("Enabled=0, staying idle");
@@ -235,7 +202,7 @@ mod entry {
         let api_ok = resolve_event_api(&module, &anchors);
         MessageBeep(MB_OK);
 
-        let mut enabled = true;
+        let mut gatherer = Gatherer::new(&cfg);
         // Give the game its loading phase before we start walking heap pointers.
         let mut world: Option<game::World> = None;
         let boot_grace = std::time::Duration::from_secs(20);
@@ -269,21 +236,24 @@ mod entry {
                 crate::log!("[hook] game thread id {} (main thread here is {})", events::game_thread_id(), tid_now());
             }
             if k_toggle.pressed() {
-                enabled = !enabled;
-                crate::log!("[key] auto-loot {}", if enabled { "ON" } else { "OFF" });
+                let on = gatherer.toggle();
+                crate::log!("[key] auto-gather {}", if on { "ON" } else { "OFF" });
                 MessageBeep(MB_OK);
             }
             if k_gather.pressed() {
                 MessageBeep(MB_OK);
-                if !enabled {
-                    crate::log!("[gather] auto-loot is OFF (toggle with KeyToggle)");
-                } else if !hooked {
+                if !hooked {
                     crate::log!("[gather] no sweep hook; cannot send on the game thread");
                 } else {
                     match &world {
-                        Some(w) => gather_once(&module, w, cfg.gather_range),
+                        Some(w) => gatherer.manual(&module, w),
                         None => crate::log!("[gather] actor manager not found yet"),
                     }
+                }
+            }
+            if hooked {
+                if let Some(w) = &world {
+                    gatherer.tick(&module, w);
                 }
             }
             if k_scan.pressed() {

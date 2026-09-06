@@ -133,7 +133,7 @@ pub struct PickupRequest {
 
 static API: OnceLock<EventApi> = OnceLock::new();
 static DESCRIPTOR: OnceLock<Descriptor> = OnceLock::new();
-static PENDING: Mutex<Option<PickupRequest>> = Mutex::new(None);
+static PENDING: Mutex<Option<(PickupRequest, std::time::Instant)>> = Mutex::new(None);
 static PENDING_FLAG: AtomicBool = AtomicBool::new(false);
 static SWEEP_CALLS: AtomicU64 = AtomicU64::new(0);
 static GAME_TID: AtomicU32 = AtomicU32::new(0);
@@ -173,9 +173,27 @@ pub fn request(r: PickupRequest) -> bool {
     if g.is_some() {
         return false;
     }
-    *g = Some(r);
+    *g = Some((r, std::time::Instant::now()));
     PENDING_FLAG.store(true, Ordering::Release);
     true
+}
+
+pub fn has_pending() -> bool {
+    PENDING_FLAG.load(Ordering::Acquire)
+}
+
+/// Take back a request the hook has not drained within `max_age` (the sweep
+/// stopped firing: loading screen, audio off, menu). Returns what was dropped.
+pub fn drop_stale(max_age: std::time::Duration) -> Option<PickupRequest> {
+    let mut g = PENDING.lock().unwrap_or_else(|e| e.into_inner());
+    match *g {
+        Some((r, t)) if t.elapsed() > max_age => {
+            *g = None;
+            PENDING_FLAG.store(false, Ordering::Release);
+            Some(r)
+        }
+        _ => None,
+    }
 }
 
 /// The sweep hook callback. Runs on the game thread once per audio emitter
@@ -193,7 +211,7 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
     let req = {
         let mut g = PENDING.lock().unwrap_or_else(|e| e.into_inner());
         PENDING_FLAG.store(false, Ordering::Release);
-        g.take()
+        g.take().map(|(r, _)| r)
     };
     if let Some(r) = req {
         match send_pickup(&r) {

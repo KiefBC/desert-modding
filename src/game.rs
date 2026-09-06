@@ -633,28 +633,53 @@ pub fn player_route(player: usize) -> Option<u32> {
     crate::safe::read(player + PLAYER_ROUTE_OFF)
 }
 
-/// Nearest node within `range` metres that classifies as `Gather` (interaction
-/// object present and the gimmick record is a Foraging/Logging/Mining/Ore
-/// record). Read-only; the caller decides what to do with it.
-pub fn nearest_gather(m: &MainModule, w: &World, range: f32) -> Result<GatherTarget, String> {
+/// One enumeration of the world, shared by everything a tick needs.
+pub struct Scene {
+    pub player: usize,
+    pub player_eid: u32,
+    pub route: u32,
+    pub ppos: Vec3,
+    pub entries: Vec<(u32, usize)>,
+}
+
+impl Scene {
+    pub fn actor(&self, eid: u32) -> Option<usize> {
+        self.entries.iter().find(|(e, _)| *e == eid).map(|(_, a)| *a)
+    }
+}
+
+pub fn scene(m: &MainModule, w: &World) -> Result<Scene, String> {
+    let _ = m;
     let manager = actors::find_manager_current(w).unwrap_or(w.manager);
     let c = crate::safe::read_ptr(manager + actors::CONTAINER_OFF).ok_or("container pointer unreadable")?;
     let map = actors::eid_map(c).ok_or("eid map rejected")?;
     let player = actors::player_actor(manager).ok_or("player actor not at manager+0x50")?;
     let player_eid = actors::actor_eid(player).ok_or("player eid unreadable")?;
-    let route = player_route(player).ok_or("player+0x90 unreadable")?;
+    let route = player_route(player).ok_or("player+0x58 unreadable")?;
     let ppos = actors::actor_position(player).ok_or("player position unreadable")?;
+    Ok(Scene { player, player_eid, route, ppos, entries: map.entries() })
+}
+
+/// Nearest node within `range` metres that classifies as `Gather` (interaction
+/// object present and the gimmick record is a Foraging/Logging/Mining/Ore
+/// record), skipping eids for which `skip` is true. Read-only.
+pub fn nearest_gather(
+    m: &MainModule,
+    sc: &Scene,
+    range: f32,
+    skip: &dyn Fn(u32) -> bool,
+) -> Result<GatherTarget, String> {
     let mut best: Option<GatherTarget> = None;
-    for (eid, a) in map.entries() {
-        if a == player {
+    for &(eid, a) in &sc.entries {
+        if a == sc.player || skip(eid) {
             continue;
         }
         let Some(pos) = actors::actor_position(a) else { continue };
-        let d = pos.dist(&ppos);
+        let d = pos.dist(&sc.ppos);
         if d > range || best.as_ref().is_some_and(|b| b.dist <= d) {
             continue;
         }
-        if actors::classify(m, a, player) != actors::Kind::Gather {
+        if actors::classify(m, a, sc.player) != actors::Kind::Gather {
             continue;
         }
         let Some(id) = actors::node_identity(m, a) else { continue };
@@ -662,12 +687,12 @@ pub fn nearest_gather(m: &MainModule, w: &World, range: f32) -> Result<GatherTar
         best = Some(GatherTarget {
             eid,
             actor: a,
-            player_actor: player,
+            player_actor: sc.player,
             dist: d,
             name: id.name.unwrap_or_else(|| format!("rec{}", id.index)),
             family,
-            player_eid,
-            route,
+            player_eid: sc.player_eid,
+            route: sc.route,
         });
     }
     best.ok_or_else(|| format!("no Gather node within {range:.1} m"))
