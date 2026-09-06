@@ -1,0 +1,6 @@
+/target
+/result
+result-*
+*:Zone.Identifier
+*.log
+/analysis/

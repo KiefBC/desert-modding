@@ -1,0 +1,20 @@
+# Byte signatures lifted from the reference mod CDLoot.asi (names are its own).
+# One line per signature; '#' lines are comments; ?? is a wildcard byte.
+# alloc_event      - function start; returns a fresh event object
+48 89 5C 24 ?? 4C 89 44 24 ?? 57 48 83 EC 20 8B ?? BA ?? ?? 00 00
+# enqueue          - function start; (queue, event)
+48 89 5C 24 08 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00
+# area_sweep       - hit is 0xF bytes into the function (prologue starts 15 bytes earlier); hooked
+55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B
+# own_check_site   - call site; the E8 at +7 targets the owner-check function; hooked
+48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 04 B3 02
+# get_pos          - function start; [rcx+0x68]->[+0x1A0]->vtbl+0x140
+40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01
+# desc_mask+queue  - call site; E8@+0 -> "prepare" fn, E8@+0x11 -> descriptor-by-id fn,
+#                    RIP-rel @+8 -> desc_mask u32, RIP-rel @+0x19 -> queue ptr
+E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25
+# interaction fn   - function start; hooked (FUN_180017ff0 in the mod); preceded by a
+#                    "4C 8D 05 .. 33 D2 48 8B .. E8" call-site scan
+88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??
+# category fn      - function start; scanned for an embedded "FF 9x imm32" constant in 0x100..0x2000
+48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 0F B6 F2 4C 8B F9

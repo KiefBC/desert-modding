@@ -1,0 +1,5 @@
+# Build for Windows x64 by default. The linker and the per-target rustflags
+# (crt-static, winpthreads search path) are supplied by the Nix dev shell via
+# CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER / _RUSTFLAGS - see flake.nix.
+[build]
+target = "x86_64-pc-windows-gnu"
