@@ -294,6 +294,10 @@ pub fn family_by_key(key: u32) -> Option<Family> {
 }
 
 /// Family of a gather record by its name (case-insensitive), if it is one.
+/// Exact record names only. Tried and rejected (2026-09-06): treating the
+/// felled-tree chunks (`log_*`) as Logging. The pickup event is ignored for
+/// them; the chunk actor even survives having its `firewood_*` materials cut
+/// out. Only the materials are gather nodes.
 pub fn family_by_name(name: &str) -> Option<Family> {
     COLLECT_RECORDS.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(name)).map(|(_, _, f)| *f)
 }
@@ -301,6 +305,14 @@ pub fn family_by_name(name: &str) -> Option<Family> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn non_gather_records_stay_out() {
+        assert_eq!(family_by_name("log_1002_index07"), None);
+        assert_eq!(family_by_name("gimmick_tree_cd_crop_apple_02_collect"), None);
+        assert_eq!(family_by_name("item_basic_onehand"), None);
+        assert_eq!(family_by_name("firewood_1002_index07"), Some(Family::Logging));
+    }
+
     #[test]
     fn known_records() {
         assert_eq!(family_by_name("peony_01"), Some(Family::Foraging));

@@ -354,8 +354,9 @@ pub fn gimmick_info(m: &MainModule, actor: usize) -> Option<GimmickInfo> {
 }
 
 /// The entity-id -> actor map inside `ClientActorContainer` (build 25116796):
-/// `{u32 ?, u32 ?, u32 count, u32 capacity, Key* keys, Actor** values}` at +0x88,
-/// where `Key = {u32 eid, u32 link}`. Keys and values are parallel arrays.
+/// `{u32 ?, u32 ?, u32 count, u32 buckets, Key* keys, Slot** values}` at +0x88.
+/// The value array has `count` slot pointers; the key array is a hash chain
+/// (its length is not `count`) and is not used for enumeration.
 pub const EIDMAP_OFF: usize = 0x88;
 
 #[derive(Debug, Clone, Copy)]
@@ -372,10 +373,13 @@ pub fn eid_map(container: usize) -> Option<EidMap> {
     let capacity: u32 = safe::read(base + 0xC)?;
     let keys = safe::read_ptr(base + 0x10)?;
     let values = safe::read_ptr(base + 0x18)?;
-    if count == 0 || count > capacity || capacity > 0x10000 {
+    // `capacity` is not an upper bound on `count` (207 entries with 167 was
+    // seen live; it is probably the bucket count of the key hash), so only
+    // the count and the value array's readability are checked.
+    if count == 0 || count > 0x10000 || capacity > 0x10000 {
         return None;
     }
-    if !safe::readable(keys, 8 * count as usize) || !safe::readable(values, 8 * count as usize) {
+    if !safe::readable(values, 8 * count as usize) {
         return None;
     }
     Some(EidMap { count, capacity, keys, values })
@@ -587,4 +591,55 @@ pub fn node_identity(m: &MainModule, actor: usize) -> Option<NodeIdentity> {
         .and_then(crate::collect::family_by_key)
         .or_else(|| name.as_deref().and_then(crate::collect::family_by_name));
     Some(NodeIdentity { index, key, name, family })
+}
+
+/// The player's inventory, the way the game's own condition evaluators reach
+/// it (`FUN_142073710` then `FUN_1421B1940`, build 25116796):
+/// `inv = *(actor->sub + 0xB8)`; `inv+0x18` is an array of tab pointers with
+/// the count at `inv+0x20`; each tab has `i16 id @+0x10`, `i16 used @+0x12`,
+/// `i16 max @+0x14`. The game computes free slots as `max - used` per tab.
+pub const INVENTORY_OFF: usize = 0xB8;
+pub const INVENTORY_TABS_OFF: usize = 0x18;
+pub const INVENTORY_TAB_COUNT_OFF: usize = 0x20;
+const MAX_INVENTORY_TABS: u32 = 64;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InventoryTab {
+    pub id: i16,
+    pub used: i16,
+    pub max: i16,
+}
+
+impl InventoryTab {
+    pub fn free(&self) -> i32 {
+        self.max as i32 - self.used as i32
+    }
+}
+
+pub fn inventory_tabs(actor: usize) -> Option<Vec<InventoryTab>> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    let inv = safe::read_ptr(sub + INVENTORY_OFF)?;
+    let count: u32 = safe::read(inv + INVENTORY_TAB_COUNT_OFF)?;
+    if count == 0 || count > MAX_INVENTORY_TABS {
+        return None;
+    }
+    let arr = safe::read_ptr(inv + INVENTORY_TABS_OFF)?;
+    let mut out = Vec::with_capacity(count as usize);
+    for i in 0..count as usize {
+        let tab = safe::read_ptr(arr + i * 8)?;
+        let id: i16 = safe::read(tab + 0x10)?;
+        let used: i16 = safe::read(tab + 0x12)?;
+        let max: i16 = safe::read(tab + 0x14)?;
+        out.push(InventoryTab { id, used, max });
+    }
+    Some(out)
+}
+
+/// The tab we treat as "the bag": an explicit id, or the one with the
+/// largest capacity.
+pub fn bag_tab(tabs: &[InventoryTab], wanted: Option<i16>) -> Option<InventoryTab> {
+    match wanted {
+        Some(id) => tabs.iter().copied().find(|t| t.id == id),
+        None => tabs.iter().copied().filter(|t| t.max > 0).max_by_key(|t| t.max),
+    }
 }

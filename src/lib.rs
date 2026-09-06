@@ -211,9 +211,10 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} BagTab={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
-            cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
+            cfg.gather_unarmed as u8, cfg.gather_items as u8,
+            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         );
         if !cfg.enabled {
             crate::log!("Enabled=0, staying idle");

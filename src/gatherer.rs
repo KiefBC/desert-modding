@@ -21,6 +21,9 @@ pub struct Gatherer {
     range: f32,
     unarmed: bool,
     items: bool,
+    bag_tab: Option<i16>,
+    /// Logged once per fill so a full bag does not spam the log.
+    bag_full_reported: bool,
     interval: Duration,
     cooldown: Duration,
     done: Vec<Done>,
@@ -51,6 +54,8 @@ impl Gatherer {
             range: cfg.gather_range,
             unarmed: cfg.gather_unarmed,
             items: cfg.gather_items,
+            bag_tab: cfg.bag_tab,
+            bag_full_reported: false,
             interval: Duration::from_millis(cfg.gather_interval_ms as u64),
             cooldown: Duration::from_millis(cfg.node_cooldown_ms as u64),
             done: Vec::new(),
@@ -66,6 +71,40 @@ impl Gatherer {
     pub fn toggle(&mut self) -> bool {
         self.auto = !self.auto;
         self.auto
+    }
+
+    /// The game's own interaction UI refuses when the bag is full, but the
+    /// forged event bypasses that UI and the gather path does not check on
+    /// the server side (133/132 was observed). So we check first.
+    fn bag_has_room(&mut self, sc: &Scene, why: &str) -> bool {
+        let Some(tabs) = sc.tabs.as_ref() else {
+            // Cannot tell: send anyway, as before, but say so once.
+            if !self.bag_full_reported {
+                crate::log!("[gather] {why}: inventory unreadable; sending without a bag check");
+            }
+            return true;
+        };
+        let Some(bag) = actors::bag_tab(tabs, self.bag_tab) else {
+            if !self.bag_full_reported {
+                crate::log!("[gather] {why}: no bag tab among [{}]; sending without a bag check", game::tabs_summary(tabs));
+            }
+            return true;
+        };
+        if bag.free() > 0 {
+            if self.bag_full_reported {
+                crate::log!("[gather] bag has room again ({}/{} in tab {})", bag.used, bag.max, bag.id);
+                self.bag_full_reported = false;
+            }
+            return true;
+        }
+        if !self.bag_full_reported {
+            self.bag_full_reported = true;
+            crate::log!(
+                "[gather] {why}: bag full ({}/{} in tab {}; all tabs [{}]); not sending",
+                bag.used, bag.max, bag.id, game::tabs_summary(tabs)
+            );
+        }
+        false
     }
 
     fn ready_to_send(&self) -> Result<(), &'static str> {
@@ -167,6 +206,9 @@ impl Gatherer {
             crate::log!("[gather] manual: {e}; not sending");
             return;
         }
+        if !self.bag_has_room(&sc, "manual") {
+            return;
+        }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
         match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
             Ok(t) => self.send(&t, "manual"),
@@ -190,6 +232,11 @@ impl Gatherer {
         self.last_review = Some(Instant::now());
         self.review(m, &sc);
         if !send_due || self.ready_to_send().is_err() {
+            return;
+        }
+        if !self.bag_has_room(&sc, "auto") {
+            // Keep the cadence; the "room again" line will show when it clears.
+            self.last_send = Some(Instant::now());
             return;
         }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);

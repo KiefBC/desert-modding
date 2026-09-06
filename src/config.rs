@@ -14,6 +14,9 @@ pub struct Config {
     pub gather_unarmed: bool,
     /// Pick up basic ground items (ore chunks, `item_basic_*` records).
     pub gather_items: bool,
+    /// Inventory tab id treated as the bag (tab 1 on build 25116796, the one
+    /// the HUD shows as n/132); None = the largest tab.
+    pub bag_tab: Option<i16>,
     /// Minimum time between two automatic sends.
     pub gather_interval_ms: u32,
     /// After sending for a node, leave it alone this long before retrying.
@@ -35,6 +38,7 @@ impl Default for Config {
             auto_gather: false,
             gather_unarmed: true,
             gather_items: true,
+            bag_tab: Some(1),
             gather_interval_ms: 500,
             node_cooldown_ms: 8000,
             key_toggle: 0x79, // F10
@@ -117,6 +121,11 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "autogather" => cfg.auto_gather = bool_of(v),
             "gatherunarmed" => cfg.gather_unarmed = bool_of(v),
             "gatheritems" => cfg.gather_items = bool_of(v),
+            "bagtab" => match v.parse::<i16>() {
+                Ok(id) if id >= 0 => cfg.bag_tab = Some(id),
+                Ok(_) => cfg.bag_tab = None,
+                Err(_) => warnings.push(format!("BagTab: bad value {v:?}, keeping auto")),
+            },
             "gatherinterval" | "nodecooldown" => match v.parse::<u32>() {
                 Ok(ms) if (100..=60_000).contains(&ms) => {
                     if k.eq_ignore_ascii_case("gatherinterval") {

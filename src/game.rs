@@ -118,6 +118,10 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
         "[survey] {} actors ({} readable); player eid={:08X} at ({:.1} {:.1} {:.1})",
         map.count, entries.len(), actors::actor_eid(player).unwrap_or(0), ppos.x, ppos.y, ppos.z
     );
+    match actors::inventory_tabs(player) {
+        Some(tabs) => crate::log!("[survey] inventory tabs (id:used/max): {}", tabs_summary(&tabs)),
+        None => crate::log!("[survey] inventory not readable via player+0x68->+0xB8"),
+    }
     let mut near: Vec<(f32, usize, u32, Vec3)> = entries
         .iter()
         .filter(|(_, a)| *a != player)
@@ -671,6 +675,12 @@ pub struct Scene {
     pub route: u32,
     pub ppos: Vec3,
     pub entries: Vec<(u32, usize)>,
+    /// None when the inventory could not be read this tick.
+    pub tabs: Option<Vec<actors::InventoryTab>>,
+}
+
+pub fn tabs_summary(tabs: &[actors::InventoryTab]) -> String {
+    tabs.iter().map(|t| format!("{}:{}/{}", t.id, t.used, t.max)).collect::<Vec<_>>().join(" ")
 }
 
 impl Scene {
@@ -688,7 +698,8 @@ pub fn scene(m: &MainModule, w: &World) -> Result<Scene, String> {
     let player_eid = actors::actor_eid(player).ok_or("player eid unreadable")?;
     let route = player_route(player).ok_or("player+0x58 unreadable")?;
     let ppos = actors::actor_position(player).ok_or("player position unreadable")?;
-    Ok(Scene { player, player_eid, route, ppos, entries: map.entries() })
+    let tabs = actors::inventory_tabs(player);
+    Ok(Scene { player, player_eid, route, ppos, entries: map.entries(), tabs })
 }
 
 /// Nearest node within `range` metres that classifies as `Gather` (interaction
