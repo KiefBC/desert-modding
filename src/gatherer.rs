@@ -19,6 +19,8 @@ struct Done {
 pub struct Gatherer {
     pub auto: bool,
     range: f32,
+    unarmed: bool,
+    items: bool,
     interval: Duration,
     cooldown: Duration,
     done: Vec<Done>,
@@ -27,6 +29,8 @@ pub struct Gatherer {
     last_idle_log: Option<Instant>,
     pub sent: u32,
     pub gathered: u32,
+    /// Sends whose target was still standing when the cooldown ran out.
+    consecutive_failures: u32,
 }
 
 /// A parked request older than this means the sweep hook is not firing.
@@ -36,12 +40,17 @@ const IDLE_LOG_EVERY: Duration = Duration::from_secs(30);
 /// While nodes are outstanding, check on them this often so the "gone after"
 /// time is a measurement rather than the send interval.
 const REVIEW_EVERY: Duration = Duration::from_millis(100);
+/// This many expired sends in a row means the game is refusing pickups
+/// (a full bag is the usual reason); auto mode stops rather than loop.
+const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
 impl Gatherer {
     pub fn new(cfg: &Config) -> Self {
         Gatherer {
             auto: cfg.auto_gather,
             range: cfg.gather_range,
+            unarmed: cfg.gather_unarmed,
+            items: cfg.gather_items,
             interval: Duration::from_millis(cfg.gather_interval_ms as u64),
             cooldown: Duration::from_millis(cfg.node_cooldown_ms as u64),
             done: Vec::new(),
@@ -50,6 +59,7 @@ impl Gatherer {
             last_idle_log: None,
             sent: 0,
             gathered: 0,
+            consecutive_failures: 0,
         }
     }
 
@@ -89,22 +99,31 @@ impl Gatherer {
         while i < self.done.len() {
             let d = &self.done[i];
             let age = d.sent.elapsed();
-            let still_gather = sc
-                .actor(d.eid)
-                .is_some_and(|a| actors::classify(m, a, sc.player) == actors::Kind::Gather);
+            let still_gather = sc.actor(d.eid).is_some_and(|a| {
+                matches!(actors::classify(m, a, sc.player), actors::Kind::Gather | actors::Kind::Unarmed | actors::Kind::Item)
+            });
             if !still_gather {
                 self.gathered += 1;
+                self.consecutive_failures = 0;
                 crate::log!(
                     "[gather] {} eid={:08X} gone after {:.1} s (gathered {} of {} sent)",
                     d.name, d.eid, age.as_secs_f64(), self.gathered, self.sent
                 );
                 self.done.swap_remove(i);
             } else if age > self.cooldown {
+                self.consecutive_failures += 1;
                 crate::log!(
-                    "[gather] {} eid={:08X} still there after {:.1} s; eligible again",
-                    d.name, d.eid, age.as_secs_f64()
+                    "[gather] {} eid={:08X} still there after {:.1} s; eligible again ({} failed in a row)",
+                    d.name, d.eid, age.as_secs_f64(), self.consecutive_failures
                 );
                 self.done.swap_remove(i);
+                if self.auto && self.consecutive_failures >= MAX_CONSECUTIVE_FAILURES {
+                    self.auto = false;
+                    self.consecutive_failures = 0;
+                    crate::log!(
+                        "[gather] {MAX_CONSECUTIVE_FAILURES} pickups in a row were refused: bag full? auto-gather OFF; press KeyToggle to resume"
+                    );
+                }
             } else {
                 i += 1;
             }
@@ -114,6 +133,7 @@ impl Gatherer {
     fn send(&mut self, target: &game::GatherTarget, why: &str) {
         let req = events::PickupRequest {
             target_eid: target.eid,
+            mode: target.mode,
             player_eid: target.player_eid,
             route: target.route,
             flag: 0,
@@ -123,8 +143,8 @@ impl Gatherer {
             self.last_send = Some(Instant::now());
             self.done.push(Done { eid: target.eid, name: target.name.clone(), sent: Instant::now() });
             crate::log!(
-                "[gather] {why}: {} ({:?}) eid={:08X} at {:.1} m -> request #{} parked",
-                target.name, target.family, target.eid, target.dist, self.sent
+                "[gather] {why}: {} ({}{}) eid={:08X} at {:.1} m -> request #{} parked",
+                target.name, target.family, if target.armed { "" } else { ", UNARMED" }, target.eid, target.dist, self.sent
             );
         } else {
             crate::log!("[gather] {why}: a request is still pending; ignored");
@@ -148,7 +168,7 @@ impl Gatherer {
             return;
         }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
-        match game::nearest_gather(m, &sc, self.range, &skip) {
+        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
             Ok(t) => self.send(&t, "manual"),
             Err(e) => crate::log!("[gather] manual: {e} (excluding {} on cooldown)", self.done.len()),
         }
@@ -173,7 +193,7 @@ impl Gatherer {
             return;
         }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
-        match game::nearest_gather(m, &sc, self.range, &skip) {
+        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
             Ok(t) => self.send(&t, "auto"),
             Err(_) => {
                 // Nothing eligible: keep the cadence but stay quiet.

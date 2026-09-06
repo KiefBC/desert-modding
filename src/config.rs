@@ -10,6 +10,10 @@ pub struct Config {
     pub gather_range: f32,
     /// Start with automatic gathering on.
     pub auto_gather: bool,
+    /// Also target nodes the game has not armed with an interaction object.
+    pub gather_unarmed: bool,
+    /// Pick up basic ground items (ore chunks, `item_basic_*` records).
+    pub gather_items: bool,
     /// Minimum time between two automatic sends.
     pub gather_interval_ms: u32,
     /// After sending for a node, leave it alone this long before retrying.
@@ -18,6 +22,7 @@ pub struct Config {
     pub key_toggle: u16,
     pub key_scan: u16,
     pub key_gather: u16,
+    pub key_record: u16,
 }
 
 impl Default for Config {
@@ -26,13 +31,16 @@ impl Default for Config {
             enabled: true,
             debug: false,
             scan_range: 40.0,
-            gather_range: 3.0,
+            gather_range: 6.0,
             auto_gather: false,
-            gather_interval_ms: 1000,
+            gather_unarmed: true,
+            gather_items: true,
+            gather_interval_ms: 500,
             node_cooldown_ms: 8000,
             key_toggle: 0x79, // F10
             key_scan: 0x7A,   // F11
             key_gather: 0x78, // F9
+            key_record: 0x76, // F7
         }
     }
 }
@@ -107,6 +115,8 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                 _ => warnings.push(format!("ScanRange: bad value {v:?}, keeping {}", cfg.scan_range)),
             },
             "autogather" => cfg.auto_gather = bool_of(v),
+            "gatherunarmed" => cfg.gather_unarmed = bool_of(v),
+            "gatheritems" => cfg.gather_items = bool_of(v),
             "gatherinterval" | "nodecooldown" => match v.parse::<u32>() {
                 Ok(ms) if (100..=60_000).contains(&ms) => {
                     if k.eq_ignore_ascii_case("gatherinterval") {
@@ -121,9 +131,10 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                 Ok(f) if f > 0.0 && f <= 50.0 => cfg.gather_range = f,
                 _ => warnings.push(format!("GatherRange: bad value {v:?}, keeping {}", cfg.gather_range)),
             },
-            "keytoggle" | "keyscan" | "keygather" => match vk_from_name(v) {
+            "keytoggle" | "keyscan" | "keygather" | "keyrecord" => match vk_from_name(v) {
                 Some(vk) if k.eq_ignore_ascii_case("keytoggle") => cfg.key_toggle = vk,
                 Some(vk) if k.eq_ignore_ascii_case("keyscan") => cfg.key_scan = vk,
+                Some(vk) if k.eq_ignore_ascii_case("keyrecord") => cfg.key_record = vk,
                 Some(vk) => cfg.key_gather = vk,
                 None => warnings.push(format!("{k}: unknown key name {v:?}, keeping previous")),
             },

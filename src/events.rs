@@ -25,7 +25,7 @@ use crate::module::MainModule;
 use crate::safe;
 
 pub use crate::payload::{PICKUP_DESCRIPTOR, PICKUP_ID_EXPECTED, PICKUP_PAYLOAD_SIZE};
-use crate::payload::{gather_payload, hex};
+use crate::payload::{hex, pickup_payload, PickupMode};
 
 pub const MAX_DESCRIPTOR_ID: u32 = 0x1FFF;
 /// Event object size from the allocator (`FUN_1413A9790`: alloc(0x80, 0x10)).
@@ -125,6 +125,7 @@ pub fn find_descriptor(m: &MainModule, api: &EventApi, name: &str) -> Result<Des
 #[derive(Debug, Clone, Copy)]
 pub struct PickupRequest {
     pub target_eid: u32,
+    pub mode: PickupMode,
     pub player_eid: u32,
     pub route: u32,
     /// `enqueue` flag byte (the game's builder passes its caller's choice).
@@ -132,6 +133,11 @@ pub struct PickupRequest {
 }
 
 static API: OnceLock<EventApi> = OnceLock::new();
+static MODULE: OnceLock<MainModule> = OnceLock::new();
+
+pub fn set_module(m: MainModule) {
+    let _ = MODULE.set(m);
+}
 static DESCRIPTOR: OnceLock<Descriptor> = OnceLock::new();
 static PENDING: Mutex<Option<(PickupRequest, std::time::Instant)>> = Mutex::new(None);
 static PENDING_FLAG: AtomicBool = AtomicBool::new(false);
@@ -217,7 +223,7 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
         match send_pickup(&r) {
             Ok(ev) => {
                 SENT.fetch_add(1, Ordering::Relaxed);
-                crate::log!("[event] enqueued PickUpItem for eid={:08X}: event 0x{ev:X}", r.target_eid);
+                crate::log!("[event] enqueued PickUpItem ({:?}) for eid={:08X}: event 0x{ev:X}", r.mode, r.target_eid);
             }
             Err(e) => crate::log!("[event] NOT sent for eid={:08X}: {e}", r.target_eid),
         }
@@ -288,7 +294,7 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
         && safe::write::<u64>(ev + 0x60, desc.ptr as u64)
         && safe::write::<u16>(ev + 0x68, desc.payload_size)
         && safe::write::<u8>(ev + 0x78, 1);
-    let payload = gather_payload(desc.id, r.target_eid);
+    let payload = pickup_payload(desc.id, r.target_eid, r.mode);
     let ok = ok && safe::write_into(buf, &payload);
     if !ok {
         // The event is the game's memory now; leaking one 0x80-byte object
@@ -300,8 +306,8 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     safe::read_into(ev + 0x30, &mut hdr);
     safe::read_into(buf, &mut back);
     crate::log!(
-        "[event] ev=0x{ev:X} desc=0x{:X} id={} player={:08X} route=0x{:X} flag={} queue=0x{queue:X}",
-        desc.ptr, desc.id, r.player_eid, r.route, r.flag
+        "[event] ev=0x{ev:X} desc=0x{:X} id={} mode={:?} player={:08X} route=0x{:X} flag={} queue=0x{queue:X}",
+        desc.ptr, desc.id, r.mode, r.player_eid, r.route, r.flag
     );
     crate::log!("[event]   ev+0x30..: {}", hex(&hdr));
     crate::log!("[event]   payload : {}", hex(&back));
@@ -309,3 +315,77 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     Ok(ev)
 }
 
+
+// ---------------------------------------------------------------------------
+// Recorder: an observer hook on `enqueue` that logs what the game itself
+// queues (the reference mod's F7 feature). Off unless toggled; capped.
+
+static RECORDING: AtomicBool = AtomicBool::new(false);
+static RECORDED: AtomicU32 = AtomicU32::new(0);
+static RECORD_SEEN: Mutex<Vec<(String, u32)>> = Mutex::new(Vec::new());
+pub const RECORD_CAP: u32 = 300;
+const RECORD_PAYLOAD_MAX: usize = 48;
+
+/// Toggle recording; returns the new state. Turning it off prints a summary.
+pub fn toggle_recording() -> bool {
+    let on = !RECORDING.load(Ordering::Relaxed);
+    if on {
+        RECORDED.store(0, Ordering::Relaxed);
+        RECORD_SEEN.lock().unwrap_or_else(|e| e.into_inner()).clear();
+        RECORDING.store(true, Ordering::Release);
+    } else {
+        RECORDING.store(false, Ordering::Release);
+        let seen = RECORD_SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        crate::log!("[record] OFF: {} events, {} distinct descriptors", RECORDED.load(Ordering::Relaxed), seen.len());
+        for (name, n) in seen.iter() {
+            crate::log!("[record]   {n:5} x {name}");
+        }
+    }
+    on
+}
+
+/// Callback on the game's `enqueue(queue, ev, desc, flag)`. Runs on whatever
+/// thread queues the event, before the original. Must never panic.
+pub unsafe extern "system" fn on_enqueue(_queue: usize, ev: usize, desc: usize, flag: usize) {
+    if !RECORDING.load(Ordering::Acquire) {
+        return;
+    }
+    let n = RECORDED.fetch_add(1, Ordering::Relaxed);
+    if n >= RECORD_CAP {
+        if n == RECORD_CAP {
+            crate::log!("[record] cap of {RECORD_CAP} events reached; stopping");
+            RECORDING.store(false, Ordering::Release);
+        }
+        return;
+    }
+    let name = MODULE
+        .get()
+        .and_then(|m| actors::rtti_name(m, desc))
+        .map(|s| actors::short_name(&s))
+        .unwrap_or_else(|| format!("desc@0x{desc:X}"));
+    {
+        let mut seen = RECORD_SEEN.lock().unwrap_or_else(|e| e.into_inner());
+        match seen.iter_mut().find(|(k, _)| *k == name) {
+            Some(e) => e.1 += 1,
+            None => seen.push((name.clone(), 1)),
+        }
+    }
+    let f30: u32 = safe::read(ev + 0x30).unwrap_or(0);
+    let f40: u32 = safe::read(ev + 0x40).unwrap_or(0);
+    let f48: u64 = safe::read(ev + 0x48).unwrap_or(0);
+    let eid: u32 = safe::read(ev + 0x50).unwrap_or(0);
+    let f54: u32 = safe::read(ev + 0x54).unwrap_or(0);
+    let route: u32 = safe::read(ev + 0x58).unwrap_or(0);
+    let size: u16 = safe::read(ev + 0x68).unwrap_or(0);
+    let f78: u8 = safe::read(ev + 0x78).unwrap_or(0);
+    let mut payload = vec![0u8; (size as usize).min(RECORD_PAYLOAD_MAX)];
+    let buf = safe::read_ptr(ev + 0x70).unwrap_or(0);
+    if buf == 0 || !safe::read_into(buf, &mut payload) {
+        payload.clear();
+    }
+    let dispatch: u32 = safe::read(desc + 0x1C).unwrap_or(u32::MAX);
+    crate::log!(
+        "[record] #{n} {name} tid={} +30={f30} +40={f40} +48=0x{f48:X} eid={eid:08X} +54={f54} route=0x{route:X} size={size} +78={f78} flag={} disp={dispatch}: {}",
+        windows_sys::Win32::System::Threading::GetCurrentThreadId(), flag & 0xFF, hex(&payload)
+    );
+}

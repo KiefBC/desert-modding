@@ -84,6 +84,9 @@ fn class_of(m: &MainModule, obj: usize) -> String {
     actors::rtti_name(m, obj).map(|n| actors::short_name(&n)).unwrap_or_else(|| "?".into())
 }
 
+/// Inert actors closer than this get a detail line in the survey.
+pub const INERT_DETAIL_RANGE: f32 = 10.0;
+
 /// Log everything within `range` metres of the player, classified the way
 /// the reference mod does it. Read-only. Debug=1 adds the structural dumps.
 pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bool) {
@@ -135,7 +138,7 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
         }
         shown += 1;
         match kind {
-            actors::Kind::Gather | actors::Kind::Item | actors::Kind::Interactable => {
+            actors::Kind::Gather | actors::Kind::Item | actors::Kind::Interactable | actors::Kind::Unarmed => {
                 let id = actors::node_identity(m, *a);
                 let (rec, key, name, fam) = match &id {
                     Some(n) => (
@@ -150,6 +153,30 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}",
                     pos.x, pos.y, pos.z
                 );
+            }
+            actors::Kind::Inert if *d <= INERT_DETAIL_RANGE => {
+                // Close-by inert gimmicks are what droppings look like; show
+                // what record they carry even when it is not a gather record.
+                let id = actors::node_identity(m, *a);
+                let (rec, key, name) = match &id {
+                    Some(n) => (
+                        n.index.to_string(),
+                        n.key.map(|k| k.to_string()).unwrap_or_else(|| "-".into()),
+                        n.name.clone().unwrap_or_else(|| "?".into()),
+                    ),
+                    None => ("-".into(), "-".into(), "-".into()),
+                };
+                let comps: Vec<String> = actors::component_names(m, *a)
+                    .into_iter()
+                    .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
+                    .collect();
+                crate::log!(
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} gimmick={} comps=[{}]",
+                    pos.x, pos.y, pos.z, actors::interaction_words(m, *a), comps.join(" ")
+                );
+                if debug {
+                    dump_gimmick_raw(m, *a);
+                }
             }
             actors::Kind::Inert if !debug => {}
             _ => {
@@ -617,7 +644,11 @@ pub struct GatherTarget {
     pub player_actor: usize,
     pub dist: f32,
     pub name: String,
-    pub family: crate::collect::Family,
+    /// Gather family, or "Item" for a ground item.
+    pub family: String,
+    pub mode: crate::payload::PickupMode,
+    /// Carries the game's interaction object (`Gather`) rather than `Unarmed`.
+    pub armed: bool,
     pub player_eid: u32,
     pub route: u32,
 }
@@ -667,33 +698,68 @@ pub fn nearest_gather(
     m: &MainModule,
     sc: &Scene,
     range: f32,
+    unarmed: bool,
+    items: bool,
     skip: &dyn Fn(u32) -> bool,
 ) -> Result<GatherTarget, String> {
-    let mut best: Option<GatherTarget> = None;
+    // (dist, eid, actor, pos, kind) for every gather-record node in range.
+    let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
     for &(eid, a) in &sc.entries {
-        if a == sc.player || skip(eid) {
+        if a == sc.player {
             continue;
         }
         let Some(pos) = actors::actor_position(a) else { continue };
         let d = pos.dist(&sc.ppos);
-        if d > range || best.as_ref().is_some_and(|b| b.dist <= d) {
+        if d > range {
             continue;
         }
-        if actors::classify(m, a, sc.player) != actors::Kind::Gather {
+        let kind = actors::classify(m, a, sc.player);
+        if matches!(kind, actors::Kind::Gather | actors::Kind::Unarmed | actors::Kind::Item) {
+            nodes.push((d, eid, a, pos, kind));
+        }
+    }
+    nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut unarmed_seen = 0usize;
+    for &(d, eid, a, pos, kind) in &nodes {
+        if kind == actors::Kind::Unarmed {
+            unarmed_seen += 1;
+            if !unarmed {
+                continue;
+            }
+            // An armed node at the same spot means this is its twin: use the armed one.
+            if nodes.iter().any(|n| n.4 == actors::Kind::Gather && n.3.dist(&pos) < 0.1) {
+                continue;
+            }
+        }
+        if skip(eid) {
             continue;
         }
         let Some(id) = actors::node_identity(m, a) else { continue };
-        let Some(family) = id.family else { continue };
-        best = Some(GatherTarget {
+        let name = id.name.clone().unwrap_or_else(|| format!("rec{}", id.index));
+        let (family, mode) = if kind == actors::Kind::Item {
+            if !items || !actors::is_basic_item_record(&name) {
+                continue;
+            }
+            ("Item".to_string(), crate::payload::PickupMode::Item)
+        } else {
+            let Some(f) = id.family else { continue };
+            (format!("{f:?}"), crate::payload::PickupMode::Gather)
+        };
+        return Ok(GatherTarget {
             eid,
             actor: a,
             player_actor: sc.player,
             dist: d,
-            name: id.name.unwrap_or_else(|| format!("rec{}", id.index)),
+            name,
             family,
+            mode,
+            armed: kind == actors::Kind::Gather,
             player_eid: sc.player_eid,
             route: sc.route,
         });
     }
-    best.ok_or_else(|| format!("no Gather node within {range:.1} m"))
+    if unarmed_seen > 0 && !unarmed {
+        return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
+    }
+    Err(format!("no Gather node within {range:.1} m"))
 }

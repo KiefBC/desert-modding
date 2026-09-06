@@ -70,6 +70,40 @@ mod entry {
         0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20,
     ];
 
+    /// `enqueue` starts `mov [rsp+8],rbx; push rdi; sub rsp,0x20; mov rbx,[rdx+0x38]`:
+    /// 14 bytes, the count the reference mod steals too. Byte 12 is the
+    /// ModRM the signature wildcards.
+    const ENQUEUE_STOLEN: usize = 0xE;
+    const ENQUEUE_PROLOGUE: [u8; 14] = [
+        0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x5A, 0x38,
+    ];
+
+    /// Observer hook on the game's enqueue, for the record key.
+    fn install_enqueue_hook(module: &MainModule, anchors: &game::Anchors) -> bool {
+        let Some(target) = anchors.get("enqueue") else {
+            crate::log!("[hook] enqueue signature missing; no recorder");
+            return false;
+        };
+        let mut have = [0u8; 14];
+        if !crate::safe::read_into(target, &mut have)
+            || have[..12] != ENQUEUE_PROLOGUE[..12]
+            || have[13] != ENQUEUE_PROLOGUE[13]
+        {
+            crate::log!("[hook] enqueue prologue is {} not the expected bytes; NOT hooking", hook::hex(&have));
+            return false;
+        }
+        match unsafe { hook::install(target, ENQUEUE_STOLEN, events::on_enqueue) } {
+            Ok(h) => {
+                crate::log!("[hook] enqueue +0x{:X} -> stub 0x{:X}; original bytes: {}", module.rva(h.target), h.stub, hook::hex(&h.original));
+                true
+            }
+            Err(e) => {
+                crate::log!("[hook] enqueue install FAILED: {e}");
+                false
+            }
+        }
+    }
+
     /// Patch the sweep function's prologue. Done right after signature
     /// resolution, while the game is still loading and no thread runs it.
     fn install_sweep_hook(module: &MainModule, anchors: &game::Anchors) -> bool {
@@ -177,9 +211,9 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X}",
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
-            cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather
+            cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         );
         if !cfg.enabled {
             crate::log!("Enabled=0, staying idle");
@@ -199,7 +233,11 @@ mod entry {
             t0.elapsed().as_secs_f64() * 1000.0
         );
         let hooked = install_sweep_hook(&module, &anchors);
+        let recorder = install_enqueue_hook(&module, &anchors);
         let api_ok = resolve_event_api(&module, &anchors);
+        if let Some(m2) = MainModule::locate() {
+            events::set_module(m2);
+        }
         MessageBeep(MB_OK);
 
         let mut gatherer = Gatherer::new(&cfg);
@@ -211,6 +249,7 @@ mod entry {
         let mut k_toggle = Hotkey::new(cfg.key_toggle);
         let mut k_scan = Hotkey::new(cfg.key_scan);
         let mut k_gather = Hotkey::new(cfg.key_gather);
+        let mut k_record = Hotkey::new(cfg.key_record);
         let mut descriptor_ok = false;
         let mut hook_reported = false;
         loop {
@@ -239,6 +278,14 @@ mod entry {
                 let on = gatherer.toggle();
                 crate::log!("[key] auto-gather {}", if on { "ON" } else { "OFF" });
                 MessageBeep(MB_OK);
+            }
+            if k_record.pressed() {
+                MessageBeep(MB_OK);
+                if !recorder {
+                    crate::log!("[record] enqueue hook not installed");
+                } else if events::toggle_recording() {
+                    crate::log!("[record] ON: logging every event the game queues (cap {})", events::RECORD_CAP);
+                }
             }
             if k_gather.pressed() {
                 MessageBeep(MB_OK);

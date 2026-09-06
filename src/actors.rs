@@ -456,11 +456,17 @@ pub enum Kind {
     Gather,
     /// Gimmick with an interaction object but some other record (gate, puzzle...).
     Interactable,
-    /// Gimmick with only the +0xC0 instance object: an item on the ground.
+    /// An item on the ground: the +0xC0 instance object, or an `item_*`
+    /// gimmick record (ore chunks are `item_basic_onehand` with neither object).
     Item,
     /// Gimmick with an instance object that references the player: equipment.
     Equipment,
-    /// Gimmick with neither object: the empty twin of a node, or not yet armed.
+    /// Gimmick with neither object but a known gather record: a node the game
+    /// has not armed with an interaction object (ore droppings beyond the one
+    /// in focus). The reference mod's AutoArm exists for these.
+    Unarmed,
+    /// Gimmick with neither object and no gather record: the empty twin of a
+    /// node, scenery, or not yet loaded.
     Inert,
     Other,
 }
@@ -517,8 +523,23 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     } else if has_inst {
         Kind::Item
     } else {
-        Kind::Inert
+        match node_identity(m, actor) {
+            Some(n) if n.family.is_some() => Kind::Unarmed,
+            Some(n) if n.name.as_deref().is_some_and(is_ground_item_record) => Kind::Item,
+            _ => Kind::Inert,
+        }
     }
+}
+
+/// Gimmick records that stand for a physical item lying on the ground.
+pub fn is_ground_item_record(name: &str) -> bool {
+    name.starts_with("item_")
+}
+
+/// The subset we are willing to pick up: generic drops such as ore chunks,
+/// never quest or special items.
+pub fn is_basic_item_record(name: &str) -> bool {
+    name.starts_with("item_basic")
 }
 
 /// Compact view of the +0xE0 interaction object: words 0..5 as hex.
