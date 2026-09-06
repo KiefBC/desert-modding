@@ -546,6 +546,12 @@ pub fn is_basic_item_record(name: &str) -> bool {
     name.starts_with("item_basic")
 }
 
+/// Dropped gear (`item_basic_equip_*`, e.g. a sword lying in the grass).
+/// Outside the gathering scope; taken only when `GatherGear=1`.
+pub fn is_gear_item_record(name: &str) -> bool {
+    name.starts_with("item_basic_equip")
+}
+
 /// Compact view of the +0xE0 interaction object: words 0..5 as hex.
 pub fn interaction_words(m: &MainModule, actor: usize) -> String {
     let Some(sub) = safe::read_ptr(actor + 0x68) else { return "-".into() };
@@ -679,4 +685,31 @@ pub fn bag_tab(tabs: &[InventoryTab], wanted: Option<i16>) -> Option<InventoryTa
         Some(id) => tabs.iter().copied().find(|t| t.id == id),
         None => tabs.iter().copied().filter(|t| t.max > 0).max_by_key(|t| t.max),
     }
+}
+
+/// Bytes the reference mod reads off `ClientStatusActorComponent` to reject
+/// things that are not loot (docs/cdloot-internals.md section 10):
+/// `+0x2C8`: 1 = quest item, 0x0F = shop goods, 0x11 = decoration;
+/// `+0x273`: 6 = catchable creature.
+pub const STATUS_KIND_OFF: usize = 0x2C8;
+pub const STATUS_FLAG_OFF: usize = 0x273;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct StatusBytes {
+    pub kind: u8,
+    pub flag: u8,
+}
+
+pub fn status_bytes(m: &MainModule, actor: usize) -> Option<StatusBytes> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    let (off, _) = component_names(m, actor)
+        .into_iter()
+        .find(|(_, n)| n.contains("ClientStatusActorComponent"))?;
+    let comp = safe::read_ptr(sub + off)?;
+    Some(StatusBytes { kind: safe::read(comp + STATUS_KIND_OFF)?, flag: safe::read(comp + STATUS_FLAG_OFF)? })
+}
+
+/// Shop goods, quest items and decoration are never picked up.
+pub fn is_owned_or_special(st: StatusBytes) -> bool {
+    matches!(st.kind, 1 | 0x0F | 0x11)
 }

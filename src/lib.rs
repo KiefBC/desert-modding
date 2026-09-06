@@ -143,6 +143,11 @@ mod entry {
                     module.rva(api.prepare), module.rva(api.desc_by_id), module.rva(api.alloc_event),
                     module.rva(api.enqueue), module.rva(api.queue_slot), module.rva(api.desc_mask)
                 );
+                if api.steal_check != 0 && api.steal_ctx != 0 {
+                    crate::log!("[event] steal_check=+0x{:X} ctx=+0x{:X}", module.rva(api.steal_check), module.rva(api.steal_ctx));
+                } else {
+                    crate::log!("[event] steal check NOT resolved: ground items will all be treated as owned");
+                }
                 events::set_api(api);
                 true
             }
@@ -189,10 +194,19 @@ mod entry {
         log::exe_dir().join("DesertLooter.yields")
     }
 
+    /// Files without this header come from a build that also learned from
+    /// ground items (wrong: their record is generic) and are ignored.
+    const YIELDS_HEADER: &str = "# desert-looter yields v2";
+
     fn load_yields() {
         let Ok(text) = std::fs::read_to_string(yields_path()) else { return };
+        if text.lines().next().map(str::trim) != Some(YIELDS_HEADER) {
+            crate::log!("[yield] ignoring an old-format DesertLooter.yields; it will be rewritten");
+            return;
+        }
         let pairs: Vec<(u16, u32, u32)> = text
             .lines()
+            .filter(|l| !l.trim_start().starts_with('#'))
             .filter_map(|l| {
                 let (r, rest) = l.trim().split_once('=')?;
                 let (i, c) = rest.split_once(',').unwrap_or((rest, "1"));
@@ -204,7 +218,8 @@ mod entry {
     }
 
     fn save_yields() {
-        let body: String = events::yields_snapshot().iter().map(|(r, i, c)| format!("{r}={i},{c}\n")).collect();
+        let mut body = format!("{YIELDS_HEADER}\n");
+        body.extend(events::yields_snapshot().iter().map(|(r, i, c)| format!("{r}={i},{c}\n")));
         // Best effort; the file is a cache and is rebuilt by playing.
         let _ = std::fs::write(yields_path(), body);
     }
@@ -243,9 +258,9 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
-            cfg.gather_unarmed as u8, cfg.gather_items as u8,
+            cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         );
         if !cfg.enabled {

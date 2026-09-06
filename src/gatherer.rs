@@ -21,6 +21,7 @@ pub struct Gatherer {
     range: f32,
     unarmed: bool,
     items: bool,
+    gear: bool,
     bag_tab: Option<i16>,
     stack_limit: u32,
     /// item key -> item record index, filled lazily (a table scan each).
@@ -57,6 +58,7 @@ impl Gatherer {
             range: cfg.gather_range,
             unarmed: cfg.gather_unarmed,
             items: cfg.gather_items,
+            gear: cfg.gather_gear,
             bag_tab: cfg.bag_tab,
             stack_limit: cfg.stack_limit,
             item_index_cache: Vec::new(),
@@ -116,6 +118,9 @@ impl Gatherer {
         }
         // Full: can it stack?
         let verdict: Result<String, String> = (|| {
+            if target.mode != crate::payload::PickupMode::Gather {
+                return Err("ground items need a free slot (their contents are per instance)".into());
+            }
             let (item, count) = events::yield_of(target.record).ok_or("yield of this node not learned yet")?;
             let idx = self.item_index(m, item).ok_or_else(|| format!("item {item} not in the item table"))?;
             let slots = actors::tab_slots(&bag).ok_or("bag slots unreadable")?;
@@ -193,6 +198,8 @@ impl Gatherer {
                     d.name, d.eid, age.as_secs_f64(), self.gathered, self.sent
                 );
                 self.done.swap_remove(i);
+            } else if events::is_owned(d.eid) {
+                self.done.swap_remove(i);
             } else if age > self.cooldown {
                 self.consecutive_failures += 1;
                 crate::log!(
@@ -218,6 +225,8 @@ impl Gatherer {
             target_eid: target.eid,
             record: target.record,
             mode: target.mode,
+            target_actor: target.actor,
+            player_actor: target.player_actor,
             player_eid: target.player_eid,
             route: target.route,
             flag: 0,
@@ -251,8 +260,8 @@ impl Gatherer {
             crate::log!("[gather] manual: {e}; not sending");
             return;
         }
-        let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
-        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
+        let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid) || events::is_owned(eid);
+        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, self.gear, &skip) {
             Ok(t) => {
                 if self.bag_has_room(m, &sc, &t, "manual") {
                     self.send(&t, "manual");
@@ -280,8 +289,8 @@ impl Gatherer {
         if !send_due || self.ready_to_send().is_err() {
             return;
         }
-        let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid);
-        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, &skip) {
+        let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid) || events::is_owned(eid);
+        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, self.gear, &skip) {
             Ok(t) => {
                 if self.bag_has_room(m, &sc, &t, "auto") {
                     self.send(&t, "auto");

@@ -35,6 +35,8 @@ type PrepareFn = unsafe extern "system" fn() -> usize;
 type DescByIdFn = unsafe extern "system" fn(usize, u32, u32) -> usize;
 type AllocEventFn = unsafe extern "system" fn(usize, u32) -> usize;
 type EnqueueFn = unsafe extern "system" fn(usize, usize, usize, u8);
+/// `bool is_steal(acting_comp, player_actor, target_actor, ctx, u8 mode)`.
+type StealCheckFn = unsafe extern "system" fn(usize, usize, usize, usize, u32) -> u8;
 
 /// Game-side addresses resolved from the signatures (absolute VAs).
 #[derive(Debug, Clone, Copy)]
@@ -47,6 +49,10 @@ pub struct EventApi {
     pub queue_slot: usize,
     /// Global u32 passed as the descriptor lookup mask.
     pub desc_mask: usize,
+    /// The game's "would this be stealing?" function (`FUN_14251BA50`) and
+    /// the static its caller passes as the fourth argument. 0 if unresolved.
+    pub steal_check: usize,
+    pub steal_ctx: usize,
 }
 
 /// Decode the four things the `desc_mask+queue` call site yields
@@ -68,6 +74,26 @@ pub fn resolve(m: &MainModule, anchors: &crate::game::Anchors) -> Result<EventAp
         }
         Ok(target)
     };
+    // own_check_site: `48 8B 89 20 01 00 00 | E8 rel32 | 84 C0 74 04 B3 02`;
+    // 0xE bytes before it, `4C 8D 0D rel32` loads the r9 argument.
+    let (steal_check, steal_ctx) = match anchors.get("own_check_site") {
+        Some(site) => {
+            let base = m.rva(site);
+            let at = |o: usize| -> Option<i32> {
+                let b = img.get(base.wrapping_add(o)..base.wrapping_add(o) + 4)?;
+                Some(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            };
+            let f = at(8).map(|d| (site as i64 + 12 + d as i64) as usize).filter(|t| m.contains(*t));
+            let lea_ok = img.get(base - 0xE..base - 0xB) == Some(&[0x4C, 0x8D, 0x0D]);
+            let c = if lea_ok {
+                at(0usize.wrapping_sub(0xB)).map(|d| (site as i64 - 0xE + 7 + d as i64) as usize).filter(|t| m.contains(*t))
+            } else {
+                None
+            };
+            (f.unwrap_or(0), c.unwrap_or(0))
+        }
+        None => (0, 0),
+    };
     Ok(EventApi {
         prepare: rel(0, 1, 5)?,
         desc_mask: rel(5, 3, 7)?,
@@ -75,6 +101,8 @@ pub fn resolve(m: &MainModule, anchors: &crate::game::Anchors) -> Result<EventAp
         queue_slot: rel(0x16, 3, 7)?,
         alloc_event,
         enqueue,
+        steal_check,
+        steal_ctx,
     })
 }
 
@@ -128,6 +156,9 @@ pub struct PickupRequest {
     /// Gimmick record index of the target, for yield learning.
     pub record: u16,
     pub mode: PickupMode,
+    /// Actor pointers for the ownership check (ground items only).
+    pub target_actor: usize,
+    pub player_actor: usize,
     pub player_eid: u32,
     pub route: u32,
     /// `enqueue` flag byte (the game's builder passes its caller's choice).
@@ -135,6 +166,39 @@ pub struct PickupRequest {
 }
 
 static API: OnceLock<EventApi> = OnceLock::new();
+/// Eids the game said would be stealing; skipped for the rest of the session.
+static OWNED: Mutex<Vec<u32>> = Mutex::new(Vec::new());
+
+pub fn is_owned(eid: u32) -> bool {
+    OWNED.lock().unwrap_or_else(|e| e.into_inner()).contains(&eid)
+}
+
+fn mark_owned(eid: u32) {
+    let mut o = OWNED.lock().unwrap_or_else(|e| e.into_inner());
+    if !o.contains(&eid) {
+        o.push(eid);
+    }
+}
+
+/// Ask the game whether picking `target` up would be stealing, exactly as
+/// its interaction code does (`FUN_1429DB730`): the acting actor is
+/// `*(*(player+0xA0)+0xD0)`, the first argument its component at
+/// `sub+0x120`, then `FUN_14251BA50(comp, player, target, ctx, 7)`.
+/// Game thread only. `Err` means "could not ask": treated as owned.
+unsafe fn would_steal(api: &EventApi, player: usize, target: usize) -> Result<bool, String> {
+    if api.steal_check == 0 || api.steal_ctx == 0 {
+        return Err("steal check not resolved".into());
+    }
+    let link = safe::read_ptr(player + 0xA0).ok_or("player+0xA0 is null")?;
+    let acting = safe::read_ptr(link + 0xD0).ok_or("acting actor is null")?;
+    let sub = safe::read_ptr(acting + 0x68).ok_or("acting actor has no sub-object")?;
+    let comp = safe::read_ptr(sub + 0x120).ok_or("acting actor has no +0x120 component")?;
+    if !safe::readable(target, 0x100) || !safe::readable(comp, 0x40) {
+        return Err("target or component unreadable".into());
+    }
+    let f: StealCheckFn = core::mem::transmute(api.steal_check);
+    Ok(f(comp, player, target, api.steal_ctx, 7) != 0)
+}
 static MODULE: OnceLock<MainModule> = OnceLock::new();
 
 pub fn set_module(m: MainModule) {
@@ -169,6 +233,8 @@ pub fn set_descriptor(d: Descriptor) {
 
 pub const HANDLE_GAME_EVENT: &str = "TrocTrHandleGameEventOnceTimer";
 static HANDLE_DESC: OnceLock<usize> = OnceLock::new();
+/// (record, when); only gather nodes are recorded: a ground item's record is
+/// the generic `item_basic_*` and says nothing about its contents.
 static LAST_SENT: Mutex<Option<(u16, std::time::Instant)>> = Mutex::new(None);
 static YIELDS: Mutex<Vec<(u16, u32, u32)>> = Mutex::new(Vec::new());
 static YIELD_DIRTY: AtomicBool = AtomicBool::new(false);
@@ -310,7 +376,9 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
         match send_pickup(&r) {
             Ok(ev) => {
                 SENT.fetch_add(1, Ordering::Relaxed);
-                *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some((r.record, std::time::Instant::now()));
+                if r.mode == PickupMode::Gather {
+                    *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some((r.record, std::time::Instant::now()));
+                }
                 crate::log!("[event] enqueued PickUpItem ({:?}) for eid={:08X}: event 0x{ev:X}", r.mode, r.target_eid);
             }
             Err(e) => crate::log!("[event] NOT sent for eid={:08X}: {e}", r.target_eid),
@@ -346,6 +414,19 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     let size = desc.payload_size as usize;
     if size != PICKUP_PAYLOAD_SIZE {
         return Err(format!("payload size {size} != {PICKUP_PAYLOAD_SIZE}; refusing"));
+    }
+    if r.mode == PickupMode::Item {
+        match would_steal(api, r.player_actor, r.target_actor) {
+            Ok(false) => {}
+            Ok(true) => {
+                mark_owned(r.target_eid);
+                return Err("the game says taking this would be stealing; skipped".into());
+            }
+            Err(e) => {
+                mark_owned(r.target_eid);
+                return Err(format!("ownership unknown ({e}); skipped"));
+            }
+        }
     }
     let queue = safe::read_ptr(api.queue_slot).ok_or("queue global is null/unreadable")?;
     if !safe::readable(queue, 0x40) {

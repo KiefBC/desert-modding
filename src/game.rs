@@ -177,8 +177,12 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     ),
                     None => ("-".into(), "-".into(), "?".into(), "-".into()),
                 };
+                let st = match actors::status_bytes(m, *a) {
+                    Some(s) => format!(" status={:02X}/{:02X}{}", s.kind, s.flag, if actors::is_owned_or_special(s) { " OWNED" } else { "" }),
+                    None => " status=?".to_string(),
+                };
                 crate::log!(
-                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}",
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{st}",
                     pos.x, pos.y, pos.z
                 );
             }
@@ -736,6 +740,7 @@ pub fn nearest_gather(
     range: f32,
     unarmed: bool,
     items: bool,
+    gear: bool,
     skip: &dyn Fn(u32) -> bool,
 ) -> Result<GatherTarget, String> {
     // (dist, eid, actor, pos, kind) for every gather-record node in range.
@@ -751,6 +756,16 @@ pub fn nearest_gather(
         }
         let kind = actors::classify(m, a, sc.player);
         if matches!(kind, actors::Kind::Gather | actors::Kind::Unarmed | actors::Kind::Item) {
+            // Shop goods, quest items, decoration: the reference mod's first
+            // rejection, and the difference between an ore chunk and a cup on
+            // a merchant's table (both are `item_basic_*`). Unreadable status
+            // counts as owned for items; nodes have no owner.
+            if kind == actors::Kind::Item {
+                match actors::status_bytes(m, a) {
+                    Some(st) if !actors::is_owned_or_special(st) => {}
+                    _ => continue,
+                }
+            }
             nodes.push((d, eid, a, pos, kind));
         }
     }
@@ -774,6 +789,9 @@ pub fn nearest_gather(
         let name = id.name.clone().unwrap_or_else(|| format!("rec{}", id.index));
         let (family, mode) = if kind == actors::Kind::Item {
             if !items || !actors::is_basic_item_record(&name) {
+                continue;
+            }
+            if !gear && actors::is_gear_item_record(&name) {
                 continue;
             }
             ("Item".to_string(), crate::payload::PickupMode::Item)
