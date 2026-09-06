@@ -89,7 +89,7 @@ mod tests {
 
     #[test]
     fn finds_std_exception_vtable_in_cdloot() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/source-mod/CDLoot.asi")).unwrap();
+        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../source-mod/CDLoot.asi")).unwrap();
         let h = pe::parse(&f).unwrap();
         let img = pe::file_to_image(&f).unwrap();
         let tds = find_type_descriptors(&img, ".?AVexception@std@@");

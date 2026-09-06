@@ -1,0 +1,2190 @@
+{
+  "name": "Mining - 2X",
+  "version": "1.1",
+  "author": "KiefBC",
+  "description": "Multiplies mining node minimum and maximum yields by 2. Select no more than one Mining rate in DMM.",
+  "game": "Crimson Desert Enhanced",
+  "game_build": "25116796",
+  "multiplier": 2,
+  "category": "Mining",
+  "allow_partial_apply": true,
+  "modinfo": {
+    "name": "Mining - 2X",
+    "version": "1.1",
+    "author": "KiefBC",
+    "description": "2x yields for mining nodes.",
+    "allow_partial_apply": true
+  },
+  "coverage": {
+    "records": 36,
+    "resource_outputs": 108,
+    "scalar_patches": 216
+  },
+  "patches": [
+    {
+      "game_file": "gamedata/gimmickinfo.pabgb",
+      "changes": [
+        {
+          "offset": 13204711,
+          "record_key": 17030001,
+          "record_rel_offset": 820,
+          "entry": "mine_bluestone",
+          "rel_offset": 798,
+          "label": "Mining: mine_bluestone output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13204719,
+          "record_key": 17030001,
+          "record_rel_offset": 828,
+          "entry": "mine_bluestone",
+          "rel_offset": 806,
+          "label": "Mining: mine_bluestone output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13204779,
+          "record_key": 17030001,
+          "record_rel_offset": 888,
+          "entry": "mine_bluestone",
+          "rel_offset": 866,
+          "label": "Mining: mine_bluestone output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13204787,
+          "record_key": 17030001,
+          "record_rel_offset": 896,
+          "entry": "mine_bluestone",
+          "rel_offset": 874,
+          "label": "Mining: mine_bluestone output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13204847,
+          "record_key": 17030001,
+          "record_rel_offset": 956,
+          "entry": "mine_bluestone",
+          "rel_offset": 934,
+          "label": "Mining: mine_bluestone output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13204855,
+          "record_key": 17030001,
+          "record_rel_offset": 964,
+          "entry": "mine_bluestone",
+          "rel_offset": 942,
+          "label": "Mining: mine_bluestone output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206201,
+          "record_key": 17030021,
+          "record_rel_offset": 830,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 803,
+          "label": "Mining: mine_bluestone_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206209,
+          "record_key": 17030021,
+          "record_rel_offset": 838,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 811,
+          "label": "Mining: mine_bluestone_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206269,
+          "record_key": 17030021,
+          "record_rel_offset": 898,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 871,
+          "label": "Mining: mine_bluestone_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206277,
+          "record_key": 17030021,
+          "record_rel_offset": 906,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 879,
+          "label": "Mining: mine_bluestone_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206337,
+          "record_key": 17030021,
+          "record_rel_offset": 966,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 939,
+          "label": "Mining: mine_bluestone_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13206345,
+          "record_key": 17030021,
+          "record_rel_offset": 974,
+          "entry": "mine_bluestone_cave",
+          "rel_offset": 947,
+          "label": "Mining: mine_bluestone_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207680,
+          "record_key": 17030002,
+          "record_rel_offset": 819,
+          "entry": "mine_copper",
+          "rel_offset": 800,
+          "label": "Mining: mine_copper output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207688,
+          "record_key": 17030002,
+          "record_rel_offset": 827,
+          "entry": "mine_copper",
+          "rel_offset": 808,
+          "label": "Mining: mine_copper output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207748,
+          "record_key": 17030002,
+          "record_rel_offset": 887,
+          "entry": "mine_copper",
+          "rel_offset": 868,
+          "label": "Mining: mine_copper output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207756,
+          "record_key": 17030002,
+          "record_rel_offset": 895,
+          "entry": "mine_copper",
+          "rel_offset": 876,
+          "label": "Mining: mine_copper output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207816,
+          "record_key": 17030002,
+          "record_rel_offset": 955,
+          "entry": "mine_copper",
+          "rel_offset": 936,
+          "label": "Mining: mine_copper output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13207824,
+          "record_key": 17030002,
+          "record_rel_offset": 963,
+          "entry": "mine_copper",
+          "rel_offset": 944,
+          "label": "Mining: mine_copper output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209169,
+          "record_key": 17030020,
+          "record_rel_offset": 829,
+          "entry": "mine_copper_cave",
+          "rel_offset": 805,
+          "label": "Mining: mine_copper_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209177,
+          "record_key": 17030020,
+          "record_rel_offset": 837,
+          "entry": "mine_copper_cave",
+          "rel_offset": 813,
+          "label": "Mining: mine_copper_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209237,
+          "record_key": 17030020,
+          "record_rel_offset": 897,
+          "entry": "mine_copper_cave",
+          "rel_offset": 873,
+          "label": "Mining: mine_copper_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209245,
+          "record_key": 17030020,
+          "record_rel_offset": 905,
+          "entry": "mine_copper_cave",
+          "rel_offset": 881,
+          "label": "Mining: mine_copper_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209305,
+          "record_key": 17030020,
+          "record_rel_offset": 965,
+          "entry": "mine_copper_cave",
+          "rel_offset": 941,
+          "label": "Mining: mine_copper_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13209313,
+          "record_key": 17030020,
+          "record_rel_offset": 973,
+          "entry": "mine_copper_cave",
+          "rel_offset": 949,
+          "label": "Mining: mine_copper_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210645,
+          "record_key": 17030003,
+          "record_rel_offset": 816,
+          "entry": "mine_diamond",
+          "rel_offset": 796,
+          "label": "Mining: mine_diamond output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210653,
+          "record_key": 17030003,
+          "record_rel_offset": 824,
+          "entry": "mine_diamond",
+          "rel_offset": 804,
+          "label": "Mining: mine_diamond output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210713,
+          "record_key": 17030003,
+          "record_rel_offset": 884,
+          "entry": "mine_diamond",
+          "rel_offset": 864,
+          "label": "Mining: mine_diamond output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210721,
+          "record_key": 17030003,
+          "record_rel_offset": 892,
+          "entry": "mine_diamond",
+          "rel_offset": 872,
+          "label": "Mining: mine_diamond output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210781,
+          "record_key": 17030003,
+          "record_rel_offset": 952,
+          "entry": "mine_diamond",
+          "rel_offset": 932,
+          "label": "Mining: mine_diamond output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13210789,
+          "record_key": 17030003,
+          "record_rel_offset": 960,
+          "entry": "mine_diamond",
+          "rel_offset": 940,
+          "label": "Mining: mine_diamond output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212131,
+          "record_key": 17030019,
+          "record_rel_offset": 826,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 801,
+          "label": "Mining: mine_diamond_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212139,
+          "record_key": 17030019,
+          "record_rel_offset": 834,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 809,
+          "label": "Mining: mine_diamond_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212199,
+          "record_key": 17030019,
+          "record_rel_offset": 894,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 869,
+          "label": "Mining: mine_diamond_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212207,
+          "record_key": 17030019,
+          "record_rel_offset": 902,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 877,
+          "label": "Mining: mine_diamond_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212267,
+          "record_key": 17030019,
+          "record_rel_offset": 962,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 937,
+          "label": "Mining: mine_diamond_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13212275,
+          "record_key": 17030019,
+          "record_rel_offset": 970,
+          "entry": "mine_diamond_cave",
+          "rel_offset": 945,
+          "label": "Mining: mine_diamond_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213614,
+          "record_key": 1000445,
+          "record_rel_offset": 823,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 796,
+          "label": "Mining: mine_diamond_attach output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213622,
+          "record_key": 1000445,
+          "record_rel_offset": 831,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 804,
+          "label": "Mining: mine_diamond_attach output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213682,
+          "record_key": 1000445,
+          "record_rel_offset": 891,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 864,
+          "label": "Mining: mine_diamond_attach output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213690,
+          "record_key": 1000445,
+          "record_rel_offset": 899,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 872,
+          "label": "Mining: mine_diamond_attach output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213750,
+          "record_key": 1000445,
+          "record_rel_offset": 959,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 932,
+          "label": "Mining: mine_diamond_attach output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13213758,
+          "record_key": 1000445,
+          "record_rel_offset": 967,
+          "entry": "mine_diamond_attach",
+          "rel_offset": 940,
+          "label": "Mining: mine_diamond_attach output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215096,
+          "record_key": 17030005,
+          "record_rel_offset": 822,
+          "entry": "mine_greenstone",
+          "rel_offset": 799,
+          "label": "Mining: mine_greenstone output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215104,
+          "record_key": 17030005,
+          "record_rel_offset": 830,
+          "entry": "mine_greenstone",
+          "rel_offset": 807,
+          "label": "Mining: mine_greenstone output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215164,
+          "record_key": 17030005,
+          "record_rel_offset": 890,
+          "entry": "mine_greenstone",
+          "rel_offset": 867,
+          "label": "Mining: mine_greenstone output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215172,
+          "record_key": 17030005,
+          "record_rel_offset": 898,
+          "entry": "mine_greenstone",
+          "rel_offset": 875,
+          "label": "Mining: mine_greenstone output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215232,
+          "record_key": 17030005,
+          "record_rel_offset": 958,
+          "entry": "mine_greenstone",
+          "rel_offset": 935,
+          "label": "Mining: mine_greenstone output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13215240,
+          "record_key": 17030005,
+          "record_rel_offset": 966,
+          "entry": "mine_greenstone",
+          "rel_offset": 943,
+          "label": "Mining: mine_greenstone output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216588,
+          "record_key": 17030017,
+          "record_rel_offset": 832,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 804,
+          "label": "Mining: mine_greenstone_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216596,
+          "record_key": 17030017,
+          "record_rel_offset": 840,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 812,
+          "label": "Mining: mine_greenstone_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216656,
+          "record_key": 17030017,
+          "record_rel_offset": 900,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 872,
+          "label": "Mining: mine_greenstone_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216664,
+          "record_key": 17030017,
+          "record_rel_offset": 908,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 880,
+          "label": "Mining: mine_greenstone_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216724,
+          "record_key": 17030017,
+          "record_rel_offset": 968,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 940,
+          "label": "Mining: mine_greenstone_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13216732,
+          "record_key": 17030017,
+          "record_rel_offset": 976,
+          "entry": "mine_greenstone_cave",
+          "rel_offset": 948,
+          "label": "Mining: mine_greenstone_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218063,
+          "record_key": 17030006,
+          "record_rel_offset": 815,
+          "entry": "mine_iron",
+          "rel_offset": 798,
+          "label": "Mining: mine_iron output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218071,
+          "record_key": 17030006,
+          "record_rel_offset": 823,
+          "entry": "mine_iron",
+          "rel_offset": 806,
+          "label": "Mining: mine_iron output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218131,
+          "record_key": 17030006,
+          "record_rel_offset": 883,
+          "entry": "mine_iron",
+          "rel_offset": 866,
+          "label": "Mining: mine_iron output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218139,
+          "record_key": 17030006,
+          "record_rel_offset": 891,
+          "entry": "mine_iron",
+          "rel_offset": 874,
+          "label": "Mining: mine_iron output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218199,
+          "record_key": 17030006,
+          "record_rel_offset": 951,
+          "entry": "mine_iron",
+          "rel_offset": 934,
+          "label": "Mining: mine_iron output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13218207,
+          "record_key": 17030006,
+          "record_rel_offset": 959,
+          "entry": "mine_iron",
+          "rel_offset": 942,
+          "label": "Mining: mine_iron output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219545,
+          "record_key": 1000446,
+          "record_rel_offset": 822,
+          "entry": "mine_iron_attach",
+          "rel_offset": 798,
+          "label": "Mining: mine_iron_attach output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219553,
+          "record_key": 1000446,
+          "record_rel_offset": 830,
+          "entry": "mine_iron_attach",
+          "rel_offset": 806,
+          "label": "Mining: mine_iron_attach output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219613,
+          "record_key": 1000446,
+          "record_rel_offset": 890,
+          "entry": "mine_iron_attach",
+          "rel_offset": 866,
+          "label": "Mining: mine_iron_attach output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219621,
+          "record_key": 1000446,
+          "record_rel_offset": 898,
+          "entry": "mine_iron_attach",
+          "rel_offset": 874,
+          "label": "Mining: mine_iron_attach output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219681,
+          "record_key": 1000446,
+          "record_rel_offset": 958,
+          "entry": "mine_iron_attach",
+          "rel_offset": 934,
+          "label": "Mining: mine_iron_attach output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13219689,
+          "record_key": 1000446,
+          "record_rel_offset": 966,
+          "entry": "mine_iron_attach",
+          "rel_offset": 942,
+          "label": "Mining: mine_iron_attach output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221030,
+          "record_key": 17030016,
+          "record_rel_offset": 825,
+          "entry": "mine_iron_cave",
+          "rel_offset": 803,
+          "label": "Mining: mine_iron_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221038,
+          "record_key": 17030016,
+          "record_rel_offset": 833,
+          "entry": "mine_iron_cave",
+          "rel_offset": 811,
+          "label": "Mining: mine_iron_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221098,
+          "record_key": 17030016,
+          "record_rel_offset": 893,
+          "entry": "mine_iron_cave",
+          "rel_offset": 871,
+          "label": "Mining: mine_iron_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221106,
+          "record_key": 17030016,
+          "record_rel_offset": 901,
+          "entry": "mine_iron_cave",
+          "rel_offset": 879,
+          "label": "Mining: mine_iron_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221166,
+          "record_key": 17030016,
+          "record_rel_offset": 961,
+          "entry": "mine_iron_cave",
+          "rel_offset": 939,
+          "label": "Mining: mine_iron_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13221174,
+          "record_key": 17030016,
+          "record_rel_offset": 969,
+          "entry": "mine_iron_cave",
+          "rel_offset": 947,
+          "label": "Mining: mine_iron_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222508,
+          "record_key": 17030007,
+          "record_rel_offset": 818,
+          "entry": "mine_redstone",
+          "rel_offset": 797,
+          "label": "Mining: mine_redstone output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222516,
+          "record_key": 17030007,
+          "record_rel_offset": 826,
+          "entry": "mine_redstone",
+          "rel_offset": 805,
+          "label": "Mining: mine_redstone output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222576,
+          "record_key": 17030007,
+          "record_rel_offset": 886,
+          "entry": "mine_redstone",
+          "rel_offset": 865,
+          "label": "Mining: mine_redstone output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222584,
+          "record_key": 17030007,
+          "record_rel_offset": 894,
+          "entry": "mine_redstone",
+          "rel_offset": 873,
+          "label": "Mining: mine_redstone output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222644,
+          "record_key": 17030007,
+          "record_rel_offset": 954,
+          "entry": "mine_redstone",
+          "rel_offset": 933,
+          "label": "Mining: mine_redstone output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13222652,
+          "record_key": 17030007,
+          "record_rel_offset": 962,
+          "entry": "mine_redstone",
+          "rel_offset": 941,
+          "label": "Mining: mine_redstone output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13223993,
+          "record_key": 1000447,
+          "record_rel_offset": 825,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 797,
+          "label": "Mining: mine_redstone_attach output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13224001,
+          "record_key": 1000447,
+          "record_rel_offset": 833,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 805,
+          "label": "Mining: mine_redstone_attach output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13224061,
+          "record_key": 1000447,
+          "record_rel_offset": 893,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 865,
+          "label": "Mining: mine_redstone_attach output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13224069,
+          "record_key": 1000447,
+          "record_rel_offset": 901,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 873,
+          "label": "Mining: mine_redstone_attach output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13224129,
+          "record_key": 1000447,
+          "record_rel_offset": 961,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 933,
+          "label": "Mining: mine_redstone_attach output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13224137,
+          "record_key": 1000447,
+          "record_rel_offset": 969,
+          "entry": "mine_redstone_attach",
+          "rel_offset": 941,
+          "label": "Mining: mine_redstone_attach output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225481,
+          "record_key": 17030015,
+          "record_rel_offset": 828,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 802,
+          "label": "Mining: mine_redstone_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225489,
+          "record_key": 17030015,
+          "record_rel_offset": 836,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 810,
+          "label": "Mining: mine_redstone_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225549,
+          "record_key": 17030015,
+          "record_rel_offset": 896,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 870,
+          "label": "Mining: mine_redstone_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225557,
+          "record_key": 17030015,
+          "record_rel_offset": 904,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 878,
+          "label": "Mining: mine_redstone_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225617,
+          "record_key": 17030015,
+          "record_rel_offset": 964,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 938,
+          "label": "Mining: mine_redstone_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13225625,
+          "record_key": 17030015,
+          "record_rel_offset": 972,
+          "entry": "mine_redstone_cave",
+          "rel_offset": 946,
+          "label": "Mining: mine_redstone_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13226951,
+          "record_key": 17030008,
+          "record_rel_offset": 810,
+          "entry": "mine_ruby",
+          "rel_offset": 793,
+          "label": "Mining: mine_ruby output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13226959,
+          "record_key": 17030008,
+          "record_rel_offset": 818,
+          "entry": "mine_ruby",
+          "rel_offset": 801,
+          "label": "Mining: mine_ruby output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13227019,
+          "record_key": 17030008,
+          "record_rel_offset": 878,
+          "entry": "mine_ruby",
+          "rel_offset": 861,
+          "label": "Mining: mine_ruby output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13227027,
+          "record_key": 17030008,
+          "record_rel_offset": 886,
+          "entry": "mine_ruby",
+          "rel_offset": 869,
+          "label": "Mining: mine_ruby output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13227087,
+          "record_key": 17030008,
+          "record_rel_offset": 946,
+          "entry": "mine_ruby",
+          "rel_offset": 929,
+          "label": "Mining: mine_ruby output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13227095,
+          "record_key": 17030008,
+          "record_rel_offset": 954,
+          "entry": "mine_ruby",
+          "rel_offset": 937,
+          "label": "Mining: mine_ruby output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228431,
+          "record_key": 17030014,
+          "record_rel_offset": 820,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 798,
+          "label": "Mining: mine_ruby_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228439,
+          "record_key": 17030014,
+          "record_rel_offset": 828,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 806,
+          "label": "Mining: mine_ruby_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228499,
+          "record_key": 17030014,
+          "record_rel_offset": 888,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 866,
+          "label": "Mining: mine_ruby_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228507,
+          "record_key": 17030014,
+          "record_rel_offset": 896,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 874,
+          "label": "Mining: mine_ruby_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228567,
+          "record_key": 17030014,
+          "record_rel_offset": 956,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 934,
+          "label": "Mining: mine_ruby_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13228575,
+          "record_key": 17030014,
+          "record_rel_offset": 964,
+          "entry": "mine_ruby_cave",
+          "rel_offset": 942,
+          "label": "Mining: mine_ruby_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13229913,
+          "record_key": 17030010,
+          "record_rel_offset": 822,
+          "entry": "mine_whitestone",
+          "rel_offset": 799,
+          "label": "Mining: mine_whitestone output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13229921,
+          "record_key": 17030010,
+          "record_rel_offset": 830,
+          "entry": "mine_whitestone",
+          "rel_offset": 807,
+          "label": "Mining: mine_whitestone output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13229981,
+          "record_key": 17030010,
+          "record_rel_offset": 890,
+          "entry": "mine_whitestone",
+          "rel_offset": 867,
+          "label": "Mining: mine_whitestone output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13229989,
+          "record_key": 17030010,
+          "record_rel_offset": 898,
+          "entry": "mine_whitestone",
+          "rel_offset": 875,
+          "label": "Mining: mine_whitestone output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13230049,
+          "record_key": 17030010,
+          "record_rel_offset": 958,
+          "entry": "mine_whitestone",
+          "rel_offset": 935,
+          "label": "Mining: mine_whitestone output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13230057,
+          "record_key": 17030010,
+          "record_rel_offset": 966,
+          "entry": "mine_whitestone",
+          "rel_offset": 943,
+          "label": "Mining: mine_whitestone output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231405,
+          "record_key": 17030012,
+          "record_rel_offset": 832,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 804,
+          "label": "Mining: mine_whitestone_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231413,
+          "record_key": 17030012,
+          "record_rel_offset": 840,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 812,
+          "label": "Mining: mine_whitestone_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231473,
+          "record_key": 17030012,
+          "record_rel_offset": 900,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 872,
+          "label": "Mining: mine_whitestone_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231481,
+          "record_key": 17030012,
+          "record_rel_offset": 908,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 880,
+          "label": "Mining: mine_whitestone_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231541,
+          "record_key": 17030012,
+          "record_rel_offset": 968,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 940,
+          "label": "Mining: mine_whitestone_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13231549,
+          "record_key": 17030012,
+          "record_rel_offset": 976,
+          "entry": "mine_whitestone_cave",
+          "rel_offset": 948,
+          "label": "Mining: mine_whitestone_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13232895,
+          "record_key": 1002637,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_01",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13232903,
+          "record_key": 1002637,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_01",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13232963,
+          "record_key": 1002637,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_01",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_01 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13232971,
+          "record_key": 1002637,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_01",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_01 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13233031,
+          "record_key": 1002637,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_01",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_01 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13233039,
+          "record_key": 1002637,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_01",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_01 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234385,
+          "record_key": 1002638,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_02",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_02 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234393,
+          "record_key": 1002638,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_02",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_02 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234453,
+          "record_key": 1002638,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_02",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_02 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234461,
+          "record_key": 1002638,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_02",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_02 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234521,
+          "record_key": 1002638,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_02",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_02 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13234529,
+          "record_key": 1002638,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_02",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_02 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13235875,
+          "record_key": 1002639,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_03",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_03 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13235883,
+          "record_key": 1002639,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_03",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_03 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13235943,
+          "record_key": 1002639,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_03",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_03 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13235951,
+          "record_key": 1002639,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_03",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_03 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13236011,
+          "record_key": 1002639,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_03",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_03 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13236019,
+          "record_key": 1002639,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_03",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_03 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237365,
+          "record_key": 1001350,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_04",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_04 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237373,
+          "record_key": 1001350,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_04",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_04 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237433,
+          "record_key": 1001350,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_04",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_04 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237441,
+          "record_key": 1001350,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_04",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_04 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237501,
+          "record_key": 1001350,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_04",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_04 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13237509,
+          "record_key": 1001350,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_04",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_04 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238855,
+          "record_key": 1001351,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_05",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_05 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238863,
+          "record_key": 1001351,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_05",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_05 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238923,
+          "record_key": 1001351,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_05",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_05 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238931,
+          "record_key": 1001351,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_05",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_05 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238991,
+          "record_key": 1001351,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_05",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_05 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13238999,
+          "record_key": 1001351,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_05",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_05 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240345,
+          "record_key": 1001352,
+          "record_rel_offset": 830,
+          "entry": "mine_rock_06",
+          "rel_offset": 810,
+          "label": "Mining: mine_rock_06 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240353,
+          "record_key": 1001352,
+          "record_rel_offset": 838,
+          "entry": "mine_rock_06",
+          "rel_offset": 818,
+          "label": "Mining: mine_rock_06 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240413,
+          "record_key": 1001352,
+          "record_rel_offset": 898,
+          "entry": "mine_rock_06",
+          "rel_offset": 878,
+          "label": "Mining: mine_rock_06 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240421,
+          "record_key": 1001352,
+          "record_rel_offset": 906,
+          "entry": "mine_rock_06",
+          "rel_offset": 886,
+          "label": "Mining: mine_rock_06 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240481,
+          "record_key": 1001352,
+          "record_rel_offset": 966,
+          "entry": "mine_rock_06",
+          "rel_offset": 946,
+          "label": "Mining: mine_rock_06 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13240489,
+          "record_key": 1001352,
+          "record_rel_offset": 974,
+          "entry": "mine_rock_06",
+          "rel_offset": 954,
+          "label": "Mining: mine_rock_06 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241838,
+          "record_key": 1001353,
+          "record_rel_offset": 833,
+          "entry": "mine_rock_07",
+          "rel_offset": 813,
+          "label": "Mining: mine_rock_07 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241846,
+          "record_key": 1001353,
+          "record_rel_offset": 841,
+          "entry": "mine_rock_07",
+          "rel_offset": 821,
+          "label": "Mining: mine_rock_07 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241906,
+          "record_key": 1001353,
+          "record_rel_offset": 901,
+          "entry": "mine_rock_07",
+          "rel_offset": 881,
+          "label": "Mining: mine_rock_07 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241914,
+          "record_key": 1001353,
+          "record_rel_offset": 909,
+          "entry": "mine_rock_07",
+          "rel_offset": 889,
+          "label": "Mining: mine_rock_07 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241974,
+          "record_key": 1001353,
+          "record_rel_offset": 969,
+          "entry": "mine_rock_07",
+          "rel_offset": 949,
+          "label": "Mining: mine_rock_07 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13241982,
+          "record_key": 1001353,
+          "record_rel_offset": 977,
+          "entry": "mine_rock_07",
+          "rel_offset": 957,
+          "label": "Mining: mine_rock_07 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243331,
+          "record_key": 1001354,
+          "record_rel_offset": 833,
+          "entry": "mine_rock_08",
+          "rel_offset": 813,
+          "label": "Mining: mine_rock_08 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243339,
+          "record_key": 1001354,
+          "record_rel_offset": 841,
+          "entry": "mine_rock_08",
+          "rel_offset": 821,
+          "label": "Mining: mine_rock_08 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243399,
+          "record_key": 1001354,
+          "record_rel_offset": 901,
+          "entry": "mine_rock_08",
+          "rel_offset": 881,
+          "label": "Mining: mine_rock_08 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243407,
+          "record_key": 1001354,
+          "record_rel_offset": 909,
+          "entry": "mine_rock_08",
+          "rel_offset": 889,
+          "label": "Mining: mine_rock_08 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243467,
+          "record_key": 1001354,
+          "record_rel_offset": 969,
+          "entry": "mine_rock_08",
+          "rel_offset": 949,
+          "label": "Mining: mine_rock_08 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13243475,
+          "record_key": 1001354,
+          "record_rel_offset": 977,
+          "entry": "mine_rock_08",
+          "rel_offset": 957,
+          "label": "Mining: mine_rock_08 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244824,
+          "record_key": 1001482,
+          "record_rel_offset": 833,
+          "entry": "mine_rock_09",
+          "rel_offset": 813,
+          "label": "Mining: mine_rock_09 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244832,
+          "record_key": 1001482,
+          "record_rel_offset": 841,
+          "entry": "mine_rock_09",
+          "rel_offset": 821,
+          "label": "Mining: mine_rock_09 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244892,
+          "record_key": 1001482,
+          "record_rel_offset": 901,
+          "entry": "mine_rock_09",
+          "rel_offset": 881,
+          "label": "Mining: mine_rock_09 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244900,
+          "record_key": 1001482,
+          "record_rel_offset": 909,
+          "entry": "mine_rock_09",
+          "rel_offset": 889,
+          "label": "Mining: mine_rock_09 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244960,
+          "record_key": 1001482,
+          "record_rel_offset": 969,
+          "entry": "mine_rock_09",
+          "rel_offset": 949,
+          "label": "Mining: mine_rock_09 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13244968,
+          "record_key": 1001482,
+          "record_rel_offset": 977,
+          "entry": "mine_rock_09",
+          "rel_offset": 957,
+          "label": "Mining: mine_rock_09 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246333,
+          "record_key": 1001255,
+          "record_rel_offset": 849,
+          "entry": "mine_stone_01",
+          "rel_offset": 828,
+          "label": "Mining: mine_stone_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246341,
+          "record_key": 1001255,
+          "record_rel_offset": 857,
+          "entry": "mine_stone_01",
+          "rel_offset": 836,
+          "label": "Mining: mine_stone_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246401,
+          "record_key": 1001255,
+          "record_rel_offset": 917,
+          "entry": "mine_stone_01",
+          "rel_offset": 896,
+          "label": "Mining: mine_stone_01 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246409,
+          "record_key": 1001255,
+          "record_rel_offset": 925,
+          "entry": "mine_stone_01",
+          "rel_offset": 904,
+          "label": "Mining: mine_stone_01 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246469,
+          "record_key": 1001255,
+          "record_rel_offset": 985,
+          "entry": "mine_stone_01",
+          "rel_offset": 964,
+          "label": "Mining: mine_stone_01 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13246477,
+          "record_key": 1001255,
+          "record_rel_offset": 993,
+          "entry": "mine_stone_01",
+          "rel_offset": 972,
+          "label": "Mining: mine_stone_01 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247808,
+          "record_key": 17030004,
+          "record_rel_offset": 815,
+          "entry": "mine_gold",
+          "rel_offset": 798,
+          "label": "Mining: mine_gold output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247816,
+          "record_key": 17030004,
+          "record_rel_offset": 823,
+          "entry": "mine_gold",
+          "rel_offset": 806,
+          "label": "Mining: mine_gold output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247876,
+          "record_key": 17030004,
+          "record_rel_offset": 883,
+          "entry": "mine_gold",
+          "rel_offset": 866,
+          "label": "Mining: mine_gold output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247884,
+          "record_key": 17030004,
+          "record_rel_offset": 891,
+          "entry": "mine_gold",
+          "rel_offset": 874,
+          "label": "Mining: mine_gold output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247944,
+          "record_key": 17030004,
+          "record_rel_offset": 951,
+          "entry": "mine_gold",
+          "rel_offset": 934,
+          "label": "Mining: mine_gold output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13247952,
+          "record_key": 17030004,
+          "record_rel_offset": 959,
+          "entry": "mine_gold",
+          "rel_offset": 942,
+          "label": "Mining: mine_gold output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249293,
+          "record_key": 17030018,
+          "record_rel_offset": 825,
+          "entry": "mine_gold_cave",
+          "rel_offset": 803,
+          "label": "Mining: mine_gold_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249301,
+          "record_key": 17030018,
+          "record_rel_offset": 833,
+          "entry": "mine_gold_cave",
+          "rel_offset": 811,
+          "label": "Mining: mine_gold_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249361,
+          "record_key": 17030018,
+          "record_rel_offset": 893,
+          "entry": "mine_gold_cave",
+          "rel_offset": 871,
+          "label": "Mining: mine_gold_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249369,
+          "record_key": 17030018,
+          "record_rel_offset": 901,
+          "entry": "mine_gold_cave",
+          "rel_offset": 879,
+          "label": "Mining: mine_gold_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249429,
+          "record_key": 17030018,
+          "record_rel_offset": 961,
+          "entry": "mine_gold_cave",
+          "rel_offset": 939,
+          "label": "Mining: mine_gold_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13249437,
+          "record_key": 17030018,
+          "record_rel_offset": 969,
+          "entry": "mine_gold_cave",
+          "rel_offset": 947,
+          "label": "Mining: mine_gold_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250772,
+          "record_key": 17030009,
+          "record_rel_offset": 819,
+          "entry": "mine_silver",
+          "rel_offset": 800,
+          "label": "Mining: mine_silver output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250780,
+          "record_key": 17030009,
+          "record_rel_offset": 827,
+          "entry": "mine_silver",
+          "rel_offset": 808,
+          "label": "Mining: mine_silver output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250840,
+          "record_key": 17030009,
+          "record_rel_offset": 887,
+          "entry": "mine_silver",
+          "rel_offset": 868,
+          "label": "Mining: mine_silver output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250848,
+          "record_key": 17030009,
+          "record_rel_offset": 895,
+          "entry": "mine_silver",
+          "rel_offset": 876,
+          "label": "Mining: mine_silver output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250908,
+          "record_key": 17030009,
+          "record_rel_offset": 955,
+          "entry": "mine_silver",
+          "rel_offset": 936,
+          "label": "Mining: mine_silver output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13250916,
+          "record_key": 17030009,
+          "record_rel_offset": 963,
+          "entry": "mine_silver",
+          "rel_offset": 944,
+          "label": "Mining: mine_silver output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252261,
+          "record_key": 17030013,
+          "record_rel_offset": 829,
+          "entry": "mine_silver_cave",
+          "rel_offset": 805,
+          "label": "Mining: mine_silver_cave output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252269,
+          "record_key": 17030013,
+          "record_rel_offset": 837,
+          "entry": "mine_silver_cave",
+          "rel_offset": 813,
+          "label": "Mining: mine_silver_cave output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252329,
+          "record_key": 17030013,
+          "record_rel_offset": 897,
+          "entry": "mine_silver_cave",
+          "rel_offset": 873,
+          "label": "Mining: mine_silver_cave output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252337,
+          "record_key": 17030013,
+          "record_rel_offset": 905,
+          "entry": "mine_silver_cave",
+          "rel_offset": 881,
+          "label": "Mining: mine_silver_cave output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252397,
+          "record_key": 17030013,
+          "record_rel_offset": 965,
+          "entry": "mine_silver_cave",
+          "rel_offset": 941,
+          "label": "Mining: mine_silver_cave output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13252405,
+          "record_key": 17030013,
+          "record_rel_offset": 973,
+          "entry": "mine_silver_cave",
+          "rel_offset": 949,
+          "label": "Mining: mine_silver_cave output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253704,
+          "record_key": 2530061,
+          "record_rel_offset": 783,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 755,
+          "label": "Mining: cave_break_stalac_02 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253712,
+          "record_key": 2530061,
+          "record_rel_offset": 791,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 763,
+          "label": "Mining: cave_break_stalac_02 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253772,
+          "record_key": 2530061,
+          "record_rel_offset": 851,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 823,
+          "label": "Mining: cave_break_stalac_02 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253780,
+          "record_key": 2530061,
+          "record_rel_offset": 859,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 831,
+          "label": "Mining: cave_break_stalac_02 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253840,
+          "record_key": 2530061,
+          "record_rel_offset": 919,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 891,
+          "label": "Mining: cave_break_stalac_02 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13253848,
+          "record_key": 2530061,
+          "record_rel_offset": 927,
+          "entry": "cave_break_stalac_02",
+          "rel_offset": 899,
+          "label": "Mining: cave_break_stalac_02 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255139,
+          "record_key": 1004924,
+          "record_rel_offset": 775,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 744,
+          "label": "Mining: gimmick_stalactite_0003 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255147,
+          "record_key": 1004924,
+          "record_rel_offset": 783,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 752,
+          "label": "Mining: gimmick_stalactite_0003 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255207,
+          "record_key": 1004924,
+          "record_rel_offset": 843,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 812,
+          "label": "Mining: gimmick_stalactite_0003 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255215,
+          "record_key": 1004924,
+          "record_rel_offset": 851,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 820,
+          "label": "Mining: gimmick_stalactite_0003 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255275,
+          "record_key": 1004924,
+          "record_rel_offset": 911,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 880,
+          "label": "Mining: gimmick_stalactite_0003 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13255283,
+          "record_key": 1004924,
+          "record_rel_offset": 919,
+          "entry": "gimmick_stalactite_0003",
+          "rel_offset": 888,
+          "label": "Mining: gimmick_stalactite_0003 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256574,
+          "record_key": 1004925,
+          "record_rel_offset": 775,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 744,
+          "label": "Mining: gimmick_stalactite_0004 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256582,
+          "record_key": 1004925,
+          "record_rel_offset": 783,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 752,
+          "label": "Mining: gimmick_stalactite_0004 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256642,
+          "record_key": 1004925,
+          "record_rel_offset": 843,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 812,
+          "label": "Mining: gimmick_stalactite_0004 output 1.2 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256650,
+          "record_key": 1004925,
+          "record_rel_offset": 851,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 820,
+          "label": "Mining: gimmick_stalactite_0004 output 1.2 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256710,
+          "record_key": 1004925,
+          "record_rel_offset": 911,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 880,
+          "label": "Mining: gimmick_stalactite_0004 output 1.3 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 13256718,
+          "record_key": 1004925,
+          "record_rel_offset": 919,
+          "entry": "gimmick_stalactite_0004",
+          "rel_offset": 888,
+          "label": "Mining: gimmick_stalactite_0004 output 1.3 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        }
+      ]
+    }
+  ]
+}

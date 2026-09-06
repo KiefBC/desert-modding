@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Regenerate src/collect.rs from the Desert Gatherer DMM pack.
+"""Regenerate desert-core/src/collect.rs from the Desert Gatherer DMM pack.
 
 Usage: python3 tools/gen-collect-names.py [pack-dir]
-Default pack dir: /mnt/c/MODDING/Crimson Desert/The Desert Gatherer
+Default pack dir: dmm-pack/, the copy of the pack kept in this repo.
 Reads the "* - 2X.json" modules and emits (record key, record name, family).
+Run from the workspace root.
 """
 import glob, json, os, sys
 
-base = sys.argv[1] if len(sys.argv) > 1 else "/mnt/c/MODDING/Crimson Desert/The Desert Gatherer"
+base = sys.argv[1] if len(sys.argv) > 1 else "dmm-pack"
 fam = {"Foraging": "Foraging", "Logging": "Logging", "Mining": "Mining", "Ore Nodes": "Ore"}
 rows = {}
 for f in sorted(glob.glob(os.path.join(base, "* - 2X.json"))):
@@ -59,5 +60,5 @@ out += [
     "    }",
     "}",
 ]
-open("src/collect.rs", "w").write("\n".join(out) + "\n")
+open("desert-core/src/collect.rs", "w").write("\n".join(out) + "\n")
 print("records:", len(rows))

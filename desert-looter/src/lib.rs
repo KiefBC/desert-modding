@@ -6,14 +6,19 @@
 //! The gather hotkey forges one PickUpItem event for the nearest gather node
 //! and enqueues it from inside the sweep hook.
 
-pub mod collect;
+// The shared plumbing lives in desert-core. Re-exported under the names this
+// crate has always used, so `crate::log!`, `crate::safe::read`, `crate::pe`,
+// ... keep resolving inside every module here. `log` names both a module and
+// the exported macro; one `use` brings in both.
+pub use desert_core::{collect, ini, log, pattern, pe, rtti, trampoline};
+#[cfg(windows)]
+pub use desert_core::{hook, hotkey, module, safe};
+
+// Desert Looter's own modules. Same split as desert-core: anything that talks
+// to the game or to Win32 is #[cfg(windows)], the rest links natively on Linux
+// so `cargo test` runs there.
 pub mod config;
-pub mod log;
-pub mod pattern;
 pub mod payload;
-pub mod pe;
-pub mod rtti;
-pub mod trampoline;
 
 #[cfg(windows)]
 pub mod actors;
@@ -24,18 +29,13 @@ pub mod game;
 #[cfg(windows)]
 pub mod gatherer;
 #[cfg(windows)]
-pub mod hook;
-#[cfg(windows)]
-pub mod hotkey;
-#[cfg(windows)]
-pub mod module;
-#[cfg(windows)]
-pub mod safe;
-#[cfg(windows)]
 pub mod tables;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const INI_NAME: &str = "DesertLooter.ini";
+/// Written beside the game exe. Named here, not in desert-core, so each
+/// plugin gets its own file.
+pub const LOG_NAME: &str = "DesertLooter.log";
 
 /// Only this process is the game. The ASI loader (winmm.dll) also gets pulled
 /// into helper processes started from bin64 (crashpad_handler.exe), and each
@@ -254,7 +254,7 @@ mod entry {
 
     /// Runs on its own thread for the life of the process.
     unsafe extern "system" fn main_thread(_param: *mut c_void) -> u32 {
-        log::init();
+        log::init(crate::LOG_NAME);
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(

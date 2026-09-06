@@ -1,17 +1,22 @@
-[package]
-name = "desert-looter"
-version = "0.5.0"
+# Crimson Desert mods - one workspace, one shared core, one crate per mod.
+#
+#   desert-core     rlib, ships nothing: hooks, guarded reads, logger, PE/RTTI,
+#                   byte patterns, ini parsing, the gather-record table.
+#   desert-looter   cdylib -> DesertLooter.asi
+#   desert-gatherer cdylib -> DesertGatherer.asi
+#
+# dmm-pack/ is the DMM data mod (JSON offset patches), not a crate.
+
+[workspace]
+resolver = "2"
+members = ["desert-core", "desert-looter", "desert-gatherer"]
+
+[workspace.package]
 edition = "2021"
-description = "Desert Looter - Crimson Desert gathering auto-loot (ASI plugin)"
 license = "MIT"
 
-[lib]
-name = "desert_looter"
-# cdylib -> the Windows .dll (renamed .asi). rlib -> lets `cargo test` link the
-# platform-independent modules natively on Linux.
-crate-type = ["cdylib", "rlib"]
-
-[target.'cfg(windows)'.dependencies]
+[workspace.dependencies]
+desert-core = { path = "desert-core" }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_SystemServices",
@@ -24,6 +29,8 @@ windows-sys = { version = "0.59", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+# Shared by every crate in the workspace: profile settings are only read from
+# the workspace root.
 [profile.release]
 panic = "abort"      # never unwind across the FFI boundary into the game
 lto = true

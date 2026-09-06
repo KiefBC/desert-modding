@@ -5,6 +5,10 @@
 //! - open-append-close per write, with full share flags, so no handle is held
 //!   while Defender, an editor or a crash handler has the file;
 //! - nothing here is called from DllMain (loader lock) or from helper processes.
+//!
+//! Shared by every plugin, so the file name is chosen by the caller:
+//! `log::init("DesertLooter.log")` before the first `log!`. A `log!` that
+//! somehow beats `init` lands in `DEFAULT_LOG_NAME` rather than panicking.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -13,9 +17,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
-pub const LOG_NAME: &str = "DesertLooter.log";
+/// Used only if a plugin logs before calling [`init`].
+pub const DEFAULT_LOG_NAME: &str = "DesertMods.log";
 
 static START: OnceLock<Instant> = OnceLock::new();
+static NAME: OnceLock<String> = OnceLock::new();
 static PATH: OnceLock<PathBuf> = OnceLock::new();
 static DISABLED: AtomicBool = AtomicBool::new(false);
 /// Serialises writers within this process so lines never interleave.
@@ -29,9 +35,19 @@ pub fn exe_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-pub fn init() {
+/// Name the log file and start the clock. First caller wins; later calls with
+/// a different name are ignored (one process only ever writes one log).
+pub fn init(name: &str) {
+    NAME.get_or_init(|| name.to_string());
+    ensure();
+}
+
+/// Everything [`init`] does, with the name defaulted. Never fails, never panics.
+fn ensure() {
     START.get_or_init(Instant::now);
-    PATH.get_or_init(|| exe_dir().join(LOG_NAME));
+    PATH.get_or_init(|| {
+        exe_dir().join(NAME.get().map(String::as_str).unwrap_or(DEFAULT_LOG_NAME))
+    });
 }
 
 /// Stop writing for the rest of the process (used when the host is not the game).
@@ -64,7 +80,7 @@ pub fn write(msg: &str) {
     if DISABLED.load(Ordering::Relaxed) {
         return;
     }
-    init();
+    ensure();
     let (Some(start), Some(path)) = (START.get(), PATH.get()) else { return };
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(mut f) = open_for_append(path) {

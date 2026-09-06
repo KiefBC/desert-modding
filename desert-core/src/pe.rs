@@ -101,7 +101,9 @@ mod tests {
 
     #[test]
     fn reads_cdloot_headers() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/source-mod/CDLoot.asi")).unwrap();
+        // source-mod/ sits at the workspace root (gitignored: it is the
+        // reference mod's own binary, not ours).
+        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../source-mod/CDLoot.asi")).unwrap();
         let h = parse(&f).unwrap();
         assert_eq!(h.image_base, 0x1_8000_0000);
         assert_eq!(h.sections.len(), 7);

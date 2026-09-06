@@ -1,5 +1,5 @@
 {
-  description = "Desert Looter - Crimson Desert gathering auto-loot ASI (Rust, cross-compiled to Windows x64)";
+  description = "Crimson Desert mods - desert-core + the Desert Looter / Desert Gatherer ASI plugins (Rust, cross-compiled to Windows x64)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -39,6 +39,10 @@
             pkgs.binutils
             pkgs.file
 
+            # dmm-pack/rebase.py rewrites the DMM offset patches; jq is for
+            # eyeballing those JSONs without loading a 230 KB file into an editor.
+            pkgs.jq
+
             # Disassembler/decompiler for reading CrimsonDesert.exe and the
             # reference mod. Prebuilt upstream release (ghidra-bin); the
             # from-source `ghidra` attribute is a very long build. GUI needs
@@ -59,10 +63,11 @@
             "-C target-feature=+crt-static -L native=${pthreads}/lib";
 
           shellHook = ''
-            echo "Desert Looter dev shell ready."
+            echo "Crimson Desert mods workspace ready (run cargo from the repo root)."
             echo "  build:   cargo build --release"
-            echo "  output:  target/x86_64-pc-windows-gnu/release/desert_looter.dll"
-            echo "  install: copy that file to the game's bin64 as DesertLooter.asi"
+            echo "  test:    cargo test --target x86_64-unknown-linux-gnu"
+            echo "  output:  target/x86_64-pc-windows-gnu/release/desert_looter.dll   -> bin64/DesertLooter.asi"
+            echo "           target/x86_64-pc-windows-gnu/release/desert_gatherer.dll -> bin64/DesertGatherer.asi"
             echo "  ghidra:  ghidra (GUI via WSLg) or ghidra-analyzeHeadless (batch)"
           '';
         };

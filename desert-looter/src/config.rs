@@ -1,4 +1,9 @@
 //! `DesertLooter.ini` beside the game exe. Missing file or key => defaults.
+//!
+//! Only Desert Looter's own keys live here; the ini tokeniser, the truthy
+//! spellings and the virtual-key name table are shared in `desert_core::ini`.
+
+use desert_core::ini::{self, Line};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
@@ -56,68 +61,19 @@ impl Default for Config {
     }
 }
 
-/// Key names accepted in the ini, matching the reference mod's vocabulary.
-pub fn vk_from_name(name: &str) -> Option<u16> {
-    let n = name.trim().to_ascii_uppercase();
-    if let Some(f) = n.strip_prefix('F') {
-        if let Ok(k) = f.parse::<u16>() {
-            if (1..=24).contains(&k) {
-                return Some(0x6F + k);
-            }
-        }
-    }
-    if n.len() == 1 {
-        let c = n.as_bytes()[0];
-        if c.is_ascii_uppercase() || c.is_ascii_digit() {
-            return Some(c as u16);
-        }
-    }
-    if let Some(d) = n.strip_prefix("NUM") {
-        if let Ok(k) = d.parse::<u16>() {
-            if k <= 9 {
-                return Some(0x60 + k);
-            }
-        }
-    }
-    Some(match n.as_str() {
-        "NUMMULT" => 0x6A,
-        "NUMPLUS" => 0x6B,
-        "NUMMINUS" => 0x6D,
-        "NUMDOT" => 0x6E,
-        "NUMDIV" => 0x6F,
-        "HOME" => 0x24,
-        "END" => 0x23,
-        "INSERT" => 0x2D,
-        "DELETE" => 0x2E,
-        "PAGEUP" => 0x21,
-        "PAGEDOWN" => 0x22,
-        "TAB" => 0x09,
-        "SPACE" => 0x20,
-        "BACKSPACE" => 0x08,
-        "SCROLLLOCK" => 0x91,
-        "PAUSE" => 0x13,
-        "MOUSE3" => 0x04,
-        "MOUSE4" => 0x05,
-        "MOUSE5" => 0x06,
-        _ => return None,
-    })
-}
-
 /// Parse ini text. Unknown keys are reported back so they can be logged.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    for (lineno, raw) in text.lines().enumerate() {
-        let line = raw.trim();
-        if line.is_empty() || line.starts_with(';') || line.starts_with('#') || line.starts_with('[') {
-            continue;
-        }
-        let Some((k, v)) = line.split_once('=') else {
-            warnings.push(format!("line {}: no '=': {raw:?}", lineno + 1));
-            continue;
+    for line in ini::lines(text) {
+        let (k, v) = match line {
+            Line::Pair(k, v) => (k, v),
+            Line::Bad(w) => {
+                warnings.push(w);
+                continue;
+            }
         };
-        let (k, v) = (k.trim(), v.trim());
-        let bool_of = |v: &str| matches!(v, "1" | "true" | "yes" | "on");
+        let bool_of = ini::parse_bool;
         match k.to_ascii_lowercase().as_str() {
             "enabled" => cfg.enabled = bool_of(v),
             "debug" => cfg.debug = bool_of(v),
@@ -152,7 +108,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                 Ok(f) if f > 0.0 && f <= 50.0 => cfg.gather_range = f,
                 _ => warnings.push(format!("GatherRange: bad value {v:?}, keeping {}", cfg.gather_range)),
             },
-            "keytoggle" | "keyscan" | "keygather" | "keyrecord" => match vk_from_name(v) {
+            "keytoggle" | "keyscan" | "keygather" | "keyrecord" => match ini::vk_from_name(v) {
                 Some(vk) if k.eq_ignore_ascii_case("keytoggle") => cfg.key_toggle = vk,
                 Some(vk) if k.eq_ignore_ascii_case("keyscan") => cfg.key_scan = vk,
                 Some(vk) if k.eq_ignore_ascii_case("keyrecord") => cfg.key_record = vk,
@@ -168,19 +124,6 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn key_names() {
-        assert_eq!(vk_from_name("F1"), Some(0x70));
-        assert_eq!(vk_from_name("f24"), Some(0x87));
-        assert_eq!(vk_from_name("F25"), None);
-        assert_eq!(vk_from_name("A"), Some(0x41));
-        assert_eq!(vk_from_name("7"), Some(0x37));
-        assert_eq!(vk_from_name("NUM0"), Some(0x60));
-        assert_eq!(vk_from_name("NUMPLUS"), Some(0x6B));
-        assert_eq!(vk_from_name("MOUSE5"), Some(0x06));
-        assert_eq!(vk_from_name("bogus"), None);
-    }
 
     #[test]
     fn parses_and_warns() {

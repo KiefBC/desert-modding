@@ -1,0 +1,138 @@
+Automated package verification
+
+{
+  "game_build": "25116796",
+  "source_gimmickinfo_sha256": "95e2dcf4b3447cdf6186b9fa816065f4e09f3ce49fe7047fd111f1bb6517411a",
+  "module_count": 12,
+  "categories": {
+    "Foraging": {
+      "records": 82,
+      "resource_outputs": 322,
+      "scalar_patches": 644
+    },
+    "Logging": {
+      "records": 141,
+      "resource_outputs": 141,
+      "scalar_patches": 282
+    },
+    "Mining": {
+      "records": 36,
+      "resource_outputs": 108,
+      "scalar_patches": 216
+    },
+    "Ore Nodes": {
+      "records": 16,
+      "resource_outputs": 16,
+      "scalar_patches": 32
+    }
+  },
+  "options": [
+    {
+      "option": "Foraging - 10X",
+      "records": 82,
+      "resource_outputs": 322,
+      "scalar_patches": 644,
+      "simulated_patched_sha256": "f7a441be02980bd05779f4b11a3cd7e1eacd6675c354955992a3c78c3ba8ab54",
+      "result": "PASS"
+    },
+    {
+      "option": "Foraging - 2X",
+      "records": 82,
+      "resource_outputs": 322,
+      "scalar_patches": 644,
+      "simulated_patched_sha256": "1f1cf15bae4bf9102bac34add3209e65e97c9fdeb0597bc794bb7f8294bd86ee",
+      "result": "PASS"
+    },
+    {
+      "option": "Foraging - 5X",
+      "records": 82,
+      "resource_outputs": 322,
+      "scalar_patches": 644,
+      "simulated_patched_sha256": "cea0ac15f2ec798fd19094470412e55638d35ccf8e48d371b158efa806e85056",
+      "result": "PASS"
+    },
+    {
+      "option": "Logging - 10X",
+      "records": 141,
+      "resource_outputs": 141,
+      "scalar_patches": 282,
+      "simulated_patched_sha256": "ed62b14ffd46624af1a0c8b2457236440108b0b49637e7fe49209b9f3592b650",
+      "result": "PASS"
+    },
+    {
+      "option": "Logging - 2X",
+      "records": 141,
+      "resource_outputs": 141,
+      "scalar_patches": 282,
+      "simulated_patched_sha256": "c651f3bb2c006603558d8bfb8b109216f37d8a00d99bdd513d2494548335e72b",
+      "result": "PASS"
+    },
+    {
+      "option": "Logging - 5X",
+      "records": 141,
+      "resource_outputs": 141,
+      "scalar_patches": 282,
+      "simulated_patched_sha256": "80b52db531dff587c9762361dd925ed67f4bef54b31fc7ffdc68b7a8967ea223",
+      "result": "PASS"
+    },
+    {
+      "option": "Mining - 10X",
+      "records": 36,
+      "resource_outputs": 108,
+      "scalar_patches": 216,
+      "simulated_patched_sha256": "d13d6f3bab974d21af8dcb8d886afb4617cb2bfca86c28c9f9a2bf549fa1ed4b",
+      "result": "PASS"
+    },
+    {
+      "option": "Mining - 2X",
+      "records": 36,
+      "resource_outputs": 108,
+      "scalar_patches": 216,
+      "simulated_patched_sha256": "223f19d054ab3bb3a94614d87ec5bda013b01055180e95aafa4b94ae3e0ccf5c",
+      "result": "PASS"
+    },
+    {
+      "option": "Mining - 5X",
+      "records": 36,
+      "resource_outputs": 108,
+      "scalar_patches": 216,
+      "simulated_patched_sha256": "be4a8b12db08ac294096e4c09eb8e39dd64db3994ed565825a949cdea6561716",
+      "result": "PASS"
+    },
+    {
+      "option": "Ore Nodes - 10X",
+      "records": 16,
+      "resource_outputs": 16,
+      "scalar_patches": 32,
+      "simulated_patched_sha256": "261c35a96a5681c6e1ff6f92a3d163f19d24310a4c5f10c3ed770605499c6bea",
+      "result": "PASS"
+    },
+    {
+      "option": "Ore Nodes - 2X",
+      "records": 16,
+      "resource_outputs": 16,
+      "scalar_patches": 32,
+      "simulated_patched_sha256": "3b532f8e0b795e0961ad28a8705d8664f8f0eeec3b459c0a4adb52d558f0571b",
+      "result": "PASS"
+    },
+    {
+      "option": "Ore Nodes - 5X",
+      "records": 16,
+      "resource_outputs": 16,
+      "scalar_patches": 32,
+      "simulated_patched_sha256": "d97a285d3a001ebb13bb3442e2484dd527f60a695a7467de1238d9580fbdca80",
+      "result": "PASS"
+    }
+  ],
+  "category_offset_sets_disjoint": true,
+  "mixed_selection_test": {
+    "selections": {
+      "Mining": 2,
+      "Logging": 5
+    },
+    "scalar_patches": 498,
+    "simulated_patched_sha256": "d83866f4d6974ba721beae7a08fb397d5e81f4374cf23ee6c62e02514e6ccfb6",
+    "result": "PASS"
+  },
+  "result": "PASS"
+}
