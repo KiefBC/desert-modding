@@ -112,3 +112,34 @@ pub fn read_cstr(addr: usize, max: usize) -> Option<String> {
     }
     Some(String::from_utf8_lossy(&out).into_owned())
 }
+
+/// Copy `buf` to `addr` in our own process through `WriteProcessMemory`, which
+/// fails instead of faulting if the page is gone. Used only for objects the
+/// game just handed us (a freshly allocated event); never for patching code.
+pub fn write_into(addr: usize, buf: &[u8]) -> bool {
+    use windows_sys::Win32::System::Diagnostics::Debug::WriteProcessMemory;
+    if buf.is_empty() {
+        return true;
+    }
+    if addr < 0x10000 || addr.checked_add(buf.len()).map_or(true, |e| e > USER_MAX) {
+        return false;
+    }
+    let mut done: usize = 0;
+    let ok = unsafe {
+        WriteProcessMemory(
+            GetCurrentProcess(),
+            addr as *const c_void,
+            buf.as_ptr() as *const c_void,
+            buf.len(),
+            &mut done,
+        )
+    };
+    ok != 0 && done == buf.len()
+}
+
+pub fn write<T: Copy>(addr: usize, v: T) -> bool {
+    let buf = unsafe {
+        core::slice::from_raw_parts(&v as *const T as *const u8, core::mem::size_of::<T>())
+    };
+    write_into(addr, buf)
+}

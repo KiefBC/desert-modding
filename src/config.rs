@@ -6,9 +6,12 @@ pub struct Config {
     pub debug: bool,
     /// Survey radius in game metres.
     pub scan_range: f32,
+    /// Radius within which the gather hotkey picks a node, in game metres.
+    pub gather_range: f32,
     /// Virtual-key codes.
     pub key_toggle: u16,
     pub key_scan: u16,
+    pub key_gather: u16,
 }
 
 impl Default for Config {
@@ -17,8 +20,10 @@ impl Default for Config {
             enabled: true,
             debug: false,
             scan_range: 40.0,
+            gather_range: 3.0,
             key_toggle: 0x79, // F10
             key_scan: 0x7A,   // F11
+            key_gather: 0x78, // F9
         }
     }
 }
@@ -92,9 +97,14 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                 Ok(f) if f > 0.0 => cfg.scan_range = f,
                 _ => warnings.push(format!("ScanRange: bad value {v:?}, keeping {}", cfg.scan_range)),
             },
-            "keytoggle" | "keyscan" => match vk_from_name(v) {
+            "gatherrange" => match v.parse::<f32>() {
+                Ok(f) if f > 0.0 && f <= 50.0 => cfg.gather_range = f,
+                _ => warnings.push(format!("GatherRange: bad value {v:?}, keeping {}", cfg.gather_range)),
+            },
+            "keytoggle" | "keyscan" | "keygather" => match vk_from_name(v) {
                 Some(vk) if k.eq_ignore_ascii_case("keytoggle") => cfg.key_toggle = vk,
-                Some(vk) => cfg.key_scan = vk,
+                Some(vk) if k.eq_ignore_ascii_case("keyscan") => cfg.key_scan = vk,
+                Some(vk) => cfg.key_gather = vk,
                 None => warnings.push(format!("{k}: unknown key name {v:?}, keeping previous")),
             },
             _ => warnings.push(format!("unknown key {k:?}")),
@@ -122,12 +132,14 @@ mod tests {
 
     #[test]
     fn parses_and_warns() {
-        let (c, w) = parse("; c\n[DesertLooter]\nEnabled=0\nDebug=1\nScanRange=25.5\nKeyToggle=F5\nKeyScan=nope\nJunk=1\n");
+        let (c, w) = parse("; c\n[DesertLooter]\nEnabled=0\nDebug=1\nScanRange=25.5\nGatherRange=4\nKeyToggle=F5\nKeyScan=nope\nKeyGather=F8\nJunk=1\n");
         assert!(!c.enabled);
         assert!(c.debug);
         assert_eq!(c.scan_range, 25.5);
         assert_eq!(c.key_toggle, 0x74);
         assert_eq!(c.key_scan, Config::default().key_scan);
+        assert_eq!(c.key_gather, 0x77);
+        assert_eq!(c.gather_range, 4.0);
         assert_eq!(w.len(), 2, "{w:?}");
     }
 }

@@ -3,11 +3,12 @@
 A gathering-focused auto-loot ASI for Crimson Desert, written in Rust and
 cross-compiled to a Windows x64 DLL from NixOS (WSL).
 
-This is currently the **read-only observer** stage. On load it resolves the
-game-side anchors (byte signatures and the actor-manager RTTI vtable), logs them
-to `DesertLooter.log` in `bin64`, reads `DesertLooter.ini` from the same folder,
-and reacts to two hotkeys (F10 toggle, F11 survey). It does not write to game
-memory yet.
+This is the **first write** stage. On load it resolves the game-side anchors
+(byte signatures and the actor-manager RTTI vtable), hooks the per-frame sweep
+function for a game-thread callback, logs to `DesertLooter.log` in `bin64`,
+reads `DesertLooter.ini` from the same folder, and reacts to three hotkeys:
+F10 toggle, F11 survey (read-only), F9 gather the nearest node by forging one
+PickUpItem event on the game thread.
 
 ## What an ASI is
 

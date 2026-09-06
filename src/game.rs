@@ -607,3 +607,68 @@ pub fn hunt_keys(m: &MainModule, actor: usize, keys: &std::collections::HashMap<
         }
     }
 }
+
+/// What the gather hotkey found: the nearest `Gather` node in range plus the
+/// two player values the event carries.
+#[derive(Debug, Clone)]
+pub struct GatherTarget {
+    pub eid: u32,
+    pub actor: usize,
+    pub player_actor: usize,
+    pub dist: f32,
+    pub name: String,
+    pub family: crate::collect::Family,
+    pub player_eid: u32,
+    pub route: u32,
+}
+
+/// The game's own event builder (`FUN_1426B21A0`) fills `ev+0x50` with
+/// `actor+0x60` (the eid) and `ev+0x58` ("route") with `actor+0x58` of the
+/// actor it is given. The reference mod, built for an older build, read the
+/// route at `player+0x90`; that value is only logged here for comparison.
+pub const PLAYER_ROUTE_OFF: usize = 0x58;
+pub const PLAYER_ROUTE_MOD_OFF: usize = 0x90;
+
+pub fn player_route(player: usize) -> Option<u32> {
+    crate::safe::read(player + PLAYER_ROUTE_OFF)
+}
+
+/// Nearest node within `range` metres that classifies as `Gather` (interaction
+/// object present and the gimmick record is a Foraging/Logging/Mining/Ore
+/// record). Read-only; the caller decides what to do with it.
+pub fn nearest_gather(m: &MainModule, w: &World, range: f32) -> Result<GatherTarget, String> {
+    let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+    let c = crate::safe::read_ptr(manager + actors::CONTAINER_OFF).ok_or("container pointer unreadable")?;
+    let map = actors::eid_map(c).ok_or("eid map rejected")?;
+    let player = actors::player_actor(manager).ok_or("player actor not at manager+0x50")?;
+    let player_eid = actors::actor_eid(player).ok_or("player eid unreadable")?;
+    let route = player_route(player).ok_or("player+0x90 unreadable")?;
+    let ppos = actors::actor_position(player).ok_or("player position unreadable")?;
+    let mut best: Option<GatherTarget> = None;
+    for (eid, a) in map.entries() {
+        if a == player {
+            continue;
+        }
+        let Some(pos) = actors::actor_position(a) else { continue };
+        let d = pos.dist(&ppos);
+        if d > range || best.as_ref().is_some_and(|b| b.dist <= d) {
+            continue;
+        }
+        if actors::classify(m, a, player) != actors::Kind::Gather {
+            continue;
+        }
+        let Some(id) = actors::node_identity(m, a) else { continue };
+        let Some(family) = id.family else { continue };
+        best = Some(GatherTarget {
+            eid,
+            actor: a,
+            player_actor: player,
+            dist: d,
+            name: id.name.unwrap_or_else(|| format!("rec{}", id.index)),
+            family,
+            player_eid,
+            route,
+        });
+    }
+    best.ok_or_else(|| format!("no Gather node within {range:.1} m"))
+}

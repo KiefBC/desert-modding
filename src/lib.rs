@@ -1,20 +1,28 @@
 //! Desert Looter - gathering auto-loot for Crimson Desert, as an ASI plugin.
 //!
-//! Current stage: **read-only observer**. On load it resolves the game-side
-//! anchors (byte signatures, RTTI) and logs them. Hotkeys toggle and request
-//! a survey. Nothing writes to game memory yet.
+//! Current stage: **first write**. On load it resolves the game-side anchors
+//! (byte signatures, RTTI), hooks the per-frame sweep function to get a
+//! callback on the game thread, and resolves the PickUpItem event descriptor.
+//! The gather hotkey forges one PickUpItem event for the nearest gather node
+//! and enqueues it from inside the sweep hook.
 
 pub mod collect;
 pub mod config;
 pub mod log;
 pub mod pattern;
+pub mod payload;
 pub mod pe;
 pub mod rtti;
+pub mod trampoline;
 
 #[cfg(windows)]
 pub mod actors;
 #[cfg(windows)]
+pub mod events;
+#[cfg(windows)]
 pub mod game;
+#[cfg(windows)]
+pub mod hook;
 #[cfg(windows)]
 pub mod hotkey;
 #[cfg(windows)]
@@ -46,7 +54,131 @@ mod entry {
     use crate::config::{self, Config};
     use crate::hotkey::Hotkey;
     use crate::module::MainModule;
-    use crate::{game, log};
+    use crate::{events, game, hook, log};
+
+    /// The `area_sweep` signature hits 15 bytes into the function; the
+    /// function starts with three 5-byte `mov [rsp+x],reg` spills, which are
+    /// exactly the bytes the hook steals (build 25116796, verified by
+    /// disassembly; the reference mod uses the same 0xF).
+    const SWEEP_HIT_OFFSET: usize = 0xF;
+    const SWEEP_STOLEN: usize = 0xF;
+    /// `mov [rsp+0x10],rbx; mov [rsp+0x18],rsi; mov [rsp+0x20],rdi`
+    const SWEEP_PROLOGUE: [u8; 15] = [
+        0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20,
+    ];
+
+    /// Patch the sweep function's prologue. Done right after signature
+    /// resolution, while the game is still loading and no thread runs it.
+    fn install_sweep_hook(module: &MainModule, anchors: &game::Anchors) -> bool {
+        let Some(hit) = anchors.get("area_sweep+0xF") else {
+            crate::log!("[hook] area_sweep signature missing; no game-thread callback");
+            return false;
+        };
+        let target = hit - SWEEP_HIT_OFFSET;
+        let mut have = [0u8; 15];
+        if !crate::safe::read_into(target, &mut have) || have != SWEEP_PROLOGUE {
+            crate::log!(
+                "[hook] area_sweep prologue at +0x{:X} is {} not the expected spills; NOT hooking",
+                module.rva(target), hook::hex(&have)
+            );
+            return false;
+        }
+        match unsafe { hook::install(target, SWEEP_STOLEN, events::on_sweep) } {
+            Ok(h) => {
+                crate::log!(
+                    "[hook] area_sweep +0x{:X} -> stub 0x{:X}; original bytes: {}",
+                    module.rva(h.target), h.stub, hook::hex(&h.original)
+                );
+                true
+            }
+            Err(e) => {
+                crate::log!("[hook] area_sweep install FAILED: {e}");
+                false
+            }
+        }
+    }
+
+    fn resolve_event_api(module: &MainModule, anchors: &game::Anchors) -> bool {
+        match events::resolve(module, anchors) {
+            Ok(api) => {
+                crate::log!(
+                    "[event] prepare=+0x{:X} desc_by_id=+0x{:X} alloc_event=+0x{:X} enqueue=+0x{:X} queue_slot=+0x{:X} desc_mask=+0x{:X}",
+                    module.rva(api.prepare), module.rva(api.desc_by_id), module.rva(api.alloc_event),
+                    module.rva(api.enqueue), module.rva(api.queue_slot), module.rva(api.desc_mask)
+                );
+                events::set_api(api);
+                true
+            }
+            Err(e) => {
+                crate::log!("[event] api resolve FAILED: {e}");
+                false
+            }
+        }
+    }
+
+    /// Walk the descriptor table once the game has built it (after the boot grace).
+    fn resolve_descriptor(module: &MainModule, api: &events::EventApi) -> bool {
+        let t = std::time::Instant::now();
+        match events::find_descriptor(module, api, events::PICKUP_DESCRIPTOR) {
+            Ok(d) => {
+                let note = if d.id == events::PICKUP_ID_EXPECTED && d.payload_size as usize == events::PICKUP_PAYLOAD_SIZE {
+                    "as expected"
+                } else {
+                    "DIFFERS from the reference mod's 2057/13"
+                };
+                crate::log!(
+                    "[event] {} id={} payload={} dispatch={} desc=0x{:X} ({note}, {:.0} ms)",
+                    d.name, d.id, d.payload_size, d.dispatch, d.ptr, t.elapsed().as_secs_f64() * 1000.0
+                );
+                events::set_descriptor(d);
+                true
+            }
+            Err(e) => {
+                crate::log!("[event] descriptor: {e} ({:.0} ms)", t.elapsed().as_secs_f64() * 1000.0);
+                false
+            }
+        }
+    }
+
+    fn gather_once(module: &MainModule, w: &game::World, range: f32) {
+        let t = std::time::Instant::now();
+        let target = match game::nearest_gather(module, w, range) {
+            Ok(t) => t,
+            Err(e) => {
+                crate::log!("[gather] {e}");
+                return;
+            }
+        };
+        let route90: Option<u32> = crate::safe::read(target.player_actor + game::PLAYER_ROUTE_MOD_OFF);
+        crate::log!(
+            "[gather] target {} ({:?}) eid={:08X} at {:.1} m; player eid={:08X} route(+0x58)=0x{:X} (+0x90 reads {:?}); picked in {:.1} ms",
+            target.name, target.family, target.eid, target.dist, target.player_eid, target.route,
+            route90.map(|v| format!("0x{v:X}")), t.elapsed().as_secs_f64() * 1000.0
+        );
+        if events::descriptor().is_none() {
+            crate::log!("[gather] descriptor not resolved; not sending");
+            return;
+        }
+        if events::game_thread_id() == 0 {
+            crate::log!("[gather] sweep hook has not fired yet; not sending");
+            return;
+        }
+        let req = events::PickupRequest {
+            target_eid: target.eid,
+            player_eid: target.player_eid,
+            route: target.route,
+            flag: 0,
+        };
+        if events::request(req) {
+            crate::log!("[gather] request parked for the game thread (sweep calls so far: {})", events::sweep_calls());
+        } else {
+            crate::log!("[gather] a request is still pending; ignored");
+        }
+    }
+
+    fn tid_now() -> u32 {
+        unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() }
+    }
 
     fn host_exe_name() -> String {
         std::env::current_exe()
@@ -78,8 +210,9 @@ mod entry {
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
         let cfg = load_config();
         crate::log!(
-            "[ini] Enabled={} Debug={} ScanRange={} KeyToggle=0x{:02X} KeyScan=0x{:02X}",
-            cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.key_toggle, cfg.key_scan
+            "[ini] Enabled={} Debug={} ScanRange={} GatherRange={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X}",
+            cfg.enabled as u8, cfg.debug as u8, cfg.scan_range, cfg.gather_range,
+            cfg.key_toggle, cfg.key_scan, cfg.key_gather
         );
         if !cfg.enabled {
             crate::log!("Enabled=0, staying idle");
@@ -98,6 +231,8 @@ mod entry {
             anchors.hits.len(), anchors.missing.len(), anchors.actor_manager_vtables.len(),
             t0.elapsed().as_secs_f64() * 1000.0
         );
+        let hooked = install_sweep_hook(&module, &anchors);
+        let api_ok = resolve_event_api(&module, &anchors);
         MessageBeep(MB_OK);
 
         let mut enabled = true;
@@ -108,6 +243,9 @@ mod entry {
         let mut next_world_try = std::time::Instant::now() + boot_grace;
         let mut k_toggle = Hotkey::new(cfg.key_toggle);
         let mut k_scan = Hotkey::new(cfg.key_scan);
+        let mut k_gather = Hotkey::new(cfg.key_gather);
+        let mut descriptor_ok = false;
+        let mut hook_reported = false;
         loop {
             if world.is_none() && std::time::Instant::now() >= next_world_try {
                 world = game::find_world(&module, &anchors);
@@ -115,10 +253,38 @@ mod entry {
                     next_world_try = std::time::Instant::now() + std::time::Duration::from_secs(3);
                 }
             }
+            if world.is_some() && api_ok && !descriptor_ok {
+                // Same cadence as the world retry: the table exists once the
+                // game is past loading, which the world being found implies.
+                if let Some(api) = events::api() {
+                    descriptor_ok = resolve_descriptor(&module, &api);
+                    if !descriptor_ok {
+                        next_world_try = std::time::Instant::now() + std::time::Duration::from_secs(3);
+                        std::thread::sleep(std::time::Duration::from_secs(3));
+                    }
+                }
+            }
+            if hooked && !hook_reported && events::game_thread_id() != 0 {
+                hook_reported = true;
+                crate::log!("[hook] game thread id {} (main thread here is {})", events::game_thread_id(), tid_now());
+            }
             if k_toggle.pressed() {
                 enabled = !enabled;
                 crate::log!("[key] auto-loot {}", if enabled { "ON" } else { "OFF" });
                 MessageBeep(MB_OK);
+            }
+            if k_gather.pressed() {
+                MessageBeep(MB_OK);
+                if !enabled {
+                    crate::log!("[gather] auto-loot is OFF (toggle with KeyToggle)");
+                } else if !hooked {
+                    crate::log!("[gather] no sweep hook; cannot send on the game thread");
+                } else {
+                    match &world {
+                        Some(w) => gather_once(&module, w, cfg.gather_range),
+                        None => crate::log!("[gather] actor manager not found yet"),
+                    }
+                }
             }
             if k_scan.pressed() {
                 MessageBeep(MB_OK);
