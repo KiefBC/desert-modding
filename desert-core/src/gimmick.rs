@@ -7,7 +7,7 @@
 //! computed from the bytes instead of from a build-specific offset list.
 //!
 //! Everything here is a pure function over a byte slice, so it compiles and is
-//! unit tested natively on Linux (see the cfg-gating rule in CLAUDE.md). It must
+//! unit tested natively on Linux (see the cfg-gating note in README.md). It must
 //! never panic on arbitrary input — the game calls it with whatever the loader
 //! hands us.
 //!

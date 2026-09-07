@@ -36,7 +36,7 @@
             # Binary-analysis tooling for reverse-engineering the game and the
             # reference mod: tools/sigscan.py, strings, objdump, file.
             # Ghidra itself is NOT here any more - it runs on the Windows side
-            # and is driven through the GhidraMCP server; see CLAUDE.md.
+            # and is driven through the GhidraMCP server; see README.md.
             pkgs.python3
             pkgs.binutils
             pkgs.file
