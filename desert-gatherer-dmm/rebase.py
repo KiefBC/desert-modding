@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-MODULES = sorted(p for p in HERE.glob("*.json"))
+# dmm_pack.json is the pack manifest DMM reads, not a module.
+MODULES = sorted(p for p in HERE.glob("*.json") if p.name != "dmm_pack.json")
 LABEL_RE = re.compile(r" output (\d+)\.(\d+) (minimum|maximum) ")
 BLOCK = 68                # bytes per resource-output block
 MIN_AT, MAX_AT = 42, 50   # offsets of the u64 min/max inside a block

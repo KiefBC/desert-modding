@@ -5,7 +5,7 @@
 #   desert-looter   cdylib -> DesertLooter.asi
 #   desert-gatherer cdylib -> DesertGatherer.asi
 #
-# dmm-pack/ is the DMM data mod (JSON offset patches), not a crate.
+# desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
 
 [workspace]
 resolver = "2"

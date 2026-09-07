@@ -116,8 +116,8 @@ multiplier preset** change the same minimum/maximum quantities, on disk.
 
 If either is mounted while this `.asi` is installed, the two stack: a mounted
 DMM 5X plus `Mining=2` here gives 10x. **Unmount both in DMM before using
-this plugin.** The `dmm-pack/` directory in this repo is that pack; this
-plugin is its replacement, not its companion.
+this plugin.** The `desert-gatherer-dmm/` directory in this repo is that
+pack; this plugin is its replacement, not its companion.
 
 ## Settings (`DesertGatherer.ini`)
 
@@ -173,7 +173,8 @@ unless the twelve bytes it is about to overwrite are exactly the prologue it
 expects. Inside each record, the yield numbers are found by walking the
 resource-output lists and matching the fixed 68-byte block layout that carries
 them, not by remembering where they were last time (the same content-based
-approach that `dmm-pack/rebase.py` uses to move the DMM pack between builds).
+approach that `desert-gatherer-dmm/rebase.py` uses to move the DMM pack
+between builds).
 
 That covers records and functions moving, which is what usually happens on a
 patch. If the game changes the loader's shape or the block layout itself, the

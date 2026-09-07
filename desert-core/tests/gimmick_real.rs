@@ -12,7 +12,7 @@ use desert_core::pe;
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
 const TABLE: &str = "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin";
-const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../dmm-pack");
+const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../desert-gatherer-dmm");
 
 /// RVA of `FUN_1403856b0` on Steam build 25116796.
 const LOADER_RVA: usize = 0x3856b0;
@@ -44,9 +44,9 @@ fn hex(b: &[u8]) -> String {
 // ---------------------------------------------------------------------------
 
 /// Minimal JSON field reader: no serde, no new dependencies. The pack files are
-/// machine-written by `dmm-pack/rebase.py`, so every change object has its
-/// fields in the same order (`offset`, `record_key`, `record_rel_offset`,
-/// `entry`, ...) and plain string searching is enough.
+/// machine-written by `desert-gatherer-dmm/rebase.py`, so every change object
+/// has its fields in the same order (`offset`, `record_key`,
+/// `record_rel_offset`, `entry`, ...) and plain string searching is enough.
 fn number_after(text: &str, key: &str, from: usize) -> Option<(u64, usize)> {
     let at = text.get(from..)?.find(key)? + from + key.len();
     let rest = text.get(at..)?;
@@ -122,7 +122,7 @@ fn multiply_reproduces_the_dmm_pack_edits() {
 
     let mut families: Vec<(String, Family)> = Vec::new();
     let mut names: Vec<String> = std::fs::read_dir(PACK)
-        .expect("dmm-pack present")
+        .expect("desert-gatherer-dmm present")
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with("2X.json"))

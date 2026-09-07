@@ -71,7 +71,7 @@ check-versions:
 sigscan:
     {{nix}} python3 tools/sigscan.py
 
-# Build the release zips into dist/ (both plugins, SHA256SUMS).
+# Build the release zips into dist/ (both plugins, the DMM pack, SHA256SUMS).
 dist:
     {{nix}} tools/dist.sh
 
@@ -101,7 +101,7 @@ clean:
     {{nix}} cargo clean
     rm -rf dist
 
-# --- DMM pack (dmm-pack/) -------------------------------------------------
+# --- DMM pack (desert-gatherer-dmm/) --------------------------------------
 # Not part of build/test/ci: it rewrites the packaged patch offsets, which only
 # needs doing after a game update. Run `just test-game` first to confirm the
 # record loader and output-block signature still match this build.
@@ -110,7 +110,7 @@ clean:
 # Steam appmanifest (CD_APPMANIFEST). Either can be passed positionally instead:
 # `just dmm-rebase /path/to/clean.bin 25116796`.
 
-# Rebase dmm-pack/*.json onto the current game build. Takes no arguments.
+# Rebase desert-gatherer-dmm/*.json onto the current game build. Takes no arguments.
 dmm-rebase table=dmm_table build="":
     @test -f "{{table}}" || { echo "dmm-rebase: {{table}} not found (set CD_DMM_TABLE)" >&2; exit 1; }
     @build="{{build}}"; \

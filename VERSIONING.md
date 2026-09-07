@@ -104,17 +104,26 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    ```bash
    nix develop --command tools/dist.sh
    ```
-   You get `dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip` and
-   `dist/SHA256SUMS`. Each zip holds the `.asi`, its `.ini`, the mod's README and CHANGELOG at the
-   archive root, which is what lets one archive serve both a manual drop into `bin64` and
-   Definitive Mod Manager.
+   You get `dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip`,
+   `dist/DesertGatherer-DMM-<version>.zip` and `dist/SHA256SUMS`. Each plugin zip holds the
+   `.asi`, its `.ini`, the mod's README and CHANGELOG at the archive root, which is what lets one
+   archive serve both a manual drop into `bin64` and Definitive Mod Manager.
 5. Actually play it. Copy the `.asi` and `.ini` into `bin64`, launch, read the log. There's no
    automated in-game test, and a release nobody has run in the game isn't a release.
-6. Commit, then tag `<crate>-v<version>`:
+6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
+   `<crate>-v<version>` and push the tag:
    ```bash
    git tag desert-looter-v0.1.1
+   git push origin desert-looter-v0.1.1
    ```
-7. Upload the zips and `SHA256SUMS` to the release.
+   The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
+7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks
+   that the tagged commit is on `main` and that the tag's version equals the one in the source,
+   re-runs the doc, clippy and test checks, builds the packages with `tools/dist.sh` on a clean
+   runner, and publishes a GitHub release named for the tag with every zip and `SHA256SUMS`
+   attached as separate assets. The notes are the CHANGELOG entry for that version
+   (`tools/release-notes.py`, which you can run locally to preview them). Any gate failing means
+   nothing is published; fix and re-tag.
 
 ## A note on desert-core
 

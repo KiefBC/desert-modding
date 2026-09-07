@@ -7,8 +7,9 @@
 //!
 //! The four multiplier keys are the four independent gather families of
 //! `desert_core::collect::Family`, and they carry the vocabulary the DMM pack
-//! used (`dmm-pack/README.md`): Foraging, Logging, Mining and Ore Nodes are
-//! separate internal families, and setting one does not touch the others.
+//! used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and Ore
+//! Nodes are separate internal families, and setting one does not touch the
+//! others.
 
 use desert_core::collect::Family;
 use desert_core::ini::{self, Line};

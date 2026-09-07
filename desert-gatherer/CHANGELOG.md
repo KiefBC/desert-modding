@@ -50,9 +50,10 @@ game build, and has not yet seen a game update.
 
 ### Changed
 
-- Replaces the DMM module pack "The Desert Gatherer" 1.1 (kept in `dmm-pack/` for people who use DMM
-  without an ASI loader). The two edit the same scalars and must not be mounted together: they
-  multiply on top of each other. The same goes for DMM's built-in gathering multiplier preset.
+- Replaces the DMM module pack "The Desert Gatherer" 1.1 (kept in `desert-gatherer-dmm/` for people
+  who use DMM without an ASI loader). The two edit the same scalars and must not be mounted
+  together: they multiply on top of each other. The same goes for DMM's built-in gathering
+  multiplier preset.
 
 ### Known limitations
 

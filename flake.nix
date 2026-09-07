@@ -41,7 +41,7 @@
             pkgs.binutils
             pkgs.file
 
-            # dmm-pack/rebase.py rewrites the DMM offset patches; jq is for
+            # desert-gatherer-dmm/rebase.py rewrites the DMM offset patches; jq is for
             # eyeballing those JSONs without loading a 230 KB file into an editor.
             pkgs.jq
 

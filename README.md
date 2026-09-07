@@ -13,9 +13,9 @@ game's `bin64`).
 
 Also here: [`desert-core/`](desert-core), the shared library both plugins link
 (logging, safe memory reads, hooks, PE/pattern scanning), and
-[`dmm-pack/`](dmm-pack), the older offset-patch version of Gatherer for people
-on Definitive Mod Manager without an ASI loader. Never mount it alongside the
-plugin.
+[`desert-gatherer-dmm/`](desert-gatherer-dmm), the older offset-patch version
+of Gatherer for people on Definitive Mod Manager without an ASI loader. Never
+mount it alongside the plugin.
 
 ## Install
 

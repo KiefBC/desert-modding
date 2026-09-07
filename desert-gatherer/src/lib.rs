@@ -6,9 +6,9 @@
 //! the instant between the loader being entered and the deserializer reading
 //! the record. Four independent families - Foraging, Logging, Mining and Ore
 //! Nodes - each get their own multiplier from `DesertGatherer.ini`. This
-//! replaces the DMM JSON pack in `dmm-pack/`, which patched the same scalars
-//! on disk; **the pack and DMM's built-in gathering multiplier must be
-//! unmounted, or yields multiply twice.**
+//! replaces the DMM JSON pack in `desert-gatherer-dmm/`, which patched the
+//! same scalars on disk; **the pack and DMM's built-in gathering multiplier
+//! must be unmounted, or yields multiply twice.**
 //!
 //! Nothing is hard-coded to an address: the loader is found by content
 //! (`desert_core::gimmick::resolve_record_loader`) and the output blocks by

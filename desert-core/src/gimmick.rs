@@ -3,8 +3,9 @@
 //!
 //! `DesertGatherer.asi` hooks the loader and rewrites the raw table bytes in
 //! memory just before the game parses each record, which is what makes it a
-//! drop-in replacement for the `dmm-pack/` offset patches: same edits, but
-//! computed from the bytes instead of from a build-specific offset list.
+//! drop-in replacement for the `desert-gatherer-dmm/` offset patches: same
+//! edits, but computed from the bytes instead of from a build-specific offset
+//! list.
 //!
 //! Everything here is a pure function over a byte slice, so it compiles and is
 //! unit tested natively on Linux (see the cfg-gating note in README.md). It must
@@ -35,8 +36,8 @@
 //! That signature (count 1..=64, every block valid, `1 <= min <= max <=`
 //! [`MAX_QTY`]) was cross-checked offline against the whole 22 MB table: inside
 //! the 275 gather records the DMM pack edits it finds exactly the 587 blocks the
-//! pack touches, and nothing else — no false positives. `dmm-pack/rebase.py` is
-//! the original locator this ports.
+//! pack touches, and nothing else — no false positives.
+//! `desert-gatherer-dmm/rebase.py` is the original locator this ports.
 //!
 //! # The loader
 //!
