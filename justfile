@@ -86,3 +86,14 @@ yields:
 clean:
     {{nix}} cargo clean
     rm -rf dist
+
+# --- DMM pack (dmm-pack/) -------------------------------------------------
+# Not part of build/test/ci: needs a build-specific clean table + build id
+# that only exist after a game update, so there is no safe default to run
+# automatically. Run `just test-game` first to confirm the record loader and
+# output-block signature still match this build before rebasing.
+
+# Rebase dmm-pack/*.json onto a new game build. table = path to DMM's
+# extracted gimmickinfo_pabgb_clean.bin, build = the new Steam build id.
+dmm-rebase table build:
+    {{nix}} python3 dmm-pack/rebase.py {{table}} {{build}}
