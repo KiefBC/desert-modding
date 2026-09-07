@@ -3,3 +3,24 @@
 # CARGO_TARGET_X86_64_PC_WINDOWS_GNU_LINKER / _RUSTFLAGS - see flake.nix.
 [build]
 target = "x86_64-pc-windows-gnu"
+
+# Keep the C++ side of imgui out of the C++ runtime. desert-overlay pulls in
+# imgui-sys, which compiles the Dear ImGui C++ sources through the `cc` crate;
+# by default cc links the target's C++ standard library, and for the mingw
+# target that is libstdc++-6.dll - a DLL the game's bin64 does not have, so the
+# .asi would fail to load with a missing-dependency error.
+#
+#   CXXSTDLIB=""                     cc links no C++ runtime at all.
+#   CXXFLAGS_...=-fno-threadsafe-statics
+#                                    the only libstdc++ symbols imgui actually
+#                                    referenced were the __cxa_guard_* helpers
+#                                    g++ emits around function-local statics;
+#                                    this flag removes them (imgui initialises
+#                                    those statics single-threaded anyway).
+#
+# Verified with `just check-imports`: the resulting DLL imports system DLLs only.
+# These are set for the whole workspace because cargo has no per-crate [env];
+# they are inert for every crate that does not build C++.
+[env]
+CXXSTDLIB = ""
+CXXFLAGS_x86_64_pc_windows_gnu = "-fno-threadsafe-statics"

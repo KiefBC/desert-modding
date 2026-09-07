@@ -39,6 +39,9 @@ The release archive holds four files at its root - `DesertLooter.asi`,
 `DesertLooter.ini`, `README.md` and `CHANGELOG.md` - so it suits either way of
 installing it.
 
+A companion plugin in this repository, Desert Overlay (a DX12 in-game menu),
+can edit `DesertLooter.ini` live while the game runs.
+
 ### By hand
 
 Requirements: the game, and Ultimate ASI Loader present in `bin64` as
@@ -86,7 +89,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertLooter.asi` | the plugin | yes, that uninstalls it |
-| `DesertLooter.ini` | your settings, read once at game start | yes, defaults are used |
+| `DesertLooter.ini` | your settings, read at game start and re-read while it runs | yes, defaults are used |
 | `DesertLooter.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertLooter.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag (the node's own record is what says which items it gives) | yes, it relearns itself |
 
@@ -98,7 +101,7 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | 1 | 0 = load but do nothing |
+| `Enabled` | 1 | 0 = idle: no gathering, no hotkeys, nothing logged. Live: set it to 1 while the game runs and the plugin comes back |
 | `GatherRange` | 6 | how far a node may be, in metres (max 50) |
 | `AutoGather` | 0 | 1 = auto mode on from the start (F10 flips it) |
 | `GatherInterval` | 500 | milliseconds between automatic pickups |
@@ -106,6 +109,10 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
 | `GatherUnarmed` | 1 | also take nodes the game has not "armed" yet (this is what mines whole veins) |
 | `GatherItems` | 1 | pick up plain ground items such as ore chunks |
 | `GatherGear` | 0 | also pick up dropped weapons and armour |
+| `GatherForaging` | 1 | 0 = pass over plants, fruit, berries, mushrooms, crops |
+| `GatherLogging` | 1 | 0 = pass over firewood cut from felled trees |
+| `GatherMining` | 1 | 0 = pass over the `collect_mine` family: rocks, veins, stalactites |
+| `GatherOre` | 1 | 0 = pass over the `collect_ore` family: ore deposits and sulfur stone (separate from Mining; set both to gather all of them) |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |

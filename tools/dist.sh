@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 #
-# Build the release packages: both plugins and the DMM module pack.
+# Build the release packages: every plugin and the DMM module pack.
 #
 #   nix develop --command tools/dist.sh                  all three
 #   nix develop --command tools/dist.sh desert-looter    just that one
 #
 # Writes dist/DesertLooter-<version>.zip, dist/DesertGatherer-<version>.zip,
-# dist/DesertGatherer-DMM-<version>.zip and dist/SHA256SUMS. dist/ is
-# gitignored; the zips are what gets attached to a GitHub release.
+# dist/DesertOverlay-<version>.zip, dist/DesertGatherer-DMM-<version>.zip and
+# dist/SHA256SUMS. dist/ is gitignored; the zips are what gets attached to a
+# GitHub release.
 #
 # The release workflow passes the single package its tag names, so a release
-# carries only the zip it is actually about. That is not tidiness: the three
+# carries only the zip it is actually about. That is not tidiness: the
 # packages are versioned separately, so rebuilding all of them for every tag
 # would eventually publish an untagged package's OLD version number over NEW
 # bytes (any change to desert-core between two releases does it), and two
@@ -56,7 +57,7 @@ done
 
 # Package names are the release-tag prefixes (VERSIONING.md step 6), so the
 # workflow can pass through what tools/release-notes.py --package printed.
-all_packages=(desert-looter desert-gatherer desert-gatherer-dmm)
+all_packages=(desert-looter desert-gatherer desert-overlay desert-gatherer-dmm)
 selected=("$@")
 [ "${#selected[@]}" -gt 0 ] || selected=("${all_packages[@]}")
 
@@ -141,6 +142,7 @@ for name in "${selected[@]}"; do
   case "$name" in
     desert-looter)       package desert-looter   DesertLooter   desert_looter.dll ;;
     desert-gatherer)     package desert-gatherer DesertGatherer desert_gatherer.dll ;;
+    desert-overlay)      package desert-overlay  DesertOverlay  desert_overlay.dll ;;
     desert-gatherer-dmm) package_dmm ;;
   esac
 done

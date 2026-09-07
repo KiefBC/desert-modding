@@ -75,6 +75,12 @@ mod entry {
     /// load, so this settles into silence.
     const SUMMARY_SECS: u64 = 60;
 
+    /// How often the main thread stats `DesertGatherer.ini` for a modified
+    /// time change. The overlay plugin's edit is expected to be picked up
+    /// within about a second, and this is the whole budget for that: the
+    /// stat is cheap and the hook never blocks on it either way.
+    const RELOAD_POLL_SECS: u64 = 1;
+
     fn host_exe_name() -> String {
         std::env::current_exe()
             .ok()
@@ -82,9 +88,8 @@ mod entry {
             .unwrap_or_default()
     }
 
-    fn load_config() -> Config {
-        let path = log::exe_dir().join(crate::INI_NAME);
-        match std::fs::read_to_string(&path) {
+    fn load_config(path: &std::path::Path) -> Config {
+        match std::fs::read_to_string(path) {
             Ok(text) => {
                 let (cfg, warnings) = config::parse(&text);
                 for w in warnings {
@@ -97,6 +102,28 @@ mod entry {
                 Config::default()
             }
         }
+    }
+
+    /// `[ini] Enabled=1 DryRun=0 ...`, shared between the startup summary and
+    /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
+    fn ini_summary(cfg: &Config) -> String {
+        format!(
+            "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={}",
+            cfg.enabled as u8,
+            cfg.dry_run as u8,
+            cfg.debug as u8,
+            cfg.foraging,
+            cfg.logging,
+            cfg.mining,
+            cfg.ore
+        )
+    }
+
+    /// The ini's last-modified time, or `None` if it cannot be stat'd (missing,
+    /// permissions, mid-write on some filesystems). Used only to notice a
+    /// change cheaply; the reload loop still re-reads and re-parses on top.
+    fn ini_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
     }
 
     /// Find the loader, check its prologue really is the 12 bytes we are
@@ -168,20 +195,17 @@ mod entry {
             pid,
             crate::known_records()
         );
-        let cfg = load_config();
-        crate::log!(
-            "[ini] Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={}",
-            cfg.enabled as u8,
-            cfg.dry_run as u8,
-            cfg.debug as u8,
-            cfg.foraging,
-            cfg.logging,
-            cfg.mining,
-            cfg.ore
-        );
+        let ini_path = log::exe_dir().join(crate::INI_NAME);
+        let cfg = load_config(&ini_path);
+        crate::log!("[ini] {}", ini_summary(&cfg));
         if !cfg.enabled {
-            crate::log!("Enabled=0, staying idle");
-            return 0;
+            // The hook is installed anyway and `LiveConfig::enabled` gates
+            // it per call. Installing it later, when the ini flips `Enabled`
+            // on, is not an option: patching the loader prologue is only
+            // safe now, while the game is still loading and no thread can be
+            // executing those 12 bytes. Runtime toggling therefore needs the
+            // hook present from the start.
+            crate::log!("Enabled=0: hook will be installed but stays a pass-through until the ini says otherwise");
         }
         if cfg.all_vanilla() {
             crate::log!("[ini] every family is at 1x: the hook will read records and write nothing");
@@ -189,8 +213,8 @@ mod entry {
         if cfg.dry_run {
             crate::log!("[ini] DryRun=1: the log shows what would change, nothing is written");
         }
-        // The hook reads this; set before the hook can possibly fire.
-        hook::set_config(cfg);
+        // The hook reads this; publish before the hook can possibly fire.
+        config::LIVE.publish(&cfg);
 
         let Some(module) = MainModule::locate() else {
             crate::log!("could not locate the main module; giving up");
@@ -206,19 +230,50 @@ mod entry {
             return 0;
         }
 
-        // Summaries only. All the per-record work happens on the game threads.
-        let mut last = (0u64, 0u64, 0u64);
+        // From here the thread does two things on a ~1s tick, forever: watch
+        // the ini for a modified time change (the overlay plugin's write) and
+        // re-publish it live, and print a counters summary every
+        // `SUMMARY_SECS`. All the per-record work still happens on the game
+        // threads; this thread never touches game memory.
+        let mut last_ini_mtime = ini_mtime(&ini_path);
+        let mut last_summary_at = std::time::Instant::now();
+        let mut last_counts = (0u64, 0u64, 0u64);
         loop {
-            std::thread::sleep(std::time::Duration::from_secs(SUMMARY_SECS));
-            let now = hook::counters();
-            if now != last {
-                crate::log!(
-                    "[stat] records seen {}, gather records patched {}, scalars written {}",
-                    now.0,
-                    now.1,
-                    now.2
-                );
-                last = now;
+            std::thread::sleep(std::time::Duration::from_secs(RELOAD_POLL_SECS));
+
+            let mtime = ini_mtime(&ini_path);
+            if mtime.is_some() && mtime != last_ini_mtime {
+                match std::fs::read_to_string(&ini_path) {
+                    Ok(text) => {
+                        // Only advance the watermark on a successful read: if
+                        // the file is mid-write (or briefly missing) this same
+                        // change is retried next tick instead of being missed.
+                        last_ini_mtime = mtime;
+                        let (cfg, warnings) = config::parse(&text);
+                        for w in &warnings {
+                            crate::log!("[ini] {w}");
+                        }
+                        crate::log!("[ini] reloaded: {}", ini_summary(&cfg));
+                        config::LIVE.publish(&cfg);
+                    }
+                    Err(_) => {
+                        // Keep the live values; try again next tick.
+                    }
+                }
+            }
+
+            if last_summary_at.elapsed() >= std::time::Duration::from_secs(SUMMARY_SECS) {
+                last_summary_at = std::time::Instant::now();
+                let now = hook::counters();
+                if now != last_counts {
+                    crate::log!(
+                        "[stat] records seen {}, gather records patched {}, scalars written {}",
+                        now.0,
+                        now.1,
+                        now.2
+                    );
+                    last_counts = now;
+                }
             }
         }
     }

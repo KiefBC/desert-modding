@@ -6,6 +6,20 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
+### Added
+
+- `DesertGatherer.ini` is now re-read while the game runs, the same mechanism as Desert Looter: the
+  plugin thread checks the file's modified time once a second and reloads on change, logging
+  `[ini] reloaded: ...`. A changed multiplier applies to records the game loads from then on; the
+  game reloads its own gather table a few seconds after use, so the change is seen on the next
+  gather.
+
+### Changed
+
+- `Enabled=0` no longer keeps the plugin out entirely. The record-loader hook is always installed at
+  load, and `Enabled=0` now makes it a pass-through that reads and writes nothing. Setting
+  `Enabled=1` later in the ini turns the plugin on without a restart.
+
 ## [0.1.1] - 2026-09-07
 
 Game build 25116796.

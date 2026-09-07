@@ -259,21 +259,61 @@ mod entry {
             .unwrap_or_default()
     }
 
-    fn load_config() -> Config {
-        let path = log::exe_dir().join(crate::INI_NAME);
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let (cfg, warnings) = config::parse(&text);
+    /// How often the plugin thread stats `DesertLooter.ini` for a modified
+    /// time change. The overlay plugin's edit is expected to be picked up
+    /// within about a second, and this is the whole budget for that: the stat
+    /// is cheap and no hook and no game thread ever waits on it.
+    const RELOAD_POLL_SECS: u64 = 1;
+
+    /// The ini's last-modified time, or `None` if it cannot be stat'd
+    /// (missing, permissions, mid-write on some filesystems).
+    fn ini_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    }
+
+    /// Read and parse the ini, with the modification time the parsed text
+    /// belongs to. `None` means "do not act on this": missing, unreadable,
+    /// empty, or written while it was being read - the modified time is taken
+    /// before and after the read and has to agree, so an overlay rewriting the
+    /// file in place is not caught half way. The caller keeps the config it
+    /// already has and tries the same file again on the next poll.
+    fn read_config(path: &std::path::Path) -> Option<(std::time::SystemTime, Config, Vec<String>)> {
+        let before = ini_mtime(path)?;
+        let text = std::fs::read_to_string(path).ok()?;
+        if text.trim().is_empty() || ini_mtime(path)? != before {
+            return None;
+        }
+        let (cfg, warnings) = config::parse(&text);
+        Some((before, cfg, warnings))
+    }
+
+    /// Startup read: every failure is defaults, with the reason logged.
+    fn load_config(path: &std::path::Path) -> (Option<std::time::SystemTime>, Config) {
+        match read_config(path) {
+            Some((mtime, cfg, warnings)) => {
                 for w in warnings {
                     crate::log!("[ini] {w}");
                 }
-                cfg
+                (Some(mtime), cfg)
             }
-            Err(_) => {
-                crate::log!("[ini] {} not found, using defaults", path.display());
-                Config::default()
+            None => {
+                crate::log!("[ini] {} missing, empty or unreadable, using defaults", path.display());
+                (None, Config::default())
             }
         }
+    }
+
+    /// `[ini] Enabled=1 Debug=0 ...`, shared between the startup summary and
+    /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
+    fn ini_summary(cfg: &Config) -> String {
+        format!(
+            "Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
+            cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8,
+            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
+            cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
+        )
     }
 
     /// Runs on its own thread for the life of the process.
@@ -283,17 +323,18 @@ mod entry {
         // process's own PEB; it is sound to call from any thread.
         let pid = unsafe { GetCurrentProcessId() };
         crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, pid);
-        let cfg = load_config();
-        crate::log!(
-            "[ini] Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
-            cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
-            cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
-        );
-        events::set_log_received(cfg.log_received);
+        let ini_path = log::exe_dir().join(crate::INI_NAME);
+        let (mut ini_seen, mut cfg) = load_config(&ini_path);
+        crate::log!("[ini] {}", ini_summary(&cfg));
+        events::set_log_received(cfg.enabled && cfg.log_received);
         if !cfg.enabled {
-            crate::log!("Enabled=0, staying idle");
-            return 0;
+            // This no longer returns: the two prologues can only be patched
+            // here, while the game is still loading and no thread is executing
+            // them, so the hooks go in regardless and `Enabled` gates every
+            // action in the loop below instead. That is what lets the ini turn
+            // the plugin back on without a restart. Nothing is sent, nothing
+            // is scanned and nothing is logged until it says 1.
+            crate::log!("Enabled=0: the hooks are installed but the plugin stays idle until the ini says otherwise");
         }
 
         let Some(module) = MainModule::locate() else {
@@ -314,7 +355,11 @@ mod entry {
         if let Some(m2) = MainModule::locate() {
             events::set_module(m2);
         }
-        beep();
+        if cfg.enabled {
+            // The "hooks are in" acknowledgement. Not sounded when the ini
+            // says the plugin is off; nothing will happen until it says 1.
+            beep();
+        }
 
         let mut gatherer = Gatherer::new(&cfg);
         load_yields();
@@ -329,7 +374,58 @@ mod entry {
         let mut k_record = Hotkey::new(cfg.key_record);
         let mut descriptor_ok = false;
         let mut hook_reported = false;
+        let ini_poll = std::time::Duration::from_secs(RELOAD_POLL_SECS);
+        let mut next_ini_poll = std::time::Instant::now() + ini_poll;
         loop {
+            // The ini is watched here and nowhere else: this is the plugin
+            // thread, never a hook and never the game thread. A stat a second,
+            // and a read only when the file has moved.
+            if std::time::Instant::now() >= next_ini_poll {
+                next_ini_poll = std::time::Instant::now() + ini_poll;
+                if ini_mtime(&ini_path).is_some_and(|t| Some(t) != ini_seen) {
+                    // A failed read leaves `ini_seen` alone, so the next poll
+                    // tries the same file again.
+                    if let Some((mtime, new_cfg, warnings)) = read_config(&ini_path) {
+                        ini_seen = Some(mtime);
+                        let old = std::mem::replace(&mut cfg, new_cfg);
+                        for w in warnings {
+                            crate::log!("[ini] {w}");
+                        }
+                        crate::log!("[ini] reloaded: {}", ini_summary(&cfg));
+                        events::set_log_received(cfg.enabled && cfg.log_received);
+                        gatherer.apply(&cfg);
+                        // Rebuilt only when the binding actually moved: a new
+                        // poller starts with "not held", which would fire once
+                        // for a key that happens to be down right now.
+                        if old.key_toggle != cfg.key_toggle {
+                            k_toggle = Hotkey::new(cfg.key_toggle);
+                        }
+                        if old.key_scan != cfg.key_scan {
+                            k_scan = Hotkey::new(cfg.key_scan);
+                        }
+                        if old.key_gather != cfg.key_gather {
+                            k_gather = Hotkey::new(cfg.key_gather);
+                        }
+                        if old.key_record != cfg.key_record {
+                            k_record = Hotkey::new(cfg.key_record);
+                        }
+                        if old.enabled != cfg.enabled {
+                            crate::log!(
+                                "[ini] Enabled={}: automatic gathering and the hotkeys are {} (the hooks stay where they are)",
+                                cfg.enabled as u8, if cfg.enabled { "back on" } else { "off" }
+                            );
+                        }
+                    }
+                }
+            }
+            // Polled even while disabled, so a press made with Enabled=0 is
+            // consumed rather than fired the moment it goes back to 1.
+            let (press_toggle, press_record, press_gather, press_scan) =
+                (k_toggle.pressed(), k_record.pressed(), k_gather.pressed(), k_scan.pressed());
+            if !cfg.enabled {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                continue;
+            }
             if world.is_none() && std::time::Instant::now() >= next_world_try {
                 world = game::find_world(&module, &anchors);
                 if world.is_none() {
@@ -351,12 +447,12 @@ mod entry {
                 hook_reported = true;
                 crate::log!("[hook] game thread id {} (main thread here is {})", events::game_thread_id(), tid_now());
             }
-            if k_toggle.pressed() {
+            if press_toggle {
                 let on = gatherer.toggle();
                 crate::log!("[key] auto-gather {}", if on { "ON" } else { "OFF" });
                 beep();
             }
-            if k_record.pressed() {
+            if press_record {
                 beep();
                 if !recorder {
                     crate::log!("[record] enqueue hook not installed");
@@ -364,7 +460,7 @@ mod entry {
                     crate::log!("[record] ON: logging every event the game queues (cap {})", events::RECORD_CAP);
                 }
             }
-            if k_gather.pressed() {
+            if press_gather {
                 beep();
                 if !hooked {
                     crate::log!("[gather] no sweep hook; cannot send on the game thread");
@@ -383,7 +479,7 @@ mod entry {
             if events::take_yield_dirty() {
                 save_yields();
             }
-            if k_scan.pressed() {
+            if press_scan {
                 beep();
                 match &world {
                     Some(w) => {

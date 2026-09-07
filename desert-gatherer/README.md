@@ -65,6 +65,9 @@ The release archive holds four files at its root - `DesertGatherer.asi`,
 `DesertGatherer.ini`, `README.md` and `CHANGELOG.md` - so it suits either way of
 installing it.
 
+A companion plugin in this repository, Desert Overlay (a DX12 in-game menu),
+can edit `DesertGatherer.ini` live while the game runs.
+
 ### By hand
 
 Requirements: the game, and Ultimate ASI Loader present in `bin64` as
@@ -123,7 +126,7 @@ pack; this plugin is its replacement, not its companion.
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | 1 | 0 = load but hook nothing |
+| `Enabled` | 1 | 0 = the hook is installed but a pass-through: it reads and writes nothing. Live: set it to 1 later in the ini and the plugin turns on without a restart |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
 | `Foraging` | 1 | multiplier for plants and crops, 1..100 |
@@ -135,12 +138,17 @@ pack; this plugin is its replacement, not its companion.
 outside 1..100, or one that is not a number, is refused with a warning in the
 log and the default is kept.
 
+`DesertGatherer.ini` is re-read while the game runs, about once a second. A
+changed multiplier applies to records the game loads from then on; the game
+reloads its own gather table a few seconds after use, so you see the new
+value on your next gather, no restart or save reload needed.
+
 ## Files in the game folder
 
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertGatherer.asi` | the plugin | yes, that uninstalls it |
-| `DesertGatherer.ini` | your settings, read once at game start | yes, vanilla defaults are used |
+| `DesertGatherer.ini` | your settings, read at game start and re-read while it runs | yes, vanilla defaults are used |
 | `DesertGatherer.log` | append-only log of what the plugin did; grows every session | yes, any time |
 
 A healthy log starts with the version line, one `[ini]` line echoing every

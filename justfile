@@ -23,11 +23,30 @@ appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
 
+# Every DLL a shipped .asi is allowed to import. All of these ship WITH Windows,
+# so an .asi that imports only these loads in bin64 with nothing installed
+# beside it. The list exists because desert-overlay links imgui, which is C++:
+# by default the mingw `cc` crate links libstdc++-6.dll, which bin64 does not
+# have, and the plugin would fail to load with an unhelpful error. See the
+# [env] block in .cargo/config.toml for how that is avoided; `just check-imports`
+# is what proves it stayed avoided.
+#
+#   kernel32 msvcrt ntdll bcryptprimitives userenv ws2_32
+#                                  Rust's own std, on every plugin here
+#   api-ms-win-core-synch-l1-2-0   std's futex/condvar shims
+#   user32                         GetAsyncKeyState, the window procedure
+#   advapi32                       std's fallback entropy source on old builds
+#   d3d12 dxgi d3dcompiler_47      hudhook's DX12 renderer (overlay only)
+#   oleaut32 combase rpcrt4 api-ms-win-core-winrt-error-l1-1-0
+#                                  COM, reached through the `windows` crate
+#                                  that hudhook uses (overlay only)
+allowed_imports := "advapi32 api-ms-win-core-synch-l1-2-0 api-ms-win-core-winrt-error-l1-1-0 bcryptprimitives combase d3d12 d3dcompiler_47 dxgi kernel32 msvcrt ntdll oleaut32 rpcrt4 user32 userenv ws2_32"
+
 # List the recipes.
 default:
     @just --list --unsorted
 
-# Release build of both plugins (Windows x64). `just build desert-looter` for one.
+# Release build of every plugin (Windows x64). `just build desert-looter` for one.
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
 
@@ -56,8 +75,12 @@ clippy:
 audit:
     {{nix}} cargo audit
 
-# Everything a commit should pass: clippy, tests, audit, doc versions.
-ci: clippy test audit check-versions
+# Everything a commit should pass: clippy, tests, audit, doc versions, imports.
+ci: clippy test audit check-versions check-imports
+
+# Fail if a built plugin imports a DLL that is not part of Windows. Part of `just ci`.
+check-imports: build
+    {{nix}} tools/check-imports.sh {{allowed_imports}}
 
 # Rewrite the version tables in README.md / VERSIONING.md from the Cargo.toml versions.
 sync-versions:
@@ -71,7 +94,7 @@ check-versions:
 sigscan:
     {{nix}} python3 tools/sigscan.py
 
-# Build the release zips into dist/ (both plugins, the DMM pack, SHA256SUMS).
+# Build the release zips into dist/ (every plugin, the DMM pack, SHA256SUMS).
 # `just dist desert-looter` builds only that package, as a release tag does.
 dist *packages:
     {{nix}} tools/dist.sh {{packages}}
@@ -83,6 +106,7 @@ install: build
     @test -d "{{bin64}}" || { echo "install: {{bin64}} not found (set CD_BIN64)" >&2; exit 1; }
     cp "{{built}}/desert_looter.dll"   "{{bin64}}/DesertLooter.asi"
     cp "{{built}}/desert_gatherer.dll" "{{bin64}}/DesertGatherer.asi"
+    cp "{{built}}/desert_overlay.dll"  "{{bin64}}/DesertOverlay.asi"
     @echo "installed into {{bin64}}"
 
 # Follow the looter's log from the game folder.
@@ -92,6 +116,10 @@ log:
 # Follow the gatherer's log from the game folder.
 glog:
     tail -n 40 -F "{{bin64}}/DesertGatherer.log"
+
+# Follow the overlay's log from the game folder.
+olog:
+    tail -n 40 -F "{{bin64}}/DesertOverlay.log"
 
 # Show the learned yields cache.
 yields:

@@ -10,8 +10,9 @@ game's `bin64`).
 | --- | --- | --- |
 | [desert-looter](desert-looter) | 0.1.1 | Auto-loot for gathering nodes |
 | [desert-gatherer](desert-gatherer) | 0.1.1 | Gathering yield multiplier |
+| [desert-overlay](desert-overlay) | 0.1.0 | In-game settings menu for the other two |
 
-Also here: [`desert-core/`](desert-core), the shared library both plugins link
+Also here: [`desert-core/`](desert-core), the shared library the plugins link
 (logging, safe memory reads, hooks, PE/pattern scanning), and
 [`desert-gatherer-dmm/`](desert-gatherer-dmm), the older offset-patch version
 of Gatherer for people on Definitive Mod Manager without an ASI loader. Never

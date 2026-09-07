@@ -2,6 +2,7 @@
 //! read-only survey. Nothing here touches game state.
 
 use crate::actors::{self, Vec3};
+use crate::config::Config;
 use crate::module::MainModule;
 use crate::pattern::{Found, Pattern};
 use crate::rtti;
@@ -737,18 +738,19 @@ pub fn scene(m: &MainModule, w: &World) -> Result<Scene, String> {
     Ok(Scene { player, player_eid, route, ppos, entries: map.entries(), tabs })
 }
 
-/// Nearest node within `range` metres that classifies as `Gather` (interaction
-/// object present and the gimmick record is a Foraging/Logging/Mining/Ore
-/// record), skipping eids for which `skip` is true. Read-only.
+/// Nearest node within `GatherRange` metres that classifies as `Gather`
+/// (interaction object present and the gimmick record is a
+/// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
+/// true. `cfg` is the live config, so what counts as a candidate follows the
+/// ini without this having to be told twice. Read-only.
 pub fn nearest_gather(
     m: &MainModule,
     sc: &Scene,
-    range: f32,
-    unarmed: bool,
-    items: bool,
-    gear: bool,
+    cfg: &Config,
     skip: &dyn Fn(u32) -> bool,
 ) -> Result<GatherTarget, String> {
+    let range = cfg.gather_range;
+    let unarmed = cfg.gather_unarmed;
     // (dist, eid, actor, pos, kind) for every gather-record node in range.
     let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
     for &(eid, a) in &sc.entries {
@@ -777,6 +779,8 @@ pub fn nearest_gather(
     }
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
+    // Nodes passed over only because their family is switched off.
+    let mut family_off_seen = 0usize;
     for &(d, eid, a, pos, kind) in &nodes {
         if kind == actors::Kind::Unarmed {
             unarmed_seen += 1;
@@ -794,15 +798,20 @@ pub fn nearest_gather(
         let Some(id) = actors::node_identity(m, a) else { continue };
         let name = id.name.clone().unwrap_or_else(|| format!("rec{}", id.index));
         let (family, mode) = if kind == actors::Kind::Item {
-            if !items || !actors::is_basic_item_record(&name) {
+            if !cfg.gather_items || !actors::is_basic_item_record(&name) {
                 continue;
             }
-            if !gear && actors::is_gear_item_record(&name) {
+            if !cfg.gather_gear && actors::is_gear_item_record(&name) {
                 continue;
             }
             ("Item".to_string(), crate::payload::PickupMode::Item)
         } else {
             let Some(f) = id.family else { continue };
+            // Filtered on the typed family, before it becomes a string.
+            if !cfg.allows_family(f) {
+                family_off_seen += 1;
+                continue;
+            }
             (format!("{f:?}"), crate::payload::PickupMode::Gather)
         };
         return Ok(GatherTarget {
@@ -821,6 +830,9 @@ pub fn nearest_gather(
     }
     if unarmed_seen > 0 && !unarmed {
         return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
+    }
+    if family_off_seen > 0 {
+        return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family> switches)"));
     }
     Err(format!("no Gather node within {range:.1} m"))
 }

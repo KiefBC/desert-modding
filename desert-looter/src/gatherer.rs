@@ -18,12 +18,10 @@ struct Done {
 
 pub struct Gatherer {
     pub auto: bool,
-    range: f32,
-    unarmed: bool,
-    items: bool,
-    gear: bool,
-    bag_tab: Option<i16>,
-    stack_limit: u32,
+    /// The live ini, replaced wholesale by [`Gatherer::apply`] when the file
+    /// changes. Every policy value is read from here rather than copied out,
+    /// so a reload cannot leave one of them stale.
+    cfg: Config,
     /// item key -> item record index, filled lazily (a table scan each).
     item_index_cache: Vec<(u32, u16)>,
     /// Logged once per fill so a full bag does not spam the log.
@@ -34,8 +32,6 @@ pub struct Gatherer {
     /// Record indices whose declared outputs have been logged once, so the
     /// `[yield]` line appears the first time a node type is looked at.
     yield_logged: Vec<u16>,
-    interval: Duration,
-    cooldown: Duration,
     done: Vec<Done>,
     last_send: Option<Instant>,
     last_review: Option<Instant>,
@@ -61,18 +57,11 @@ impl Gatherer {
     pub fn new(cfg: &Config) -> Self {
         Gatherer {
             auto: cfg.auto_gather,
-            range: cfg.gather_range,
-            unarmed: cfg.gather_unarmed,
-            items: cfg.gather_items,
-            gear: cfg.gather_gear,
-            bag_tab: cfg.bag_tab,
-            stack_limit: cfg.stack_limit,
+            cfg: cfg.clone(),
             item_index_cache: Vec::new(),
             bag_full_reported: false,
             bag_full_reason: String::new(),
             yield_logged: Vec::new(),
-            interval: Duration::from_millis(cfg.gather_interval_ms as u64),
-            cooldown: Duration::from_millis(cfg.node_cooldown_ms as u64),
             done: Vec::new(),
             last_send: None,
             last_review: None,
@@ -81,6 +70,32 @@ impl Gatherer {
             gathered: 0,
             consecutive_failures: 0,
         }
+    }
+
+    /// Take a freshly read ini. Called from the plugin thread only, after the
+    /// file changed on disk. The per-node cooldown list is kept, so nodes
+    /// already sent for are still reviewed, under the new timings.
+    ///
+    /// `AutoGather` is followed only when its value actually moved: it is also
+    /// the hotkey's state, and a reload that changed some other key must not
+    /// undo a KeyToggle press (or the auto-off that three refused pickups in a
+    /// row causes).
+    pub fn apply(&mut self, cfg: &Config) {
+        if cfg.auto_gather != self.cfg.auto_gather {
+            self.auto = cfg.auto_gather;
+        }
+        self.cfg = cfg.clone();
+        // The next full bag re-reports under whatever the new rules say.
+        self.bag_full_reported = false;
+        self.bag_full_reason.clear();
+    }
+
+    fn interval(&self) -> Duration {
+        Duration::from_millis(self.cfg.gather_interval_ms as u64)
+    }
+
+    fn cooldown(&self) -> Duration {
+        Duration::from_millis(self.cfg.node_cooldown_ms as u64)
     }
 
     pub fn toggle(&mut self) -> bool {
@@ -161,7 +176,7 @@ impl Gatherer {
             }
             return true;
         };
-        let Some(bag) = actors::bag_tab(tabs, self.bag_tab) else {
+        let Some(bag) = actors::bag_tab(tabs, self.cfg.bag_tab) else {
             if !self.bag_full_reported {
                 crate::log!("[gather] {why}: no bag tab among [{}]; sending without a bag check", game::tabs_summary(tabs));
             }
@@ -193,8 +208,8 @@ impl Gatherer {
                     return Err(format!("item {item} is in the bag as a single, not proven stackable"));
                 }
                 let after = stack.count + count as i64;
-                if after > self.stack_limit as i64 {
-                    return Err(format!("stack of item {item} is {} and +{count} would pass StackLimit {}", stack.count, self.stack_limit));
+                if after > self.cfg.stack_limit as i64 {
+                    return Err(format!("stack of item {item} is {} and +{count} would pass StackLimit {}", stack.count, self.cfg.stack_limit));
                 }
                 notes.push(format!("stacks onto item {item} ({} -> {after})", stack.count));
             }
@@ -265,7 +280,7 @@ impl Gatherer {
                 self.done.swap_remove(i);
             } else if events::is_owned(d.eid) {
                 self.done.swap_remove(i);
-            } else if age > self.cooldown {
+            } else if age > self.cooldown() {
                 self.consecutive_failures += 1;
                 crate::log!(
                     "[gather] {} eid={:08X} still there after {:.1} s; eligible again ({} failed in a row)",
@@ -326,7 +341,7 @@ impl Gatherer {
             return;
         }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid) || events::is_owned(eid);
-        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, self.gear, &skip) {
+        match game::nearest_gather(m, &sc, &self.cfg, &skip) {
             Ok(t) => {
                 if self.bag_has_room(m, &sc, &t, "manual") {
                     self.send(&t, "manual");
@@ -339,7 +354,7 @@ impl Gatherer {
     /// Called every loop iteration; does nothing unless auto mode is on and
     /// the interval has elapsed.
     pub fn tick(&mut self, m: &MainModule, w: &World) {
-        let send_due = self.auto && !self.last_send.is_some_and(|t| t.elapsed() < self.interval);
+        let send_due = self.auto && !self.last_send.is_some_and(|t| t.elapsed() < self.interval());
         let review_due = !self.done.is_empty() && !self.last_review.is_some_and(|t| t.elapsed() < REVIEW_EVERY);
         if !send_due && !review_due {
             return;
@@ -355,7 +370,7 @@ impl Gatherer {
             return;
         }
         let skip = |eid: u32| self.done.iter().any(|d| d.eid == eid) || events::is_owned(eid);
-        match game::nearest_gather(m, &sc, self.range, self.unarmed, self.items, self.gear, &skip) {
+        match game::nearest_gather(m, &sc, &self.cfg, &skip) {
             Ok(t) => {
                 if self.bag_has_room(m, &sc, &t, "auto") {
                     self.send(&t, "auto");
@@ -369,7 +384,7 @@ impl Gatherer {
                 self.last_send = Some(Instant::now());
                 if self.last_idle_log.is_none_or(|t| t.elapsed() > IDLE_LOG_EVERY) && !self.done.is_empty() {
                     self.last_idle_log = Some(Instant::now());
-                    crate::log!("[gather] auto: nothing eligible in {:.1} m ({} on cooldown)", self.range, self.done.len());
+                    crate::log!("[gather] auto: nothing eligible in {:.1} m ({} on cooldown)", self.cfg.gather_range, self.done.len());
                 }
             }
         }

@@ -4,6 +4,28 @@ All notable changes to Desert Looter. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
+## [Unreleased]
+
+### Added
+
+- Per-family gather switches `GatherForaging`, `GatherLogging`, `GatherMining` and `GatherOre`,
+  default `1`, the same kind of gate `GatherItems` and `GatherGear` are for ground items. When a
+  family is switched off, the "nothing found" message now says how many nearby nodes were skipped
+  for that reason.
+
+### Changed
+
+- `DesertLooter.ini` is now re-read while the game runs: the plugin thread checks the file's
+  modified time once a second and reloads on change, logging `[ini] reloaded: ...` in the same
+  format as the startup `[ini]` line. Every key is live, including the hotkey bindings. A file that
+  is missing, empty or caught mid-write is skipped and retried on the next check. `AutoGather` only
+  takes effect on a reload when its value actually changed, so reloading for another key does not
+  undo an F10 toggle.
+- `Enabled=0` no longer keeps the plugin out entirely. The two game hooks are always installed at
+  load, since that can only be done safely while the game is still loading, and `Enabled` now gates
+  everything else: scanning, gathering, hotkey actions, `[recv]` logging and the startup beep.
+  Setting it back to `1` in the ini while the game runs brings the plugin back without a restart.
+
 ## [0.1.1] - 2026-09-07
 
 Game build 25116796.

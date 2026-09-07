@@ -1,12 +1,13 @@
 # Versioning
 
-Both plugins follow [Semantic Versioning](https://semver.org/), and each one carries its own
-version: a single commit can bump one and leave the other exactly where it was.
+The plugins follow [Semantic Versioning](https://semver.org/), and each one carries its own
+version: a single commit can bump one and leave the others exactly where they were.
 
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
 | `desert-looter` | 0.1.1 | `DesertLooter.asi` | `desert-looter-v0.1.1` |
 | `desert-gatherer` | 0.1.1 | `DesertGatherer.asi` | `desert-gatherer-v0.1.1` |
+| `desert-overlay` | 0.1.0 | `DesertOverlay.asi` | `desert-overlay-v0.1.0` |
 | `desert-core` | 0.2.0 | nothing | never |
 
 ## What the version actually describes
@@ -83,6 +84,10 @@ settled, which for Looter means creature catching decided: shipped, or ruled out
 
 They climb independently. That they're level today is coincidence, not a rule.
 
+desert-overlay earned its 0.1 on 2026-09-07 on build 25116796: the menu drew, took input, wrote
+`DesertLooter.ini`, and Desert Looter reloaded the change within a second. It has no hard-coded
+addresses to resolve at all, so its 0.2 and 0.3 come down to nothing but surviving a game update.
+
 ## The version isn't the game build
 
 A plugin's version says nothing about which build it runs on. That's stated separately: near the top
@@ -143,6 +148,6 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 ## A note on desert-core
 
 `desert-core` follows semver for its own Rust API (a removed or changed public function is a MAJOR,
-a new module or function is a MINOR) purely so the two plugins can reason about it. It ships
+a new module or function is a MINOR) purely so the plugins can reason about it. It ships
 nothing, is never tagged, never released on its own, and never shows up in a log line or an ini
-file. Its version is bookkeeping between the two plugins, nothing more.
+file. Its version is bookkeeping between the plugins, nothing more.

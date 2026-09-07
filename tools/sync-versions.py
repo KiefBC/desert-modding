@@ -25,10 +25,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CRATES = ("desert-looter", "desert-gatherer", "desert-core")
+CRATES = ("desert-looter", "desert-gatherer", "desert-overlay", "desert-core")
 DOCS = ("README.md", "VERSIONING.md")
 # Crates that ship a plugin and carry a `**Version x.y.z**` line in their README.
-SHIPPING = ("desert-looter", "desert-gatherer")
+SHIPPING = ("desert-looter", "desert-gatherer", "desert-overlay")
 
 SEMVER = r"\d+\.\d+\.\d+"
 

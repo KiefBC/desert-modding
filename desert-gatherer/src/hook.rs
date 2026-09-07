@@ -44,22 +44,23 @@
 //!
 //! The hook runs on whichever game thread loads records, and several threads
 //! may be inside it at once for different indices. There is no shared mutable
-//! state here beyond atomics and the [`Config`] in a `OnceLock`. Every write
-//! lands in the heap-buffer bytes of the record this call was handed, through
-//! `safe::write`. No game function is ever called.
+//! state here beyond atomics: the counters below and, in `crate::config`, the
+//! [`LiveConfig`](crate::config::LiveConfig) the ini-reload loop on the
+//! plugin's main thread publishes to and this hook only ever reads. Every
+//! write lands in the heap-buffer bytes of the record this call was handed,
+//! through `safe::write`. No game function is ever called.
 //!
 //! Every foreign read goes through `desert_core::safe`, so an unmapped page
 //! is a `None` and a silent return, never a fault. A failure at any step
 //! leaves the record vanilla; that is always the correct fallback.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
-use std::sync::OnceLock;
 
 use desert_core::collect;
 use desert_core::gimmick::{self, Edit};
 use desert_core::safe;
 
-use crate::config::Config;
+use crate::config::LIVE;
 
 // Re-exported so `crate::hook::` names both the installer and the callback,
 // the way `desert-looter` uses `desert_core::hook` directly.
@@ -77,8 +78,6 @@ pub const DEBUG_CAP: u32 = 400;
 /// How many blocks are spelled out in a per-record log line before it is
 /// truncated. The largest gather record has a handful of output blocks.
 const DETAIL_BLOCKS: usize = 8;
-
-static CONFIG: OnceLock<Config> = OnceLock::new();
 
 /// Records the hook was entered for (gather and non-gather alike).
 static RECORDS_SEEN: AtomicU64 = AtomicU64::new(0);
@@ -102,16 +101,6 @@ static DEBUG_LINES: AtomicU32 = AtomicU32::new(0);
 /// thread could contend on, and 275 gather records fit comfortably.
 const WARN_SLOTS: usize = 256;
 static NAME_WARNED: [AtomicU32; WARN_SLOTS] = [const { AtomicU32::new(0) }; WARN_SLOTS];
-
-/// Hand the hook its settings. Called once from `main_thread` before the hook
-/// is installed, so the callback always sees a config.
-pub fn set_config(cfg: Config) {
-    let _ = CONFIG.set(cfg);
-}
-
-fn config() -> &'static Config {
-    CONFIG.get_or_init(Config::default)
-}
 
 /// `(records seen, gather records patched, scalars written)`.
 pub fn counters() -> (u64, u64, u64) {
@@ -252,16 +241,25 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
 pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usize, stream: usize) {
     // `status` is the loader's out-parameter; we neither read nor touch it.
     let _ = status;
+    // Checked first and before anything else: `Enabled=0` must make this a
+    // pure pass-through - no reads, no writes, not even the counters below -
+    // exactly as if the hook had never been installed. This is also what
+    // makes toggling `Enabled` back on at runtime work: the hook is always
+    // installed (the loader prologue can only be patched once, before the
+    // table starts loading), and `LiveConfig::enabled` is the only thing
+    // deciding whether it does anything.
+    if !LIVE.enabled() {
+        return;
+    }
     // r8w: the upper bits are whatever was in r8, exactly as the game masks it.
     let idx = idx & 0xFFFF;
     RECORDS_SEEN.fetch_add(1, Ordering::Relaxed);
 
-    let cfg = config();
     let Some((at, bytes)) = record_bytes(mgr, idx, stream) else { return };
     let Some(header) = gimmick::parse_header(&bytes) else { return };
 
     let Some(family) = collect::family_by_key(header.key) else {
-        if cfg.debug && DEBUG_LINES.fetch_add(1, Ordering::Relaxed) < DEBUG_CAP {
+        if LIVE.debug() && DEBUG_LINES.fetch_add(1, Ordering::Relaxed) < DEBUG_CAP {
             crate::log!(
                 "[gimmick] idx {idx} key {} {:?}: not a gather record",
                 header.key, header.name
@@ -281,7 +279,7 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
         }
     }
 
-    let mult = cfg.multiplier(family);
+    let mult = LIVE.multiplier(family);
     if mult <= 1 {
         return;
     }
@@ -297,7 +295,7 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
     let blocks = edits.len().div_ceil(2);
     let detail = describe(&edits);
 
-    if cfg.dry_run {
+    if LIVE.dry_run() {
         RECORDS_PATCHED.fetch_add(1, Ordering::Relaxed);
         crate::log!(
             "[dry] {} key={} {family:?} x{mult} blocks={blocks} would write {}: {detail}",

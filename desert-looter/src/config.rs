@@ -3,6 +3,7 @@
 //! Only Desert Looter's own keys live here; the ini tokeniser, the truthy
 //! spellings and the virtual-key name table are shared in `desert_core::ini`.
 
+use desert_core::collect::Family;
 use desert_core::ini::{self, Line};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -24,6 +25,12 @@ pub struct Config {
     pub gather_items: bool,
     /// Also pick up dropped gear (`item_basic_equip_*`).
     pub gather_gear: bool,
+    /// Per-family switches for gather nodes, the same gate `gather_items` and
+    /// `gather_gear` are for ground items. All four on = the old behaviour.
+    pub gather_foraging: bool,
+    pub gather_logging: bool,
+    pub gather_mining: bool,
+    pub gather_ore: bool,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -53,6 +60,10 @@ impl Default for Config {
             gather_unarmed: true,
             gather_items: true,
             gather_gear: false,
+            gather_foraging: true,
+            gather_logging: true,
+            gather_mining: true,
+            gather_ore: true,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -61,6 +72,19 @@ impl Default for Config {
             key_scan: 0x7A,   // F11
             key_gather: 0x78, // F9
             key_record: 0x76, // F7
+        }
+    }
+}
+
+impl Config {
+    /// Whether gather nodes of this family are wanted. Called with the typed
+    /// family from `desert_core::collect`, before anything stringifies it.
+    pub fn allows_family(&self, f: Family) -> bool {
+        match f {
+            Family::Foraging => self.gather_foraging,
+            Family::Logging => self.gather_logging,
+            Family::Mining => self.gather_mining,
+            Family::Ore => self.gather_ore,
         }
     }
 }
@@ -90,6 +114,10 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherunarmed" => cfg.gather_unarmed = bool_of(v),
             "gatheritems" => cfg.gather_items = bool_of(v),
             "gathergear" => cfg.gather_gear = bool_of(v),
+            "gatherforaging" => cfg.gather_foraging = bool_of(v),
+            "gatherlogging" => cfg.gather_logging = bool_of(v),
+            "gathermining" => cfg.gather_mining = bool_of(v),
+            "gatherore" => cfg.gather_ore = bool_of(v),
             "stacklimit" => match v.parse::<u32>() {
                 Ok(n) if (10..=1_000_000).contains(&n) => cfg.stack_limit = n,
                 _ => warnings.push(format!("StackLimit: bad value {v:?}, keeping {}", cfg.stack_limit)),
@@ -146,5 +174,20 @@ mod tests {
         assert_eq!(c.gather_interval_ms, 250);
         assert_eq!(c.node_cooldown_ms, Config::default().node_cooldown_ms);
         assert_eq!(w.len(), 3, "{w:?}");
+    }
+
+    #[test]
+    fn family_switches_default_on_and_parse() {
+        let d = Config::default();
+        assert!(d.gather_foraging && d.gather_logging && d.gather_mining && d.gather_ore);
+        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
+            assert!(d.allows_family(f), "{f:?} should be on by default");
+        }
+        let (c, w) = parse("GatherForaging=1\nGatherLogging=0\nGatherMining=no\nGatherOre=on\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.allows_family(Family::Foraging));
+        assert!(!c.allows_family(Family::Logging));
+        assert!(!c.allows_family(Family::Mining));
+        assert!(c.allows_family(Family::Ore));
     }
 }
