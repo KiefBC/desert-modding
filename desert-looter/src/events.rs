@@ -239,6 +239,17 @@ static LAST_SENT: Mutex<Option<(u16, std::time::Instant)>> = Mutex::new(None);
 static YIELDS: Mutex<Vec<(u16, u32, u32)>> = Mutex::new(Vec::new());
 static YIELD_DIRTY: AtomicBool = AtomicBool::new(false);
 const YIELD_PAIR_WINDOW: std::time::Duration = std::time::Duration::from_secs(2);
+/// `LogReceived`: log every item the game hands the player, whether or not we
+/// asked for it. Read on the game thread inside the callback, so it is an
+/// atomic and the counter that caps it is one too.
+static LOG_RECEIVED: AtomicBool = AtomicBool::new(false);
+static RECV_LOGGED: AtomicU32 = AtomicU32::new(0);
+/// Ceiling on `[recv]` lines per session; the log is append-only.
+const RECV_LOG_CAP: u32 = 500;
+
+pub fn set_log_received(on: bool) {
+    LOG_RECEIVED.store(on, Ordering::Release);
+}
 
 pub fn set_handle_descriptor(ptr: usize) {
     let _ = HANDLE_DESC.set(ptr);
@@ -306,6 +317,12 @@ fn watch_received(desc: usize, ev: usize) {
     let count = u32::from_le_bytes([p[27], p[28], p[29], p[30]]);
     if kind != 2 || item == 0 || count == 0 || count > 10_000 {
         return;
+    }
+    if LOG_RECEIVED.load(Ordering::Acquire) {
+        let bump = |n: u32| (n < RECV_LOG_CAP).then_some(n + 1);
+        if RECV_LOGGED.fetch_update(Ordering::Relaxed, Ordering::Relaxed, bump).is_ok() {
+            crate::log!("[recv] item {item} x{count}");
+        }
     }
     note_received(item, count);
 }

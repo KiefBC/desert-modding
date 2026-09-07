@@ -1,9 +1,12 @@
 # Desert Looter
 
-A gathering auto-loot plugin for Crimson Desert (Steam build 25116796).
-It collects plants, ore, stone and wood around you by sending the game the
-same pickup event it sends when you press E, so nothing is simulated and no
-input is faked. Written in Rust, shipped as one `.asi` file.
+**Version 0.1.0** — for Crimson Desert Enhanced, Steam build **25116796**.
+[Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
+
+A gathering auto-loot plugin. It collects plants, ore, stone and wood around
+you by sending the game the same pickup event it sends when you press E, so
+nothing is simulated and no input is faked. Written in Rust, shipped as one
+`.asi` file.
 
 ## What it does
 
@@ -74,6 +77,7 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
 | `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
+| `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | key names: F1..F24, A..Z, 0..9, NUM0..NUM9, HOME, END, INSERT, DELETE, PAGEUP, PAGEDOWN, MOUSE3..MOUSE5 and a few more |
 
 ## Things worth knowing

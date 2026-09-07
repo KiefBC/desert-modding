@@ -9,6 +9,9 @@ use desert_core::ini::{self, Line};
 pub struct Config {
     pub enabled: bool,
     pub debug: bool,
+    /// Log every item the game hands the player, whether or not the plugin
+    /// caused the pickup. For measuring gathering yields; capped per session.
+    pub log_received: bool,
     /// Survey radius in game metres.
     pub scan_range: f32,
     /// Radius within which a gather node is picked, in game metres.
@@ -43,6 +46,7 @@ impl Default for Config {
         Config {
             enabled: true,
             debug: false,
+            log_received: false,
             scan_range: 40.0,
             gather_range: 6.0,
             auto_gather: false,
@@ -77,6 +81,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
         match k.to_ascii_lowercase().as_str() {
             "enabled" => cfg.enabled = bool_of(v),
             "debug" => cfg.debug = bool_of(v),
+            "logreceived" => cfg.log_received = bool_of(v),
             "scanrange" => match v.parse::<f32>() {
                 Ok(f) if f > 0.0 => cfg.scan_range = f,
                 _ => warnings.push(format!("ScanRange: bad value {v:?}, keeping {}", cfg.scan_range)),
@@ -127,9 +132,11 @@ mod tests {
 
     #[test]
     fn parses_and_warns() {
-        let (c, w) = parse("; c\n[DesertLooter]\nEnabled=0\nDebug=1\nScanRange=25.5\nGatherRange=4\nAutoGather=1\nGatherInterval=250\nNodeCooldown=5\nKeyToggle=F5\nKeyScan=nope\nKeyGather=F8\nJunk=1\n");
+        let (c, w) = parse("; c\n[DesertLooter]\nEnabled=0\nDebug=1\nLogReceived=1\nScanRange=25.5\nGatherRange=4\nAutoGather=1\nGatherInterval=250\nNodeCooldown=5\nKeyToggle=F5\nKeyScan=nope\nKeyGather=F8\nJunk=1\n");
         assert!(!c.enabled);
         assert!(c.debug);
+        assert!(c.log_received);
+        assert!(!Config::default().log_received);
         assert_eq!(c.scan_range, 25.5);
         assert_eq!(c.key_toggle, 0x74);
         assert_eq!(c.key_scan, Config::default().key_scan);
