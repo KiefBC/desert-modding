@@ -56,3 +56,8 @@ The `justfile` wraps the common tasks; run `just` to list them.
 [`VERSIONING.md`](VERSIONING.md) covers the versioning scheme and release
 procedure. Changelogs: [desert-looter](desert-looter/CHANGELOG.md),
 [desert-gatherer](desert-gatherer/CHANGELOG.md).
+
+## License
+
+MIT ([`LICENSE`](LICENSE)). Fork it, take pieces of it, ship your own version.
+Keep the copyright notice with the source and you have met the only condition.
