@@ -5,12 +5,26 @@ build 25116796. They load through [Ultimate ASI
 Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (`winmm.dll` in the
 game's `bin64`), which side-loads every `.asi` next to it.
 
-| Crate / dir | Kind | Ships |
-| --- | --- | --- |
-| [`desert-core/`](desert-core) | rlib | nothing — it is linked into the plugins |
-| [`desert-looter/`](desert-looter) | cdylib | `DesertLooter.asi` — auto-loot for gathering nodes |
-| [`desert-gatherer/`](desert-gatherer) | cdylib | `DesertGatherer.asi` — gathering yield multiplier (**stub**) |
-| [`dmm-pack/`](dmm-pack) | data | "The Desert Gatherer", the DMM offset-patch mod that `desert-gatherer` will replace |
+| Crate / dir | Kind | Version | Ships |
+| --- | --- | --- | --- |
+| [`desert-core/`](desert-core) | rlib | 0.2.0 | nothing — it is linked into the plugins |
+| [`desert-looter/`](desert-looter) | cdylib | 0.1.0 | `DesertLooter.asi` — auto-loot for gathering nodes. Working, in-game verified. |
+| [`desert-gatherer/`](desert-gatherer) | cdylib | 0.1.0 | `DesertGatherer.asi` — gathering yield multiplier: it hooks the record loader and multiplies the yield scalars in memory. Working, in-game verified. |
+| [`dmm-pack/`](dmm-pack) | data | 1.1 | "The Desert Gatherer", the DMM offset-patch mod that `desert-gatherer` supersedes. Kept for people who use DMM without an ASI loader; never mount it alongside the plugin. |
+
+## Versioning
+
+Both plugins follow Semantic Versioning, versioned and tagged separately
+(`desert-looter-v0.1.0`, `desert-gatherer-v0.1.0`). Both are at 0.1.0: each
+works in game for its core purpose on build 25116796, which is exactly what
+0.1 is worth. `VERSIONING.md` carries a milestone ladder saying what each
+MINOR level below 1.0 has to be earned with — 0.2 is a survived game update —
+so a bump is evidence, not a mood. The version number is not the supported
+game build; that is stated in each mod's README. See
+[`VERSIONING.md`](VERSIONING.md) for that ladder, what counts as the public
+interface, what bumps MAJOR / MINOR / PATCH, and the release procedure.
+Per-mod changelogs: [`desert-looter/CHANGELOG.md`](desert-looter/CHANGELOG.md),
+[`desert-gatherer/CHANGELOG.md`](desert-gatherer/CHANGELOG.md).
 
 ## desert-core
 
