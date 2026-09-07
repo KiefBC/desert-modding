@@ -117,5 +117,5 @@ cargo test --release --target x86_64-unknown-linux-gnu -p desert-looter --test g
 4. **No file I/O in `DllMain`.** The loader lock is held; work happens on a
    thread the plugin starts.
 
-`analysis/`, `docs/` and `source-mod/` hold reverse-engineering material and
-are deliberately kept out of commits.
+`analysis/` and `docs/` hold reverse-engineering material and are deliberately
+kept out of commits.

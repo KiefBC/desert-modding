@@ -100,27 +100,3 @@ pub fn file_to_image(file: &[u8]) -> Option<Vec<u8>> {
     }
     Some(img)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reads_cdloot_headers() {
-        // source-mod/ sits at the workspace root (gitignored: it is the
-        // reference mod's own binary, not ours).
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../source-mod/CDLoot.asi")).unwrap();
-        let h = parse(&f).unwrap();
-        assert_eq!(h.image_base, 0x1_8000_0000);
-        assert_eq!(h.sections.len(), 7);
-        assert_eq!(h.sections[0].name, ".text");
-        assert_eq!(h.sections[1].virtual_address, 0x34000);
-        assert!(!h.sections[0].is_data(), ".text");
-        assert!(!h.sections[1].is_data(), ".rdata");
-        assert!(h.sections[2].is_data(), ".data");
-        let img = file_to_image(&f).unwrap();
-        assert_eq!(img.len(), h.size_of_image as usize);
-        // "CDLoot ready" lives in .rdata; its file offset was 0x3b4a8-ish, RVA = file - 0x32600 + 0x34000
-        assert!(img.windows(12).any(|w| w == b"CDLoot ready"));
-    }
-}

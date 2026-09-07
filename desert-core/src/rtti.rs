@@ -83,26 +83,3 @@ pub fn vtables_for_class(img: &[u8], image_base: u64, name: &str) -> Vec<u64> {
     out.dedup();
     out
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::pe;
-
-    #[test]
-    fn finds_std_exception_vtable_in_cdloot() {
-        let f = std::fs::read(concat!(env!("CARGO_MANIFEST_DIR"), "/../source-mod/CDLoot.asi")).unwrap();
-        let h = pe::parse(&f).unwrap();
-        let img = pe::file_to_image(&f).unwrap();
-        let tds = find_type_descriptors(&img, ".?AVexception@std@@");
-        assert_eq!(tds.len(), 1, "type descriptor");
-        let cols = find_object_locators(&img, tds[0]);
-        assert!(!cols.is_empty(), "object locator");
-        let vt = vtables_for_class(&img, h.image_base, ".?AVexception@std@@");
-        assert_eq!(vt.len(), 1, "vtable: {vt:x?}");
-        // The vtable lives in .rdata.
-        let rdata = &h.sections[1];
-        let rva = (vt[0] - h.image_base) as u32;
-        assert!(rva >= rdata.virtual_address && rva < rdata.virtual_address + rdata.virtual_size);
-    }
-}
