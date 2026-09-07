@@ -14,6 +14,12 @@ nix := if env("IN_NIX_SHELL", "") == "" { "nix develop --command" } else { "" }
 # Where the game lives; override with CD_BIN64=/path/to/bin64.
 bin64 := env("CD_BIN64", "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64")
 
+# DMM's extracted clean gimmickinfo table; override with CD_DMM_TABLE.
+dmm_table := env("CD_DMM_TABLE", "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin")
+
+# Steam appmanifest holding the build id; override with CD_APPMANIFEST.
+appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
+
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
 
@@ -96,12 +102,22 @@ clean:
     rm -rf dist
 
 # --- DMM pack (dmm-pack/) -------------------------------------------------
-# Not part of build/test/ci: needs a build-specific clean table + build id
-# that only exist after a game update, so there is no safe default to run
-# automatically. Run `just test-game` first to confirm the record loader and
-# output-block signature still match this build before rebasing.
+# Not part of build/test/ci: it rewrites the packaged patch offsets, which only
+# needs doing after a game update. Run `just test-game` first to confirm the
+# record loader and output-block signature still match this build.
 
-# Rebase dmm-pack/*.json onto a new game build. table = path to DMM's
-# extracted gimmickinfo_pabgb_clean.bin, build = the new Steam build id.
-dmm-rebase table build:
-    {{nix}} python3 dmm-pack/rebase.py {{table}} {{build}}
+# The table comes from DMM's backups (CD_DMM_TABLE) and the build id from the
+# Steam appmanifest (CD_APPMANIFEST). Either can be passed positionally instead:
+# `just dmm-rebase /path/to/clean.bin 25116796`.
+
+# Rebase dmm-pack/*.json onto the current game build. Takes no arguments.
+dmm-rebase table=dmm_table build="":
+    @test -f "{{table}}" || { echo "dmm-rebase: {{table}} not found (set CD_DMM_TABLE)" >&2; exit 1; }
+    @build="{{build}}"; \
+    if [ -z "$build" ]; then \
+        test -f "{{appmanifest}}" || { echo "dmm-rebase: {{appmanifest}} not found (set CD_APPMANIFEST, or pass the build id)" >&2; exit 1; }; \
+        build=$(sed -n 's/.*"buildid"[^"]*"\([0-9][0-9]*\)".*/\1/p' "{{appmanifest}}" | head -1); \
+        test -n "$build" || { echo "dmm-rebase: no buildid in {{appmanifest}}" >&2; exit 1; }; \
+    fi; \
+    echo "dmm-rebase: {{table}} -> build $build"; \
+    {{nix}} python3 dmm-pack/rebase.py "{{table}}" "$build"

@@ -33,6 +33,11 @@ def sha256(b: bytes) -> str:
     return hashlib.sha256(b).hexdigest()
 
 
+def write(path: Path, text: str) -> None:
+    """Write CRLF, matching the packaged files DMM ships to Windows users."""
+    path.write_text(text, encoding="utf-8", newline="\r\n")
+
+
 def locate_records(table: bytes, wanted: dict) -> dict:
     """Map record_key -> absolute offset of the u32 key (u32 key, u32 len, name, NUL)."""
     found = {}
@@ -129,8 +134,7 @@ def rebase_module(path: Path, table: bytes, build: str, dry: bool):
               f"{stable} unchanged, {moved} shifted inside record")
     mod["game_build"] = build
     if not dry:
-        path.write_text(json.dumps(mod, indent=2, ensure_ascii=False) + "\n",
-                        encoding="utf-8")
+        write(path, json.dumps(mod, indent=2, ensure_ascii=False) + "\n")
     return mod, all_changes
 
 
@@ -194,7 +198,7 @@ def main():
     if dry:
         print(text)
     else:
-        (HERE / "VERIFICATION.txt").write_text(text, encoding="utf-8")
+        write(HERE / "VERIFICATION.txt", text)
     print("disjoint:", disjoint, "| result:", report["result"])
 
 
