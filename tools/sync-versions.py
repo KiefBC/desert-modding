@@ -7,11 +7,15 @@ the tables and the tag examples in the markdown from drifting away from it.
     tools/sync-versions.py            rewrite the docs in place
     tools/sync-versions.py --check    exit 1 if a doc is stale, changing nothing
 
-Two things get rewritten, in every file listed in DOCS:
+Three things get rewritten. In every file listed in DOCS:
 
   1. a table row whose first cell names a crate -> the cell holding a bare
      version number is set to that crate's version
   2. any `<crate>-v<version>` string anywhere -> the crate's version
+
+and in each shipping crate's own README.md, additionally:
+
+  3. the `**Version <version>**` line near the top -> that crate's version
 """
 
 from __future__ import annotations
@@ -23,6 +27,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 CRATES = ("desert-looter", "desert-gatherer", "desert-core")
 DOCS = ("README.md", "VERSIONING.md")
+# Crates that ship a plugin and carry a `**Version x.y.z**` line in their README.
+SHIPPING = ("desert-looter", "desert-gatherer")
 
 SEMVER = r"\d+\.\d+\.\d+"
 
@@ -62,15 +68,29 @@ def sync(text: str, versions: dict[str, str]) -> str:
     return "".join(out)
 
 
+def sync_readme(text: str, crate: str, versions: dict[str, str]) -> str:
+    """A shipping crate's README: the general rules plus its own Version line."""
+    text = sync(text, versions)
+    return re.sub(
+        rf"^(\*\*Version ){SEMVER}(\*\*)",
+        rf"\g<1>{versions[crate]}\g<2>",
+        text,
+        count=1,
+        flags=re.M,
+    )
+
+
 def main() -> int:
     check = "--check" in sys.argv[1:]
     versions = crate_versions()
     stale = []
 
-    for name in DOCS:
-        path = ROOT / name
+    targets = [(name, ROOT / name, None) for name in DOCS]
+    targets += [(f"{c}/README.md", ROOT / c / "README.md", c) for c in SHIPPING]
+
+    for name, path, crate in targets:
         before = path.read_text(encoding="utf-8")
-        after = sync(before, versions)
+        after = sync_readme(before, crate, versions) if crate else sync(before, versions)
         if before == after:
             continue
         stale.append(name)

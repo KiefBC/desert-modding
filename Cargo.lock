@@ -45,7 +45,7 @@ dependencies = [
 
 [[package]]
 name = "desert-gatherer"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "desert-core",
  "windows-sys",

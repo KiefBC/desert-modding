@@ -6,7 +6,7 @@ version — a single commit can bump one and leave the other exactly where it wa
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
 | `desert-looter` | 0.1.1 | `DesertLooter.asi` | `desert-looter-v0.1.1` |
-| `desert-gatherer` | 0.1.0 | `DesertGatherer.asi` | `desert-gatherer-v0.1.0` |
+| `desert-gatherer` | 0.1.1 | `DesertGatherer.asi` | `desert-gatherer-v0.1.1` |
 | `desert-core` | 0.2.0 | nothing | never |
 
 ## What the version actually describes

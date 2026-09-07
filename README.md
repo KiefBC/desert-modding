@@ -9,7 +9,7 @@ game's `bin64`).
 | Mod | Version | What it does |
 | --- | --- | --- |
 | [desert-looter](desert-looter) | 0.1.1 | Auto-loot for gathering nodes |
-| [desert-gatherer](desert-gatherer) | 0.1.0 | Gathering yield multiplier |
+| [desert-gatherer](desert-gatherer) | 0.1.1 | Gathering yield multiplier |
 
 Also here: [`desert-core/`](desert-core), the shared library both plugins link
 (logging, safe memory reads, hooks, PE/pattern scanning), and

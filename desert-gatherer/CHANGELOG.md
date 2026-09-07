@@ -6,6 +6,10 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-09-07
+
+Game build 25116796.
+
 ### Changed
 
 - `DryRun` is now shipped as `0`. The dry-run-first install step is gone: the plugin multiplies

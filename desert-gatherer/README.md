@@ -1,6 +1,6 @@
 # Desert Gatherer
 
-**Version 0.1.0** — for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.1.1** — for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 A gathering yield multiplier, written in Rust and shipped as one `.asi` file.
