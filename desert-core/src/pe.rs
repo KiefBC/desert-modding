@@ -1,13 +1,13 @@
 //! Minimal PE32+ header reader. Works on the raw file or on a mapped image.
 
 fn u16_at(b: &[u8], o: usize) -> Option<u16> {
-    b.get(o..o + 2).map(|s| u16::from_le_bytes([s[0], s[1]]))
+    b.get(o..o.checked_add(2)?)?.try_into().ok().map(u16::from_le_bytes)
 }
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
-    b.get(o..o + 4).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
 }
 fn u64_at(b: &[u8], o: usize) -> Option<u64> {
-    b.get(o..o + 8).map(|s| u64::from_le_bytes(s.try_into().unwrap()))
+    b.get(o..o.checked_add(8)?)?.try_into().ok().map(u64::from_le_bytes)
 }
 
 #[derive(Debug, Clone)]
@@ -83,14 +83,20 @@ pub fn file_to_image(file: &[u8]) -> Option<Vec<u8>> {
         .filter(|&o| o > 0)
         .min()
         .unwrap_or(0)
-        .min(file.len());
-    img[..hdr_len].copy_from_slice(&file[..hdr_len]);
+        .min(file.len())
+        .min(img.len());
+    if let (Some(dst), Some(src)) = (img.get_mut(..hdr_len), file.get(..hdr_len)) {
+        dst.copy_from_slice(src);
+    }
     for s in &h.sections {
-        let src = s.raw_offset as usize..(s.raw_offset + s.raw_size.min(s.virtual_size.max(s.raw_size))) as usize;
-        let src = src.start.min(file.len())..src.end.min(file.len());
+        let take = s.raw_size.min(s.virtual_size.max(s.raw_size)) as usize;
+        let start = (s.raw_offset as usize).min(file.len());
+        let end = start.saturating_add(take).min(file.len());
         let dst = s.virtual_address as usize;
-        let n = src.len().min(img.len().saturating_sub(dst));
-        img[dst..dst + n].copy_from_slice(&file[src.start..src.start + n]);
+        let n = (end - start).min(img.len().saturating_sub(dst));
+        if let (Some(d), Some(sr)) = (img.get_mut(dst..dst + n), file.get(start..start + n)) {
+            d.copy_from_slice(sr);
+        }
     }
     Some(img)
 }

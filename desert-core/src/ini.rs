@@ -44,10 +44,9 @@ pub fn vk_from_name(name: &str) -> Option<u16> {
             }
         }
     }
-    if n.len() == 1 {
-        let c = n.as_bytes()[0];
+    if let [c] = n.as_bytes() {
         if c.is_ascii_uppercase() || c.is_ascii_digit() {
-            return Some(c as u16);
+            return Some(*c as u16);
         }
     }
     if let Some(d) = n.strip_prefix("NUM") {

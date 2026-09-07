@@ -92,6 +92,13 @@ mod entry {
             crate::log!("[hook] enqueue prologue is {} not the expected bytes; NOT hooking", hook::hex(&have));
             return false;
         }
+        // SAFETY: `target` is the unique `enqueue` signature hit inside the
+        // main module and the 14 bytes there were just read back and matched
+        // against `ENQUEUE_PROLOGUE`, so the `ENQUEUE_STOLEN` (0xE) bytes the
+        // stub copies really are whole, position-independent instructions.
+        // This runs during load, before any thread executes that prologue, and
+        // `events::on_enqueue` has the four-integer-argument shape the stub
+        // calls it with.
         match unsafe { hook::install(target, ENQUEUE_STOLEN, events::on_enqueue) } {
             Ok(h) => {
                 crate::log!("[hook] enqueue +0x{:X} -> stub 0x{:X}; original bytes: {}", module.rva(h.target), h.stub, hook::hex(&h.original));
@@ -120,6 +127,13 @@ mod entry {
             );
             return false;
         }
+        // SAFETY: `target` is the `area_sweep` signature hit backed up by
+        // `SWEEP_HIT_OFFSET` and the 15 bytes there were just read back and
+        // matched against `SWEEP_PROLOGUE`, so the `SWEEP_STOLEN` (0xF) bytes
+        // the stub copies are the three whole, position-independent register
+        // spills. This runs during load, before any thread executes that
+        // prologue, and `events::on_sweep` has the four-integer-argument shape
+        // the stub calls it with.
         match unsafe { hook::install(target, SWEEP_STOLEN, events::on_sweep) } {
             Ok(h) => {
                 crate::log!(
@@ -225,7 +239,17 @@ mod entry {
     }
 
     fn tid_now() -> u32 {
+        // SAFETY: `GetCurrentThreadId` takes no arguments and only reads the
+        // calling thread's own TEB; it is sound to call from any thread.
         unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() }
+    }
+
+    /// The plugin's only UI: an audible acknowledgement of a hotkey.
+    fn beep() {
+        // SAFETY: `MessageBeep` takes a plain sound-type flag, borrows nothing
+        // of ours and has no thread affinity; it is sound to call from the
+        // plugin thread at any time.
+        unsafe { MessageBeep(MB_OK) };
     }
 
     fn host_exe_name() -> String {
@@ -255,7 +279,10 @@ mod entry {
     /// Runs on its own thread for the life of the process.
     unsafe extern "system" fn main_thread(_param: *mut c_void) -> u32 {
         log::init(crate::LOG_NAME);
-        crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, GetCurrentProcessId());
+        // SAFETY: `GetCurrentProcessId` takes no arguments and only reads this
+        // process's own PEB; it is sound to call from any thread.
+        let pid = unsafe { GetCurrentProcessId() };
+        crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, pid);
         let cfg = load_config();
         crate::log!(
             "[ini] Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
@@ -287,7 +314,7 @@ mod entry {
         if let Some(m2) = MainModule::locate() {
             events::set_module(m2);
         }
-        MessageBeep(MB_OK);
+        beep();
 
         let mut gatherer = Gatherer::new(&cfg);
         load_yields();
@@ -327,10 +354,10 @@ mod entry {
             if k_toggle.pressed() {
                 let on = gatherer.toggle();
                 crate::log!("[key] auto-gather {}", if on { "ON" } else { "OFF" });
-                MessageBeep(MB_OK);
+                beep();
             }
             if k_record.pressed() {
-                MessageBeep(MB_OK);
+                beep();
                 if !recorder {
                     crate::log!("[record] enqueue hook not installed");
                 } else if events::toggle_recording() {
@@ -338,7 +365,7 @@ mod entry {
                 }
             }
             if k_gather.pressed() {
-                MessageBeep(MB_OK);
+                beep();
                 if !hooked {
                     crate::log!("[gather] no sweep hook; cannot send on the game thread");
                 } else {
@@ -357,7 +384,7 @@ mod entry {
                 save_yields();
             }
             if k_scan.pressed() {
-                MessageBeep(MB_OK);
+                beep();
                 match &world {
                     Some(w) => {
                         if cfg.debug && !census_done {
@@ -379,6 +406,10 @@ mod entry {
     #[no_mangle]
     pub extern "system" fn DllMain(hinst: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
         if reason == DLL_PROCESS_ATTACH {
+            // SAFETY: `hinst` is the handle the loader passed for this very
+            // module, so it is a live HMODULE; the call only clears this
+            // module's thread-attach notifications and is the documented thing
+            // to do first under the loader lock.
             unsafe {
                 DisableThreadLibraryCalls(hinst);
             }
@@ -389,6 +420,12 @@ mod entry {
                 log::disable();
                 return TRUE;
             }
+            // SAFETY: every pointer argument is null except the entry point,
+            // which is a `'static` function in this module; `main_thread`
+            // ignores its parameter, so passing null is correct. An .asi is
+            // never unloaded, so the thread cannot outlive its own code, and
+            // creating a thread is one of the few things permitted while the
+            // loader lock is held - it does not run until DllMain returns.
             unsafe {
                 // Never do real work inside DllMain itself; hand off to a thread.
                 CreateThread(

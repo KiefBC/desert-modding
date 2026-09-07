@@ -6,11 +6,11 @@
 //!                           u32 pTypeDescriptor(RVA); u32 pClassDescriptor(RVA); u32 pSelf(RVA) }
 //!   vtable[-1] is a pointer (absolute VA) to the COL.
 
-fn u32_at(b: &[u8], o: usize) -> u32 {
-    u32::from_le_bytes(b[o..o + 4].try_into().unwrap())
+fn u32_at(b: &[u8], o: usize) -> Option<u32> {
+    b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
 }
-fn u64_at(b: &[u8], o: usize) -> u64 {
-    u64::from_le_bytes(b[o..o + 8].try_into().unwrap())
+fn u64_at(b: &[u8], o: usize) -> Option<u64> {
+    b.get(o..o.checked_add(8)?)?.try_into().ok().map(u64::from_le_bytes)
 }
 
 /// RVA of every TypeDescriptor whose mangled name equals `name` exactly.
@@ -19,14 +19,13 @@ pub fn find_type_descriptors(img: &[u8], name: &str) -> Vec<usize> {
     let mut out = Vec::new();
     let mut i = 0;
     while i + needle.len() < img.len() {
-        match img[i..].iter().position(|&b| b == b'.') {
+        let Some(rest) = img.get(i..) else { break };
+        match rest.iter().position(|&b| b == b'.') {
             None => break,
             Some(p) => {
                 let s = i + p;
-                if s >= 0x10
-                    && img[s..].starts_with(needle)
-                    && img.get(s + needle.len()) == Some(&0)
-                {
+                let after = s + needle.len();
+                if s >= 0x10 && img.get(s..after) == Some(needle) && img.get(after) == Some(&0) {
                     out.push(s - 0x10);
                 }
                 i = s + 1;
@@ -42,9 +41,9 @@ pub fn find_object_locators(img: &[u8], td_rva: usize) -> Vec<usize> {
     let mut out = Vec::new();
     let mut o = 0;
     while o + 24 <= img.len() {
-        if u32_at(img, o) == 1
-            && u32_at(img, o + 12) as usize == td_rva
-            && u32_at(img, o + 20) as usize == o
+        if u32_at(img, o) == Some(1)
+            && u32_at(img, o + 12).is_some_and(|v| v as usize == td_rva)
+            && u32_at(img, o + 20).is_some_and(|v| v as usize == o)
         {
             out.push(o);
         }
@@ -57,12 +56,15 @@ pub fn find_object_locators(img: &[u8], td_rva: usize) -> Vec<usize> {
 /// `image_base` must be the base the pointers in `img` are relative to: the
 /// live base for a mapped image, the preferred base for a raw file.
 pub fn find_vtables(img: &[u8], image_base: u64, col_rva: usize) -> Vec<u64> {
-    let want = image_base + col_rva as u64;
+    // `wrapping_add` only to keep a debug build from panicking on a nonsense
+    // base: a real image base plus an in-image RVA never comes near u64::MAX,
+    // and the release build (the one that ships) wraps here either way.
+    let want = image_base.wrapping_add(col_rva as u64);
     let mut out = Vec::new();
     let mut o = 0;
     while o + 8 <= img.len() {
-        if u64_at(img, o) == want {
-            out.push(image_base + o as u64 + 8);
+        if u64_at(img, o) == Some(want) {
+            out.push(image_base.wrapping_add(o as u64).wrapping_add(8));
         }
         o += 8;
     }

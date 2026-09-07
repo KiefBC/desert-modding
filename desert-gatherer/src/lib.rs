@@ -126,6 +126,14 @@ mod entry {
             return false;
         }
 
+        // SAFETY: `target` came from `resolve_record_loader`, which finds the
+        // function by content inside the running image, and its first
+        // `LOADER_STOLEN` bytes were just read back and compared byte for byte
+        // with `LOADER_PROLOGUE`, so what the stub copies is that exact whole,
+        // position-independent prologue. This runs before the gimmickinfo table
+        // is loaded, so no thread is executing those bytes, and
+        // `hook::on_record_load` has the four-integer-argument shape the stub
+        // calls it with.
         match unsafe { hook::install(target, gimmick::LOADER_STOLEN, hook::on_record_load) } {
             Ok(h) => {
                 crate::log!(
@@ -151,10 +159,13 @@ mod entry {
     /// no thread is executing it yet.
     unsafe extern "system" fn main_thread(_param: *mut c_void) -> u32 {
         log::init(crate::LOG_NAME);
+        // SAFETY: `GetCurrentProcessId` takes no arguments and only reads this
+        // process's own PEB; it is sound to call from any thread.
+        let pid = unsafe { GetCurrentProcessId() };
         crate::log!(
             "Desert Gatherer {} loaded, pid {}, {} gather records known",
             crate::VERSION,
-            GetCurrentProcessId(),
+            pid,
             crate::known_records()
         );
         let cfg = load_config();
@@ -215,6 +226,10 @@ mod entry {
     #[no_mangle]
     pub extern "system" fn DllMain(hinst: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
         if reason == DLL_PROCESS_ATTACH {
+            // SAFETY: `hinst` is the handle the loader passed for this very
+            // module, so it is a live HMODULE; the call only clears this
+            // module's thread-attach notifications and is the documented thing
+            // to do first under the loader lock.
             unsafe {
                 DisableThreadLibraryCalls(hinst);
             }
@@ -224,6 +239,12 @@ mod entry {
                 log::disable();
                 return TRUE;
             }
+            // SAFETY: every pointer argument is null except the entry point,
+            // which is a `'static` function in this module; `main_thread`
+            // ignores its parameter, so passing null is correct. An .asi is
+            // never unloaded, so the thread cannot outlive its own code, and
+            // creating a thread is one of the few things permitted while the
+            // loader lock is held - it does not run until DllMain returns.
             unsafe {
                 // Never do real work inside DllMain itself; hand off to a thread.
                 CreateThread(

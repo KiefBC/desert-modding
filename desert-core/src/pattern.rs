@@ -39,10 +39,12 @@ impl Pattern {
     }
 
     fn matches_at(&self, hay: &[u8], at: usize) -> bool {
-        self.bytes
-            .iter()
-            .zip(&hay[at..at + self.bytes.len()])
-            .all(|(p, b)| p.is_none_or(|p| p == *b))
+        // One bounds check per candidate offset, not per byte: the window is
+        // taken once and the compare below runs over a slice of known length.
+        match hay.get(at..at + self.bytes.len()) {
+            Some(win) => self.bytes.iter().zip(win).all(|(p, b)| p.is_none_or(|p| p == *b)),
+            None => false,
+        }
     }
 
     /// Every offset where the pattern matches, stopping after `limit` hits.
@@ -53,16 +55,19 @@ impl Pattern {
         }
         // Anchor on the first literal byte so the inner loop is a memchr-style
         // byte compare instead of a full pattern compare at every offset.
-        let (anchor_idx, anchor) = self
-            .bytes
-            .iter()
-            .enumerate()
-            .find_map(|(i, b)| b.map(|b| (i, b)))
-            .expect("pattern has a literal byte");
+        // `parse` is the only constructor and it rejects an all-wildcard
+        // pattern, so this always finds one; an empty result is the safe answer
+        // if it ever does not.
+        let Some((anchor_idx, anchor)) =
+            self.bytes.iter().enumerate().find_map(|(i, b)| b.map(|b| (i, b)))
+        else {
+            return hits;
+        };
         let last_start = hay.len() - self.bytes.len();
         let mut i = anchor_idx;
         while i <= last_start + anchor_idx {
-            match hay[i..].iter().position(|&b| b == anchor) {
+            let Some(rest) = hay.get(i..) else { break };
+            match rest.iter().position(|&b| b == anchor) {
                 None => break,
                 Some(p) => {
                     let start = i + p - anchor_idx;
@@ -82,10 +87,10 @@ impl Pattern {
     /// A signature is only useful if it identifies one place.
     pub fn find_unique(&self, hay: &[u8]) -> Found {
         let hits = self.find_all(hay, 2);
-        match hits.len() {
-            0 => Found::None,
-            1 => Found::Unique(hits[0]),
-            n => Found::Ambiguous(n),
+        match hits.as_slice() {
+            [] => Found::None,
+            [one] => Found::Unique(*one),
+            many => Found::Ambiguous(many.len()),
         }
     }
 }

@@ -5,6 +5,9 @@ description = "Desert Looter - Crimson Desert gathering auto-loot (ASI plugin)"
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 name = "desert_looter"
 # cdylib -> the Windows .dll (renamed .asi). rlib -> lets `cargo test` link the

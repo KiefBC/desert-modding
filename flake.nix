@@ -49,6 +49,11 @@
             # archives) and prints their listing back with unzip -l.
             pkgs.zip
             pkgs.unzip
+
+            # The task runner (justfile at the workspace root) and the RustSec
+            # advisory check behind `just audit`.
+            pkgs.just
+            pkgs.cargo-audit
           ];
 
           # Cargo uses this linker for the gnu target. Scoped to this shell, so
@@ -64,11 +69,11 @@
             "-C target-feature=+crt-static -L native=${pthreads}/lib";
 
           shellHook = ''
-            echo "Crimson Desert mods workspace ready (run cargo from the repo root)."
-            echo "  build:   cargo build --release"
-            echo "  test:    cargo test --target x86_64-unknown-linux-gnu"
-            echo "  output:  target/x86_64-pc-windows-gnu/release/desert_looter.dll   -> bin64/DesertLooter.asi"
-            echo "           target/x86_64-pc-windows-gnu/release/desert_gatherer.dll -> bin64/DesertGatherer.asi"
+            echo "Crimson Desert mods workspace ready (run just from the repo root)."
+            echo "  just            list the recipes"
+            echo "  just build      release build of both plugins"
+            echo "  just ci         clippy (no warnings) + tests on both targets + cargo audit"
+            echo "  just install    copy the .asi files into the game's bin64"
           '';
         };
       });

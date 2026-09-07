@@ -5,6 +5,9 @@ description = "Desert Gatherer - Crimson Desert gathering yield multiplier (ASI 
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 name = "desert_gatherer"
 # Same split as desert-looter: cdylib for the .asi, rlib so `cargo test` links

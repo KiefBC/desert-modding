@@ -248,7 +248,9 @@ impl Gatherer {
     fn review(&mut self, m: &MainModule, sc: &Scene) {
         let mut i = 0;
         while i < self.done.len() {
-            let d = &self.done[i];
+            // `i < self.done.len()` holds, but reach for the element rather
+            // than index it: a miss just ends the review pass.
+            let Some(d) = self.done.get(i) else { break };
             let age = d.sent.elapsed();
             let still_gather = sc.actor(d.eid).is_some_and(|a| {
                 matches!(actors::classify(m, a, sc.player), actors::Kind::Gather | actors::Kind::Unarmed | actors::Kind::Item)

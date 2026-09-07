@@ -66,8 +66,11 @@ pub fn resolve(m: &MainModule, anchors: &crate::game::Anchors) -> Result<EventAp
     let img = m.bytes();
     let rel = |ins_off: usize, disp_off: usize, ins_len: usize| -> Result<usize, String> {
         let at = m.rva(site) + ins_off + disp_off;
-        let d = img.get(at..at + 4).ok_or("site outside image")?;
-        let disp = i32::from_le_bytes([d[0], d[1], d[2], d[3]]) as i64;
+        let d: [u8; 4] = img
+            .get(at..at + 4)
+            .and_then(|b| b.try_into().ok())
+            .ok_or("site outside image")?;
+        let disp = i32::from_le_bytes(d) as i64;
         let target = (site as i64 + ins_off as i64 + ins_len as i64 + disp) as usize;
         if !m.contains(target) {
             return Err(format!("rel target 0x{target:X} outside module"));
@@ -81,7 +84,7 @@ pub fn resolve(m: &MainModule, anchors: &crate::game::Anchors) -> Result<EventAp
             let base = m.rva(site);
             let at = |o: usize| -> Option<i32> {
                 let b = img.get(base.wrapping_add(o)..base.wrapping_add(o) + 4)?;
-                Some(i32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                Some(i32::from_le_bytes(<[u8; 4]>::try_from(b).ok()?))
             };
             let f = at(8).map(|d| (site as i64 + 12 + d as i64) as usize).filter(|t| m.contains(*t));
             let lea_ok = img.get(base - 0xE..base - 0xB) == Some(&[0x4C, 0x8D, 0x0D]);
@@ -128,10 +131,19 @@ fn desc_mask(api: &EventApi) -> u32 {
 /// read-only hash-table probe over globals, so it is safe to call from our
 /// thread once the game has built the table.
 pub fn find_descriptor(m: &MainModule, api: &EventApi, name: &str) -> Result<Descriptor, String> {
+    // SAFETY: `api.desc_by_id` was decoded by `resolve` from the `E8` at
+    // `desc_mask+queue_site`+0x11 and rejected unless it lands inside the main
+    // module, so it is the entry point of the game's own
+    // `descriptor_by_id(_, id, mask)`; `DescByIdFn` is that function's
+    // prototype as the call site uses it.
     let f: DescByIdFn = unsafe { core::mem::transmute(api.desc_by_id) };
     let mask = desc_mask(api);
     let mut seen = 0u32;
     for id in 1..=MAX_DESCRIPTOR_ID {
+        // SAFETY: `FUN_1413AB9F0` is a read-only probe of a global hash table
+        // that touches no thread-local state, so the plugin thread may call it
+        // once the game has built the table - which the caller establishes by
+        // only resolving descriptors after the world exists.
         let d = unsafe { f(0, id, mask) };
         if d == 0 {
             continue;
@@ -196,8 +208,17 @@ unsafe fn would_steal(api: &EventApi, player: usize, target: usize) -> Result<bo
     if !safe::readable(target, 0x100) || !safe::readable(comp, 0x40) {
         return Err("target or component unreadable".into());
     }
-    let f: StealCheckFn = core::mem::transmute(api.steal_check);
-    Ok(f(comp, player, target, api.steal_ctx, 7) != 0)
+    // SAFETY: `api.steal_check` is the `E8` target decoded from the
+    // `own_check_site` signature and confirmed to lie inside the main module,
+    // so it is the game's own `FUN_14251BA50`; `StealCheckFn` is the prototype
+    // that call site uses.
+    let f: StealCheckFn = unsafe { core::mem::transmute(api.steal_check) };
+    // SAFETY: the same call the game's interaction code makes at
+    // `own_check_site`, with the same five arguments. `comp`, `player` and
+    // `target` were each read back through `safe` and checked readable just
+    // above, `api.steal_ctx` is the module-resident static its caller passes,
+    // and this runs on the game thread as this function's contract requires.
+    Ok(unsafe { f(comp, player, target, api.steal_ctx, 7) } != 0)
 }
 static MODULE: OnceLock<MainModule> = OnceLock::new();
 
@@ -385,7 +406,9 @@ pub fn drop_stale(max_age: std::time::Duration) -> Option<PickupRequest> {
 pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9: usize) {
     let n = SWEEP_CALLS.fetch_add(1, Ordering::Relaxed);
     if n == 0 {
-        let tid = windows_sys::Win32::System::Threading::GetCurrentThreadId();
+        // SAFETY: `GetCurrentThreadId` takes no arguments and only reads the
+        // calling thread's own TEB; it is sound to call from any thread.
+        let tid = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
         GAME_TID.store(tid, Ordering::Relaxed);
         crate::log!("[hook] first sweep callback on tid {tid}: this=0x{this:X} item=0x{item:X}");
     }
@@ -398,7 +421,10 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
         g.take().map(|(r, _)| r)
     };
     if let Some(r) = req {
-        match send_pickup(&r) {
+        // SAFETY: `send_pickup` may only run on the game thread, which is
+        // exactly where the `area_sweep` trampoline calls this callback from;
+        // `r` is plain data the plugin thread parked and we took ownership of.
+        match unsafe { send_pickup(&r) } {
             Ok(ev) => {
                 SENT.fetch_add(1, Ordering::Relaxed);
                 if r.mode == PickupMode::Gather {
@@ -441,7 +467,9 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
         return Err(format!("payload size {size} != {PICKUP_PAYLOAD_SIZE}; refusing"));
     }
     if r.mode == PickupMode::Item {
-        match would_steal(api, r.player_actor, r.target_actor) {
+        // SAFETY: `would_steal` requires the game thread, which `send_pickup`
+        // itself requires and the sweep hook - its only caller - provides.
+        match unsafe { would_steal(api, r.player_actor, r.target_actor) } {
             Ok(false) => {}
             Ok(true) => {
                 mark_owned(r.target_eid);
@@ -466,12 +494,27 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
         None => crate::log!("[event] route 0x{:X} has a NULL entry: the game will reject this event", r.route),
     }
 
-    let prepare: PrepareFn = core::mem::transmute(api.prepare);
-    let alloc: AllocEventFn = core::mem::transmute(api.alloc_event);
-    let enqueue: EnqueueFn = core::mem::transmute(api.enqueue);
+    // SAFETY: `api.prepare` is the `E8` target at `desc_mask+queue_site`+0,
+    // decoded by `resolve` and rejected unless it lies inside the main module;
+    // the game's builder calls it with no arguments, which is `PrepareFn`.
+    let prepare: PrepareFn = unsafe { core::mem::transmute(api.prepare) };
+    // SAFETY: `api.alloc_event` is the unique hit of the `alloc_event`
+    // signature in the main module, i.e. `FUN_1413A9790(_, size)`, which is
+    // what `AllocEventFn` describes.
+    let alloc: AllocEventFn = unsafe { core::mem::transmute(api.alloc_event) };
+    // SAFETY: `api.enqueue` is the unique hit of the `enqueue` signature in the
+    // main module, i.e. `FUN_1413AACB0(queue, ev, desc, flag)`, which is what
+    // `EnqueueFn` describes.
+    let enqueue: EnqueueFn = unsafe { core::mem::transmute(api.enqueue) };
 
-    prepare();
-    let ev = alloc(0, desc.payload_size as u32);
+    // SAFETY: the game's own static-init guard, argument-less and idempotent.
+    // It reads thread-local state at gs:[0x58], so it runs here on the game
+    // thread, exactly as the game's event builder calls it.
+    unsafe { prepare() };
+    // SAFETY: the game's 0x80-byte event allocator, called with the same
+    // (null, payload_size) arguments its builder uses. It too consults
+    // gs:[0x58], which is why `send_pickup` is game-thread only.
+    let ev = unsafe { alloc(0, desc.payload_size as u32) };
     if ev == 0 || !safe::readable(ev, EVENT_SIZE) {
         return Err(format!("alloc_event returned 0x{ev:X}"));
     }
@@ -505,7 +548,11 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     );
     crate::log!("[event]   ev+0x30..: {}", hex(&hdr));
     crate::log!("[event]   payload : {}", hex(&back));
-    enqueue(queue, ev, desc.ptr, r.flag);
+    // SAFETY: `ev` came from the game's own allocator above and every field
+    // the game reads was written through `safe::write` and verified; `queue`
+    // and `desc.ptr` were both checked readable at their full sizes. This is
+    // the call the game's builder makes at this point, on the game thread.
+    unsafe { enqueue(queue, ev, desc.ptr, r.flag) };
     Ok(ev)
 }
 
@@ -585,8 +632,12 @@ pub unsafe extern "system" fn on_enqueue(_queue: usize, ev: usize, desc: usize, 
         payload.clear();
     }
     let dispatch: u32 = safe::read(desc + 0x1C).unwrap_or(u32::MAX);
+    // SAFETY: `GetCurrentThreadId` takes no arguments and only reads the
+    // calling thread's own TEB; it is sound on whatever thread the game
+    // happens to be queueing an event from.
+    let tid = unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() };
     crate::log!(
-        "[record] #{n} {name} tid={} +30={f30} +40={f40} +48=0x{f48:X} eid={eid:08X} +54={f54} route=0x{route:X} size={size} +78={f78} flag={} disp={dispatch}: {}",
-        windows_sys::Win32::System::Threading::GetCurrentThreadId(), flag & 0xFF, hex(&payload)
+        "[record] #{n} {name} tid={tid} +30={f30} +40={f40} +48=0x{f48:X} eid={eid:08X} +54={f54} route=0x{route:X} size={size} +78={f78} flag={} disp={dispatch}: {}",
+        flag & 0xFF, hex(&payload)
     );
 }

@@ -1,0 +1,8 @@
+# Test code may unwrap, index and panic: a failing test is the point.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-panic-in-tests = true
+# A `// SAFETY:` comment on the statement above an unsafe block counts.
+accept-comment-above-statement = true
+accept-comment-above-attributes = true

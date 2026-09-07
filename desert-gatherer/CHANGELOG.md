@@ -4,6 +4,14 @@ All notable changes to Desert Gatherer. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
+## [Unreleased]
+
+### Changed
+
+- The never-panic rule is now enforced by the compiler: workspace lints deny `unwrap`, `expect`,
+  unchecked indexing and slicing, `panic!` and undocumented `unsafe` blocks in shipped code
+  (`desert-core` included, whose byte parsers gained proptest properties). No behaviour change.
+
 ## [0.1.0] - 2026-09-07
 
 Game build 25116796. The first tagged release (`desert-gatherer-v0.1.0`), verified in game on that

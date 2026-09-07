@@ -17,6 +17,11 @@
 // which is what `cargo test --target x86_64-unknown-linux-gnu` uses, gets no
 // resource and no windres invocation.
 
+// A build script that cannot embed the VERSIONINFO resource must fail the
+// build loudly: it runs on the dev machine, not in the game process, so the
+// workspace's never-panic rule does not apply here.
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use std::env;
 use std::fs;
 use std::path::PathBuf;

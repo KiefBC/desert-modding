@@ -105,16 +105,11 @@ const B_WINDOW: usize = 0x100;
 const TABLE_NAME: &[u8] = b"gimmickinfo";
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
-    let e = o.checked_add(4)?;
-    b.get(o..e).map(|s| u32::from_le_bytes([s[0], s[1], s[2], s[3]]))
+    b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
 }
 
 fn u64_at(b: &[u8], o: usize) -> Option<u64> {
-    let e = o.checked_add(8)?;
-    let s = b.get(o..e)?;
-    let mut a = [0u8; 8];
-    a.copy_from_slice(s);
-    Some(u64::from_le_bytes(a))
+    b.get(o..o.checked_add(8)?)?.try_into().ok().map(u64::from_le_bytes)
 }
 
 /// The fixed part at the front of every record.
@@ -162,7 +157,12 @@ fn block_ok(rec: &[u8], at: usize) -> bool {
         Some(b) => b,
         None => return false,
     };
-    // b is exactly BLOCK long, so every constant offset below is in range.
+    // b is exactly BLOCK long, so it converts to a fixed-size array and the
+    // compiler, not a runtime check, proves the constant offsets below.
+    let b: &[u8; BLOCK] = match b.try_into() {
+        Ok(b) => b,
+        Err(_) => return false,
+    };
     if b[0] != 1 || b[58] != 0xFF || b[59] != 0xFF {
         return false;
     }

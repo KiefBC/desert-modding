@@ -50,6 +50,10 @@ pub struct Hook {
 fn alloc_stub() -> Result<usize, String> {
     let mut g = STUB_PAGE.lock().unwrap_or_else(|e| e.into_inner());
     if g.0 == 0 || g.1 + STUB_SIZE > PAGE {
+        // SAFETY: VirtualAlloc with a null base has no precondition to uphold —
+        // the kernel picks an address, so no existing mapping of ours can be
+        // disturbed — and it reports failure by returning null, which is checked
+        // on the next line before the value is ever used as a pointer.
         let p = unsafe {
             VirtualAlloc(core::ptr::null(), PAGE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)
         } as usize;
@@ -78,23 +82,52 @@ pub unsafe fn install(target: usize, stolen: usize, callback: Callback) -> Resul
     if !safe::read_into(target, &mut original) {
         return Err(format!("target 0x{target:X} not readable"));
     }
-    if original[..2] == [0x48, 0xB8] {
+    if original.starts_with(&[0x48, 0xB8]) {
         return Err(format!("target 0x{target:X} already starts with mov rax,imm64: hooked by someone else?"));
     }
     let stub = alloc_stub()?;
     let stub_code = stub_bytes(target, &original, callback as usize);
-    // The stub page is ours (RWX), so a direct copy is fine.
-    core::ptr::copy_nonoverlapping(stub_code.as_ptr(), stub as *mut u8, stub_code.len());
+    // SAFETY: `alloc_stub` handed us STUB_SIZE (0xA0) bytes of a page it
+    // VirtualAlloc'd PAGE_EXECUTE_READWRITE and never hands out twice, and
+    // `stub_bytes` returns at most 0x48 + MAX_STOLEN = 0x66 bytes, so the whole
+    // copy lands inside our own writable stub. `stub_code` is a fresh local Vec,
+    // so source and destination cannot overlap.
+    unsafe {
+        core::ptr::copy_nonoverlapping(stub_code.as_ptr(), stub as *mut u8, stub_code.len());
+    }
 
     let patch = patch_bytes(stub, stolen);
     let mut old = 0u32;
-    if VirtualProtect(target as *const _, stolen, PAGE_EXECUTE_READWRITE, &mut old) == 0 {
+    // SAFETY: `safe::read_into` read `stolen` bytes from `target` above, so that
+    // range is inside a committed mapping of this process; VirtualProtect only
+    // changes the protection of the pages spanning it and writes the previous
+    // flags through `&mut old`, a live local.
+    if unsafe { VirtualProtect(target as *const _, stolen, PAGE_EXECUTE_READWRITE, &mut old) } == 0
+    {
         return Err(format!("VirtualProtect(0x{target:X}) failed"));
     }
-    core::ptr::copy_nonoverlapping(patch.as_ptr(), target as *mut u8, stolen);
+    // SAFETY: the VirtualProtect above succeeded, so `stolen` bytes at `target`
+    // are writable; `patch_bytes` resized `patch` to exactly `stolen` bytes, and
+    // it is a fresh local Vec that cannot alias the game's code. That
+    // overwriting those bytes is sound at all is the caller's `# Safety`
+    // contract: they are whole position-independent instructions and no thread
+    // is executing them.
+    unsafe {
+        core::ptr::copy_nonoverlapping(patch.as_ptr(), target as *mut u8, stolen);
+    }
     let mut ignored = 0u32;
-    VirtualProtect(target as *const _, stolen, old, &mut ignored);
-    FlushInstructionCache(GetCurrentProcess(), target as *const _, stolen);
+    // SAFETY: the same range as the call that returned `old`, put back the way
+    // we found it; `ignored` is a live local for the out parameter.
+    unsafe {
+        VirtualProtect(target as *const _, stolen, old, &mut ignored);
+    }
+    // SAFETY: the GetCurrentProcess pseudo-handle always names this process,
+    // cannot fail and must not be closed. `target..target + stolen` is the range
+    // just rewritten and still mapped, and flushing it is what makes the new
+    // bytes visible on a core that has the old ones in its instruction cache.
+    unsafe {
+        FlushInstructionCache(GetCurrentProcess(), target as *const _, stolen);
+    }
     Ok(Hook { target, stub, stolen, original })
 }
 

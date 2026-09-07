@@ -44,7 +44,12 @@ pub fn find_manager(m: &MainModule, vtables: &[u64]) -> Option<(usize, usize)> {
         let end = (start + s.virtual_size.max(s.raw_size) as usize).min(img.len());
         let mut off = start & !7;
         while off + 8 <= end {
-            let p = usize::from_le_bytes(img[off..off + 8].try_into().unwrap());
+            // `end` is clamped to `img.len()`, so the loop condition already
+            // proves this is in range; bail out rather than index blindly.
+            let Some(word) = img.get(off..off + 8).and_then(|b| <[u8; 8]>::try_from(b).ok()) else {
+                break;
+            };
+            let p = usize::from_le_bytes(word);
             // Heap objects live outside the module; skip nulls and self-references.
             if (0x10000..0x7FFF_FFFF_FFFF).contains(&p) && !m.contains(p) {
                 if let Some(vt) = safe::read::<u64>(p) {
@@ -297,7 +302,12 @@ pub fn global_object_census(m: &MainModule) -> Vec<(usize, usize, String)> {
         let end = (start + s.virtual_size.max(s.raw_size) as usize).min(img.len());
         let mut off = start & !7;
         while off + 8 <= end {
-            let p = usize::from_le_bytes(img[off..off + 8].try_into().unwrap());
+            // `end` is clamped to `img.len()`, so the loop condition already
+            // proves this is in range; bail out rather than index blindly.
+            let Some(word) = img.get(off..off + 8).and_then(|b| <[u8; 8]>::try_from(b).ok()) else {
+                break;
+            };
+            let p = usize::from_le_bytes(word);
             if (0x10000..0x7FFF_FFFF_FFFF).contains(&p) && !m.contains(p) {
                 if let Some(name) = rtti_name(m, p) {
                     let short = short_name(&name);

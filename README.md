@@ -74,13 +74,19 @@ enabled in your Nix config. Outputs, both to be copied into the game's
 linker and the per-target rustflags come from the dev shell in `flake.nix`.
 Keep the checkout on the Linux filesystem — building under `/mnt/c` is slow.
 
-Releasing: `nix develop --command tools/dist.sh` builds both plugins and writes
+A `justfile` wraps all of this: `just` lists the recipes (`build`, `test`,
+`clippy`, `audit`, `ci`, `dist`, `install`, `test-game`, `sigscan`, `log`).
+Each works inside `nix develop` and from a plain shell. `just install` copies
+the built `.asi` files into `bin64` (path from `CD_BIN64`, default the Steam
+install on `F:`) and refuses while the game is running.
+
+Releasing: `just dist` (`nix develop --command tools/dist.sh`) builds both plugins and writes
 `dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip` and
 `dist/SHA256SUMS` — each zip holding the `.asi`, its `.ini`, `README.md` and
 `CHANGELOG.md` at the archive root, so it can be extracted straight into `bin64`
 or handed to Definitive Mod Manager.
 
-Tests:
+Tests (`just test` runs both targets):
 
 ```bash
 cargo test --target x86_64-unknown-linux-gnu
@@ -98,7 +104,10 @@ cargo test --release --target x86_64-unknown-linux-gnu -p desert-looter --test g
 ## Rules every plugin here follows
 
 1. **Never panic.** `panic = "abort"` is set, and an abort inside the game's
-   process is a crash to desktop.
+   process is a crash to desktop. Clippy enforces it: the workspace lints deny
+   `unwrap`, `expect`, unchecked indexing and slicing, `panic!` and friends in
+   shipped code, and every `unsafe` block carries a `// SAFETY:` comment.
+   `desert-core/tests/props.rs` feeds the byte parsers arbitrary input.
 2. **Never dereference game memory.** All foreign reads go through
    `desert_core::safe`, and no pointer is cached across frames. The first heap
    scan waits out a 20-second boot grace.

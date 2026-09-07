@@ -26,6 +26,11 @@ Game build 25116796.
 - Clippy-clean on both build targets: nine lints fixed mechanically (`map_or` to `is_none_or` /
   `is_some_and`, range checks to `contains`, one redundant closure) and `# Safety` sections added to
   the two hook callbacks. No behaviour change.
+- The never-panic rule is now enforced by the compiler: workspace lints deny `unwrap`, `expect`,
+  unchecked indexing and slicing, `panic!` and undocumented `unsafe` blocks in shipped code, and the
+  sites that relied on review (byte helpers, the heap-scan loops, the built-in signature parse) were
+  rewritten to bail out instead. No behaviour change on any input the old code handled; inputs that
+  would have panicked now take the function's existing failure path.
 
 ## [0.1.0] - 2026-09-07
 

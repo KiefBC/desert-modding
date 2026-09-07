@@ -71,25 +71,30 @@ type Record = (u32, String);
 type Family = BTreeMap<Record, BTreeSet<usize>>;
 
 /// `(record key, record name) -> the offsets that family patches in it`.
-fn read_family(text: &str) -> Family {
+/// `None` if a change object does not have its fields in that documented order.
+fn read_family(text: &str) -> Option<Family> {
     let mut out: Family = BTreeMap::new();
     let mut cur = 0usize;
     while let Some((offset, at)) = number_after(text, "\"offset\":", cur) {
-        let (key, at) = number_after(text, "\"record_key\":", at).expect("record_key follows offset");
-        let (entry, at) = string_after(text, "\"entry\":", at).expect("entry follows record_key");
+        let (key, at) = number_after(text, "\"record_key\":", at)?;
+        let (entry, at) = string_after(text, "\"entry\":", at)?;
         out.entry((key as u32, entry)).or_default().insert(offset as usize);
         cur = at;
     }
-    out
+    Some(out)
 }
 
 /// Find every wanted record in one pass over the table, the same rule as
 /// `rebase.py`'s `locate_records`: `u32 key`, `u32 len` equal to the name
 /// length, the name, a NUL — and exactly one hit per record.
-fn locate_records(table: &[u8], wanted: &BTreeSet<Record>) -> BTreeMap<Record, usize> {
+fn locate_records(
+    table: &[u8],
+    wanted: &BTreeSet<Record>,
+) -> Result<BTreeMap<Record, usize>, String> {
     let mut hits: BTreeMap<Record, Vec<usize>> = BTreeMap::new();
     for p in 0..table.len() {
-        if let Some(h) = gimmick::parse_header(&table[p..]) {
+        let Some(rest) = table.get(p..) else { break };
+        if let Some(h) = gimmick::parse_header(rest) {
             let k = (h.key, h.name);
             if wanted.contains(&k) {
                 hits.entry(k).or_default().push(p);
@@ -102,10 +107,10 @@ fn locate_records(table: &[u8], wanted: &BTreeSet<Record>) -> BTreeMap<Record, u
             Some([one]) => {
                 out.insert(k.clone(), *one);
             }
-            other => panic!("record {} {:?}: expected 1 hit, got {other:?}", k.0, k.1),
+            other => return Err(format!("record {} {:?}: expected 1 hit, got {other:?}", k.0, k.1)),
         }
     }
-    out
+    Ok(out)
 }
 
 #[test]
@@ -126,13 +131,14 @@ fn multiply_reproduces_the_dmm_pack_edits() {
     assert_eq!(names.len(), 4, "expected four 2X families, got {names:?}");
     for n in names {
         let text = std::fs::read_to_string(format!("{PACK}/{n}")).expect("pack json readable");
-        families.push((n, read_family(&text)));
+        let family = read_family(&text).expect("pack json fields in the documented order");
+        families.push((n, family));
     }
 
     // One pass over the 22 MB table finds every record all four families name.
     let wanted: BTreeSet<Record> =
         families.iter().flat_map(|(_, f)| f.keys().cloned()).collect();
-    let starts = locate_records(&table, &wanted);
+    let starts = locate_records(&table, &wanted).expect("every packed record located exactly once");
     let mut sorted: Vec<usize> = starts.values().copied().collect();
     sorted.sort_unstable();
     println!("records located: {} (all unique)", starts.len());

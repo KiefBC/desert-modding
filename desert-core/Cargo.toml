@@ -5,6 +5,9 @@ description = "Shared plumbing for the Crimson Desert ASI plugins: hooks, guarde
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [lib]
 name = "desert_core"
 # A plain rlib: this crate ships nothing on its own, it is linked into each
@@ -13,3 +16,9 @@ crate-type = ["rlib"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys.workspace = true
+
+[dev-dependencies]
+# Property tests for the pure byte parsers (tests/props.rs): the game hands
+# these functions untrusted bytes on every load, so the property that matters is
+# that they never panic. Dev-only; nothing here is linked into a plugin.
+proptest = "1"

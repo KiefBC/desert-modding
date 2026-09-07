@@ -40,7 +40,13 @@ pub fn resolve(m: &MainModule) -> Anchors {
     let img = m.bytes();
     let mut a = Anchors::default();
     for (name, text) in SIGNATURES {
-        let pat = Pattern::parse(text).expect("built-in signature parses");
+        // The signatures above are built in and all parse; a typo in one is a
+        // skipped anchor, never a panic in the game process.
+        let Some(pat) = Pattern::parse(text) else {
+            crate::log!("[sig] {name:<22} UNPARSEABLE");
+            a.missing.push(name);
+            continue;
+        };
         match pat.find_unique(img) {
             Found::Unique(off) => {
                 crate::log!("[sig] {name:<22} = +0x{off:X}");

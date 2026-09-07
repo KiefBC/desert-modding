@@ -57,6 +57,8 @@ pub fn disable() {
 
 #[cfg(windows)]
 fn tid() -> u32 {
+    // SAFETY: GetCurrentThreadId takes no arguments and reads the id out of the
+    // calling thread's own TEB. It touches no memory of ours and cannot fail.
     unsafe { windows_sys::Win32::System::Threading::GetCurrentThreadId() }
 }
 #[cfg(not(windows))]

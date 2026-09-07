@@ -130,7 +130,9 @@ fn first_warning_for(key: u32) -> bool {
     }
     let start = (key as usize) % WARN_SLOTS;
     for i in 0..WARN_SLOTS {
-        let slot = &NAME_WARNED[(start + i) % WARN_SLOTS];
+        // `(start + i) % WARN_SLOTS` is always in range; a miss simply moves
+        // on to the next probe, which is what the loop does anyway.
+        let Some(slot) = NAME_WARNED.get((start + i) % WARN_SLOTS) else { continue };
         match slot.compare_exchange(0, key, Ordering::AcqRel, Ordering::Acquire) {
             Ok(_) => return true,
             Err(v) if v == key => return false,
