@@ -50,8 +50,16 @@ clippy:
 audit:
     {{nix}} cargo audit
 
-# Everything a commit should pass: clippy, tests, audit.
-ci: clippy test audit
+# Everything a commit should pass: clippy, tests, audit, doc versions.
+ci: clippy test audit check-versions
+
+# Rewrite the version tables in README.md / VERSIONING.md from the Cargo.toml versions.
+sync-versions:
+    {{nix}} python3 tools/sync-versions.py
+
+# Fail if those docs have drifted from the Cargo.toml versions. Part of `just ci`.
+check-versions:
+    {{nix}} python3 tools/sync-versions.py --check
 
 # Re-check every byte signature against the game exe (each must hit once).
 sigscan:

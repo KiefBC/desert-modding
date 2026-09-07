@@ -1,0 +1,72 @@
+# Runs on every pull request: the checks that don't need the game installed.
+#
+# What is NOT here, and why: `just test-win` runs the Windows test binaries
+# through WSL interop, and `just test-game` / `just sigscan` read the real
+# CrimsonDesert.exe. Neither exists on a CI runner, so the Windows side is
+# covered by compiling the tests (`--no-run`) instead of running them. Run
+# `just test-win` and `just test-game` locally before a release.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Mondays, 06:00 UTC - catches advisories filed during a quiet week.
+    - cron: "0 6 * * 1"
+
+# A new push to a PR cancels the run still going for the old one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+
+      # Keyed on the lockfiles: a dependency or toolchain change gets a fresh
+      # cache, anything else reuses the compiled deps.
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Docs match Cargo.toml
+        run: python3 tools/sync-versions.py --check
+
+      - name: Clippy (Windows + native, warnings are errors)
+        run: nix develop --command just clippy
+
+      - name: Tests (native)
+        run: nix develop --command just test-native
+
+      # Not run, only built: this is what catches a #[cfg(windows)] block that
+      # stopped compiling, without needing Windows to execute it.
+      - name: Tests compile for Windows
+        run: nix develop --command cargo test --no-run
+
+  # Separate job, deliberately: an advisory published against a dependency has
+  # nothing to do with the PR under review, and shouldn't redden it. Weekly, so
+  # a new advisory surfaces even when nobody opens a PR.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v30
+        with:
+          extra_nix_config: experimental-features = nix-command flakes
+      - name: Audit dependencies
+        run: nix develop --command just audit
