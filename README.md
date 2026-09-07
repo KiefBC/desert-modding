@@ -24,6 +24,9 @@ its `.ini` into the game's `bin64`.
 
 ## Build
 
+Developed on NixOS; the flake provides the Rust toolchain and the Windows
+cross-compiler.
+
 ```bash
 nix develop
 cargo build --release
@@ -33,13 +36,7 @@ Outputs `desert_looter.dll` and `desert_gatherer.dll` under
 `target/x86_64-pc-windows-gnu/release/`; install them renamed to
 `DesertLooter.asi` and `DesertGatherer.asi`.
 
-The `justfile` wraps the common tasks — run `just` to list them. `just install`
-copies both plugins into `bin64` (path from `CD_BIN64`), `just dist` builds the
-release zips, `just test` runs the tests, `just ci` runs everything.
-
-Notes: keep the checkout on the Linux filesystem, building under `/mnt/c` is
-slow. If flakes aren't enabled in your Nix config, add
-`--extra-experimental-features 'nix-command flakes'`.
+The `justfile` wraps the common tasks; run `just` to list them.
 
 ## Rules every plugin follows
 

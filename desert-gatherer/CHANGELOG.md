@@ -8,6 +8,12 @@ Versioning](../VERSIONING.md).
 
 ### Changed
 
+- `DryRun` is now shipped as `0`. The dry-run-first install step is gone: the plugin multiplies
+  yields on its first launch. `DryRun=1` stays available for troubleshooting and for checking what
+  the plugin would do on a new game build. It was never the safety net it looked like — the record
+  parser already refuses any output block whose markers do not match or whose vanilla minimum and
+  maximum are implausible, so a layout shift after a game update leaves the record vanilla and says
+  so in the log rather than writing garbage.
 - The never-panic rule is now enforced by the compiler: workspace lints deny `unwrap`, `expect`,
   unchecked indexing and slicing, `panic!` and undocumented `unsafe` blocks in shipped code
   (`desert-core` included, whose byte parsers gained proptest properties). No behaviour change.

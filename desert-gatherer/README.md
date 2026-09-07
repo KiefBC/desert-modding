@@ -109,12 +109,6 @@ name, version, `KiefBC`, MIT). It is **not** digitally signed - a code-signing
 certificate costs money - so check the `SHA256SUMS` file from the release
 instead. And the source is public: all of it is in this repository.
 
-### First run
-
-The shipped ini has `DryRun=1`. Start the game once, read
-`bin64\DesertGatherer.log`, check the `[dry]` lines look right, then set
-`DryRun=0` and restart.
-
 ## Conflicts with DMM — important
 
 DMM's **"The Desert Gatherer" module pack** and DMM's **built-in gathering
@@ -130,7 +124,7 @@ plugin is its replacement, not its companion.
 | key | default | meaning |
 |---|---|---|
 | `Enabled` | 1 | 0 = load but hook nothing |
-| `DryRun` | 0 (shipped as 1) | 1 = log every change that would be made and write nothing |
+| `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
 | `Foraging` | 1 | multiplier for plants and crops, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |
@@ -152,7 +146,8 @@ log and the default is kept.
 A healthy log starts with the version line, one `[ini]` line echoing every
 setting, a `[module]` line, a `[gimmick] record loader at +0x...` line and a
 `[hook] record loader ... -> stub ...` line. After that comes one line per
-gather record as the game loads it:
+gather record as the game loads it — `[gimmick]` when the record was patched,
+or `[dry]` when the optional `DryRun=1` is set and nothing was written:
 
 ```
 [gimmick] ore_copper_01 key=17080005 Ore x2 blocks=1 applied 2/2: 1->2/1->2
