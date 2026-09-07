@@ -101,10 +101,15 @@ key, a new setting, a changed default).
    first line prints `CARGO_PKG_VERSION`, so nothing else has to be edited to keep it honest.
 2. Add the CHANGELOG entry, in the same commit as the bump: the version, the date, the game build,
    and Added / Changed / Fixed.
-3. Build:
+3. Build the release packages:
    ```bash
-   nix develop --command cargo build --release
+   nix develop --command tools/dist.sh
    ```
+   That builds both plugins and writes `dist/DesertLooter-<version>.zip`,
+   `dist/DesertGatherer-<version>.zip` and `dist/SHA256SUMS`. Each zip holds the
+   `.asi`, its `.ini`, the mod's `README.md` and its `CHANGELOG.md` at the
+   archive root, which is what makes one archive serve both a manual install
+   into `bin64` and Definitive Mod Manager.
 4. Verify in game: copy the `.asi` and `.ini` into `bin64`, launch, read the log. There is no
    automated in-game test; a release that has not been run in the game is not a release.
 5. Commit, then tag `<crate>-v<version>`:
@@ -112,7 +117,7 @@ key, a new setting, a changed default).
    git tag desert-looter-v0.1.0
    git tag desert-gatherer-v0.1.0
    ```
-6. Copy the `.asi` and its `.ini` to the release.
+6. Upload the two zips from `dist/` and the `SHA256SUMS` to the release.
 
 ## desert-core
 

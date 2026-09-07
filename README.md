@@ -74,6 +74,12 @@ enabled in your Nix config. Outputs, both to be copied into the game's
 linker and the per-target rustflags come from the dev shell in `flake.nix`.
 Keep the checkout on the Linux filesystem — building under `/mnt/c` is slow.
 
+Releasing: `nix develop --command tools/dist.sh` builds both plugins and writes
+`dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip` and
+`dist/SHA256SUMS` — each zip holding the `.asi`, its `.ini`, `README.md` and
+`CHANGELOG.md` at the archive root, so it can be extracted straight into `bin64`
+or handed to Definitive Mod Manager.
+
 Tests:
 
 ```bash

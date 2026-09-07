@@ -44,6 +44,11 @@
             # dmm-pack/rebase.py rewrites the DMM offset patches; jq is for
             # eyeballing those JSONs without loading a 230 KB file into an editor.
             pkgs.jq
+
+            # tools/dist.sh builds the release zips (zip -X for reproducible
+            # archives) and prints their listing back with unzip -l.
+            pkgs.zip
+            pkgs.unzip
           ];
 
           # Cargo uses this linker for the gnu target. Scoped to this shell, so

@@ -4,3 +4,4 @@ result-*
 *:Zone.Identifier
 *.log
 /analysis/
+/dist/

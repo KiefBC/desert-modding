@@ -35,16 +35,49 @@ Every keypress beeps once. Keys can be changed in the ini.
 
 ## Install
 
+The release archive holds four files at its root - `DesertLooter.asi`,
+`DesertLooter.ini`, `README.md` and `CHANGELOG.md` - so it suits either way of
+installing it.
+
+### By hand
+
 Requirements: the game, and Ultimate ASI Loader present in `bin64` as
 `winmm.dll` (it loads every `.asi` file beside it).
 
-Copy two files into `<game>\bin64\`:
+Extract the archive straight into `<game>\bin64\`, or copy two files there:
 
 - `DesertLooter.asi`: the plugin. Rename the built `desert_looter.dll` to this.
 - `DesertLooter.ini`: the settings. Optional; built-in defaults apply without it.
 
 To remove the plugin, delete `DesertLooter.asi`. Nothing is installed anywhere
 else and no game file is modified.
+
+### Install with DMM
+
+Definitive Mod Manager accepts an ASI mod as either a single `.asi` file or a
+directory, so drop the release zip onto DMM's window, or extract it and put the
+folder under `<DMM>\mods\_asi\`. DMM copies `DesertLooter.asi` and the `.ini`
+beside it into the game's `bin64` itself, and it installs Ultimate ASI Loader as
+`winmm.dll` for you, so there is nothing to set up beforehand. Enable the mod in
+DMM's ASI tab; the same tab turns it off again.
+
+### About DMM's security scan
+
+DMM grades every plugin it installs, and it will grade this one **Suspicious**.
+That is an honest reading of what the plugin does, not a finding against it: it
+imports `WriteProcessMemory`, `ReadProcessMemory` and `VirtualProtect`, because
+that is how it installs its hook into the running game and how it reads and
+writes game memory safely. (Every read of game memory goes through
+`ReadProcessMemory` on the plugin's own process, so a page that has been
+unmapped returns nothing instead of faulting and crashing the game.) No mod that
+changes a running game's behaviour can avoid those imports.
+
+Everything else the scan looks at is clean: the DLL is not packed and is of
+ordinary entropy, has no data appended past its last PE section, has no
+writable-and-executable sections, and carries a version-info resource (product
+name, version, `KiefBC`, MIT). It is **not** digitally signed - a code-signing
+certificate costs money - so check the `SHA256SUMS` file from the release
+instead. And the source is public: all of it is in this repository.
 
 ## Files in the game folder
 
