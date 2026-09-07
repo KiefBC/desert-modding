@@ -5,7 +5,7 @@ not per repo: one commit can bump one crate and leave the other alone.
 
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
-| `desert-looter` | 0.1.0 | `DesertLooter.asi` | `desert-looter-v0.1.0` |
+| `desert-looter` | 0.1.1 | `DesertLooter.asi` | `desert-looter-v0.1.1` |
 | `desert-gatherer` | 0.1.0 | `DesertGatherer.asi` | `desert-gatherer-v0.1.0` |
 | `desert-core` | 0.2.0 | nothing | never |
 
@@ -68,7 +68,7 @@ next one is genuinely satisfied.
 | 0.5 and up | stabilising: no known bugs, docs complete, only fixes landing |
 | 1.0 | two game updates survived without code changes, and nothing on the known-issues list |
 
-Both plugins are at **0.1.0** today, and for the same reason: each does what it exists to do, and
+Both plugins are at **0.1** today (looter 0.1.1, gatherer 0.1.0), and for the same reason: each does what it exists to do, and
 has been run in the game on build 25116796 — and that is the whole of the evidence. Neither has
 seen a game update yet, so neither has anything to show for 0.2.
 

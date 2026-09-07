@@ -4,6 +4,23 @@ All notable changes to Desert Looter. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
+## [0.1.1] - 2026-09-07
+
+Game build 25116796.
+
+### Fixed
+
+- At a full bag, a node whose item was already stacked in the bag was refused until the plugin had
+  seen one pickup of that node type with a free slot ("yield of this node not learned yet"), which a
+  full bag never allows. The stacking rule now reads the items a node can give from the node's own
+  gimmick record (its resource-output list, `record+0x278` on this build) and requires a stack of
+  every one of them; `DesertLooter.yields` only refines the amount. The first time a node type is
+  considered at a full bag, the log lists what its record declares (`[yield] record N name
+  declares ...`).
+- A full bag logged only the first refusal reason per fill, so a ground item's "needs a free slot"
+  hid the real reason for the gather nodes beside it. Each distinct reason is now logged once, with
+  the node's name.
+
 ## [0.1.0] - 2026-09-07
 
 Game build 25116796. The first tagged release (`desert-looter-v0.1.0`): the plugin does what it

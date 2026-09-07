@@ -248,3 +248,55 @@ pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
         safe::read_ptr(arr + i as usize * 8).and_then(|r| safe::read::<u32>(r)) == Some(key)
     }).map(|i| i as u16)
 }
+
+/// Resource outputs of a constructed gimmick record (build 25116796, from the
+/// record deserializer `FUN_141472070` -> `FUN_1414a7cc0`): one vector at
+/// `record+0x278` — `{ptr data @0, u32 size @8, u32 cap @0xC}`, elements of 16
+/// bytes `{Block* @0, u32 item id @8}`; the block (112 bytes) has `u64 min @0x20`,
+/// `u64 max @0x28` and the item id again as the high dword of `u64 @0x68`.
+pub const GIMMICK_DROPS_OFF: usize = 0x278;
+
+/// One resource-output block of a gimmick record: a gather pays out exactly one
+/// of these, rolled between `min` and `max`. Both are already multiplied if
+/// Desert Gatherer patched the raw bytes before deserialization.
+pub struct DropOutput {
+    pub item: u32,
+    pub min: u64,
+    pub max: u64,
+}
+
+/// Every output block of a constructed gimmick record, in vector order.
+///
+/// Any layout surprise — a bad count, an unreadable element, a block whose item
+/// id does not match the element's, an implausible quantity — returns `None` for
+/// the whole record rather than a half-right list. `None` is not an error: the
+/// caller falls back to the learned-yield path (`events::yield_of`).
+pub fn gimmick_record_drops(rec: usize) -> Option<Vec<DropOutput>> {
+    let data = safe::read_ptr(rec + GIMMICK_DROPS_OFF)?;
+    let size: u32 = safe::read(rec + GIMMICK_DROPS_OFF + 0x08)?;
+    let cap: u32 = safe::read(rec + GIMMICK_DROPS_OFF + 0x0C)?;
+    if size == 0 || size > cap || size > desert_core::gimmick::MAX_COUNT {
+        return None;
+    }
+    let n = size as usize;
+    if !safe::readable(data, n * 16) {
+        return None;
+    }
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let elem = data + i * 16;
+        let item: u32 = safe::read(elem + 8)?;
+        if item == 0 {
+            return None;
+        }
+        let block = safe::read_ptr(elem)?;
+        let min: u64 = safe::read(block + 0x20)?;
+        let max: u64 = safe::read(block + 0x28)?;
+        let block_item: u32 = safe::read(block + 0x6C)?;
+        if block_item != item || min == 0 || min > max || max > desert_core::gimmick::MAX_QTY {
+            return None;
+        }
+        out.push(DropOutput { item, min, max });
+    }
+    Some(out)
+}

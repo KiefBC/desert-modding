@@ -28,6 +28,12 @@ pub struct Gatherer {
     item_index_cache: Vec<(u32, u16)>,
     /// Logged once per fill so a full bag does not spam the log.
     bag_full_reported: bool,
+    /// The last refusal reason logged at a full bag; a different one (a
+    /// different node type in reach) is logged too, a repeat is not.
+    bag_full_reason: String,
+    /// Record indices whose declared outputs have been logged once, so the
+    /// `[yield]` line appears the first time a node type is looked at.
+    yield_logged: Vec<u16>,
     interval: Duration,
     cooldown: Duration,
     done: Vec<Done>,
@@ -63,6 +69,8 @@ impl Gatherer {
             stack_limit: cfg.stack_limit,
             item_index_cache: Vec::new(),
             bag_full_reported: false,
+            bag_full_reason: String::new(),
+            yield_logged: Vec::new(),
             interval: Duration::from_millis(cfg.gather_interval_ms as u64),
             cooldown: Duration::from_millis(cfg.node_cooldown_ms as u64),
             done: Vec::new(),
@@ -89,13 +97,63 @@ impl Gatherer {
         Some(i)
     }
 
+    /// What a node can pay out, as `(item key, count)` per distinct item.
+    ///
+    /// Preferred source is the constructed gimmick record, which declares every
+    /// output block up front; a gather pays out **one** block, so per item the
+    /// largest `max` is the margin the bag has to have. Falls back to what was
+    /// learned by watching a pickup (`events::yield_of`) when the record is
+    /// unreadable, and takes the larger of the two when both are known.
+    fn node_yields(&mut self, m: &MainModule, target: &game::GatherTarget) -> Result<Vec<(u32, u32)>, String> {
+        let drops = crate::tables::gimmick_record(m, target.record)
+            .and_then(crate::tables::gimmick_record_drops);
+        let Some(drops) = drops else {
+            return match events::yield_of(target.record) {
+                Some(pair) => Ok(vec![pair]),
+                None => Err("yield unknown: record outputs unreadable and not learned yet".into()),
+            };
+        };
+        if !self.yield_logged.contains(&target.record) {
+            self.yield_logged.push(target.record);
+            let list: Vec<String> = drops
+                .iter()
+                .map(|d| format!("item {} x{}-{}", d.item, d.min, d.max))
+                .collect();
+            crate::log!(
+                "[yield] record {} {} declares {} outputs: {}",
+                target.record, target.name, drops.len(), list.join(", ")
+            );
+        }
+        let mut out: Vec<(u32, u32)> = Vec::new();
+        for d in &drops {
+            let count = d.max.min(u32::MAX as u64) as u32;
+            match out.iter_mut().find(|(item, _)| *item == d.item) {
+                Some(e) => e.1 = e.1.max(count),
+                None => out.push((d.item, count)),
+            }
+        }
+        // A learned pair refines the margin; one the record does not list is
+        // kept as well, so a disagreement makes the rule stricter, not looser.
+        if let Some((item, count)) = events::yield_of(target.record) {
+            match out.iter_mut().find(|(i, _)| *i == item) {
+                Some(e) => e.1 = e.1.max(count),
+                None => out.push((item, count)),
+            }
+        }
+        if out.is_empty() {
+            return Err("yield unknown: record outputs unreadable and not learned yet".into());
+        }
+        Ok(out)
+    }
+
     /// The game's own interaction UI refuses when the bag is full, but the
     /// forged event bypasses that UI and the gather path does not check on
     /// the server side (133/132 was observed). So we check first. A full bag
     /// still accepts a pickup that stacks onto an existing stack, which the
-    /// game allows: we take that only when the node's yield is known, the
-    /// bag holds a real stack of it (count >= 2 proves it stacks), and the
-    /// result stays under `StackLimit`.
+    /// game allows: we take that only when the node's yields are known
+    /// ([`Self::node_yields`]) and *every* item it can pay out is already in
+    /// the bag as a real stack (count >= 2 proves it stacks) whose result
+    /// stays under `StackLimit`.
     fn bag_has_room(&mut self, m: &MainModule, sc: &Scene, target: &game::GatherTarget, why: &str) -> bool {
         let Some(tabs) = sc.tabs.as_ref() else {
             if !self.bag_full_reported {
@@ -121,22 +179,26 @@ impl Gatherer {
             if target.mode != crate::payload::PickupMode::Gather {
                 return Err("ground items need a free slot (their contents are per instance)".into());
             }
-            let (item, count) = events::yield_of(target.record).ok_or("yield of this node not learned yet")?;
-            let idx = self.item_index(m, item).ok_or_else(|| format!("item {item} not in the item table"))?;
+            let yields = self.node_yields(m, target)?;
             let slots = actors::tab_slots(&bag).ok_or("bag slots unreadable")?;
-            let stack = slots
-                .iter()
-                .filter(|s| s.item_index == idx)
-                .max_by_key(|s| s.count)
-                .ok_or_else(|| format!("no stack of item {item} in the bag"))?;
-            if stack.count < 2 {
-                return Err(format!("item {item} is in the bag as a single, not proven stackable"));
+            let mut notes: Vec<String> = Vec::new();
+            for (item, count) in yields {
+                let idx = self.item_index(m, item).ok_or_else(|| format!("item {item} not in the item table"))?;
+                let stack = slots
+                    .iter()
+                    .filter(|s| s.item_index == idx)
+                    .max_by_key(|s| s.count)
+                    .ok_or_else(|| format!("no stack of item {item} in the bag"))?;
+                if stack.count < 2 {
+                    return Err(format!("item {item} is in the bag as a single, not proven stackable"));
+                }
+                let after = stack.count + count as i64;
+                if after > self.stack_limit as i64 {
+                    return Err(format!("stack of item {item} is {} and +{count} would pass StackLimit {}", stack.count, self.stack_limit));
+                }
+                notes.push(format!("stacks onto item {item} ({} -> {after})", stack.count));
             }
-            let after = stack.count + count as i64;
-            if after > self.stack_limit as i64 {
-                return Err(format!("stack of item {item} is {} and +{count} would pass StackLimit {}", stack.count, self.stack_limit));
-            }
-            Ok(format!("stacks onto item {item} ({} -> {after})", stack.count))
+            Ok(notes.join(", "))
         })();
         match verdict {
             Ok(note) => {
@@ -144,12 +206,13 @@ impl Gatherer {
                 true
             }
             Err(reason) => {
-                if !self.bag_full_reported {
+                if !self.bag_full_reported || self.bag_full_reason != reason {
                     self.bag_full_reported = true;
                     crate::log!(
-                        "[gather] {why}: bag full ({}/{} in tab {}): {reason}; not sending",
-                        bag.used, bag.max, bag.id
+                        "[gather] {why}: bag full ({}/{} in tab {}): {} {reason}; not sending",
+                        bag.used, bag.max, bag.id, target.name
                     );
+                    self.bag_full_reason = reason;
                 }
                 false
             }

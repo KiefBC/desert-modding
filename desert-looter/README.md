@@ -1,6 +1,6 @@
 # Desert Looter
 
-**Version 0.1.0** — for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.1.1** — for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 A gathering auto-loot plugin. It collects plants, ore, stone and wood around
@@ -16,9 +16,9 @@ nothing is simulated and no input is faked. Written in Rust, shipped as one
 - **Picks up plain ground items** such as ore chunks. Before every item it
   asks the game whether taking it would count as stealing, and skips it if
   so. Merchant goods, quest items and props are never touched.
-- **Respects the bag.** Nothing is sent when the bag is full unless the item
-  would stack onto a stack you already carry. Repeated refusals switch auto
-  mode off.
+- **Respects the bag.** Nothing is sent when the bag is full unless every
+  item the node can give would stack onto a stack you already carry, read
+  from the node's own record. Repeated refusals switch auto mode off.
 - **Leaves alone**: standing trees, log chunks, creatures, furniture and, by
   default, dropped weapons and armour.
 
@@ -88,7 +88,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | `DesertLooter.asi` | the plugin | yes, that uninstalls it |
 | `DesertLooter.ini` | your settings, read once at game start | yes, defaults are used |
 | `DesertLooter.log` | append-only log of what the plugin did; grows every session | yes, any time |
-| `DesertLooter.yields` | a small cache of "this node gives this item", learned while you play; used for the stacking rule at a full bag | yes, it relearns itself |
+| `DesertLooter.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag (the node's own record is what says which items it gives) | yes, it relearns itself |
 
 The log is the first thing to look at when something seems off. A healthy
 start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
@@ -119,6 +119,11 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
   multiplied amount straight to the bag, and no chunks are spawned.
 - A full bag makes the game refuse pickups silently. The log shows it as
   nodes "still there" after the cooldown, and auto mode stops after three.
+- At a full bag the log says, once per reason, why a node in reach is not
+  sent: `[gather] auto: bag full (132/132 in tab 1): marigold_01 no stack of
+  item 757005 in the bag; not sending`. The first time a node type is
+  considered at a full bag, a `[yield] record N name declares ...` line lists
+  the items and amounts its record can give.
 - If the game updates, the eight signatures may stop matching. The log will
   say `NOT FOUND` and the plugin stays idle; nothing dangerous happens.
 
