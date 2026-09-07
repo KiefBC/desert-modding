@@ -1,4 +1,4 @@
-# Byte signatures lifted from the reference mod CDLoot.asi (names are its own).
+# Byte signatures lifted from the reference mod (names are its own).
 # One line per signature; '#' lines are comments; ?? is a wildcard byte.
 # alloc_event      - function start; returns a fresh event object
 48 89 5C 24 ?? 4C 89 44 24 ?? 57 48 83 EC 20 8B ?? BA ?? ?? 00 00

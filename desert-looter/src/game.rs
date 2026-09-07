@@ -7,7 +7,7 @@ use crate::pattern::{Found, Pattern};
 use crate::rtti;
 
 /// Signatures lifted from the reference mod. Names are ours; the comment says
-/// what the hit is. See docs/cdloot-internals.md section 2.
+/// what the hit is. See docs/reference-internals.md section 2.
 pub const SIGNATURES: &[(&str, &str)] = &[
     ("alloc_event", "48 89 5C 24 ?? 4C 89 44 24 ?? 57 48 83 EC 20 8B ?? BA ?? ?? 00 00"),
     ("enqueue", "48 89 5C 24 08 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00"),

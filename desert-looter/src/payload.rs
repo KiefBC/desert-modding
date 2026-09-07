@@ -1,5 +1,5 @@
 //! Byte layout of the PickUpItem payload (platform independent, unit tested).
-//! docs/cdloot-internals.md section 3.2, "kind 3" (gather).
+//! docs/reference-internals.md section 3.2, "kind 3" (gather).
 
 pub const PICKUP_DESCRIPTOR: &str = "TrocTrProcessPickUpItemOnceTimer";
 /// Values the reference mod compiled in; re-resolved at start, logged if different.

@@ -1,6 +1,6 @@
 //! Read-only view of the game's actor manager and its actors.
 //!
-//! Layout knowledge (see docs/cdloot-internals.md):
+//! Layout knowledge (see docs/reference-internals.md):
 //! - The manager singleton is reachable through a global pointer in one of the
 //!   exe's writable data sections; the object starts with the
 //!   `ClientActorManager` vtable and is 0x498 bytes.
@@ -698,7 +698,7 @@ pub fn bag_tab(tabs: &[InventoryTab], wanted: Option<i16>) -> Option<InventoryTa
 }
 
 /// Bytes the reference mod reads off `ClientStatusActorComponent` to reject
-/// things that are not loot (docs/cdloot-internals.md section 10):
+/// things that are not loot (docs/reference-internals.md section 10):
 /// `+0x2C8`: 1 = quest item, 0x0F = shop goods, 0x11 = decoration;
 /// `+0x273`: 6 = catchable creature.
 pub const STATUS_KIND_OFF: usize = 0x2C8;

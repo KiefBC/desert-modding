@@ -4,7 +4,7 @@
 Usage:
     python3 tools/sigscan.py [exe] [sigfile]
 
-Defaults: the Steam install on /mnt/f and tools/cdloot-signatures.txt.
+Defaults: the Steam install on /mnt/f and tools/reference-signatures.txt.
 Signature lines are IDA-style: "48 8B ?? 20 01 00 00" (?? = wildcard).
 Prints hit counts and file offsets; a good anchor hits exactly once.
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 EXE = sys.argv[1] if len(sys.argv) > 1 else \
     "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe"
-SIGFILE = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "cdloot-signatures.txt"
+SIGFILE = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "reference-signatures.txt"
 
 SIG_RE = re.compile(r"^([0-9A-Fa-f]{2}|\?\?)( ([0-9A-Fa-f]{2}|\?\?))+$")
 NAMES = [

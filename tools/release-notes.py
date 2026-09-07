@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Turn a release tag into a release title and release notes.
 
-    tools/release-notes.py desert-looter-v0.1.1            notes, as markdown, on stdout
-    tools/release-notes.py desert-looter-v0.1.1 --title    just the title
-    tools/release-notes.py TAG --sums dist/SHA256SUMS       notes plus a table of the attached files
+    tools/release-notes.py desert-looter-v0.1.1              notes, as markdown, on stdout
+    tools/release-notes.py desert-looter-v0.1.1 --title      just the title
+    tools/release-notes.py TAG --sums dist/SHA256SUMS        notes plus a table of the attached files
+    tools/release-notes.py desert-looter-v0.1.1 --changelog  just the changelog entry
+    tools/release-notes.py desert-looter-v0.1.1 --package    just the package name
 
 The tag names one package and its version (VERSIONING.md step 6):
 
@@ -19,6 +21,11 @@ release page. The release workflow runs this before it builds anything.
 The notes are the package's own changelog entry for that version (the DMM
 pack keeps its history in its README's "What Version" section), then, with
 --sums, the SHA256 of every file attached to the release.
+
+--changelog prints that entry and nothing else. It is what the release
+workflow sends to the mod's Nexus Mods page, where the file list and the
+checksum table would be noise: a Nexus page carries one package, and its
+Files tab already shows what is attached.
 """
 
 from __future__ import annotations
@@ -121,6 +128,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("tag")
     parser.add_argument("--title", action="store_true", help="print only the release title")
+    parser.add_argument(
+        "--package", action="store_true", help="print only the package name, for tools/dist.sh"
+    )
+    parser.add_argument(
+        "--changelog", action="store_true", help="print only the changelog entry, for Nexus Mods"
+    )
     parser.add_argument("--sums", type=Path, help="dist/SHA256SUMS, to list the attached files")
     args = parser.parse_args()
 
@@ -134,21 +147,27 @@ def main() -> int:
             "Bump the version (VERSIONING.md step 1) or fix the tag; never release the mismatch."
         )
 
+    if args.package:
+        print(prefix)
+        return 0
+
     title = f"{name} {tagged}"
     if args.title:
         print(title)
         return 0
 
-    shipped = ", ".join(
-        f"{PACKAGES[p][0]} {PACKAGES[p][2]()}" for p in PACKAGES
-    )
+    entry = section(ROOT / history, heading(tagged))
+    if args.changelog:
+        print(entry)
+        return 0
+
     parts = [
-        section(ROOT / history, heading(tagged)),
+        entry,
         "",
         "## Files",
         "",
-        "Every release carries all three packages, built from the tagged commit. "
-        f"Shipped here: {shipped}.",
+        f"{title} only, built from the tagged commit. The other packages in this repository "
+        "are versioned separately and each has its own tag and its own releases.",
     ]
     if args.sums:
         parts += ["", sums_table(args.sums)]

@@ -2,11 +2,21 @@
 #
 # Build the release packages: both plugins and the DMM module pack.
 #
-#   nix develop --command tools/dist.sh
+#   nix develop --command tools/dist.sh                  all three
+#   nix develop --command tools/dist.sh desert-looter    just that one
 #
 # Writes dist/DesertLooter-<version>.zip, dist/DesertGatherer-<version>.zip,
 # dist/DesertGatherer-DMM-<version>.zip and dist/SHA256SUMS. dist/ is
 # gitignored; the zips are what gets attached to a GitHub release.
+#
+# The release workflow passes the single package its tag names, so a release
+# carries only the zip it is actually about. That is not tidiness: the three
+# packages are versioned separately, so rebuilding all of them for every tag
+# would eventually publish an untagged package's OLD version number over NEW
+# bytes (any change to desert-core between two releases does it), and two
+# releases would then disagree about the contents of one version.
+#
+# dist/ is wiped first, so SHA256SUMS only ever lists what this run built.
 #
 # The layout inside each zip is FLAT - the plugin files sit at the zip root,
 # with no wrapper folder. That is what makes one archive serve both kinds of
@@ -44,8 +54,25 @@ for tool in cargo zip unzip sha256sum; do
   command -v "$tool" >/dev/null || { echo "dist.sh: $tool not on PATH - run inside 'nix develop'" >&2; exit 1; }
 done
 
-echo "==> cargo build --release"
-cargo build --release
+# Package names are the release-tag prefixes (VERSIONING.md step 6), so the
+# workflow can pass through what tools/release-notes.py --package printed.
+all_packages=(desert-looter desert-gatherer desert-gatherer-dmm)
+selected=("$@")
+[ "${#selected[@]}" -gt 0 ] || selected=("${all_packages[@]}")
+
+needs_cargo=0
+for name in "${selected[@]}"; do
+  case " ${all_packages[*]} " in
+    *" $name "*) ;;
+    *) echo "dist.sh: unknown package '$name'; expected one of ${all_packages[*]}" >&2; exit 1 ;;
+  esac
+  [ "$name" = desert-gatherer-dmm ] || needs_cargo=1
+done
+
+if [ "$needs_cargo" = 1 ]; then
+  echo "==> cargo build --release"
+  cargo build --release
+fi
 
 rm -rf "$dist"
 mkdir -p "$dist"
@@ -110,9 +137,13 @@ package_dmm() {
   echo "==> $(basename "$zipfile")"
 }
 
-package desert-looter   DesertLooter   desert_looter.dll
-package desert-gatherer DesertGatherer desert_gatherer.dll
-package_dmm
+for name in "${selected[@]}"; do
+  case "$name" in
+    desert-looter)       package desert-looter   DesertLooter   desert_looter.dll ;;
+    desert-gatherer)     package desert-gatherer DesertGatherer desert_gatherer.dll ;;
+    desert-gatherer-dmm) package_dmm ;;
+  esac
+done
 
 rm -rf "$dist/.stage"
 

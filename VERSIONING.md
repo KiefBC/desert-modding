@@ -102,12 +102,14 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    Fixed.
 4. Build the packages:
    ```bash
-   nix develop --command tools/dist.sh
+   nix develop --command tools/dist.sh                  # all three
+   nix develop --command tools/dist.sh desert-looter    # just the one you are releasing
    ```
    You get `dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip`,
    `dist/DesertGatherer-DMM-<version>.zip` and `dist/SHA256SUMS`. Each plugin zip holds the
    `.asi`, its `.ini`, the mod's README and CHANGELOG at the archive root, which is what lets one
-   archive serve both a manual drop into `bin64` and Definitive Mod Manager.
+   archive serve both a manual drop into `bin64` and Definitive Mod Manager. The release builds
+   only the package its tag names, so pass that name here to see exactly what will ship.
 5. Actually play it. Copy the `.asi` and `.ini` into `bin64`, launch, read the log. There's no
    automated in-game test, and a release nobody has run in the game isn't a release.
 6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
@@ -119,11 +121,24 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks
    that the tagged commit is on `main` and that the tag's version equals the one in the source,
-   re-runs the doc, clippy and test checks, builds the packages with `tools/dist.sh` on a clean
-   runner, and publishes a GitHub release named for the tag with every zip and `SHA256SUMS`
-   attached as separate assets. The notes are the CHANGELOG entry for that version
+   re-runs the doc, clippy and test checks, builds **that package** with `tools/dist.sh` on a clean
+   runner, and publishes a GitHub release named for the tag with its zip and `SHA256SUMS` attached.
+   Only the tagged package: the three are versioned separately, so rebuilding all of them for every
+   tag would eventually attach an untagged package's old version number to new bytes, and two
+   release pages would disagree about what one version contains. The notes are the CHANGELOG entry
+   for that version
    (`tools/release-notes.py`, which you can run locally to preview them). Any gate failing means
    nothing is published; fix and re-tag.
+8. The same push then publishes to Nexus Mods, with no further action: the `nexus` job downloads
+   the assets from the release it just made, checks them against `SHA256SUMS`, and adds that zip to
+   its mod page as a new version of the existing file, with the CHANGELOG entry as the Nexus
+   changelog. All three packages are separate files on one page (`crimsondesert/mods/3369`), so a
+   tag only ever touches its own file. The mod page's version follows the file and the previous version is
+   archived. Which page each tag goes to is `tools/nexus-targets.json`; a package with no entry
+   there is skipped, and its GitHub release still happens. The API can only add a version to a file
+   that already exists, so the mod page and its first file are created by hand on the site, once.
+   The job needs the `NEXUS_API_KEY` repository secret (a personal API key from
+   <https://www.nexusmods.com/settings/api-keys>).
 
 ## A note on desert-core
 

@@ -1,12 +1,16 @@
 # Publishes a GitHub release when a version tag is pushed.
 #
-# One tag, one release. `git push origin desert-looter-v0.1.2` builds all three
-# packages (both plugins and the DMM pack) from the tagged commit and publishes
-# them as separate assets, plus SHA256SUMS, under a release named for the tag.
-# The notes are that package's CHANGELOG entry for the version, then the
-# checksums (tools/release-notes.py). Every release carries all three zips
-# because dist.sh builds them together and they are meant to ship together;
-# the notes say which versions are inside.
+# One tag, one package, one release. `git push origin desert-looter-v0.1.2`
+# builds THAT package from the tagged commit and publishes its zip plus
+# SHA256SUMS under a release named for the tag. The notes are the package's
+# CHANGELOG entry for the version, then the checksums (tools/release-notes.py).
+#
+# Only the tagged package, deliberately. The three are versioned separately, so
+# a release that rebuilt all of them would sooner or later attach an untagged
+# package's OLD version number to NEW bytes - any change to desert-core between
+# two releases does it - and two release pages would then disagree about what
+# one version contains. The other packages have their own tags and their own
+# releases; nothing is lost by leaving them out of this one.
 #
 # Nothing is published until every gate below has passed, in this order:
 #   * the tagged commit is on main, the release branch
@@ -15,6 +19,13 @@
 #   * docs in sync, clippy clean, native tests green (ci.yml's checks minus the
 #     weekly audit, which has its own job and its own reasons to go red)
 #   * SHA256SUMS verifies against the zips just built
+#
+# Then, in a second job, that zip goes to Nexus Mods as a new version of the file
+# already there. All three packages share one mod page (crimsondesert/mods/3369)
+# as three separate files, so which file a tag updates is what
+# tools/nexus-targets.json says. That job reads the release it just made rather
+# than rebuilding, so Nexus gets the bytes GitHub is serving, and it skips any
+# package with no entry in that file.
 #
 # What is NOT here: running the plugin in the game. VERSIONING.md step 5 is
 # still a person with the game installed, before the tag is pushed.
@@ -80,8 +91,10 @@ jobs:
       - name: Tests (native)
         run: nix develop --command just test-native
 
-      - name: Build the packages
-        run: nix develop --command tools/dist.sh
+      # Just this tag's package. dist.sh with no argument still builds all three,
+      # which is what `just dist` and a local build want.
+      - name: Build the package
+        run: nix develop --command tools/dist.sh "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --package)"
 
       - name: Checksums verify
         run: cd dist && sha256sum --check --strict SHA256SUMS
@@ -103,3 +116,103 @@ jobs:
             --title "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --title)" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             dist/*.zip dist/SHA256SUMS
+
+  # Publishes the tagged package to the mod page, as a new version of the file
+  # that is already there. One page, three files: the gatherer ASI and the DMM
+  # pack under Main, the looter under Optional.
+  #
+  # A separate job, and deliberately so: it runs only after `release` has cut the
+  # GitHub release, it re-downloads the assets from that release rather than
+  # rebuilding, and if Nexus is down or rejects the upload you can re-run this
+  # job alone. Re-running `release` would fail on `gh release create`.
+  #
+  # The Upload API only adds a VERSION to a file that already exists. It cannot
+  # create a mod page, or the first file on one; those are done by hand, once,
+  # and the two numbers they produce go in tools/nexus-targets.json. A package
+  # with no entry there is skipped, and its tag still cuts a GitHub release.
+  #
+  # Needs one secret: NEXUS_API_KEY, a personal API key from
+  # https://www.nexusmods.com/settings/api-keys. It is account-wide and cannot be
+  # scoped to one mod, so it is only ever passed to the pinned action below.
+  nexus:
+    needs: release
+    runs-on: ubuntu-latest
+    # Reads the release assets; writes nothing back to the repo.
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # Which of the three zips this tag is for, and which Nexus file it updates.
+      # Also validates the version and display name against what the API accepts,
+      # so a bad name is caught here and not after the bytes are uploaded.
+      - name: Which Nexus file this tag publishes to
+        id: target
+        run: python3 tools/nexus-target.py "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      # From the release, not from a rebuild: the bytes that go to Nexus are the
+      # ones SHA256SUMS was computed over and the ones GitHub is serving.
+      - name: Fetch the release assets and verify them
+        if: steps.target.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$GITHUB_REF_NAME" --dir dist --clobber
+          cd dist && sha256sum --check --strict SHA256SUMS
+
+      # The mod id the API wants is not the number in the page URL. Resolve it
+      # from that number rather than keeping a second, invisible id in the JSON.
+      - name: Resolve the Nexus mod id
+        id: mod
+        if: steps.target.outputs.publish == 'true'
+        env:
+          NEXUS_API_KEY: ${{ secrets.NEXUS_API_KEY }}
+          DOMAIN: ${{ steps.target.outputs.game_domain }}
+          SCOPED_ID: ${{ steps.target.outputs.game_scoped_id }}
+        run: |
+          id=$(curl -sS --fail-with-body \
+                 -H "apikey: $NEXUS_API_KEY" \
+                 "https://api.nexusmods.com/v3/games/$DOMAIN/mods/$SCOPED_ID" \
+               | jq -r '.data.id')
+          if [ -z "$id" ] || [ "$id" = "null" ]; then
+            echo "::error::no mod id for $DOMAIN/$SCOPED_ID. Check game_scoped_id in tools/nexus-targets.json, and that NEXUS_API_KEY is set." >&2
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+      # The changelog entry only. The release notes' file list and checksum table
+      # are GitHub's; the Files tab already lists what is on the page. The page's
+      # changelog is keyed by version string and appends, so all three files can
+      # write to it without overwriting each other.
+      - name: Changelog for the Nexus page
+        id: changelog
+        if: steps.target.outputs.publish == 'true' && steps.target.outputs.changelog == 'true'
+        run: |
+          {
+            echo "text<<NEXUS_CHANGELOG_EOF"
+            python3 tools/release-notes.py "$GITHUB_REF_NAME" --changelog
+            echo "NEXUS_CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Pinned to a commit, not a tag: this action is handed an account-wide API
+      # key, and a moved tag would silently change what runs. v1.0.0-beta.10.
+      - name: Upload to Nexus Mods
+        if: steps.target.outputs.publish == 'true'
+        uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
+        with:
+          api_key: ${{ secrets.NEXUS_API_KEY }}
+          file_id: ${{ steps.target.outputs.file_id }}
+          filename: dist/${{ steps.target.outputs.zip }}
+          version: ${{ steps.target.outputs.version }}
+          # Without the version: the Files tab has its own version column, and
+          # these names are what the page's descriptions refer to.
+          display_name: ${{ steps.target.outputs.display_name }}
+          category: ${{ steps.target.outputs.category }}
+          # Three files on one page, so at most one of them may own the page's
+          # version field; nexus-target.py refuses a config where two do.
+          update_mod_version: ${{ steps.target.outputs.update_mod_version }}
+          # The version this replaces goes to the archive rather than sitting
+          # beside it as a second file under the same heading.
+          archive_existing_version: true
+          mod_id: ${{ steps.mod.outputs.id }}
+          changelog: ${{ steps.changelog.outputs.text }}

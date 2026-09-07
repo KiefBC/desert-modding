@@ -72,8 +72,9 @@ sigscan:
     {{nix}} python3 tools/sigscan.py
 
 # Build the release zips into dist/ (both plugins, the DMM pack, SHA256SUMS).
-dist:
-    {{nix}} tools/dist.sh
+# `just dist desert-looter` builds only that package, as a release tag does.
+dist *packages:
+    {{nix}} tools/dist.sh {{packages}}
 
 # Copy the built plugins into the game's bin64 as .asi. Refuses while the game runs.
 install: build
