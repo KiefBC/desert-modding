@@ -1,7 +1,7 @@
 [package]
 name = "desert-gatherer"
 version = "0.1.0"
-description = "Desert Gatherer - Crimson Desert gathering yield multiplier (ASI plugin, stub)"
+description = "Desert Gatherer - Crimson Desert gathering yield multiplier (ASI plugin)"
 edition.workspace = true
 license.workspace = true
 
