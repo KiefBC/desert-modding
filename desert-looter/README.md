@@ -1,6 +1,6 @@
 # Desert Looter
 
-**Version 0.1.1** — for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.1.1**, for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 A gathering auto-loot plugin. It collects plants, ore, stone and wood around

@@ -1,6 +1,6 @@
 # Desert Gatherer
 
-**Version 0.1.1** — for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.1.1**, for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 A gathering yield multiplier, written in Rust and shipped as one `.asi` file.
@@ -48,7 +48,7 @@ get on one pick. Three things surprise people:
   | either small block | 1 | 2 |
 
   Measured in game: a peony gave 2 in vanilla, and 2, 2 and 12 across three
-  picks at 2x. Nothing is wrong there — the 2s are the small blocks doubled
+  picks at 2x. Nothing is wrong there. The 2s are the small blocks doubled
   from 1, the 12 is the big block. Watch a dozen picks, not one.
 - **Single-item nodes are the clean case.** Firewood and ore deposits carry
   one block of 1-1, and rocks carry three blocks that are each 1-1, so a pick
@@ -109,7 +109,7 @@ name, version, `KiefBC`, MIT). It is **not** digitally signed - a code-signing
 certificate costs money - so check the `SHA256SUMS` file from the release
 instead. And the source is public: all of it is in this repository.
 
-## Conflicts with DMM — important
+## Conflicts with DMM (important)
 
 DMM's **"The Desert Gatherer" module pack** and DMM's **built-in gathering
 multiplier preset** change the same minimum/maximum quantities, on disk.
@@ -146,7 +146,7 @@ log and the default is kept.
 A healthy log starts with the version line, one `[ini]` line echoing every
 setting, a `[module]` line, a `[gimmick] record loader at +0x...` line and a
 `[hook] record loader ... -> stub ...` line. After that comes one line per
-gather record as the game loads it — `[gimmick]` when the record was patched,
+gather record as the game loads it, `[gimmick]` when the record was patched,
 or `[dry]` when the optional `DryRun=1` is set and nothing was written:
 
 ```
@@ -161,7 +161,7 @@ plugin does nothing at all.
 `DesertGatherer.log` records what was **written** to the records, not what you
 received. To measure actual yields, install Desert Looter, set `LogReceived=1`
 in `DesertLooter.ini`, and read the `[recv] item <key> x<count>` lines in
-`DesertLooter.log` as you gather — that is every item the game hands you, and
+`DesertLooter.log` as you gather. That is every item the game hands you, and
 it is how the numbers above were measured.
 
 ## How it survives game updates
@@ -172,8 +172,8 @@ table and follows it to the record-loading function, then refuses to patch
 unless the twelve bytes it is about to overwrite are exactly the prologue it
 expects. Inside each record, the yield numbers are found by walking the
 resource-output lists and matching the fixed 68-byte block layout that carries
-them, not by remembering where they were last time — the same content-based
-approach that `dmm-pack/rebase.py` uses to move the DMM pack between builds.
+them, not by remembering where they were last time (the same content-based
+approach that `dmm-pack/rebase.py` uses to move the DMM pack between builds).
 
 That covers records and functions moving, which is what usually happens on a
 patch. If the game changes the loader's shape or the block layout itself, the

@@ -14,7 +14,7 @@ game's `bin64`).
 Also here: [`desert-core/`](desert-core), the shared library both plugins link
 (logging, safe memory reads, hooks, PE/pattern scanning), and
 [`dmm-pack/`](dmm-pack), the older offset-patch version of Gatherer for people
-on Definitive Mod Manager without an ASI loader — never mount it alongside the
+on Definitive Mod Manager without an ASI loader. Never mount it alongside the
 plugin.
 
 ## Install
@@ -33,21 +33,22 @@ cargo build --release
 ```
 
 Outputs `desert_looter.dll` and `desert_gatherer.dll` under
-`target/x86_64-pc-windows-gnu/release/`; install them renamed to
-`DesertLooter.asi` and `DesertGatherer.asi`.
+`target/x86_64-pc-windows-gnu/release/`. The game loads them as
+`DesertLooter.asi` and `DesertGatherer.asi`; `just install` copies them into
+`bin64` under those names, and `just dist` packs them into the release zips.
 
 The `justfile` wraps the common tasks; run `just` to list them.
 
 ## Rules every plugin follows
 
-1. **Never panic** — `panic = "abort"` is set, so a panic is a crash to
+1. **Never panic**: `panic = "abort"` is set, so a panic is a crash to
    desktop. Clippy denies `unwrap`, `expect`, unchecked indexing, `panic!` and
    friends in shipped code.
-2. **Never dereference game memory** — all foreign reads go through
+2. **Never dereference game memory**: all foreign reads go through
    `desert_core::safe`, and no pointer is cached across frames.
-3. **Only run inside `CrimsonDesert.exe`** — the loader also pulls plugins into
+3. **Only run inside `CrimsonDesert.exe`**: the loader also pulls plugins into
    `crashpad_handler.exe`; bail out of `DllMain` there.
-4. **No file I/O in `DllMain`** — the loader lock is held; work happens on a
+4. **No file I/O in `DllMain`**: the loader lock is held; work happens on a
    thread the plugin starts.
 
 ## More

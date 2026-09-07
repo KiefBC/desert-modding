@@ -40,20 +40,20 @@ unreleased; the working numbers used along the way are abandoned rather than ren
 
 ### Added
 
-- Automatic gathering of the four gather families — Foraging, Logging (the firewood cut from felled
-  logs), Mining and Ore — by sending the game its own `PickUpItem` event, forged byte for byte, so
-  nothing is simulated and no input is faked. Ore veins and rocks are mined outright, without a
-  swing.
+- Automatic gathering of the four gather families: Foraging, Logging (the firewood cut from felled
+  logs), Mining and Ore. It works by sending the game its own `PickUpItem` event, forged byte for
+  byte, so nothing is simulated and no input is faked. Ore veins and rocks are mined outright,
+  without a swing.
 - Plain ground items (`GatherItems`) and, off by default, dropped weapons and armour (`GatherGear`).
   Every ground item is put to the game's own steal check first, so nothing the game would count as
   stealing is taken.
 - A bag gate: `BagTab`, `StackLimit` and a full-bag check that mimics the game's own inventory
-  behaviour — at a full bag only a stack the player already carries is grown, and repeated refusals
+  behaviour. At a full bag only a stack the player already carries is grown, and repeated refusals
   switch auto mode off.
 - Yield learning: `DesertLooter.yields` caches which item a node gives, learned while playing, and
   the stacking rule at a full bag reads it. It relearns itself if deleted.
 - Hotkeys, all rebindable: F9 gathers the nearest eligible node once, F10 toggles auto mode, F11
-  writes a survey of everything nearby to the log, and F7 is the event recorder — it records every
+  writes a survey of everything nearby to the log, and F7 is the event recorder. It records every
   event the game queues until pressed again.
 - `LogReceived`, default `0`. With `LogReceived=1` the plugin logs every item the game hands the
   player as `[recv] item <key> x<count>`, whether or not the plugin caused the pickup, capped at 500
@@ -74,7 +74,7 @@ Everything before 0.1.0 is development, not releases. The plugin was written on 
 of untagged commits: the ASI skeleton and the eight byte signatures, the `ClientActorManager` RTTI
 vtable lookup and record classification, the survey and single-gather hotkeys, then automatic
 gathering, the unarmed-node path that mines veins outright, ground items with the steal check, and
-the bag rules. The workspace split came last — the plumbing shared with Desert Gatherer (logger,
+the bag rules. The workspace split came last: the plumbing shared with Desert Gatherer (logger,
 guarded reads, hooks, PE/RTTI, patterns, ini, the gather-record table) moved to `desert-core` with
 no behaviour change. None of this was tagged or released, and no version number from that period is
 meaningful; 0.1.0 is where the history starts.

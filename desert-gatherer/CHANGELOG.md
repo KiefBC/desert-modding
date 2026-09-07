@@ -14,7 +14,7 @@ Game build 25116796.
 
 - `DryRun` is now shipped as `0`. The dry-run-first install step is gone: the plugin multiplies
   yields on its first launch. `DryRun=1` stays available for troubleshooting and for checking what
-  the plugin would do on a new game build. It was never the safety net it looked like — the record
+  the plugin would do on a new game build. It was never the safety net it looked like: the record
   parser already refuses any output block whose markers do not match or whose vanilla minimum and
   maximum are implausible, so a layout shift after a game update leaves the record vanilla and says
   so in the log rather than writing garbage.
@@ -37,11 +37,11 @@ game build, and has not yet seen a game update.
   `Logging` (141), `Mining` (36, the `collect_mine` family) and `Ore` (16, the `collect_ore`
   family). Both the minimum and the maximum of every resource-output block are scaled, so the whole
   distribution moves.
-- `DryRun` — shipped as `1` in `DesertGatherer.ini` so the first run is provably harmless. The hook
+- `DryRun`: shipped as `1` in `DesertGatherer.ini` so the first run is provably harmless. The hook
   logs a `[dry]` line per record with each block's old and new min/max and writes nothing. The
   built-in default is `0`.
-- `Debug` — also log the records that are not gather nodes, capped at 400 lines.
-- `Enabled` — `0` loads the plugin, writes one log line and hooks nothing.
+- `Debug`: also log the records that are not gather nodes, capped at 400 lines.
+- `Enabled`: `0` loads the plugin, writes one log line and hooks nothing.
 - `[gimmick]`, `[dry]` and `[stat]` log lines: one per record as the game loads it, plus a running
   summary of the counters.
 - The loader is found by content, through the accessor that names `gimmickinfo`, and the hook
@@ -51,7 +51,7 @@ game build, and has not yet seen a game update.
 ### Changed
 
 - Replaces the DMM module pack "The Desert Gatherer" 1.1 (kept in `dmm-pack/` for people who use DMM
-  without an ASI loader). The two edit the same scalars and must not be mounted together — they
+  without an ASI loader). The two edit the same scalars and must not be mounted together: they
   multiply on top of each other. The same goes for DMM's built-in gathering multiplier preset.
 
 ### Known limitations
