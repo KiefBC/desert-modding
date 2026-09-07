@@ -245,7 +245,7 @@ pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
     }
     let arr = safe::read_ptr(mgr + 0x58)?;
     (0..count).find(|&i| {
-        safe::read_ptr(arr + i as usize * 8).and_then(|r| safe::read::<u32>(r)) == Some(key)
+        safe::read_ptr(arr + i as usize * 8).and_then(safe::read::<u32>) == Some(key)
     }).map(|i| i as u16)
 }
 

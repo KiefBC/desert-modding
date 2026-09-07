@@ -46,7 +46,7 @@ pub fn find_manager(m: &MainModule, vtables: &[u64]) -> Option<(usize, usize)> {
         while off + 8 <= end {
             let p = usize::from_le_bytes(img[off..off + 8].try_into().unwrap());
             // Heap objects live outside the module; skip nulls and self-references.
-            if p >= 0x10000 && p < 0x7FFF_FFFF_FFFF && !m.contains(p) {
+            if (0x10000..0x7FFF_FFFF_FFFF).contains(&p) && !m.contains(p) {
                 if let Some(vt) = safe::read::<u64>(p) {
                     if vtables.contains(&vt) {
                         return Some((m.base + off, p));
@@ -298,7 +298,7 @@ pub fn global_object_census(m: &MainModule) -> Vec<(usize, usize, String)> {
         let mut off = start & !7;
         while off + 8 <= end {
             let p = usize::from_le_bytes(img[off..off + 8].try_into().unwrap());
-            if p >= 0x10000 && p < 0x7FFF_FFFF_FFFF && !m.contains(p) {
+            if (0x10000..0x7FFF_FFFF_FFFF).contains(&p) && !m.contains(p) {
                 if let Some(name) = rtti_name(m, p) {
                     let short = short_name(&name);
                     if !out.iter().any(|(_, _, n)| *n == short) {

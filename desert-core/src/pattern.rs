@@ -42,7 +42,7 @@ impl Pattern {
         self.bytes
             .iter()
             .zip(&hay[at..at + self.bytes.len()])
-            .all(|(p, b)| p.map_or(true, |p| p == *b))
+            .all(|(p, b)| p.is_none_or(|p| p == *b))
     }
 
     /// Every offset where the pattern matches, stopping after `limit` hits.

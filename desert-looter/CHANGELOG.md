@@ -21,6 +21,12 @@ Game build 25116796.
   hid the real reason for the gather nodes beside it. Each distinct reason is now logged once, with
   the node's name.
 
+### Changed
+
+- Clippy-clean on both build targets: nine lints fixed mechanically (`map_or` to `is_none_or` /
+  `is_some_and`, range checks to `contains`, one redundant closure) and `# Safety` sections added to
+  the two hook callbacks. No behaviour change.
+
 ## [0.1.0] - 2026-09-07
 
 Game build 25116796. The first tagged release (`desert-looter-v0.1.0`): the plugin does what it

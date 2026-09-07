@@ -365,7 +365,7 @@ impl Gatherer {
             Err(_) => {
                 // Nothing eligible: keep the cadence but stay quiet.
                 self.last_send = Some(Instant::now());
-                if self.last_idle_log.map_or(true, |t| t.elapsed() > IDLE_LOG_EVERY) && !self.done.is_empty() {
+                if self.last_idle_log.is_none_or(|t| t.elapsed() > IDLE_LOG_EVERY) && !self.done.is_empty() {
                     self.last_idle_log = Some(Instant::now());
                     crate::log!("[gather] auto: nothing eligible in {:.1} m ({} on cooldown)", self.range, self.done.len());
                 }

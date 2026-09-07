@@ -19,7 +19,7 @@ pub fn read_into(addr: usize, buf: &mut [u8]) -> bool {
     if buf.is_empty() {
         return true;
     }
-    if addr < 0x10000 || addr.checked_add(buf.len()).map_or(true, |e| e > USER_MAX) {
+    if addr < 0x10000 || addr.checked_add(buf.len()).is_none_or(|e| e > USER_MAX) {
         return false;
     }
     let mut got: usize = 0;
@@ -38,9 +38,9 @@ pub fn read_into(addr: usize, buf: &mut [u8]) -> bool {
 /// True if `[addr, addr+len)` can be read right now.
 pub fn readable(addr: usize, len: usize) -> bool {
     if len == 0 {
-        return addr >= 0x10000 && addr < USER_MAX;
+        return (0x10000..USER_MAX).contains(&addr);
     }
-    if addr < 0x10000 || addr.checked_add(len).map_or(true, |e| e > USER_MAX) {
+    if addr < 0x10000 || addr.checked_add(len).is_none_or(|e| e > USER_MAX) {
         return false;
     }
     // Probe page by page so a huge range does not need a huge buffer.
@@ -121,7 +121,7 @@ pub fn write_into(addr: usize, buf: &[u8]) -> bool {
     if buf.is_empty() {
         return true;
     }
-    if addr < 0x10000 || addr.checked_add(buf.len()).map_or(true, |e| e > USER_MAX) {
+    if addr < 0x10000 || addr.checked_add(buf.len()).is_none_or(|e| e > USER_MAX) {
         return false;
     }
     let mut done: usize = 0;

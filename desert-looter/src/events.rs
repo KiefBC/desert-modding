@@ -374,6 +374,14 @@ pub fn drop_stale(max_age: std::time::Duration) -> Option<PickupRequest> {
 
 /// The sweep hook callback. Runs on the game thread once per audio emitter
 /// per frame, so the no-work path is one atomic load. Must never panic.
+///
+/// # Safety
+///
+/// Only the trampoline installed on `area_sweep` may call this, with the
+/// game's own `rcx`/`rdx` for that call. `this` and `item` are treated as
+/// untrusted addresses and read through `safe` only; the game function
+/// pointers this reaches (the steal check, the event API) are called with the
+/// arguments the game itself uses at this site.
 pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9: usize) {
     let n = SWEEP_CALLS.fetch_add(1, Ordering::Relaxed);
     if n == 0 {
@@ -532,6 +540,12 @@ pub fn toggle_recording() -> bool {
 
 /// Callback on the game's `enqueue(queue, ev, desc, flag)`. Runs on whatever
 /// thread queues the event, before the original. Must never panic.
+///
+/// # Safety
+///
+/// Only the trampoline installed on `enqueue` may call this, with the game's
+/// own four arguments. `ev` and `desc` are treated as untrusted addresses and
+/// read through `safe` only; nothing is written to game memory here.
 pub unsafe extern "system" fn on_enqueue(_queue: usize, ev: usize, desc: usize, flag: usize) {
     watch_received(desc, ev);
     if !RECORDING.load(Ordering::Acquire) {
