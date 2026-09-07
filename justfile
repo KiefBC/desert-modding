@@ -120,4 +120,4 @@ dmm-rebase table=dmm_table build="":
         test -n "$build" || { echo "dmm-rebase: no buildid in {{appmanifest}}" >&2; exit 1; }; \
     fi; \
     echo "dmm-rebase: {{table}} -> build $build"; \
-    {{nix}} python3 dmm-pack/rebase.py "{{table}}" "$build"
+    {{nix}} python3 desert-gatherer-dmm/rebase.py "{{table}}" "$build"
