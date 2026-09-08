@@ -11,7 +11,7 @@
 
 use std::collections::HashSet;
 
-use desert_core::gimmick::{self, BLOCK, MAX_AT, MAX_COUNT, MIN_AT};
+use desert_core::gimmick::{self, BLOCK, ITEM_AT, ITEM_TAIL_AT, MAX_AT, MAX_COUNT, MIN_AT};
 use desert_core::pattern::Pattern;
 use desert_core::schema::Kind;
 use desert_core::{ini, pe, rtti, schema};
@@ -221,6 +221,47 @@ proptest! {
                 prop_assert_eq!(got, want.saturating_mul(u64::from(mult)));
                 prop_assert_eq!(got, want * u64::from(mult));
             }
+        }
+    }
+
+    /// `output_blocks` is the read-only view of exactly the blocks `multiply`
+    /// edits: same blocks, same order, and the pair of edits for block `n` is
+    /// its two scalars at their two offsets, carrying its two vanilla values.
+    /// That correspondence is what the live re-apply path stands on - it
+    /// rebuilds the edit from a remembered block long after the bytes are gone.
+    #[test]
+    fn output_blocks_are_the_blocks_multiply_edits(
+        bytes in prop::collection::vec(any::<u8>(), 0..4096),
+        mult in 2u32..=16,
+    ) {
+        let blocks = gimmick::output_blocks(&bytes);
+        let edits = gimmick::multiply(&bytes, mult);
+        prop_assert_eq!(edits.len(), blocks.len() * 2);
+
+        let mut prev_end = 0usize;
+        for (n, b) in blocks.iter().enumerate() {
+            // Inside the buffer, whole, and never overlapping the block before.
+            prop_assert!(b.offset >= prev_end);
+            prop_assert!(b.offset + BLOCK <= bytes.len());
+            prev_end = b.offset + BLOCK;
+
+            // The signature keeps both copies of the item id in step, so the
+            // one at ITEM_TAIL_AT is the one at ITEM_AT.
+            let tail = u32::from_le_bytes(
+                bytes[b.offset + ITEM_TAIL_AT..b.offset + ITEM_TAIL_AT + 4].try_into().unwrap());
+            let head = u32::from_le_bytes(
+                bytes[b.offset + ITEM_AT..b.offset + ITEM_AT + 4].try_into().unwrap());
+            prop_assert_eq!(b.item, tail);
+            prop_assert_eq!(b.item, head);
+            prop_assert!(1 <= b.min && b.min <= b.max && b.max <= gimmick::MAX_QTY);
+
+            let (lo, hi) = (&edits[n * 2], &edits[n * 2 + 1]);
+            prop_assert_eq!(lo.offset, b.offset + MIN_AT);
+            prop_assert_eq!(hi.offset, b.offset + MAX_AT);
+            prop_assert_eq!(lo.old, b.min);
+            prop_assert_eq!(hi.old, b.max);
+            prop_assert_eq!(lo.new, b.min.saturating_mul(u64::from(mult)));
+            prop_assert_eq!(hi.new, b.max.saturating_mul(u64::from(mult)));
         }
     }
 }

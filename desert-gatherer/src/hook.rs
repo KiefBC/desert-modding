@@ -40,27 +40,44 @@
 //! shape that stays correct. It also means nothing is ever cached across
 //! calls.
 //!
+//! ## The live path
+//!
+//! The loader runs once per session (the game's preload pass, ~9 s after
+//! launch, `docs/reference-internals.md` section 12), so an ini change after
+//! that has no record left to intercept. [`reapply`] is the answer: the
+//! callback hands every gather record's vanilla blocks to [`crate::remember`]
+//! on the way past, whatever the ini says at the time, and `reapply` — on the
+//! plugin's own thread, after a change — walks those and rewrites the
+//! *parsed* objects to vanilla times the current multiplier. That is the one
+//! place this plugin writes into a game object rather than into bytes the
+//! game has not read yet, so every step of it is checked against what was
+//! remembered before anything is written.
+//!
 //! ## Thread safety
 //!
 //! The hook runs on whichever game thread loads records, and several threads
 //! may be inside it at once for different indices. There is no shared mutable
-//! state here beyond atomics: the counters below and, in `crate::config`, the
+//! state here beyond atomics: the counters below, the manager pointer, the
+//! lock-free table in `crate::remember` this writes and the plugin thread
+//! reads, and, in `crate::config`, the
 //! [`LiveConfig`](crate::config::LiveConfig) the ini-reload loop on the
 //! plugin's main thread publishes to and this hook only ever reads. Every
-//! write lands in the heap-buffer bytes of the record this call was handed,
-//! through `safe::write`. No game function is ever called.
+//! write from the callback lands in the heap-buffer bytes of the record this
+//! call was handed, through `safe::write`. No game function is ever called,
+//! from the callback or from [`reapply`].
 //!
 //! Every foreign read goes through `desert_core::safe`, so an unmapped page
 //! is a `None` and a silent return, never a fault. A failure at any step
 //! leaves the record vanilla; that is always the correct fallback.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 
-use desert_core::collect;
+use desert_core::collect::{self, Family};
 use desert_core::gimmick::{self, Edit};
 use desert_core::safe;
 
 use crate::config::LIVE;
+use crate::remember;
 
 // Re-exported so `crate::hook::` names both the installer and the callback,
 // the way `desert-looter` uses `desert_core::hook` directly.
@@ -78,6 +95,12 @@ pub const DEBUG_CAP: u32 = 400;
 /// How many blocks are spelled out in a per-record log line before it is
 /// truncated. The largest gather record has a handful of output blocks.
 const DETAIL_BLOCKS: usize = 8;
+
+/// The record manager the loader was last called with. A process singleton
+/// (one gimmickinfo table), stored on every call so [`reapply`] can find the
+/// parsed records long after the load pass is over. 0 = the hook has never
+/// fired, so there is nothing loaded to re-apply to.
+static MANAGER: AtomicUsize = AtomicUsize::new(0);
 
 /// Records the hook was entered for (gather and non-gather alike).
 static RECORDS_SEEN: AtomicU64 = AtomicU64::new(0);
@@ -241,19 +264,12 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
 pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usize, stream: usize) {
     // `status` is the loader's out-parameter; we neither read nor touch it.
     let _ = status;
-    // Checked first and before anything else: `Enabled=0` must make this a
-    // pure pass-through - no reads, no writes, not even the counters below -
-    // exactly as if the hook had never been installed. This is also what
-    // makes toggling `Enabled` back on at runtime work: the hook is always
-    // installed (the loader prologue can only be patched once, before the
-    // table starts loading), and `LiveConfig::enabled` is the only thing
-    // deciding whether it does anything.
-    if !LIVE.enabled() {
-        return;
-    }
     // r8w: the upper bits are whatever was in r8, exactly as the game masks it.
     let idx = idx & 0xFFFF;
     RECORDS_SEEN.fetch_add(1, Ordering::Relaxed);
+    // The manager is a process singleton and this is the only place its
+    // address is ever seen. `reapply` needs it after the load pass is over.
+    MANAGER.store(mgr, Ordering::Relaxed);
 
     let Some((at, bytes)) = record_bytes(mgr, idx, stream) else { return };
     let Some(header) = gimmick::parse_header(&bytes) else { return };
@@ -277,6 +293,23 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
                 header.key, header.name
             );
         }
+    }
+
+    // Before any gate, and for every gather record: these bytes are the only
+    // place the vanilla yields exist, they are freed a couple of seconds after
+    // the load pass, and `reapply` cannot scale a number it never saw. That
+    // holds even at `Enabled=0` and 1x - both of those can be turned up later,
+    // and this is the only chance to record what to turn up from.
+    remember::remember(header.key, idx as u16, &gimmick::output_blocks(&bytes));
+
+    // `Enabled=0` writes nothing. The reads above already happened; they cost
+    // one guarded copy of a record and are what keeps a later `Enabled=1` (or
+    // a raised multiplier) able to do anything at all. Installing the hook
+    // later is not an option either: the loader prologue can only be patched
+    // before the table starts loading, so `LiveConfig::enabled` is the only
+    // thing deciding whether this writes.
+    if !LIVE.enabled() {
+        return;
     }
 
     let mult = LIVE.multiplier(family);
@@ -320,4 +353,401 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
         header.key,
         edits.len()
     );
+}
+
+// ---------------------------------------------------------------------------
+// The live path: re-apply the current multipliers to the already parsed records
+// ---------------------------------------------------------------------------
+
+/// Where the yields live in a *parsed* record, as opposed to the raw bytes the
+/// callback edits. Established by decompile and disassembly of build 25116796
+/// and written up in `docs/reference-internals.md` section 12.
+///
+/// ```text
+/// mgr+0x08    u32   record_count
+/// mgr+0x58    ptr   array of record pointers (null = not loaded)
+/// rec+0x08    u32   key, the same one the raw record header carries
+/// rec+0x278   ptr   output list data: entries of 16 bytes
+/// rec+0x280   u32   entry count
+/// entry+0x00  ptr   block object (0x70 bytes), null when the disk flag was 0
+/// entry+0x08  u32   item key (raw block +64)
+/// block+0x20  u64   MIN   (raw block +42)
+/// block+0x28  u64   MAX   (raw block +50)
+/// block+0x6c  u32   item id (raw block +5)
+/// ```
+///
+/// `rec+0x288` holds one further optional block of the same type with no
+/// count. The raw scanner has never touched it, so neither does this: the two
+/// paths must produce the same yields or a session's numbers would depend on
+/// when the ini was last edited.
+mod parsed {
+    pub const MGR_COUNT: usize = 0x08;
+    pub const MGR_RECORDS: usize = 0x58;
+    pub const REC_KEY: usize = 0x08;
+    pub const REC_LIST: usize = 0x278;
+    pub const REC_COUNT: usize = 0x280;
+    /// Bytes per list entry, and the offset of the item key inside one.
+    pub const ENTRY: usize = 16;
+    pub const ENTRY_ITEM: usize = 8;
+    pub const BLOCK_MIN: usize = 0x20;
+    pub const BLOCK_MAX: usize = 0x28;
+    pub const BLOCK_ITEM: usize = 0x6C;
+}
+
+/// What one [`reapply`] pass did, for the single summary line its caller logs.
+///
+/// The skip counters are the point of the struct: every one of them is a place
+/// where the parsed layout above stopped matching what we remembered, which is
+/// the first thing a game update breaks. A pass that skips nothing prints one
+/// line; a pass that skips anything prints the reasons too.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Outcome {
+    /// False when the hook has never fired, so nothing is loaded yet.
+    pub manager_known: bool,
+    /// True when the manager itself would not read: the pointer is stale or
+    /// the layout moved, and nothing at all was attempted.
+    pub manager_unreadable: bool,
+    /// Remembered records walked.
+    pub visited: usize,
+    /// Records at least one scalar was written for (would have been, in DryRun).
+    pub rewritten: usize,
+    /// Records already carrying exactly the wanted numbers.
+    pub unchanged: usize,
+    /// Records nothing was attempted on; the sum of the five reasons below.
+    pub skipped: usize,
+    /// `u64` yields written (would have been, in DryRun).
+    pub scalars: usize,
+    /// Blocks skipped inside records that were otherwise fine.
+    pub blocks_skipped: usize,
+
+    /// The remembered index is past the manager's record count.
+    pub skip_index: usize,
+    /// The record's slot is still null: the game never loaded it.
+    pub skip_unloaded: usize,
+    /// The object at that slot carries a different key than we remembered.
+    pub skip_key: usize,
+    /// The parsed list has a different number of entries than the raw record had.
+    pub skip_count: usize,
+    /// The record has no output list pointer at all.
+    pub skip_list: usize,
+    /// A guarded read of the record failed (an unmapped page, a stale pointer).
+    pub skip_read: usize,
+
+    /// The list entry's block pointer is null (the disk flag byte was 0).
+    pub block_null: usize,
+    /// The block's item id is not the one the raw block had.
+    pub block_item: usize,
+    /// A guarded read of the block failed.
+    pub block_read: usize,
+    /// The write itself failed, having read the same address a moment earlier.
+    pub block_write: usize,
+}
+
+impl Outcome {
+    /// The hook has never fired: no manager, nothing loaded, nothing to say.
+    pub const NOT_LOADED: Self = Self::empty(false);
+
+    const fn empty(manager_known: bool) -> Self {
+        Outcome {
+            manager_known,
+            manager_unreadable: false,
+            visited: 0,
+            rewritten: 0,
+            unchanged: 0,
+            skipped: 0,
+            scalars: 0,
+            blocks_skipped: 0,
+            skip_index: 0,
+            skip_unloaded: 0,
+            skip_key: 0,
+            skip_count: 0,
+            skip_list: 0,
+            skip_read: 0,
+            block_null: 0,
+            block_item: 0,
+            block_read: 0,
+            block_write: 0,
+        }
+    }
+
+    /// `"82 records rewritten, 193 unchanged, 0 skipped; 644 scalars written"`.
+    pub fn summary(&self) -> String {
+        format!(
+            "{} records rewritten, {} unchanged, {} skipped; {} scalars written",
+            self.rewritten, self.unchanged, self.skipped, self.scalars
+        )
+    }
+
+    /// The reasons anything was skipped, or `None` when nothing was.
+    ///
+    /// This is the line that says a game update moved the parsed layout: in a
+    /// healthy session every remembered record is loaded, keyed and shaped
+    /// exactly as it was on disk, so nothing is skipped at all.
+    pub fn warning(&self) -> Option<String> {
+        if self.manager_unreadable {
+            return Some("the record manager is unreadable; nothing was re-applied".to_string());
+        }
+        if self.skipped == 0 && self.blocks_skipped == 0 {
+            return None;
+        }
+        let mut why: Vec<String> = Vec::new();
+        for (n, what) in [
+            (self.skip_index, "index past the record count"),
+            (self.skip_unloaded, "not loaded"),
+            (self.skip_key, "key mismatch"),
+            (self.skip_count, "block count mismatch"),
+            (self.skip_list, "no output list"),
+            (self.skip_read, "unreadable record"),
+            (self.block_null, "null block"),
+            (self.block_item, "item mismatch"),
+            (self.block_read, "unreadable block"),
+            (self.block_write, "write refused"),
+        ] {
+            if n > 0 {
+                why.push(format!("{what} {n}"));
+            }
+        }
+        Some(format!(
+            "{} of {} records and {} blocks skipped ({}); the parsed record layout may have \
+             moved in this game build",
+            self.skipped,
+            self.visited,
+            self.blocks_skipped,
+            why.join(", ")
+        ))
+    }
+}
+
+/// A pointer the game could really have handed us: non-null, inside user
+/// address space, and far enough below the top that adding a struct offset to
+/// it cannot wrap a `usize`. Everything [`reapply`] reads out of the game goes
+/// through this before it is used as a base, so none of the `base + offset`
+/// expressions there can overflow — which `safe::read` would refuse anyway,
+/// but only after the addition had already happened.
+fn plausible(p: usize) -> bool {
+    (0x10000..0x7FFF_FFFF_0000).contains(&p)
+}
+
+/// The multiplier a remembered record should be at right now: its family's
+/// live value, or 1 when `Enabled=0` or the key is not a gather record after
+/// all. Never 0 — that would zero the record's yields.
+fn wanted_multiplier(key: u32, enabled: bool) -> (Option<Family>, u64) {
+    let family = collect::family_by_key(key);
+    match family {
+        Some(f) if enabled => (family, u64::from(LIVE.multiplier(f).max(1))),
+        _ => (family, 1),
+    }
+}
+
+/// Rewrite the already parsed records so their yields are the vanilla ones
+/// times the multiplier the ini says *now*.
+///
+/// Called on the plugin's main thread after an ini change, never from the
+/// callback. The game reads its gimmickinfo table once per session, so without
+/// this a change made while playing has nothing to act on until the next
+/// launch; with it, the numbers move on the next gather.
+///
+/// Every value written is `remembered × current`, never `current × something`:
+/// the vanilla blocks `crate::remember` holds are the only fixed point, and
+/// scaling what is already there would compound every edit. A block is only
+/// written when the record's key and the block's item id both still match what
+/// was remembered, so a record the game has replaced or a layout that moved is
+/// skipped rather than corrupted. Every read is a guarded `safe::read`, every
+/// write a guarded `safe::write::<u64>`, and no game function is called.
+pub fn reapply() -> Outcome {
+    use parsed::*;
+
+    let mgr = MANAGER.load(Ordering::Relaxed);
+    if mgr == 0 {
+        // The hook has not fired yet: the table is not loaded, and the load
+        // path will apply the current multipliers when it is.
+        return Outcome::NOT_LOADED;
+    }
+    let mut out = Outcome::empty(true);
+    if !plausible(mgr) {
+        out.manager_unreadable = true;
+        return out;
+    }
+    let enabled = LIVE.enabled();
+    let dry = LIVE.dry_run();
+    let debug = LIVE.debug();
+
+    let (Some(count), Some(records)) =
+        (safe::read::<u32>(mgr + MGR_COUNT), safe::read_ptr(mgr + MGR_RECORDS))
+    else {
+        out.manager_unreadable = true;
+        return out;
+    };
+    // A remembered index is a `u16`, so `records + idx * 8` adds at most
+    // 0x7FFF8 to a pointer `plausible` has already capped well below the top
+    // of the address space: the arithmetic below cannot wrap.
+    if !plausible(records) {
+        out.manager_unreadable = true;
+        return out;
+    }
+    let count = count as usize;
+
+    for rec in remember::snapshot() {
+        out.visited += 1;
+        let idx = rec.idx as usize;
+        if idx >= count {
+            out.skipped += 1;
+            out.skip_index += 1;
+            continue;
+        }
+        let Some(obj) = safe::read::<usize>(records + idx * 8) else {
+            out.skipped += 1;
+            out.skip_read += 1;
+            continue;
+        };
+        if obj == 0 {
+            // The slot was never filled: the lazy loader will fill it through
+            // the hook, which applies the current multiplier itself.
+            out.skipped += 1;
+            out.skip_unloaded += 1;
+            continue;
+        }
+        if !plausible(obj) {
+            out.skipped += 1;
+            out.skip_read += 1;
+            continue;
+        }
+        match safe::read::<u32>(obj + REC_KEY) {
+            Some(k) if k == rec.key => {}
+            Some(_) => {
+                out.skipped += 1;
+                out.skip_key += 1;
+                continue;
+            }
+            None => {
+                out.skipped += 1;
+                out.skip_read += 1;
+                continue;
+            }
+        }
+        let (Some(n), Some(data)) =
+            (safe::read::<u32>(obj + REC_COUNT), safe::read::<usize>(obj + REC_LIST))
+        else {
+            out.skipped += 1;
+            out.skip_read += 1;
+            continue;
+        };
+        if data == 0 {
+            out.skipped += 1;
+            out.skip_list += 1;
+            continue;
+        }
+        if !plausible(data) {
+            out.skipped += 1;
+            out.skip_read += 1;
+            continue;
+        }
+        if n as usize != rec.blocks.len() {
+            // The parsed list is not the list we read off the disk bytes, so
+            // entry i is not block i and nothing here can be trusted.
+            out.skipped += 1;
+            out.skip_count += 1;
+            continue;
+        }
+
+        let (family, mult) = wanted_multiplier(rec.key, enabled);
+        let mut wrote = 0usize;
+        let mut detail = String::new();
+        let mut shown = 0usize;
+
+        for (i, &(item, min, max)) in rec.blocks.iter().enumerate() {
+            let entry = data + i * ENTRY;
+            let Some(block) = safe::read::<usize>(entry) else {
+                out.blocks_skipped += 1;
+                out.block_read += 1;
+                continue;
+            };
+            if block == 0 {
+                out.blocks_skipped += 1;
+                out.block_null += 1;
+                continue;
+            }
+            if !plausible(block) {
+                out.blocks_skipped += 1;
+                out.block_read += 1;
+                continue;
+            }
+            let (Some(entry_item), Some(block_item)) =
+                (safe::read::<u32>(entry + ENTRY_ITEM), safe::read::<u32>(block + BLOCK_ITEM))
+            else {
+                out.blocks_skipped += 1;
+                out.block_read += 1;
+                continue;
+            };
+            // Both copies of the item id have to be the one the raw block
+            // carried, or this is not the block we remembered.
+            if entry_item != item || block_item != item {
+                out.blocks_skipped += 1;
+                out.block_item += 1;
+                continue;
+            }
+            // The same saturating arithmetic `gimmick::multiply` does, so the
+            // live path and the load path produce identical numbers.
+            let (want_min, want_max) = (min.saturating_mul(mult), max.saturating_mul(mult));
+            let (Some(cur_min), Some(cur_max)) =
+                (safe::read::<u64>(block + BLOCK_MIN), safe::read::<u64>(block + BLOCK_MAX))
+            else {
+                out.blocks_skipped += 1;
+                out.block_read += 1;
+                continue;
+            };
+            if cur_min == want_min && cur_max == want_max {
+                continue;
+            }
+            if !dry {
+                // Both writes are attempted: the pair was just read, so a
+                // refusal here means the page went away between the two, and
+                // half a block is still better reported than retried.
+                let ok = usize::from(safe::write(block + BLOCK_MIN, want_min))
+                    + usize::from(safe::write(block + BLOCK_MAX, want_max));
+                if ok < 2 {
+                    out.blocks_skipped += 1;
+                    out.block_write += 1;
+                }
+                if ok == 0 {
+                    continue;
+                }
+                wrote += ok;
+            } else {
+                wrote += 2;
+            }
+            if shown < DETAIL_BLOCKS {
+                if shown > 0 {
+                    detail.push_str(", ");
+                }
+                detail.push_str(&format!("{cur_min}->{want_min}/{cur_max}->{want_max}"));
+            }
+            shown += 1;
+        }
+
+        if wrote == 0 {
+            out.unchanged += 1;
+            continue;
+        }
+        out.rewritten += 1;
+        out.scalars += wrote;
+        if !dry {
+            EDITS_WRITTEN.fetch_add(wrote as u64, Ordering::Relaxed);
+        }
+        if debug {
+            if shown > DETAIL_BLOCKS {
+                detail.push_str(&format!(", +{} more", shown - DETAIL_BLOCKS));
+            }
+            let name = table_name(rec.key).unwrap_or("?");
+            let fam = family.map_or_else(|| "?".to_string(), |f| format!("{f:?}"));
+            crate::log!(
+                "[{}] {name} key={} {fam} x{mult} blocks={} {} {wrote}: {detail}",
+                if dry { "dry" } else { "live" },
+                rec.key,
+                rec.blocks.len(),
+                if dry { "would write" } else { "wrote" }
+            );
+        }
+    }
+    out
 }

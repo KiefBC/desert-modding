@@ -35,6 +35,7 @@ pub use desert_core::{module, safe};
 // #[cfg(windows)], the rest links natively on Linux so `cargo test
 // --target x86_64-unknown-linux-gnu` runs the unit tests here.
 pub mod config;
+pub mod remember;
 
 #[cfg(windows)]
 pub mod hook;
@@ -116,6 +117,20 @@ mod entry {
             cfg.logging,
             cfg.mining,
             cfg.ore
+        )
+    }
+
+    /// The multipliers a re-apply pass just used, for its summary line. At
+    /// `Enabled=0` every family is effectively 1x - the pass puts the records
+    /// back to vanilla - and the line says so rather than naming the values
+    /// sitting unused in the file.
+    fn live_summary(cfg: &Config) -> String {
+        if !cfg.enabled {
+            return "Foraging=1 Logging=1 Mining=1 Ore=1 (Enabled=0)".to_string();
+        }
+        format!(
+            "Foraging={} Logging={} Mining={} Ore={}",
+            cfg.foraging, cfg.logging, cfg.mining, cfg.ore
         )
     }
 
@@ -276,12 +291,15 @@ mod entry {
         write_schema();
         if !cfg.enabled {
             // The hook is installed anyway and `LiveConfig::enabled` gates
-            // it per call. Installing it later, when the ini flips `Enabled`
-            // on, is not an option: patching the loader prologue is only
-            // safe now, while the game is still loading and no thread can be
-            // executing those 12 bytes. Runtime toggling therefore needs the
-            // hook present from the start.
-            crate::log!("Enabled=0: hook will be installed but stays a pass-through until the ini says otherwise");
+            // the writing per call. Installing it later, when the ini flips
+            // `Enabled` on, is not an option: patching the loader prologue is
+            // only safe now, while the game is still loading and no thread
+            // can be executing those 12 bytes. It still reads every record,
+            // because those bytes carry the vanilla yields `hook::reapply`
+            // needs to turn anything up later in the session.
+            crate::log!(
+                "Enabled=0: the hook is installed and reads records, but writes nothing until the ini says otherwise"
+            );
         }
         if cfg.all_vanilla() {
             crate::log!("[ini] every family is at 1x: the hook will read records and write nothing");
@@ -331,6 +349,24 @@ mod entry {
                         }
                         crate::log!("[ini] reloaded: {}", ini_summary(&cfg));
                         config::LIVE.publish(&cfg);
+                        // The game read its gimmickinfo table once, seconds
+                        // after launch, and will not read it again; the only
+                        // way a change reaches this session is by rewriting
+                        // the records it already parsed. Not done at startup:
+                        // there, the load path itself is about to apply the
+                        // very same numbers.
+                        let outcome = hook::reapply();
+                        if outcome.manager_known {
+                            crate::log!(
+                                "{} {}: {}",
+                                if cfg.dry_run { "[dry] would re-apply" } else { "[live] re-applied" },
+                                live_summary(&cfg),
+                                outcome.summary()
+                            );
+                            if let Some(why) = outcome.warning() {
+                                crate::log!("[live] WARN {why}");
+                            }
+                        }
                     }
                     Err(_) => {
                         // Keep the live values; try again next tick.
