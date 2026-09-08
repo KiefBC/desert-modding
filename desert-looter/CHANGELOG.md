@@ -78,6 +78,27 @@ entry says otherwise.
   names the class directly, which is all the evidence a new entry needs.
   The reference mod's own test for this (`ClientStatusActorComponent+0x273 == 6`)
   reads 0 on this build for a confirmed insect and is not used.
+
+  **Type-3 creatures with a known class are included too (2026-09-08).** The
+  Firefly Colony is caught by hand with the same event as every other insect
+  but surveys as `type=03 cat=80`, where every creature caught before it read
+  `type=06`; it was classified as a plain `Character` and never targeted. The
+  type gate is now the set {3, 6} rather than the single value 6, so a colony
+  is `Catchable` and is taken under `GatherBugs` like any other insect. The
+  class byte still decides everything - type 3 is mostly NPCs (`cat=21`, `33`,
+  `66`, `71`), and none of those is a known catch class, so nothing about
+  which creatures are taken changes apart from the colony itself. Note that a
+  colony grants a second, variable-count item by a separate path; both items
+  do follow Desert Gatherer's `Bugs` multiplier, the second one with variance
+  - see Desert Gatherer's changelog for what to expect from it.
+
+  The pre-check in front of the game's own steal check moved with it. It used
+  to run only for type bytes 4, 5 and 6, since those are the branch that reads
+  a target's owner record; the status-component and transform reads that
+  follow that branch happen for **every** non-gimmick type, so a type-3
+  creature was reaching them unchecked. The owner-record check is still asked
+  only of types 4-6, and the other two are now asked of everything except
+  gimmicks, whose path is untouched.
 - `Debug`, `LogReceived` and `BagTab` are now in Desert Overlay's menu, grouped at the bottom of
   the Desert Looter section under a `Diagnostics:` heading, and so are also present in a
   plugin-generated ini. `Debug` and `LogReceived` are checkboxes; `BagTab` is a number input over

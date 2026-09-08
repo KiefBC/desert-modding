@@ -3,7 +3,9 @@
 
 use core::sync::atomic::{AtomicU64, Ordering};
 
-use crate::actors::{self, CatchClass, Vec3};
+use desert_core::creature::{self, CatchClass};
+
+use crate::actors::{self, Catchable, Vec3};
 use crate::config::Config;
 use crate::module::MainModule;
 use crate::pattern::{Found, Pattern};
@@ -108,7 +110,7 @@ fn catch_diagnostic_line(
     pos: &Vec3,
     kind: actors::Kind,
 ) {
-    let ty = match actors::type_byte(a) {
+    let ty = match creature::type_byte(a) {
         Some(t) => format!("{t:02X}"),
         None => "?".to_string(),
     };
@@ -871,17 +873,17 @@ pub fn nearest_gather(
         // unidentified species pass the first test but fail the second.
         if kind == actors::Kind::Catchable {
             let (what, family) = match actors::catch_class(m, a) {
-                Some(CatchClass::Bug) if !cfg.gather_bugs => {
+                Some(Catchable::Known(CatchClass::Bug)) if !cfg.gather_bugs => {
                     family_off_seen += 1;
                     continue;
                 }
-                Some(CatchClass::Fish) if !cfg.gather_fish => {
+                Some(Catchable::Known(CatchClass::Fish)) if !cfg.gather_fish => {
                     family_off_seen += 1;
                     continue;
                 }
-                Some(CatchClass::Bug) => ("bug", "Bug"),
-                Some(CatchClass::Fish) => ("fish", "Fish"),
-                Some(CatchClass::Unknown(c)) => {
+                Some(Catchable::Known(CatchClass::Bug)) => ("bug", "Bug"),
+                Some(Catchable::Known(CatchClass::Fish)) => ("fish", "Fish"),
+                Some(Catchable::Unknown(c)) => {
                     if first_sighting_of(c) {
                         crate::log!(
                             "[gather] catchable creature cat={c:02X} at {d:.0} m is not a known bug/fish class; skipped (catch one by hand with F7 recording to add it)"

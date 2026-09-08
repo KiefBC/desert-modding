@@ -39,6 +39,12 @@ Because that patch is in the game's own grant code rather than in anything
 Desert Looter sends, it multiplies the creatures **you** catch by hand exactly
 as it multiplies the ones Desert Looter's auto mode catches for you.
 
+One creature pays out twice: a Firefly Colony gives you colonies *and*
+fireflies, and because the game rolls a handful of fireflies for each colony
+you take, the fireflies come out at roughly double your `Bugs` setting and a
+different number every time - at `Bugs=10`, ten colonies and somewhere around
+twenty fireflies. That is the game's own drop rule, not a bug in the patch.
+
 It does **not** touch enemy loot, chests, rod-and-line fishing, skinning,
 quests, Abyss objects, artifacts, gates or fast travel.
 

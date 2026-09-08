@@ -73,19 +73,14 @@ pub use desert_core::hook::{hex, install_raw, CountCallback, Hook};
 /// 15.6 and 17.3). The `+0x20` slot is the game's own constant here: the
 /// instructions right after the patched call read the same component the same
 /// way (`mov rdx,[r15+0x68]; mov rax,[rdx+0x20]`), so this is not the RTTI
-/// component lookup Desert Looter does — it is what this function does.
+/// component lookup Desert Looter does — it is what this function does. That
+/// is why this stays local while the byte it leads to, and the type byte in
+/// front of it, are `desert_core::creature`'s.
 mod off {
     pub const ACTOR_SUB: usize = 0x68;
     pub const SUB_STATUS: usize = 0x20;
     pub const STATUS_CLASS: usize = 0x5A;
-    /// `*(actor+0x88) -> byte @1`: 6 on a creature that can be caught.
-    pub const ACTOR_TYPE_OBJ: usize = 0x88;
-    pub const TYPE_BYTE: usize = 1;
 }
-
-/// The type byte a catchable creature has (`desert_looter::actors`'s
-/// `CATCHABLE_TYPE`; the game's own steal check switches on the same byte).
-const CATCHABLE_TYPE: u8 = 6;
 
 /// Ceiling on `[catch]` lines per session. Catches are rare — a good session
 /// is a few dozen — so this is only there to stop a pathological caller of
@@ -108,15 +103,42 @@ fn first_unknown(class: u8) -> bool {
     word.fetch_or(bit, Ordering::Relaxed) & bit == 0
 }
 
+/// How many distinct `(type, class)` pairs [`first_odd_pair`] can remember.
+/// A handful: the pairs that reach it are actor types the game hands this
+/// function, and the interesting ones are the two or three a new creature
+/// would arrive on.
+const ODD_PAIRS: usize = 16;
+
+/// One slot per `(type, class)` pair reported as "a known class on a
+/// non-catchable type", claimed by compare-exchange. A fixed table rather
+/// than a map because this runs on a game thread inside the game's own
+/// function: it may not allocate and it may not lock. `0` is the empty
+/// marker, so a claimed slot carries a bit above the packed pair. Once the
+/// table is full nothing further is reported, which is the right failure for
+/// a diagnostic.
+static ODD_LOGGED: [AtomicU32; ODD_PAIRS] = [const { AtomicU32::new(0) }; ODD_PAIRS];
+
+/// True the first time this `(type, class)` pair is passed, and false forever
+/// after - including when the table is full.
+///
+/// A pair always contends for the lowest free slot first, so two threads
+/// carrying the same pair can never both claim one: whichever loses the
+/// compare-exchange reads its own key back out of that slot.
+fn first_odd_pair(ty: u8, class: u8) -> bool {
+    let key = 1 << 16 | u32::from(ty) << 8 | u32::from(class);
+    for slot in &ODD_LOGGED {
+        match slot.compare_exchange(0, key, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return true,
+            Err(seen) if seen == key => return false,
+            Err(_) => {}
+        }
+    }
+    false
+}
+
 /// True while the `[catch]` line budget lasts.
 fn may_log() -> bool {
     CATCH_LINES.fetch_add(1, Ordering::Relaxed) < CATCH_LOG_CAP
-}
-
-/// `*(actor+0x88) -> byte @1`, the actor type byte.
-fn type_byte(actor: usize) -> Option<u8> {
-    let obj = safe::read_ptr(actor + off::ACTOR_TYPE_OBJ)?;
-    safe::read(obj + off::TYPE_BYTE)
 }
 
 /// `*(*(actor+0x68)+0x20) + 0x5A`, the interaction category byte.
@@ -133,8 +155,33 @@ fn class_byte(actor: usize) -> Option<u8> {
 fn count_for(actor: usize) -> u32 {
     // Not a creature at all: one of the four non-event callers of
     // `FUN_142a73c20`, or an actor whose pointers are not readable this
-    // instant. Silent — this is the common case for those callers.
-    if type_byte(actor) != Some(CATCHABLE_TYPE) {
+    // instant. Silent — this is the common case for those callers — with the
+    // one exception below.
+    //
+    // The type byte is read here rather than through
+    // `creature::is_catchable_type` so that exception can name the value
+    // without walking the same pointers twice; the list it is checked against
+    // is still `desert_core`'s, so this and Desert Looter cannot come to
+    // disagree about what is creature-shaped.
+    let Some(ty) = creature::type_byte(actor) else { return 1 };
+    if !creature::CATCHABLE_TYPES.contains(&ty) {
+        // A **known** bug/fish class on a type the list does not hold is
+        // exactly what the Firefly Colony looked like before type 3 was added
+        // (`docs/reference-internals.md` section 15.5): a creature caught by
+        // hand that this hook silently left vanilla and said nothing about.
+        // Reported once per `(type, class)` pair per session so the next one
+        // costs a log line rather than a field session. Everything else stays
+        // silent — the four non-event callers must not fill the log — and the
+        // three extra `safe` reads sit on a path the game takes on inventory
+        // grants, not per frame.
+        if let Some(class) = class_byte(actor) {
+            if creature::catch_class(class).is_some() && first_odd_pair(ty, class) && may_log() {
+                crate::log!(
+                    "[catch] type={ty:02X} class={class:02X} is a known class on a \
+                     non-catchable type; vanilla (logged once)"
+                );
+            }
+        }
         return 1;
     }
     let Some(class) = class_byte(actor) else { return 1 };
@@ -307,6 +354,31 @@ mod tests {
         assert!(!first_unknown(0x51));
         assert!(first_unknown(0xFE));
         assert!(!first_unknown(0xFE));
+    }
+
+    /// One test, not two: `ODD_LOGGED` is a session-global and cargo runs the
+    /// tests of a binary in parallel threads, so filling it has to happen
+    /// after the once-per-pair assertions in the same test rather than beside
+    /// them.
+    #[test]
+    fn a_known_class_on_an_odd_type_is_reported_once_per_pair() {
+        // Same class on two types, and two classes on one type, are all
+        // separate reports.
+        assert!(first_odd_pair(0xA1, 0x80));
+        assert!(!first_odd_pair(0xA1, 0x80));
+        assert!(first_odd_pair(0xA2, 0x80));
+        assert!(!first_odd_pair(0xA2, 0x80));
+        assert!(first_odd_pair(0xA1, 0x23));
+        assert!(!first_odd_pair(0xA1, 0x23));
+
+        // Claim whatever is left, then one more: a full table reports nothing
+        // instead of forgetting a pair it has already reported.
+        for i in 0..ODD_PAIRS as u8 {
+            first_odd_pair(0xB0 | i, 0x80);
+        }
+        assert!(!first_odd_pair(0xCC, 0x83), "a full table reports nothing");
+        assert!(!first_odd_pair(0xA1, 0x80), "and still remembers what it holds");
+        assert!(ODD_LOGGED.iter().all(|w| w.load(Ordering::Relaxed) != 0));
     }
 
     #[test]

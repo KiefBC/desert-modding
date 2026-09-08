@@ -44,6 +44,31 @@ new rate, and setting it back to 1 restored vanilla the same way.
   one of them is the catch event; the class gate is what keeps the multiplier off the
   other four.
 
+  **Type-3 creatures with a known class are multiplied too (2026-09-08).** The Firefly
+  Colony is caught by hand with the same event as every other insect but its actor reads
+  `type=03 cat=80`, where every creature caught before it read `type=06`; the hook saw a
+  type it did not recognise, returned the vanilla 1 and said nothing at all, so `Bugs=10`
+  quietly did nothing for it. The type gate is now the set {3, 6} rather than the single
+  value 6, and the class byte still decides everything, so the colony's first item now
+  follows the `Bugs` multiplier exactly. **Its second item, the variable one, is verified
+  to scale too** (measured in game, `docs/reference-internals.md` section 17.10.7): the
+  game rolls it once per unit of the first item, so the multiplier turns one roll of its
+  own 1-3 drop into N independent rolls. That lands it at roughly **twice** the slider on
+  average, with real variance rather than a fixed number - `Bugs=10` gave 19, 20, 22 and
+  27 across four colonies where vanilla gave 1 or 2. Nothing there needs fixing; it is
+  the game's own drop rule applied to a multiplied count.
+
+  To stop that costing a field session again, a **known** bug or fish class byte arriving
+  on a type outside the set is now reported once per `(type, class)` pair per session:
+
+  ```text
+  [catch] type=05 class=80 is a known class on a non-catchable type; vanilla (logged once)
+  ```
+
+  Nothing is multiplied on the strength of that line - the creature is still granted
+  vanilla - and everything else stays as silent as it was, so the four non-event callers
+  of the patched function still say nothing.
+
   **The game-update caveat, stated plainly: this is the one part of Desert Gatherer that
   is a patch on code rather than on data, so it is the first thing a game update breaks.**
   When it does, the plugin refuses to patch and says so once (`[catch] signature not

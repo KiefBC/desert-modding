@@ -16,10 +16,22 @@
 //! neither list classifies as nothing at all, and every caller here treats
 //! that as "leave it alone" rather than guessing.
 //!
+//! The gate in front of that byte is the **actor type byte**
+//! ([`CATCHABLE_TYPES`], `*(actor+0x88) -> byte @1`, sections 10.1 and 14),
+//! which is here for the same reason: both plugins ask it first, and asking
+//! it differently is how they would come to disagree. It is only ever a
+//! gate: the type byte alone never decides anything, because the same types
+//! carry creatures nobody can catch.
+//!
 //! This lives in desert-core because two plugins need the same answer for
 //! different reasons: Desert Looter decides whether to *target* a creature,
 //! and Desert Gatherer decides how many of it to *grant* (its catch-count
-//! hook, section 17). They must never disagree about what a fish is.
+//! hook, section 17). They must never disagree about what a fish is. What is
+//! deliberately *not* here is how each plugin reaches the
+//! `ClientStatusActorComponent` the category byte sits on: Desert Looter
+//! finds it by RTTI name because it is surveying arbitrary actors, and Desert
+//! Gatherer uses the fixed `sub+0x20` slot because that is what the function
+//! it is standing inside does. Both are right where they are.
 //!
 //! The catch-count **site** constants are here for the same reason
 //! `gimmick::LOADER_PROLOGUE` is: they are what a game update breaks first,
@@ -89,9 +101,20 @@ pub const BUG_CLASSES: &[u8] = &[0x80];
 
 /// Interaction category bytes seen on fish caught by hand.
 ///
-/// Four manual catches at a lake (build 25116796, 2026-09-08) read 0x23 and
-/// 0x83, item ids 29817, 29805 and 29804; seven more taken by the plugin
-/// itself in the same session all read 0x23.
+/// Fish are taken with the **same** event as insects
+/// (`TrocTrPushCharacterToInventoryOnceTimer`, 8-byte payload). Four manual
+/// catches at a lake (build 25116796, 2026-09-08), each surveyed with Desert
+/// Looter's F11 immediately before and recorded with F7, read
+/// `type=06 status=00/00` and:
+///
+/// ```text
+/// eid=B0100550  cat=83   -> [recv] item 29817 x1
+/// eid=B01005D8  cat=23   -> [recv] item 29805 x1
+/// eid=B01005AB  cat=23   -> [recv] item 29804 x1
+/// eid=B010068C  cat=83   -> [recv] item 29817 x1
+/// ```
+///
+/// Seven more taken by the plugin itself in the same session all read 0x23.
 pub const FISH_CLASSES: &[u8] = &[0x23, 0x83];
 
 /// Classify a creature by its interaction category byte.
@@ -111,6 +134,81 @@ pub fn catch_class(category: u8) -> Option<CatchClass> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The actor type byte (sections 10.1, 14 and 15)
+// ---------------------------------------------------------------------------
+
+/// The actor's type byte: `*(actor+0x88) -> byte @1`.
+///
+/// The reference mod reads it as its per-actor "flag byte +0x2E"
+/// (`FUN_18000e560`, `docs/reference-internals.md` section 10.1) and treats 6
+/// as "catchable". The game's own steal check (`FUN_14251BA50`, section 14)
+/// switches on the same byte: 4/5/6 are characters, 7 is a gimmick.
+pub const TYPE_OBJECT_OFF: usize = 0x88;
+/// Byte index into the object at [`TYPE_OBJECT_OFF`].
+pub const TYPE_BYTE_OFF: usize = 1;
+
+/// The [`type_byte`] values every creature caught by hand has had.
+///
+/// **Type 6** was recorded live on build 25116796 (2026-09-08) by surveying
+/// the world and then catching the very actors the survey had just listed,
+/// with Desert Looter's F7 event recorder running. All three insects read the
+/// same way:
+///
+/// ```text
+/// Character eid=B01002C3 ClientNormalInGameActor type=06 status=00/00
+///   comps=[Status EquipSlot CharacterControl Vehicle Detect Ai Effect
+///          FrameEvent Catch RemoteCatch Attack]
+/// ```
+///
+/// and each catch queued one `TrocTrPushCharacterToInventoryOnceTimer`
+/// naming that eid; the fish of section 15.5 read `type=06` too.
+///
+/// **Type 3** was added the same day by the **Firefly Colony**, which is
+/// caught by hand with that very same event (recorded payload
+/// `00 08 FF EA 08 10 B0 03`) while surveying as:
+///
+/// ```text
+/// Character eid=B01008EA ClientNormalInGameActor type=03 cat=80 status=00/00
+///   comps=[Status EquipSlot CharacterControl Vehicle Detect Ai Effect
+///          FrameEvent Catch RemoteCatch Attack]
+/// ```
+///
+/// That is the insect class byte 0x80 on a type byte every earlier survey had
+/// only ever seen on NPCs (classes 0x21, 0x33, 0x66 and 0x71, none of them a
+/// known catch class).
+///
+/// So **the type byte alone never decides anything**. It is a necessary
+/// condition and no more: type 3 holds NPCs *and* the Firefly Colony, type 6
+/// holds the insects and fish *and* the birds in flight of section 15.5
+/// (class 0x20). The class byte is what decides, through [`catch_class`], and
+/// a class no recorded catch has shown is never targeted and never multiplied
+/// whatever the type says.
+///
+/// Type 5 is deliberately **not** on the list: type-05 characters have been
+/// surveyed at distance carrying 0x80, 0x8C and 0x90, and not one of them has
+/// ever been caught. Growing this list, like growing the class lists, takes a
+/// recorded catch.
+pub const CATCHABLE_TYPES: &[u8] = &[3, 6];
+
+/// `*(actor+0x88) -> byte @1`, the actor type byte, or `None` if either read
+/// falls on an unmapped page.
+#[cfg(windows)]
+pub fn type_byte(actor: usize) -> Option<u8> {
+    let p = crate::safe::read_ptr(actor + TYPE_OBJECT_OFF)?;
+    crate::safe::read(p + TYPE_BYTE_OFF)
+}
+
+/// Is this actor shaped like a creature the player can catch by hand?
+///
+/// A gate, never an answer: see [`CATCHABLE_TYPES`]. An unreadable actor
+/// answers `false` - both callers want "leave it alone" when they cannot
+/// tell.
+#[cfg(windows)]
+pub fn is_catchable_type(actor: usize) -> bool {
+    type_byte(actor).is_some_and(|t| CATCHABLE_TYPES.contains(&t))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -125,6 +223,19 @@ mod tests {
         // reach a code path that acts on it.
         for other in [0x00, 0x20, 0x2C, 0x44, 0x57, 0x65, 0x8C, 0x90, 0xFF] {
             assert_eq!(catch_class(other), None, "0x{other:02X}");
+        }
+    }
+
+    #[test]
+    fn the_recorded_types_are_gates_and_nothing_else_is() {
+        // 6 is the insects and fish; 3 is the NPC type the Firefly Colony
+        // turned out to share. 5 carries 0x80/0x8C/0x90 at distance and has
+        // never been caught, and 7 is the gimmick type of section 14.
+        for t in [3u8, 6] {
+            assert!(CATCHABLE_TYPES.contains(&t), "type {t} must be catchable");
+        }
+        for t in [0u8, 1, 2, 4, 5, 7, 0xFF] {
+            assert!(!CATCHABLE_TYPES.contains(&t), "type {t} must not be catchable");
         }
     }
 

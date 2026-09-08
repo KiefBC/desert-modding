@@ -217,11 +217,20 @@ fn mark_owned(eid: u32) {
 /// existed every target was a gimmick (type byte 7) and none of this ran. A
 /// null or unmapped one of them would fault on the game thread, which is a
 /// crash to desktop, so we check each before asking rather than after.
-fn creature_preflight(target: usize) -> Result<(), String> {
+///
+/// `ty` is the target's type byte, and it decides how much of this applies:
+/// the owner record is read **only** by the 4/5/6 branch, while the status
+/// component and the transform are read by every non-gimmick type - type 3
+/// included, which is what the Firefly Colony catches as (section 15.5). So a
+/// type-3 target is checked for the two the game will actually touch and not
+/// held to a field its branch never reads.
+fn creature_preflight(target: usize, ty: u8) -> Result<(), String> {
     let sub = safe::read_ptr(target + 0x68).ok_or("creature has no sub-object at +0x68")?;
     // `read_ptr` already rejects a null or unreadable slot; `readable` then
     // covers the fields the branch indexes out to.
-    if safe::read_ptr(sub + 0x118).is_none_or(|owner| !safe::readable(owner, 0x30)) {
+    if (4..=6).contains(&ty)
+        && safe::read_ptr(sub + 0x118).is_none_or(|owner| !safe::readable(owner, 0x30))
+    {
         return Err("creature has no readable owner record at sub+0x118; not asking the steal check".into());
     }
     if safe::read_ptr(sub + 0x20).is_none_or(|status| !safe::readable(status, 0x340)) {
@@ -242,19 +251,27 @@ fn creature_preflight(target: usize) -> Result<(), String> {
 /// filter, and mode 7 has its own branch for gimmick actors.
 ///
 /// A `Catch` request is the first target that is **not** a gimmick, and mode
-/// 7's character branch (type byte 4/5/6) dereferences the owner record, the
-/// status component and the transform with no null check of its own, so
-/// [`creature_preflight`] verifies all three first (section 15). Gimmick
-/// targets are unaffected: nothing about the type-7 path changed.
+/// 7 dereferences the owner record, the status component and the transform
+/// with no null check of its own, so [`creature_preflight`] verifies what it
+/// will touch first (section 15). Gimmick targets are unaffected: nothing
+/// about the type-7 path changed.
 /// Game thread only. `Err` means "could not ask": treated as owned.
 unsafe fn would_steal(api: &EventApi, player: usize, target: usize) -> Result<bool, String> {
     if api.steal_check == 0 || api.steal_ctx == 0 {
         return Err("steal check not resolved".into());
     }
-    // Types 4, 5 and 6 are the character branch's own test (`cVar5 == 4 ||
-    // (byte)(cVar5 - 5) < 2`).
-    if matches!(actors::type_byte(target), Some(4..=6)) {
-        creature_preflight(target)?;
+    // Every type but the gimmick branch's 7 reaches the reads this checks.
+    // The owner record belongs to the character branch's own test (`cVar5 == 4
+    // || (byte)(cVar5 - 5) < 2`, types 4/5/6) and `creature_preflight` gates
+    // on that itself; the status and transform reads after it are shared, so a
+    // type-3 `Catch` target - the Firefly Colony, section 15.5 - needs them
+    // checked exactly as a type-6 one does. An unreadable type byte is left
+    // alone deliberately: `Err` here marks the eid owned for the whole
+    // session, and the readability checks below still stand in front of the
+    // call.
+    match desert_core::creature::type_byte(target) {
+        Some(7) | None => {}
+        Some(ty) => creature_preflight(target, ty)?,
     }
     let link = safe::read_ptr(player + 0xA0).ok_or("player+0xA0 is null")?;
     let acting = safe::read_ptr(link + 0xD0).ok_or("acting actor is null")?;
