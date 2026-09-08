@@ -148,6 +148,24 @@ proptest! {
         }
     }
 
+    /// The two content resolvers survive arbitrary bytes and an arbitrary
+    /// table name: never a panic, and anything they do return points inside
+    /// the image they were given.
+    #[test]
+    fn manager_slot_resolver_never_panics_and_stays_inside(
+        bytes in prop::collection::vec(any::<u8>(), 0..8192),
+        name in prop::collection::vec(any::<u8>(), 0..24),
+    ) {
+        if let Ok(rva) = gimmick::resolve_manager_slot(&bytes, &name) {
+            prop_assert!(rva < bytes.len(), "slot rva 0x{:X} outside a {}-byte image", rva, bytes.len());
+        }
+        const BASE: usize = 0x1_4000_0000;
+        if let Ok(va) = gimmick::resolve_record_loader(&bytes, BASE) {
+            prop_assert!(va >= BASE);
+            prop_assert!(va - BASE < bytes.len());
+        }
+    }
+
     /// Every list the scanner reports has a plausible count and fits whole.
     #[test]
     fn output_lists_fit_and_are_bounded(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {

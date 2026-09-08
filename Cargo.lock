@@ -68,7 +68,7 @@ checksum = "c00d31b1d19317b4777ec879192d3745bd97d05262b4b19cb1dda284b9d22f19"
 
 [[package]]
 name = "desert-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "proptest",
  "windows-sys",

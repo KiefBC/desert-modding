@@ -76,6 +76,9 @@ pub fn resolve(m: &MainModule) -> Anchors {
             }
         }
     }
+    // The two info-manager global slots, resolved by content the same way and
+    // at the same moment as the signatures above.
+    crate::tables::resolve_slots(m);
     a
 }
 
