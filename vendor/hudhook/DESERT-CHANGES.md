@@ -199,3 +199,10 @@ pixel shader branches on `mode`, per channel on `rgb` only and never on alpha:
 Blending stays in output space. That is not strictly correct for PQ, and it is what ReShade's
 overlay does too; fixing it would mean a second render target and a resolve pass for an overlay
 nobody looks at through a transparency gradient.
+
+## 9. `hooks/dx12.rs`: pipeline reset logged at info
+
+`reset_pipeline` logged `Resetting DX12 pipeline: <reason>` at `warn`. With ReShade in the chain
+the game resizes and recreates its swapchain once at every launch, so the line appeared in every
+session and read as a problem. It is now `info`; the overlay's log shows warnings only for things
+that need a look.

@@ -9,7 +9,7 @@ use std::sync::OnceLock;
 use imgui::Context;
 use once_cell::sync::OnceCell;
 use parking_lot::Mutex;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 use windows::core::{Error, IUnknown, Interface, Result, BOOL, HRESULT};
 use windows::Win32::Foundation::{HWND, LUID};
 use windows::Win32::Graphics::Direct3D::D3D_FEATURE_LEVEL_11_0;
@@ -506,7 +506,10 @@ fn create_active_context(
 }
 
 unsafe fn reset_pipeline(reason: &str) {
-    warn!("Resetting DX12 pipeline: {reason}");
+    // Info, not warn: with ReShade in the chain the game resizes and recreates
+    // its swapchain once at every launch, so this is routine there and only
+    // worth a look when it repeats or is not followed by a new pipeline.
+    info!("Resetting DX12 pipeline: {reason}");
 
     if let Some(pipeline) = PIPELINE.take() {
         let render_loop = pipeline.into_inner().take();
