@@ -2,7 +2,7 @@
 //! onto the game's event queue from the game thread.
 //!
 //! Everything here mirrors what the game's own event builder does
-//! (`FUN_1426B21A0`, build 25116796, decompiled in analysis/game-events.c):
+//! (`FUN_1426B21A0`, build 25116796):
 //!
 //! ```text
 //! prepare();                                   // static-init guard, no args
@@ -55,8 +55,8 @@ pub struct EventApi {
     pub steal_ctx: usize,
 }
 
-/// Decode the four things the `desc_mask+queue` call site yields
-/// (docs/reference-internals.md section 2): `E8` at +0 (prepare), `44 8B 05`
+/// Decode the four things the `desc_mask+queue` call site yields:
+/// `E8` at +0 (prepare), `44 8B 05`
 /// at +5 (desc_mask), `E8` at +0x11 (descriptor_by_id), `4C 8B 25` at +0x16
 /// (queue slot).
 pub fn resolve(m: &MainModule, anchors: &crate::game::Anchors) -> Result<EventApi, String> {

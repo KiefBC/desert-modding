@@ -153,7 +153,8 @@ Built on NixOS under WSL and cross-compiled to Windows. Desert Looter is one
 crate of a Cargo workspace (see the repo root `README.md`); run cargo from the
 workspace root, not from this directory. The `flake.nix` dev shell provides the
 Rust toolchain with the `x86_64-pc-windows-gnu` target, the mingw cross-linker,
-and the analysis tools (python, binutils, Ghidra).
+and the analysis tools (python, binutils, file). Ghidra is not in the dev shell:
+it runs on the Windows side and is driven over its MCP bridge.
 
 ```bash
 nix develop
@@ -187,8 +188,7 @@ manager through its RTTI vtable, and reads all game memory through
 built exactly as the game's own event builder builds them and queued from
 inside the hook. The signature scanning, the trampolines, the guarded reads
 and the logger all live in the `desert-core` crate, shared with Desert
-Gatherer; what is left in `desert-looter/src/` is the loot logic itself. The
-reverse-engineering record is in `docs/`.
+Gatherer; what is left in `desert-looter/src/` is the loot logic itself.
 
 ### Analysis tooling
 

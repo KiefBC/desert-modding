@@ -1,5 +1,4 @@
-//! Inline trampoline hooks, the same shape as the reference mod
-//! (docs/reference-internals.md section 4).
+//! Inline trampoline hooks, the same shape as the reference mod.
 //!
 //! One RWX page holds the stubs (0xA0 bytes each). A stub saves the four
 //! argument registers, calls our callback with them, restores them, runs the
