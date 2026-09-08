@@ -81,6 +81,15 @@ it is only the *other* two files that are live):
 | `KeyMenu` | `Insert` | the key that shows and hides the menu |
 | `ShowOnStart` | `0` | `1` = the menu is already open at the first frame |
 | `Scale` | `0` | menu size: `0` follows the Windows display scaling, otherwise a fixed factor from `0.5` to `4` |
+| `HdrBrightness` | `203` | paper white in nits on an HDR display: how bright the menu's white is drawn. `80` to `1000`; ignored on SDR |
+| `ColorSpace` | `auto` | what the menu's pixels are encoded for: `auto` (follow the swapchain), `sdr`, `hdr10` or `scrgb`. Anything else is `auto` with a warning in the log |
+
+The game presents an HDR10 (PQ) signal, so the menu is converted into the
+swapchain's colour space before it is drawn; without that its sRGB colours come
+out blown out and oversaturated. `auto` reads the colour space off the swapchain
+and is right unless the detection is wrong, which is what the three forced
+values are for. `HdrBrightness` is the only one worth touching in normal use:
+raise it if the menu looks dull next to the game, lower it if it glares.
 
 Key names: `F1`..`F24`, `A`..`Z`, `0`..`9`, `NUM0`..`NUM9`, `NUMPLUS`
 `NUMMINUS` `NUMMULT` `NUMDIV` `NUMDOT`, `HOME` `END` `INSERT` `DELETE` `PAGEUP`

@@ -36,6 +36,7 @@ on:
     tags:
       - "desert-looter-v*"
       - "desert-gatherer-v*"
+      - "desert-overlay-v*"
       - "desert-gatherer-dmm-v*"
 
 # Creating the release and uploading its assets needs write, and nothing else does.
@@ -118,8 +119,9 @@ jobs:
             dist/*.zip dist/SHA256SUMS
 
   # Publishes the tagged package to the mod page, as a new version of the file
-  # that is already there. One page, three files: the gatherer ASI and the DMM
-  # pack under Main, the looter under Optional.
+  # that is already there. One page, four files: the gatherer ASI and the DMM
+  # pack under Main, the looter and the overlay under Optional (the overlay's
+  # target is skipped until its file_id is filled in).
   #
   # A separate job, and deliberately so: it runs only after `release` has cut the
   # GitHub release, it re-downloads the assets from that release rather than

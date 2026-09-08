@@ -120,12 +120,15 @@ mod entry {
         let ini_path = log::exe_dir().join(INI_NAME);
         let cfg = load_config(&ini_path);
         crate::log!(
-            "[ini] Enabled={} Debug={} KeyMenu=0x{:02X} ShowOnStart={} Scale={}",
+            "[ini] Enabled={} Debug={} KeyMenu=0x{:02X} ShowOnStart={} Scale={} HdrBrightness={} \
+             ColorSpace={}",
             cfg.enabled as u8,
             cfg.debug as u8,
             cfg.key_menu,
             cfg.show_on_start as u8,
-            cfg.scale
+            cfg.scale,
+            cfg.hdr_brightness,
+            cfg.color_space.as_str()
         );
         if !cfg.enabled {
             crate::log!("Enabled=0: no graphics hook is installed, the game renders untouched");

@@ -14,6 +14,7 @@ use windows::Win32::Graphics::Direct3D::*;
 use windows::Win32::Graphics::Direct3D12::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 
+use crate::output;
 use crate::renderer::RenderEngine;
 use crate::util::{self, Fence};
 use crate::RenderContext;
@@ -394,6 +395,16 @@ impl D3D12RenderEngine {
             self.projection_buffer.as_ptr() as *const c_void,
             0,
         );
+        // Read fresh every frame: the game can change the swap chain's colour
+        // space, and the host its paper white, between any two of them.
+        let output_buffer: [u32; 2] =
+            [output::shader_mode(), output::paper_white_nits().to_bits()];
+        self.command_list.SetGraphicsRoot32BitConstants(
+            2,
+            2,
+            output_buffer.as_ptr() as *const c_void,
+            0,
+        );
         self.command_list.OMSetBlendFactor(Some(&[0f32; 4]));
     }
 }
@@ -456,10 +467,25 @@ unsafe fn create_shader_program(
             },
             ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
         },
+        // Output colour space. Two 32-bit constants at b1, pixel-visible: the
+        // conversion `mode` and the `paper_white` level it scales to. Root
+        // constants rather than a constant buffer so the values can change per
+        // frame with no allocation and no upload.
+        D3D12_ROOT_PARAMETER {
+            ParameterType: D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS,
+            Anonymous: D3D12_ROOT_PARAMETER_0 {
+                Constants: D3D12_ROOT_CONSTANTS {
+                    ShaderRegister: 1,
+                    RegisterSpace: 0,
+                    Num32BitValues: 2,
+                },
+            },
+            ShaderVisibility: D3D12_SHADER_VISIBILITY_PIXEL,
+        },
     ];
 
     let root_signature_desc = D3D12_ROOT_SIGNATURE_DESC {
-        NumParameters: 2,
+        NumParameters: 3,
         pParameters: parameters.as_ptr(),
         NumStaticSamplers: 1,
         pStaticSamplers: &D3D12_STATIC_SAMPLER_DESC {
@@ -524,6 +550,12 @@ unsafe fn create_shader_program(
       return output;
     }"#;
 
+    // imgui hands us sRGB-encoded, non-linear colours, which is what an SDR
+    // swap chain wants and what an HDR one does not: written unchanged into an
+    // HDR10 (PQ) or scRGB back buffer they come out blown out and
+    // oversaturated. `mode` 0 is the passthrough hudhook has always done, so
+    // nothing changes for an SDR swap chain. Alpha is never touched, and the
+    // blend stays in output space, which is what ReShade's own overlay does.
     const PS: &str = r#"
     struct PS_INPUT {
       float4 pos: SV_POSITION;
@@ -531,11 +563,61 @@ unsafe fn create_shader_program(
       float2 uv: TEXCOORD0;
     };
 
+    cbuffer outputBuffer : register(b1) {
+      uint mode;
+      float paper_white;
+    };
+
     SamplerState sampler0: register(s0);
     Texture2D texture0: register(t0);
 
+    static const uint MODE_SDR = 0;
+    static const uint MODE_HDR10 = 1;
+    static const uint MODE_SCRGB = 2;
+
+    // SMPTE ST 2084 inverse EOTF.
+    static const float PQ_M1 = 0.1593017578125;
+    static const float PQ_M2 = 78.84375;
+    static const float PQ_C1 = 0.8359375;
+    static const float PQ_C2 = 18.8515625;
+    static const float PQ_C3 = 18.6875;
+
+    float srgb_to_linear_channel(float c) {
+      return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4);
+    }
+
+    float3 srgb_to_linear(float3 c) {
+      return float3(
+        srgb_to_linear_channel(c.r),
+        srgb_to_linear_channel(c.g),
+        srgb_to_linear_channel(c.b));
+    }
+
+    float pq_channel(float y) {
+      float ym = pow(saturate(y), PQ_M1);
+      return pow((PQ_C1 + PQ_C2 * ym) / (1.0 + PQ_C3 * ym), PQ_M2);
+    }
+
     float4 main(PS_INPUT input): SV_Target {
       float4 out_col = input.col * texture0.Sample(sampler0, input.uv);
+
+      if (mode == MODE_SCRGB) {
+        // Linear BT.709, 1.0 = 80 nits.
+        out_col.rgb = srgb_to_linear(out_col.rgb) * (paper_white / 80.0);
+        return out_col;
+      }
+
+      if (mode == MODE_HDR10) {
+        float3 lin = srgb_to_linear(out_col.rgb);
+        float3 bt2020 = float3(
+          dot(lin, float3(0.6274, 0.3293, 0.0433)),
+          dot(lin, float3(0.0691, 0.9195, 0.0114)),
+          dot(lin, float3(0.0164, 0.0880, 0.8956)));
+        float3 y = bt2020 * (paper_white / 10000.0);
+        out_col.rgb = float3(pq_channel(y.r), pq_channel(y.g), pq_channel(y.b));
+        return out_col;
+      }
+
       return out_col;
     }"#;
 

@@ -35,12 +35,9 @@ Every keypress beeps once. Keys can be changed in the ini.
 
 ## Install
 
-The release archive holds four files at its root - `DesertLooter.asi`,
-`DesertLooter.ini`, `README.md` and `CHANGELOG.md` - so it suits either way of
-installing it.
-
-A companion plugin in this repository, Desert Overlay (a DX12 in-game menu),
-can edit `DesertLooter.ini` live while the game runs.
+The release archive holds six files at its root - `DesertLooter.asi`,
+`DesertLooter.ini`, `README.md`, `CHANGELOG.md`, and `DesertOverlay.asi` with its
+`DesertOverlay.ini` - so it suits either way of installing it.
 
 ### By hand
 
@@ -54,6 +51,22 @@ Extract the archive straight into `<game>\bin64\`, or copy two files there:
 
 To remove the plugin, delete `DesertLooter.asi`. Nothing is installed anywhere
 else and no game file is modified.
+
+### The in-game menu
+
+The zip also carries **Desert Overlay**, a second plugin that draws a settings
+menu inside the game (DirectX 12, Dear ImGui) and edits `DesertLooter.ini` live
+while you play. Press **Insert** to open and close it. It is entirely optional:
+the hotkeys and editing the ini in a text editor work exactly as before without
+it, and deleting `DesertOverlay.asi` removes it.
+
+You only need **one** copy of it in `bin64`. Both mod zips ship the same file,
+so if you install both, one `DesertOverlay.asi` covers them; where the two zips
+were built at different times, keep the newer one. It shows a section per
+plugin and greys out the section of anything that is not loaded, so it is fine
+to run with only this mod installed. Desert Overlay has its own release zip and
+its own version number, and a mod zip carries whichever version was current
+when the mod was released.
 
 ### Install with DMM
 

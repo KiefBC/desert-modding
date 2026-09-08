@@ -107,14 +107,23 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    Fixed.
 4. Build the packages:
    ```bash
-   nix develop --command tools/dist.sh                  # all three
+   nix develop --command tools/dist.sh                  # every package
    nix develop --command tools/dist.sh desert-looter    # just the one you are releasing
    ```
    You get `dist/DesertLooter-<version>.zip`, `dist/DesertGatherer-<version>.zip`,
-   `dist/DesertGatherer-DMM-<version>.zip` and `dist/SHA256SUMS`. Each plugin zip holds the
-   `.asi`, its `.ini`, the mod's README and CHANGELOG at the archive root, which is what lets one
-   archive serve both a manual drop into `bin64` and Definitive Mod Manager. The release builds
-   only the package its tag names, so pass that name here to see exactly what will ship.
+   `dist/DesertOverlay-<version>.zip`, `dist/DesertGatherer-DMM-<version>.zip` and
+   `dist/SHA256SUMS`. Each plugin zip holds the `.asi`, its `.ini`, the mod's README and CHANGELOG
+   at the archive root, which is what lets one archive serve both a manual drop into `bin64` and
+   Definitive Mod Manager. The Looter and Gatherer zips add `DesertOverlay.asi` and
+   `DesertOverlay.ini` after those four, so either mod installs the in-game menu on its own; the
+   overlay greys out the section of any plugin that is not loaded, so bundling it is safe either
+   way. The release builds only the package its tag names, so pass that name here to see exactly
+   what will ship.
+
+   Bundling does not change the separate-versioning rule. A mod zip carries whichever overlay
+   version was current when the mod was tagged, and an overlay-only change reaches those users
+   through the overlay's own release or through the mod's next release, whichever comes first: an
+   overlay bump never re-cuts a mod's zip by itself, and it is not a reason to bump the mod.
 5. Actually play it. Copy the `.asi` and `.ini` into `bin64`, launch, read the log. There's no
    automated in-game test, and a release nobody has run in the game isn't a release.
 6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as

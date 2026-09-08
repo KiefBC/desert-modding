@@ -15,6 +15,12 @@ Versioning](../VERSIONING.md).
 
 ### Changed
 
+- The release zip now bundles Desert Overlay: `DesertOverlay.asi` and `DesertOverlay.ini` sit at
+  the archive root beside the plugin's own four files, so extracting into `bin64` installs the
+  in-game settings menu along with the plugin. Press `Insert` to open it. It is optional, changes
+  nothing about the hotkeys or editing `DesertLooter.ini` by hand, and greys out the section of any
+  plugin that is not loaded. Desert Overlay is versioned and released separately; a mod zip carries
+  whichever version was current when the mod was released.
 - `DesertLooter.ini` is now re-read while the game runs: the plugin thread checks the file's
   modified time once a second and reloads on change, logging `[ini] reloaded: ...` in the same
   format as the startup `[ini]` line. Every key is live, including the hotkey bindings. A file that

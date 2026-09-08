@@ -16,6 +16,12 @@ Versioning](../VERSIONING.md).
 
 ### Changed
 
+- The release zip now bundles Desert Overlay: `DesertOverlay.asi` and `DesertOverlay.ini` sit at
+  the archive root beside the plugin's own four files, so extracting into `bin64` installs the
+  in-game settings menu along with the plugin. Press `Insert` to open it. It is optional, changes
+  nothing about editing `DesertGatherer.ini` by hand, and greys out the section of any plugin that
+  is not loaded. Desert Overlay is versioned and released separately; a mod zip carries whichever
+  version was current when the mod was released.
 - `Enabled=0` no longer keeps the plugin out entirely. The record-loader hook is always installed at
   load, and `Enabled=0` now makes it a pass-through that reads and writes nothing. Setting
   `Enabled=1` later in the ini turns the plugin on without a restart.

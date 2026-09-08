@@ -2,7 +2,7 @@
 #
 # Build the release packages: every plugin and the DMM module pack.
 #
-#   nix develop --command tools/dist.sh                  all three
+#   nix develop --command tools/dist.sh                  every package
 #   nix develop --command tools/dist.sh desert-looter    just that one
 #
 # Writes dist/DesertLooter-<version>.zip, dist/DesertGatherer-<version>.zip,
@@ -16,6 +16,20 @@
 # would eventually publish an untagged package's OLD version number over NEW
 # bytes (any change to desert-core between two releases does it), and two
 # releases would then disagree about the contents of one version.
+#
+# The looter and gatherer zips also carry DesertOverlay.asi and its ini, the
+# same two files the overlay's own zip ships. The overlay greys out the section
+# of any plugin that is not loaded, so it is useful and harmless in either mod
+# on its own, and a player who installs one mod gets the menu without having to
+# find a second download. DesertOverlay-<version>.zip stays the canonical
+# overlay release; the copies in the mod zips are a convenience.
+#
+# Bundling does not change the separate-versioning rule above, it just means a
+# mod zip carries whichever overlay version was current when the mod was
+# tagged. An overlay-only change therefore reaches those users either through
+# the overlay's own release or through the mod's next release, whichever comes
+# first; it never re-cuts the mod's zip on its own. Both zips ship the same
+# file, so a player with both installs one copy in bin64 and the newer wins.
 #
 # dist/ is wiped first, so SHA256SUMS only ever lists what this run built.
 #
@@ -78,9 +92,9 @@ fi
 rm -rf "$dist"
 mkdir -p "$dist"
 
-# crate-dir  ShippedName  built-dll
+# crate-dir  ShippedName  built-dll  [bundle-overlay]
 package() {
-  local crate="$1" name="$2" dll="$3"
+  local crate="$1" name="$2" dll="$3" bundle="${4:-no}"
 
   # The crate's Cargo.toml version is the single source of truth (VERSIONING.md).
   local version
@@ -91,16 +105,25 @@ package() {
   rm -rf "$stage"
   mkdir -p "$stage"
 
-  # Fixed order, and the same four names in both zips.
+  # Fixed order, and the same four names in every zip: the plugin, its ini and
+  # the mod's two docs. The looter and gatherer zips then add the overlay's two
+  # files after them, so the first four are identical across all three.
   install -m 644 "$built/$dll"                 "$stage/$name.asi"
   install -m 644 "$root/$crate/$name.ini"      "$stage/$name.ini"
   install -m 644 "$root/$crate/README.md"      "$stage/README.md"
   install -m 644 "$root/$crate/CHANGELOG.md"   "$stage/CHANGELOG.md"
+
+  local files=("$name.asi" "$name.ini" README.md CHANGELOG.md)
+  if [ "$bundle" = overlay ]; then
+    install -m 644 "$built/desert_overlay.dll"               "$stage/DesertOverlay.asi"
+    install -m 644 "$root/desert-overlay/DesertOverlay.ini"  "$stage/DesertOverlay.ini"
+    files+=(DesertOverlay.asi DesertOverlay.ini)
+  fi
   touch -d "@$DIST_EPOCH" "$stage"/*
 
   local zipfile="$dist/$name-$version.zip"
   rm -f "$zipfile"
-  ( cd "$stage" && zip -q -X -9 "$zipfile" "$name.asi" "$name.ini" README.md CHANGELOG.md )
+  ( cd "$stage" && zip -q -X -9 "$zipfile" "${files[@]}" )
   echo "==> $(basename "$zipfile")"
 }
 
@@ -140,8 +163,8 @@ package_dmm() {
 
 for name in "${selected[@]}"; do
   case "$name" in
-    desert-looter)       package desert-looter   DesertLooter   desert_looter.dll ;;
-    desert-gatherer)     package desert-gatherer DesertGatherer desert_gatherer.dll ;;
+    desert-looter)       package desert-looter   DesertLooter   desert_looter.dll   overlay ;;
+    desert-gatherer)     package desert-gatherer DesertGatherer desert_gatherer.dll overlay ;;
     desert-overlay)      package desert-overlay  DesertOverlay  desert_overlay.dll ;;
     desert-gatherer-dmm) package_dmm ;;
   esac

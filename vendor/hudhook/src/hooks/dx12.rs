@@ -18,7 +18,8 @@ use windows::Win32::Graphics::Direct3D12::{
     D3D12_COMMAND_LIST_TYPE_DIRECT, D3D12_COMMAND_QUEUE_DESC, D3D12_COMMAND_QUEUE_FLAG_NONE,
 };
 use windows::Win32::Graphics::Dxgi::Common::{
-    DXGI_FORMAT, DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_MODE_SCALING_UNSPECIFIED,
+    DXGI_COLOR_SPACE_TYPE, DXGI_FORMAT, DXGI_FORMAT_R16G16B16A16_FLOAT,
+    DXGI_FORMAT_R8G8B8A8_UNORM, DXGI_MODE_DESC, DXGI_MODE_SCALING_UNSPECIFIED,
     DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED, DXGI_RATIONAL, DXGI_SAMPLE_DESC,
 };
 use windows::Win32::Graphics::Dxgi::{
@@ -31,6 +32,7 @@ use windows::Win32::Graphics::Dxgi::{
 
 use super::DummyHwnd;
 use crate::mh::MhHook;
+use crate::output;
 use crate::renderer::{D3D12RenderEngine, Pipeline};
 use crate::{perform_eject, util, Hooks, ImguiRenderLoop, EJECT_REQUESTED, HOOK_EJECTION_BARRIER};
 
@@ -55,6 +57,11 @@ type DXGISwapChainResizeBuffersType = unsafe extern "system" fn(
 
 type DXGISwapChainSetSourceSizeType =
     unsafe extern "system" fn(this: IDXGISwapChain2, width: u32, height: u32) -> HRESULT;
+
+type DXGISwapChainSetColorSpace1Type = unsafe extern "system" fn(
+    this: IDXGISwapChain3,
+    color_space: DXGI_COLOR_SPACE_TYPE,
+) -> HRESULT;
 
 type DXGISwapChainResizeBuffers1Type = unsafe extern "system" fn(
     this: IDXGISwapChain3,
@@ -95,6 +102,7 @@ struct Trampolines {
     dxgi_swap_chain_present1: DXGISwapChainPresent1Type,
     dxgi_swap_chain_resize_buffers: DXGISwapChainResizeBuffersType,
     dxgi_swap_chain_set_source_size: DXGISwapChainSetSourceSizeType,
+    dxgi_swap_chain_set_color_space1: DXGISwapChainSetColorSpace1Type,
     dxgi_swap_chain_resize_buffers1: DXGISwapChainResizeBuffers1Type,
     dxgi_factory_create_swap_chain: DXGIFactoryCreateSwapChainType,
     dxgi_factory_create_swap_chain_for_hwnd: DXGIFactoryCreateSwapChainForHwndType,
@@ -267,6 +275,22 @@ static INIT_STATE: InitState = InitState::new();
 static mut PIPELINE: OnceCell<Mutex<Pipeline<D3D12RenderEngine>>> = OnceCell::new();
 static mut RENDER_LOOP: OnceCell<Box<dyn ImguiRenderLoop + Send + Sync>> = OnceCell::new();
 static ACTIVE_CONTEXT: Mutex<Option<ActiveDx12Context>> = Mutex::new(None);
+static COLOR_SPACE: Mutex<Option<ColorSpaceRecord>> = Mutex::new(None);
+
+// The colour space `IDXGISwapChain3::SetColorSpace1` last set, together with
+// the swap chain it was set on and the back buffer format it was set for.
+//
+// The swap chain is remembered by its `IUnknown` identity rather than by a
+// reference: a strong reference here would bring back the very bug items 1 to 6
+// of DESERT-CHANGES.md fix, since DXGI refuses to create a swap chain for an
+// HWND whose previous one is still referenced. `same_swap_chain` compares two
+// live references by exactly this identity; a record has only the identity
+// left, so it compares that.
+struct ColorSpaceRecord {
+    swap_chain_identity: usize,
+    format: DXGI_FORMAT,
+    color_space: DXGI_COLOR_SPACE_TYPE,
+}
 
 #[derive(Clone)]
 struct ActiveDx12Context {
@@ -299,6 +323,66 @@ fn same_swap_chain(lhs: &IDXGISwapChain3, rhs: &IDXGISwapChain3) -> bool {
     match (lhs.cast::<IUnknown>(), rhs.cast::<IUnknown>()) {
         (Ok(lhs), Ok(rhs)) => identity_ptr(&lhs) == identity_ptr(&rhs),
         _ => false,
+    }
+}
+
+fn swap_chain_identity(swap_chain: &IDXGISwapChain3) -> Option<usize> {
+    swap_chain.cast::<IUnknown>().ok().map(|identity| identity_ptr(&identity))
+}
+
+// Remember what a successful `SetColorSpace1` put the swap chain into, and
+// publish it for the renderer. The format is recorded with it so that a resize
+// to a different back buffer format drops back to DXGI's default, which is what
+// the swap chain itself does.
+fn record_color_space(swap_chain: &IDXGISwapChain3, color_space: DXGI_COLOR_SPACE_TYPE) {
+    let Some(identity) = swap_chain_identity(swap_chain) else {
+        warn!("Could not identify the swap chain SetColorSpace1 succeeded on; not recorded");
+        return;
+    };
+
+    let format = match unsafe { swap_chain.GetDesc() } {
+        Ok(desc) => desc.BufferDesc.Format,
+        Err(e) => {
+            warn!("Could not query the swap-chain format after SetColorSpace1: {e:?}");
+            return;
+        },
+    };
+
+    *COLOR_SPACE.lock() =
+        Some(ColorSpaceRecord { swap_chain_identity: identity, format, color_space });
+    output::set_detected_color_space(color_space);
+}
+
+// The colour space the swap chain is presenting in: what `SetColorSpace1` set
+// for this very swap chain and this very format, or DXGI's default when there
+// is no such record. DXGI's default is scRGB for an `R16G16B16A16_FLOAT` back
+// buffer and sRGB for everything else, so a swap chain that was replaced, or
+// resized to a new format, falls back to that on its own. A record that no
+// longer matches is dropped rather than kept: an identity is a raw pointer, and
+// a later allocation can be handed the same address.
+fn effective_color_space(
+    swap_chain: &IDXGISwapChain3,
+    format: DXGI_FORMAT,
+) -> DXGI_COLOR_SPACE_TYPE {
+    let default =
+        output::default_color_space_for_format(format == DXGI_FORMAT_R16G16B16A16_FLOAT);
+
+    let Some(identity) = swap_chain_identity(swap_chain) else {
+        return default;
+    };
+
+    let mut record = COLOR_SPACE.lock();
+    match record.as_ref() {
+        Some(recorded)
+            if recorded.swap_chain_identity == identity && recorded.format == format =>
+        {
+            recorded.color_space
+        },
+        Some(_) => {
+            *record = None;
+            default
+        },
+        None => default,
     }
 }
 
@@ -716,6 +800,10 @@ fn render(swap_chain: &IDXGISwapChain3) -> Result<()> {
         }
 
         let swap_chain_desc = swap_chain.GetDesc()?;
+        output::set_detected_color_space(effective_color_space(
+            swap_chain,
+            swap_chain_desc.BufferDesc.Format,
+        ));
         if D3D12RenderEngine::rtv_format_for_swap_chain(swap_chain_desc.BufferDesc.Format).is_none()
         {
             warn!(
@@ -881,6 +969,27 @@ unsafe extern "system" fn dxgi_swap_chain_set_source_size_impl(
     result
 }
 
+unsafe extern "system" fn dxgi_swap_chain_set_color_space1_impl(
+    swap_chain: IDXGISwapChain3,
+    color_space: DXGI_COLOR_SPACE_TYPE,
+) -> HRESULT {
+    let _hook_ejection_guard = HOOK_EJECTION_BARRIER.acquire_ejection_guard();
+    let Trampolines { dxgi_swap_chain_set_color_space1, .. } =
+        TRAMPOLINES.get().expect("DirectX 12 trampolines uninitialized");
+
+    trace!("Call IDXGISwapChain3::SetColorSpace1 trampoline");
+    let result = dxgi_swap_chain_set_color_space1(swap_chain.clone(), color_space);
+    if result.is_err() {
+        // A refused colour space leaves the swap chain in the one it already
+        // had, so the record must not move either.
+        return result;
+    }
+
+    record_color_space(&swap_chain, color_space);
+
+    result
+}
+
 unsafe extern "system" fn dxgi_swap_chain_resize_buffers1_impl(
     p_this: IDXGISwapChain3,
     buffer_count: u32,
@@ -1040,6 +1149,7 @@ fn get_target_addrs() -> (
     DXGISwapChainPresent1Type,
     DXGISwapChainResizeBuffersType,
     DXGISwapChainSetSourceSizeType,
+    DXGISwapChainSetColorSpace1Type,
     DXGISwapChainResizeBuffers1Type,
     D3D12CommandQueueExecuteCommandListsType,
 ) {
@@ -1110,6 +1220,16 @@ fn get_target_addrs() -> (
         unsafe { mem::transmute(swap_chain.vtable().ResizeBuffers) };
     let set_source_size_ptr: DXGISwapChainSetSourceSizeType =
         unsafe { mem::transmute(swap_chain2.vtable().SetSourceSize) };
+    // The slot is taken from the `windows` crate's own `IDXGISwapChain3_Vtbl`
+    // by naming the field, not by writing an index, so its declaration order is
+    // what picks the function and a miscount cannot become a wrong patch. That
+    // order is: `base__: IDXGISwapChain2_Vtbl`, then `GetCurrentBackBufferIndex`,
+    // `CheckColorSpaceSupport`, `SetColorSpace1`, `ResizeBuffers1`. Counting the
+    // bases - IUnknown 3, IDXGIObject 4, IDXGIDeviceSubObject 1, IDXGISwapChain
+    // 10, IDXGISwapChain1 11, IDXGISwapChain2 7, which is 36 - puts
+    // `SetColorSpace1` at slot 38, one before `ResizeBuffers1` at 39.
+    let set_color_space1_ptr: DXGISwapChainSetColorSpace1Type =
+        unsafe { mem::transmute(swap_chain3.vtable().SetColorSpace1) };
     let resize_buffers1_ptr: DXGISwapChainResizeBuffers1Type =
         unsafe { mem::transmute(swap_chain3.vtable().ResizeBuffers1) };
     let cqecl_ptr: D3D12CommandQueueExecuteCommandListsType =
@@ -1122,13 +1242,14 @@ fn get_target_addrs() -> (
         present1_ptr,
         resize_buffers_ptr,
         set_source_size_ptr,
+        set_color_space1_ptr,
         resize_buffers1_ptr,
         cqecl_ptr,
     )
 }
 
 /// Hooks for DirectX 12.
-pub struct ImguiDx12Hooks([MhHook; 8]);
+pub struct ImguiDx12Hooks([MhHook; 9]);
 
 impl ImguiDx12Hooks {
     /// Construct a set of [`MhHook`]s that will render UI via the
@@ -1141,6 +1262,7 @@ impl ImguiDx12Hooks {
     /// - `IDXGISwapChain3::Present1`
     /// - `IDXGISwapChain3::ResizeBuffers`
     /// - `IDXGISwapChain2::SetSourceSize`
+    /// - `IDXGISwapChain3::SetColorSpace1`
     /// - `IDXGISwapChain3::ResizeBuffers1`
     /// - `ID3D12CommandQueue::ExecuteCommandLists`
     ///
@@ -1158,6 +1280,7 @@ impl ImguiDx12Hooks {
             dxgi_swap_chain_present1_addr,
             dxgi_swap_chain_resize_buffers_addr,
             dxgi_swap_chain_set_source_size_addr,
+            dxgi_swap_chain_set_color_space1_addr,
             dxgi_swap_chain_resize_buffers1_addr,
             d3d12_command_queue_execute_command_lists_addr,
         ) = get_target_addrs();
@@ -1202,6 +1325,11 @@ impl ImguiDx12Hooks {
             dxgi_swap_chain_set_source_size_impl as *mut _,
         )
         .expect("couldn't create IDXGISwapChain2::SetSourceSize hook");
+        let hook_set_color_space1 = MhHook::new(
+            dxgi_swap_chain_set_color_space1_addr as *mut _,
+            dxgi_swap_chain_set_color_space1_impl as *mut _,
+        )
+        .expect("couldn't create IDXGISwapChain3::SetColorSpace1 hook");
         let hook_resize_buffers1 = MhHook::new(
             dxgi_swap_chain_resize_buffers1_addr as *mut _,
             dxgi_swap_chain_resize_buffers1_impl as *mut _,
@@ -1240,6 +1368,10 @@ impl ImguiDx12Hooks {
                 *mut c_void,
                 DXGISwapChainSetSourceSizeType,
             >(hook_set_source_size.trampoline()),
+            dxgi_swap_chain_set_color_space1: mem::transmute::<
+                *mut c_void,
+                DXGISwapChainSetColorSpace1Type,
+            >(hook_set_color_space1.trampoline()),
             dxgi_swap_chain_resize_buffers1: mem::transmute::<
                 *mut c_void,
                 DXGISwapChainResizeBuffers1Type,
@@ -1257,6 +1389,7 @@ impl ImguiDx12Hooks {
             hook_present1,
             hook_resize_buffers,
             hook_set_source_size,
+            hook_set_color_space1,
             hook_resize_buffers1,
             hook_cqecl,
         ])
@@ -1282,6 +1415,7 @@ impl Hooks for ImguiDx12Hooks {
         RENDER_LOOP.take();
 
         *ACTIVE_CONTEXT.lock() = None;
+        *COLOR_SPACE.lock() = None;
         INIT_STATE.reset();
     }
 }

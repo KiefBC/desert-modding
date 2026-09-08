@@ -23,6 +23,12 @@ mount it alongside the plugin.
 Grab the zips from a release, or build them yourself, then copy the `.asi` and
 its `.ini` into the game's `bin64`.
 
+The Looter and Gatherer zips also carry `DesertOverlay.asi` and its ini, so
+either mod on its own brings the in-game menu with it (`Insert` opens it). Both
+ship the same file and one copy in `bin64` serves both; the overlay's own zip
+is its canonical release. Each mod zip otherwise holds only its own `.asi`,
+`.ini`, README and CHANGELOG, flat at the archive root.
+
 ## Build
 
 Developed on NixOS; the flake provides the Rust toolchain and the Windows
@@ -33,10 +39,11 @@ nix develop
 cargo build --release
 ```
 
-Outputs `desert_looter.dll` and `desert_gatherer.dll` under
-`target/x86_64-pc-windows-gnu/release/`. The game loads them as
-`DesertLooter.asi` and `DesertGatherer.asi`; `just install` copies them into
-`bin64` under those names, and `just dist` packs them into the release zips.
+Outputs `desert_looter.dll`, `desert_gatherer.dll` and `desert_overlay.dll`
+under `target/x86_64-pc-windows-gnu/release/`. The game loads them as
+`DesertLooter.asi`, `DesertGatherer.asi` and `DesertOverlay.asi`; `just install`
+copies them into `bin64` under those names, and `just dist` packs them into the
+release zips.
 
 The `justfile` wraps the common tasks; run `just` to list them.
 

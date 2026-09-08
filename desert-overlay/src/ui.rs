@@ -27,7 +27,7 @@ use imgui::{Condition, Context, Io, TreeNodeFlags, Ui};
 
 use desert_core::hotkey::Hotkey;
 
-use crate::config::Config;
+use crate::config::{ColorSpace, Config};
 use crate::model::{
     GathererModel, LooterModel, GATHER_RANGE, MS_RANGE, MULT_RANGE, SCAN_RANGE, STACK_LIMIT_RANGE,
 };
@@ -94,6 +94,18 @@ impl Overlay {
             return 1.0;
         }
         (dpi as f32 / 96.0).clamp(1.0, 4.0)
+    }
+
+    /// The ini's `ColorSpace` as hudhook's own override. The two enums are
+    /// deliberately separate: `config` compiles and unit-tests on Linux, where
+    /// hudhook does not build at all.
+    fn color_space_override(value: ColorSpace) -> hudhook::output::ColorSpaceOverride {
+        match value {
+            ColorSpace::Auto => hudhook::output::ColorSpaceOverride::Auto,
+            ColorSpace::Sdr => hudhook::output::ColorSpaceOverride::Sdr,
+            ColorSpace::Hdr10 => hudhook::output::ColorSpaceOverride::Hdr10,
+            ColorSpace::ScRgb => hudhook::output::ColorSpaceOverride::ScRgb,
+        }
     }
 
     /// The game hides the cursor and calls `ClipCursor` to pin it inside the
@@ -226,7 +238,20 @@ impl ImguiRenderLoop for Overlay {
         // context and calls it again, on fresh defaults).
         ctx.io_mut().font_global_scale = self.scale;
         ctx.style_mut().scale_all_sizes(self.scale);
-        desert_core::log::write(&format!("[menu] imgui context initialised, scale {:.2}", self.scale));
+        // The output encoding, applied here for the same reason: this is the
+        // one place that runs once per pipeline, and hudhook reads both values
+        // out of its own atomics on every frame after it. They are what stop
+        // an sRGB menu from being written raw into the game's HDR10 swapchain,
+        // which is what made it blown out and oversaturated.
+        hudhook::output::set_paper_white_nits(self.cfg.hdr_brightness);
+        hudhook::output::set_color_space_override(Self::color_space_override(self.cfg.color_space));
+        desert_core::log::write(&format!(
+            "[menu] imgui context initialised, scale {:.2}, HDR paper white {:.0} nits, colour \
+             space {}",
+            self.scale,
+            self.cfg.hdr_brightness,
+            self.cfg.color_space.as_str()
+        ));
     }
 
     fn before_render(&mut self, ctx: &mut Context, _rc: &mut dyn hudhook::RenderContext) {
