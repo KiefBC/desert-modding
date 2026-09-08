@@ -30,8 +30,16 @@ mount it alongside the plugin.
 
 ## Install
 
-Grab the zips from a release, or build them yourself, then copy the `.asi` and
-its `.ini` into the game's `bin64`.
+Grab the zip from the mod's latest release, or build them yourself, then copy
+the `.asi` and its `.ini` into the game's `bin64`. Each mod is tagged and
+released on its own, so each has its own release page:
+
+- **Desert Looter**: [desert-looter-v0.1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-looter-v0.1.1)
+- **Desert Gatherer**: [desert-gatherer-v0.1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-v0.1.1)
+- **Desert Overlay**: [desert-overlay-v0.1.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-overlay-v0.1.0)
+- **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.1)
+
+Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).
 
 Editing Gatherer's multipliers from the in-game menu takes effect on the
 **next gather**, not the next game start: the game still reads its whole
