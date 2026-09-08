@@ -146,7 +146,7 @@ pack; this plugin is its replacement, not its companion.
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | 1 | 0 = the hook is installed but a pass-through: it reads and writes nothing. Live: set it to 1 later in the ini and the plugin turns on without a restart |
+| `Enabled` | 1 | 0 = the hook is installed but a pass-through: it reads and writes nothing. Like the multipliers, a change only counts for records the game reads afterwards, which in practice means the next launch (see below) |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
 | `Foraging` | 1 | multiplier for plants and crops, 1..100 |
@@ -158,10 +158,14 @@ pack; this plugin is its replacement, not its companion.
 outside 1..100, or one that is not a number, is refused with a warning in the
 log and the default is kept.
 
-`DesertGatherer.ini` is re-read while the game runs, about once a second. A
-changed multiplier applies to records the game loads from then on; the game
-reloads its own gather table a few seconds after use, so you see the new
-value on your next gather, no restart or save reload needed.
+`DesertGatherer.ini` is re-read while the game runs, about once a second, and
+the log confirms each change with an `[ini] reloaded:` line. But a changed
+multiplier only reaches records the game reads *after* the change, and the
+game reads its whole gather table once, at launch. **A new multiplier takes
+effect on the next game start**, not on the next gather; reloading a save or
+going back to the main menu does not help. The section
+[Why a changed multiplier needs a restart](#why-a-changed-multiplier-needs-a-restart)
+explains what the game does and why the plugin cannot do better yet.
 
 If `DesertGatherer.ini` is missing, the plugin writes one itself on the next
 launch, with every key at its default, instead of leaving nothing to edit. An
@@ -169,6 +173,79 @@ existing file is never read, rewritten or replaced, so this can never touch
 your settings. The generated file is bare, unlike the shipped template's
 comments explaining each key, but every key in the table above is in it -
 including `Debug`, which the menu groups under `Diagnostics:`.
+
+## Why a changed multiplier needs a restart
+
+Short version: the plugin edits each gather record at the one moment the game
+reads it from its data file, and the game does that once per session, about
+nine seconds after launch. Everything below is what was found in the game
+(Steam build 25116796) while chasing a report that a change from 1x to 40x in
+the in-game menu did nothing.
+
+**What the game does at launch.** The gathering rules live in a data table
+called `gimmickinfo`: 13,906 records, 275 of which are gather nodes. Roughly
+nine seconds after the process starts, before the main menu is up, the game
+runs a preload pass that reads every record in order, parses each one into an
+object in memory, stores the object's pointer in a slot table, and then closes
+the file. From then on, whenever any part of the game needs a record, it looks
+the pointer up in that slot table. The loader is only called again for a slot
+that is still empty, and after the preload pass none of them are. Loading a
+save, dying, fast travelling, running out of the area or backing out to the
+main menu do not empty the slots; the parsed records live as long as the
+process does.
+
+**What the plugin does.** Desert Gatherer hooks the loader. Each time the game
+is about to parse a record, the hook looks at the raw bytes first, finds the
+yield ranges of a gather record, multiplies their minimum and maximum, and
+writes the multiplied bytes back, so the object the game builds carries the
+new numbers. That is the whole mechanism, and it is why the plugin is so
+small and safe: it never calls a game function and never touches a parsed
+object. It is also why a later change does nothing. The hook only runs when
+the loader runs, and the loader has already run for every record.
+
+**What the log shows.** A session looks like this:
+
+```
+[    8.847] [gimmick] first call: mgr=... count=13906 idx=0 ...
+[   60.161] [stat] records seen 13906, gather records patched 0, scalars written 0
+[  234.232] [ini] reloaded: Enabled=1 DryRun=0 Debug=0 Foraging=5 Logging=1 Mining=1 Ore=1
+[  235.233] [ini] reloaded: Enabled=1 DryRun=0 Debug=0 Foraging=10 Logging=1 Mining=1 Ore=1
+```
+
+All 13,906 records went through the hook in the first minute while every
+family was still at 1x, so nothing was patched. The two `reloaded` lines show
+the menu's edits arriving within a second, which is the plugin working as
+designed. The `[stat]` line is printed whenever the counters change, and it
+never appears again: no record was loaded after the first pass, including
+across a save reload. Had the game re-read its table, a second `[stat]` line
+with a non-zero patched count would follow within a minute.
+
+**What this means for you.**
+
+- Set the multipliers you want *before* launching: in `DesertGatherer.ini`
+  with a text editor, or from Desert Overlay's menu during the previous
+  session. The values in the file when the game starts are the values for
+  that session.
+- The same goes for `Enabled`. Flipping it from 0 to 1 while playing is
+  accepted and logged, but there are no records left for it to apply to.
+- A change you make mid-session is not lost. It is in the ini, and it takes
+  effect on the next launch.
+- Earlier versions of this README and of the ini's header said the game
+  reloads its table a few seconds after use and that a change shows on the
+  next gather. That was wrong; it was never measured, and the log above is
+  the correction.
+
+**Why it is not fixed yet.** Two ways to make a change live are known, and
+neither is in this version. The plugin could empty the 275 gather slots when
+the ini changes, so the game's lazy loader re-reads those records through the
+hook on next use; that leaks the old objects and relies on nothing in the game
+holding a stale pointer. Or it could rewrite the yields inside the already
+parsed objects; the layout of those objects has since been worked out (the
+resource list sits at a fixed offset in the record, each block holds its
+minimum and maximum as plain 64-bit numbers), which makes this the clean
+route. It means the plugin writing into game objects rather than into bytes
+the game has not parsed yet, so it is being built and tested separately rather
+than slipped into a patch release.
 
 ## Files in the game folder
 

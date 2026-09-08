@@ -8,6 +8,17 @@ Versioning](../VERSIONING.md).
 
 Game build 25116796. In-game verification of the changes below is pending.
 
+### Fixed
+
+- The README, the shipped ini's header and the menu notice all said a changed multiplier shows on
+  the next gather because the game reloads its table a few seconds after use. It does not: the
+  game reads all 13,906 `gimmickinfo` records in one preload pass about nine seconds after launch
+  and keeps the parsed objects for the whole session, and the hook only runs inside that read. A
+  change made while playing (from the menu or the ini) is picked up and logged, but takes effect
+  on the next launch. The README's new section "Why a changed multiplier needs a restart" has the
+  log evidence and the two known routes to a live change; the wording everywhere else now says
+  "next game start".
+
 ### Changed
 
 - **The shipped `DesertGatherer.ini` now sets all four multipliers to `1` (vanilla) instead of

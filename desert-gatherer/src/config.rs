@@ -240,7 +240,8 @@ pub fn schema() -> Section {
         // After Desert Looter's 10.
         order: 20,
         notice: Some(
-            "Takes effect on records the game loads next; already-loaded ones keep their yields."
+            "Applied when the game reads its gather table, once at launch: a change here takes \
+             effect on the next game start, not the next gather."
                 .to_string(),
         ),
         presets_label: None,
