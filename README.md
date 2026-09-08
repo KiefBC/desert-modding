@@ -23,13 +23,12 @@ mount it alongside the plugin.
 Grab the zips from a release, or build them yourself, then copy the `.asi` and
 its `.ini` into the game's `bin64`.
 
-One thing to know before editing Gatherer's multipliers from the in-game menu:
-they take effect on the **next game start**, not the next gather. The game
-reads its whole gather table once, about nine seconds after launch, and the
-plugin's hook only runs inside that read; nothing reloads the table later, not
-even a save reload. The change is saved to the ini and applies next time. Why,
-with the log evidence and what a live version would need:
-<https://github.com/KiefBC/desert-modding/blob/main/desert-gatherer/README.md#why-a-changed-multiplier-needs-a-restart>.
+Editing Gatherer's multipliers from the in-game menu takes effect on the
+**next gather**, not the next game start: the game still reads its whole
+gather table once, about nine seconds after launch, but the plugin now
+rewrites the records it already loaded right after the ini change is picked
+up. How, and what the log shows:
+<https://github.com/KiefBC/desert-modding/blob/main/desert-gatherer/README.md#how-a-changed-multiplier-becomes-live>.
 
 The Looter and Gatherer zips also carry `DesertOverlay.asi` and its ini, so
 either mod on its own brings the in-game menu with it (`Insert` opens it). Both

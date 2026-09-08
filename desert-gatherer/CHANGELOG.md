@@ -6,18 +6,40 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
-Game build 25116796. In-game verification of the changes below is pending.
+Game build 25116796. The live re-apply was verified in game on 2026-09-08: changing `Foraging`
+from the overlay while playing logged `[live] re-applied ... 82 records rewritten, 193 unchanged,
+0 skipped; 644 scalars written` within 150 ms of the ini change, the next gather paid out at the
+new rate, and setting it back to 1 restored vanilla the same way.
+
+### Added
+
+- **A changed multiplier now reaches the game on the next gather, not the next launch.** For every
+  gather record the load-time hook already remembers the vanilla minimum, maximum and item id of
+  each output block, plus the record's index, in a fixed table - even at `Enabled=0` and `1x`,
+  since vanilla is the only fixed point a later change can be computed from. When
+  `DesertGatherer.ini` changes, right after the `[ini] reloaded:` line the plugin walks those
+  remembered records through the game's own record manager, finds each already-parsed object and
+  its output list, checks the record's key and each block's item id against what was remembered,
+  and writes vanilla times the current multiplier - never a value already sitting in the block
+  scaled again. Blocks already at the wanted value are left alone, and a mismatch (not loaded yet,
+  key or item id changed, list count changed, unreadable) skips that record or block rather than
+  guessing. `Enabled=0` now means vanilla yields even for records the game already loaded;
+  `DryRun=1` logs what would be written and writes nothing. Logged as `[live] re-applied
+  Foraging=10 Logging=1 Mining=1 Ore=1: 82 records rewritten, 193 unchanged, 0 skipped; 246
+  scalars written` (`[dry]` under `DryRun`, and `Foraging=1 Logging=1 Mining=1 Ore=1 (Enabled=0)`
+  at `Enabled=0`), with a `[live] WARN ...` line naming the reasons whenever something was
+  skipped, and, under `Debug=1`, one line per rewritten record.
 
 ### Fixed
 
-- The README, the shipped ini's header and the menu notice all said a changed multiplier shows on
-  the next gather because the game reloads its table a few seconds after use. It does not: the
-  game reads all 13,906 `gimmickinfo` records in one preload pass about nine seconds after launch
-  and keeps the parsed objects for the whole session, and the hook only runs inside that read. A
-  change made while playing (from the menu or the ini) is picked up and logged, but takes effect
-  on the next launch. The README's new section "Why a changed multiplier needs a restart" has the
-  log evidence and the two known routes to a live change; the wording everywhere else now says
-  "next game start".
+- The README, the shipped ini's header and the menu notice originally said a changed multiplier
+  shows on the next gather because the game reloads its table a few seconds after use. That was
+  never true: the game reads all 13,906 `gimmickinfo` records in one preload pass about nine
+  seconds after launch and keeps the parsed objects for the whole session, and the load-time hook
+  only runs inside that read. Earlier in this cycle the docs were corrected to say "next game
+  start" instead, which was accurate for what the plugin did at the time. The re-apply mechanism
+  under Added above makes "next gather" true again, this time for real, so the docs now say that
+  throughout.
 
 ### Changed
 

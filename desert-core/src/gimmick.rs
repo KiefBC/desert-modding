@@ -71,6 +71,14 @@ pub const BLOCK: usize = 68;
 pub const MIN_AT: usize = 42;
 /// Offset of the `u64` maximum inside a block.
 pub const MAX_AT: usize = 50;
+/// Offset of the `u32` item id inside a block.
+pub const ITEM_AT: usize = 5;
+/// Offset of the block's second copy of the item id, the last four bytes of
+/// the block. The signature demands the two copies agree, which is what makes
+/// either of them usable as an identity check against a parsed block object
+/// later (`docs/reference-internals.md` section 12: the parsed entry carries
+/// this one at `entry+0x08` and the item id at `block+0x6c`).
+pub const ITEM_TAIL_AT: usize = 64;
 
 /// Largest plausible block count in one output list. Vanilla lists are far
 /// smaller; the bound is what keeps the scanner from walking off a random `u32`.
@@ -214,6 +222,52 @@ pub fn output_lists(rec: &[u8]) -> Vec<(usize, u32)> {
                 i += 4 + count as usize * BLOCK;
             }
             None => i += 1,
+        }
+    }
+    out
+}
+
+/// One resource-output block, read out rather than rewritten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutputBlock {
+    /// Offset of the block's first byte inside the record slice this was read
+    /// from, so `offset + MIN_AT` / `offset + MAX_AT` are the two scalars
+    /// [`multiply`] would edit.
+    pub offset: usize,
+    /// The block's item id, taken from [`ITEM_TAIL_AT`].
+    pub item: u32,
+    /// The vanilla minimum, exactly as the table holds it.
+    pub min: u64,
+    /// The vanilla maximum.
+    pub max: u64,
+}
+
+/// Every block of every output list [`output_lists`] finds, in list order and
+/// then block order.
+///
+/// This is the read-only twin of [`multiply`]: same blocks, same order, but it
+/// reports what is there instead of what to write. Desert Gatherer uses it to
+/// remember a record's vanilla yields at load time, because once the game has
+/// parsed a multiplied record the original numbers are gone — the parsed
+/// object holds the product, and dividing it back out is not the same thing
+/// (`multiply` saturates, and a later multiplier must scale the vanilla value,
+/// not the current one).
+pub fn output_blocks(rec: &[u8]) -> Vec<OutputBlock> {
+    let mut out = Vec::new();
+    for (at, count) in output_lists(rec) {
+        for n in 0..count as usize {
+            let offset = at + 4 + n * BLOCK;
+            // `output_lists` only reports a list whose every block fits and
+            // passes the signature, so these three reads always succeed; the
+            // `else` is what keeps that from being an assumption.
+            let (Some(item), Some(min), Some(max)) = (
+                u32_at(rec, offset + ITEM_TAIL_AT),
+                u64_at(rec, offset + MIN_AT),
+                u64_at(rec, offset + MAX_AT),
+            ) else {
+                continue;
+            };
+            out.push(OutputBlock { offset, item, min, max });
         }
     }
     out
@@ -463,6 +517,41 @@ mod tests {
     }
 
     #[test]
+    fn reads_every_block_of_every_list() {
+        let (r, l1, l2) = record();
+        assert_eq!(
+            output_blocks(&r),
+            vec![
+                OutputBlock { offset: l1 + 4, item: 101, min: 1, max: 3 },
+                OutputBlock { offset: l1 + 4 + BLOCK, item: 102, min: 2, max: 8 },
+                OutputBlock { offset: l2 + 4, item: 103, min: 5, max: 5 },
+            ]
+        );
+        assert!(output_blocks(&[]).is_empty());
+        assert!(output_blocks(&[0xAB; 200]).is_empty());
+    }
+
+    /// The blocks and the edits are two views of the same thing, which is what
+    /// lets the live path re-derive an edit from a remembered block.
+    #[test]
+    fn blocks_line_up_with_the_edits() {
+        let (r, _, _) = record();
+        let blocks = output_blocks(&r);
+        let edits = multiply(&r, 7);
+        assert_eq!(edits.len(), blocks.len() * 2);
+        for (n, b) in blocks.iter().enumerate() {
+            let (Some(lo), Some(hi)) = (edits.get(n * 2), edits.get(n * 2 + 1)) else {
+                panic!("edit pair {n} missing")
+            };
+            assert_eq!((lo.offset, lo.old), (b.offset + MIN_AT, b.min));
+            assert_eq!((hi.offset, hi.old), (b.offset + MAX_AT, b.max));
+            assert_eq!((lo.new, hi.new), (b.min * 7, b.max * 7));
+            // Both copies of the item id agree, so either identifies the block.
+            assert_eq!(u32_at(&r, b.offset + ITEM_AT), Some(b.item));
+        }
+    }
+
+    #[test]
     fn multiply_and_apply_round_trip() {
         let (mut r, l1, l2) = record();
         let edits = multiply(&r, 3);
@@ -599,6 +688,7 @@ mod tests {
             }
             let _ = parse_header(&buf);
             let _ = output_lists(&buf);
+            let _ = output_blocks(&buf);
             let e = multiply(&buf, round.wrapping_add(2));
             let mut copy = buf.clone();
             let _ = apply(&mut copy, &e);
@@ -608,9 +698,11 @@ mod tests {
         for n in 0..rec.len() {
             let _ = parse_header(&rec[..n]);
             let _ = output_lists(&rec[..n]);
+            let _ = output_blocks(&rec[..n]);
             let _ = multiply(&rec[..n], 2);
             let _ = parse_header(&rec[n..]);
             let _ = output_lists(&rec[n..]);
+            let _ = output_blocks(&rec[n..]);
             let _ = multiply(&rec[n..], 2);
         }
         // And every single-byte corruption of one, at the head.

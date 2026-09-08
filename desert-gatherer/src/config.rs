@@ -24,7 +24,9 @@ pub const MULT_MAX: u32 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Master switch. 0 = load, log, and install no hook at all.
+    /// Master switch. 0 = the hook is still installed and still reads every
+    /// record, but writes nothing; anything already multiplied is put back to
+    /// vanilla on the next re-apply pass.
     pub enabled: bool,
     /// 1 = the hook logs the edits it would make and writes nothing.
     pub dry_run: bool,
@@ -140,7 +142,8 @@ impl LiveConfig {
         }
     }
 
-    /// Master switch. `false` means the hook must read and write nothing.
+    /// Master switch. `false` means the hook reads as usual and writes
+    /// nothing, and `hook::reapply` puts the loaded records back to vanilla.
     pub fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
     }
@@ -240,8 +243,8 @@ pub fn schema() -> Section {
         // After Desert Looter's 10.
         order: 20,
         notice: Some(
-            "Applied when the game reads its gather table, once at launch: a change here takes \
-             effect on the next game start, not the next gather."
+            "Applied to the gather records the game has already loaded, so a change here takes \
+             effect on the next gather."
                 .to_string(),
         ),
         presets_label: None,
@@ -251,7 +254,7 @@ pub fn schema() -> Section {
                 "Enabled",
                 "Enabled",
                 Kind::Bool { default: d.enabled },
-                "Master switch. 0 = the record-loader hook is installed but a pass-through: it reads and writes nothing.",
+                "Master switch. 0 = vanilla yields: the hook still reads each gather record, but writes nothing and puts back anything it already multiplied.",
             ),
             Field {
                 same_line: true,
