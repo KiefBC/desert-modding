@@ -21,6 +21,20 @@ click reaches `DesertLooter.ini` and Desert Looter reloads it within a second.
 
 ### Added
 
+- The menu is drawn in a real TrueType font instead of Dear ImGui's 13 px bitmap face blown up by
+  the scale factor, which is what made it hard to read on a 4K display. Two ini keys steer it:
+  `FontSize` (pixels before `Scale`, default `20`, `8` to `72`) and `Font` (default `segoeui.ttf`,
+  a bare name looked up in `%WINDIR%\Fonts`, an absolute path taken as it stands, empty for the
+  built-in font, and an optional `:N` suffix to pick a face out of a `.ttc` collection).
+  `georgia.ttf`, `constan.ttf` and `cambria.ttc:0` are the serif options. The file is read once on
+  the plugin's own thread; a missing or unreadable one is a warning in the log and the built-in
+  font, never a failure to draw.
+- Colour themes. A `Theme` picker at the top of the menu switches the look live and logs the name
+  to put in the ini; the `Theme` ini key (default `banner`, gold lettering on the game's black banner; `classic` is the stock Dear ImGui dark look) makes
+  it stick. Five themes drawn from the game's key art (off-white poster ground, antique gold
+  lettering, the blood-red splash, the black banner, steel armour): `parchment`, `gilded`,
+  `splash`, `banner` and `steel`. Themes are plain data, one file each under
+  `src/themes/`, checked by unit tests for range and unique names.
 - A section whose plugin is not loaded in the game is greyed out and titled "not installed", with
   a note under the header. The check asks the Windows loader for `DesertLooter.asi` and
   `DesertGatherer.asi` once a second, so a file that is present but failed to load counts as

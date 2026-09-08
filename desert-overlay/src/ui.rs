@@ -20,27 +20,38 @@
 //!   go, which is what turns a drag into four writes a second instead of one
 //!   per frame.
 
+use std::borrow::Cow;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use hudhook::{ImguiRenderLoop, MessageFilter};
-use imgui::{Condition, Context, Io, TreeNodeFlags, Ui};
+use imgui::{
+    Condition, Context, FontAtlas, FontConfig, FontSource, Io, Style, StyleColor, TreeNodeFlags, Ui,
+};
 
 use desert_core::hotkey::Hotkey;
 
-use crate::config::{ColorSpace, Config};
+use crate::config::{ColorSpace, Config, FontChoice};
 use crate::model::{
     GathererModel, LooterModel, GATHER_RANGE, MS_RANGE, MULT_RANGE, SCAN_RANGE, STACK_LIMIT_RANGE,
 };
 use crate::presets;
 use crate::store::{Flushed, Store};
-
-/// Red, for the one-line failure message under a section.
-const RED: [f32; 4] = [1.0, 0.35, 0.35, 1.0];
-/// Dimmed, for the explanatory lines.
-const DIM: [f32; 4] = [0.65, 0.65, 0.65, 1.0];
+use crate::theme::{Role, Theme};
+use crate::themes;
 
 /// How often the two plugin DLLs are looked up in the process.
 const PLUGIN_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// The largest font file the overlay will pull into the game's address space.
+/// Every Windows system font is a couple of megabytes at most (`cambria.ttc`,
+/// the biggest of the ones the ini suggests, is about 3 MB); the cap only
+/// exists so a `Font` pointing at something that is not a font cannot cost the
+/// game hundreds of megabytes before stb_truetype rejects it.
+const FONT_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// What the log calls the font when there is no file behind it.
+const BUILT_IN_FONT: &str = "built-in ProggyClean";
 
 pub struct Overlay {
     cfg: Config,
@@ -55,6 +66,29 @@ pub struct Overlay {
     /// paddings and the window's own geometry. From `Scale` in the ini, or the
     /// Windows display scaling when that is 0.
     scale: f32,
+    /// The menu font's TTF/TTC bytes, read once in [`Overlay::new`]. `None`
+    /// means imgui's built-in font: either `Font` was empty or the file could
+    /// not be read, which was logged at the time.
+    ///
+    /// imgui copies these into the atlas, so it is not *ownership* that keeps
+    /// them here - it is that [`ImguiRenderLoop::initialize`] runs again on a
+    /// fresh context after a swapchain reset and has to add the font a second
+    /// time, and re-reading a file on a render thread is exactly what this
+    /// plugin must not do.
+    font_data: Option<Vec<u8>>,
+    /// What the startup line calls the font: the file name, plus `:N` when a
+    /// `.ttc` face was picked, or [`BUILT_IN_FONT`].
+    font_label: String,
+    /// Face index inside a `.ttc` collection, 0 for everything else.
+    font_face: u32,
+    /// `FontSize` from the ini, in pixels before [`Overlay::scale`].
+    font_size: f32,
+    /// The colour theme in force, from `Theme` in the ini until the picker
+    /// changes it.
+    theme: &'static Theme,
+    /// A theme chosen in the picker this frame. `render` has no access to
+    /// the imgui style, so it is applied in the next `before_render`.
+    pending_theme: Option<&'static Theme>,
     visible: bool,
     menu_key: Hotkey,
     looter: Store<LooterModel>,
@@ -62,23 +96,159 @@ pub struct Overlay {
 }
 
 impl Overlay {
-    /// Reads both ini files once. Called from the plugin's own thread, never
-    /// from `DllMain`.
+    /// Reads both ini files and the menu font once. Called from the plugin's
+    /// own thread, never from `DllMain` and never from a render thread.
     pub fn new(cfg: Config) -> Self {
         let dir = desert_core::log::exe_dir();
         let now = Instant::now();
         let visible = cfg.show_on_start;
         let scale = if cfg.scale > 0.0 { cfg.scale } else { Self::system_scale() };
+        let theme = cfg.theme;
+        let choice = cfg.font_choice();
+        let (font_data, font_label) = Self::load_font(&choice);
+        let font_face = if font_data.is_some() { choice.face() } else { 0 };
+        let font_size = cfg.font_size;
         Overlay {
+            theme,
+            pending_theme: None,
             menu_key: Hotkey::new(cfg.key_menu),
             looter: Store::new(&dir, now),
             gatherer: Store::new(&dir, now),
             looter_loaded: false,
             gatherer_loaded: false,
             last_plugin_poll: None,
+            font_data,
+            font_label,
+            font_face,
+            font_size,
             cfg,
             scale,
             visible,
+        }
+    }
+
+    /// `%WINDIR%\Fonts`. `GetWindowsDirectoryW` first because it is the
+    /// authoritative answer and needs no environment; `WINDIR` is the fallback
+    /// for the case where it somehow fails. Never a hard-coded `C:`.
+    fn windows_fonts_dir() -> Option<PathBuf> {
+        use windows_sys::Win32::System::SystemInformation::GetWindowsDirectoryW;
+        let mut buf = [0u16; 260];
+        // SAFETY: `buf` is a live, writable array of `buf.len()` u16s on this
+        // stack frame and that same count is what the call is permitted to
+        // write; GetWindowsDirectoryW only writes into it and returns the
+        // number of characters written, or 0 on failure (or a required size
+        // larger than the buffer, which the length check below rejects).
+        let n = unsafe { GetWindowsDirectoryW(buf.as_mut_ptr(), buf.len() as u32) } as usize;
+        let dir = match buf.get(..n).filter(|_| n > 0 && n <= buf.len()) {
+            Some(s) => PathBuf::from(String::from_utf16_lossy(s)),
+            None => PathBuf::from(std::env::var_os("WINDIR")?),
+        };
+        Some(dir.join("Fonts"))
+    }
+
+    /// Read a font file, refusing anything over [`FONT_MAX_BYTES`]. The error
+    /// is a string because it only ever goes to the log.
+    fn read_font_file(path: &Path) -> Result<Vec<u8>, String> {
+        let len = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+        if len > FONT_MAX_BYTES {
+            return Err(format!("{len} bytes is over the {FONT_MAX_BYTES} byte limit"));
+        }
+        std::fs::read(path).map_err(|e| e.to_string())
+    }
+
+    /// Turn the ini's `Font` into bytes plus the name to log. A missing or
+    /// unreadable file is a WARN and the built-in font, never a failure: the
+    /// menu still draws.
+    fn load_font(choice: &FontChoice) -> (Option<Vec<u8>>, String) {
+        let (path, shown) = match choice {
+            FontChoice::BuiltIn => return (None, BUILT_IN_FONT.to_string()),
+            FontChoice::Path { path, face } => (PathBuf::from(path), Self::font_label(path, *face)),
+            FontChoice::Name { file, face } => {
+                let Some(dir) = Self::windows_fonts_dir() else {
+                    desert_core::log::write(&format!(
+                        "[menu] WARN font {file}: the Windows Fonts directory could not be found; \
+                         using the {BUILT_IN_FONT} font"
+                    ));
+                    return (None, BUILT_IN_FONT.to_string());
+                };
+                (dir.join(file), Self::font_label(file, *face))
+            }
+        };
+        match Self::read_font_file(&path) {
+            Ok(bytes) => (Some(bytes), shown),
+            Err(why) => {
+                desert_core::log::write(&format!(
+                    "[menu] WARN font {}: {why}; using the {BUILT_IN_FONT} font",
+                    path.display()
+                ));
+                (None, BUILT_IN_FONT.to_string())
+            }
+        }
+    }
+
+    /// `segoeui.ttf`, or `cambria.ttc:1` when a collection face was picked.
+    fn font_label(name: &str, face: u32) -> String {
+        if face == 0 {
+            name.to_string()
+        } else {
+            format!("{name}:{face}")
+        }
+    }
+
+    /// Add the menu font to a freshly built atlas at `px` pixels.
+    ///
+    /// Called from [`ImguiRenderLoop::initialize`], which hudhook runs before
+    /// it builds and uploads the atlas, so this is the font that gets drawn.
+    fn add_font(&self, fonts: &mut FontAtlas, px: f32) {
+        let config = FontConfig {
+            size_pixels: px,
+            // 2x horizontal oversampling is what makes small text on an LCD
+            // look sharp rather than smeared; vertical oversampling costs
+            // atlas area and buys almost nothing.
+            oversample_h: 2,
+            oversample_v: 1,
+            ..FontConfig::default()
+        };
+        match &self.font_data {
+            Some(bytes) => {
+                fonts.add_font(&[FontSource::TtfData {
+                    data: bytes,
+                    size_pixels: px,
+                    config: Some(config),
+                }]);
+                if self.font_face > 0 {
+                    Self::select_ttc_face(fonts, self.font_face);
+                }
+            }
+            None => {
+                fonts.add_font(&[FontSource::DefaultFontData { config: Some(config) }]);
+            }
+        }
+    }
+
+    /// Point the font that was just added at face `face` of a `.ttc`
+    /// collection.
+    ///
+    /// imgui-rs 0.12's `FontConfig` has no `font_no`, so the only way to reach
+    /// Dear ImGui's `ImFontConfig::FontNo` is the raw config the atlas pushed a
+    /// moment ago. That is safe to edit here because the atlas is not built
+    /// until hudhook's `setup_fonts`, which runs after `initialize` returns.
+    fn select_ttc_face(fonts: &mut FontAtlas, face: u32) {
+        use imgui::internal::RawCast as _;
+        let face = i32::try_from(face).unwrap_or(0);
+        // SAFETY: `FontAtlas` declares `RawCast<sys::ImFontAtlas>`, so the two
+        // have the same layout and `raw_mut` is a valid reborrow of the live
+        // atlas for this scope. `ConfigData` is Dear ImGui's own vector of the
+        // configs added so far, and `add_font` pushed one immediately before
+        // this call; `Data` is only dereferenced after `Size` is checked to be
+        // positive and the pointer non-null, at index `Size - 1`, which is
+        // that config. One `i32` field is written and nothing is read back.
+        unsafe {
+            let raw = fonts.raw_mut();
+            let n = raw.ConfigData.Size;
+            if n > 0 && !raw.ConfigData.Data.is_null() {
+                (*raw.ConfigData.Data.add(n as usize - 1)).FontNo = face;
+            }
         }
     }
 
@@ -94,6 +264,81 @@ impl Overlay {
             return 1.0;
         }
         (dpi as f32 / 96.0).clamp(1.0, 4.0)
+    }
+
+    /// Paint `theme` over imgui's stock dark palette. `scale` is the same
+    /// factor `scale_all_sizes` was given, so the theme's rounding numbers are
+    /// in the same unscaled pixels as everything else in the file.
+    fn apply_theme(style: &mut Style, theme: &Theme, scale: f32) {
+        style.use_dark_colors();
+        for (role, color) in (theme.colors)() {
+            style[Self::style_color(role)] = color;
+        }
+        style.window_rounding = theme.window_rounding * scale;
+        style.frame_rounding = theme.frame_rounding * scale;
+        style.grab_rounding = theme.grab_rounding * scale;
+        style.window_border_size = theme.window_border;
+        style.frame_border_size = theme.frame_border;
+    }
+
+    /// The imgui slot for a theme role. Spelled out rather than cast so the
+    /// theme module never has to depend on imgui's numbering.
+    fn style_color(role: Role) -> StyleColor {
+        match role {
+            Role::Text => StyleColor::Text,
+            Role::TextDisabled => StyleColor::TextDisabled,
+            Role::WindowBg => StyleColor::WindowBg,
+            Role::ChildBg => StyleColor::ChildBg,
+            Role::PopupBg => StyleColor::PopupBg,
+            Role::Border => StyleColor::Border,
+            Role::BorderShadow => StyleColor::BorderShadow,
+            Role::FrameBg => StyleColor::FrameBg,
+            Role::FrameBgHovered => StyleColor::FrameBgHovered,
+            Role::FrameBgActive => StyleColor::FrameBgActive,
+            Role::TitleBg => StyleColor::TitleBg,
+            Role::TitleBgActive => StyleColor::TitleBgActive,
+            Role::TitleBgCollapsed => StyleColor::TitleBgCollapsed,
+            Role::MenuBarBg => StyleColor::MenuBarBg,
+            Role::ScrollbarBg => StyleColor::ScrollbarBg,
+            Role::ScrollbarGrab => StyleColor::ScrollbarGrab,
+            Role::ScrollbarGrabHovered => StyleColor::ScrollbarGrabHovered,
+            Role::ScrollbarGrabActive => StyleColor::ScrollbarGrabActive,
+            Role::CheckMark => StyleColor::CheckMark,
+            Role::SliderGrab => StyleColor::SliderGrab,
+            Role::SliderGrabActive => StyleColor::SliderGrabActive,
+            Role::Button => StyleColor::Button,
+            Role::ButtonHovered => StyleColor::ButtonHovered,
+            Role::ButtonActive => StyleColor::ButtonActive,
+            Role::Header => StyleColor::Header,
+            Role::HeaderHovered => StyleColor::HeaderHovered,
+            Role::HeaderActive => StyleColor::HeaderActive,
+            Role::Separator => StyleColor::Separator,
+            Role::SeparatorHovered => StyleColor::SeparatorHovered,
+            Role::SeparatorActive => StyleColor::SeparatorActive,
+            Role::ResizeGrip => StyleColor::ResizeGrip,
+            Role::ResizeGripHovered => StyleColor::ResizeGripHovered,
+            Role::ResizeGripActive => StyleColor::ResizeGripActive,
+            Role::Tab => StyleColor::Tab,
+            Role::TabHovered => StyleColor::TabHovered,
+            Role::TabActive => StyleColor::TabActive,
+            Role::TabUnfocused => StyleColor::TabUnfocused,
+            Role::TabUnfocusedActive => StyleColor::TabUnfocusedActive,
+            Role::PlotLines => StyleColor::PlotLines,
+            Role::PlotLinesHovered => StyleColor::PlotLinesHovered,
+            Role::PlotHistogram => StyleColor::PlotHistogram,
+            Role::PlotHistogramHovered => StyleColor::PlotHistogramHovered,
+            Role::TableHeaderBg => StyleColor::TableHeaderBg,
+            Role::TableBorderStrong => StyleColor::TableBorderStrong,
+            Role::TableBorderLight => StyleColor::TableBorderLight,
+            Role::TableRowBg => StyleColor::TableRowBg,
+            Role::TableRowBgAlt => StyleColor::TableRowBgAlt,
+            Role::TextSelectedBg => StyleColor::TextSelectedBg,
+            Role::DragDropTarget => StyleColor::DragDropTarget,
+            Role::NavHighlight => StyleColor::NavHighlight,
+            Role::NavWindowingHighlight => StyleColor::NavWindowingHighlight,
+            Role::NavWindowingDimBg => StyleColor::NavWindowingDimBg,
+            Role::ModalWindowDimBg => StyleColor::ModalWindowDimBg,
+        }
     }
 
     /// The ini's `ColorSpace` as hudhook's own override. The two enums are
@@ -233,11 +478,23 @@ impl ImguiRenderLoop for Overlay {
         // else's folder - on every window move. The overlay has exactly one
         // window and sets its own position, so there is nothing to remember.
         ctx.set_ini_filename(None);
+        // The font is rasterised at its final size instead of being blown up
+        // from imgui's 13 px bitmap face, so the global font scale stays at
+        // 1.0. Anything else here would stretch an already correctly sized
+        // atlas.
+        ctx.io_mut().font_global_scale = 1.0;
         // Applied once: the style scale compounds if repeated, and hudhook
         // calls this exactly once per pipeline (a swapchain reset rebuilds the
         // context and calls it again, on fresh defaults).
-        ctx.io_mut().font_global_scale = self.scale;
         ctx.style_mut().scale_all_sizes(self.scale);
+        // Before hudhook's `setup_fonts` builds and uploads the atlas, which
+        // is the whole reason the font is added from here.
+        let px = (self.font_size * self.scale).round().max(1.0);
+        self.add_font(ctx.fonts(), px);
+        // The theme goes on after the scaling, so its rounding is applied in
+        // scaled pixels exactly once, and again from `before_render` whenever
+        // the picker changes it.
+        Self::apply_theme(ctx.style_mut(), self.theme, self.scale);
         // The output encoding, applied here for the same reason: this is the
         // one place that runs once per pipeline, and hudhook reads both values
         // out of its own atomics on every frame after it. They are what stop
@@ -247,16 +504,26 @@ impl ImguiRenderLoop for Overlay {
         hudhook::output::set_color_space_override(Self::color_space_override(self.cfg.color_space));
         desert_core::log::write(&format!(
             "[menu] imgui context initialised, scale {:.2}, HDR paper white {:.0} nits, colour \
-             space {}",
+             space {}, theme {}",
             self.scale,
             self.cfg.hdr_brightness,
-            self.cfg.color_space.as_str()
+            self.cfg.color_space.as_str(),
+            self.theme.name
+        ));
+        desert_core::log::write(&format!(
+            "[menu] font: {} {:.0} px (FontSize {} x scale {:.2})",
+            self.font_label, px, self.font_size, self.scale
         ));
     }
 
     fn before_render(&mut self, ctx: &mut Context, _rc: &mut dyn hudhook::RenderContext) {
         if self.menu_key.pressed() {
             self.toggle();
+        }
+        if let Some(theme) = self.pending_theme.take() {
+            self.theme = theme;
+            Self::apply_theme(ctx.style_mut(), theme, self.scale);
+            desert_core::log::write(&format!("[menu] theme: {} (Theme={} in DesertOverlay.ini keeps it)", theme.title, theme.name));
         }
         // While the menu is up imgui draws a cursor only if Windows is not
         // already showing one: the game hides the hardware cursor in the open
@@ -288,26 +555,29 @@ impl ImguiRenderLoop for Overlay {
             .size([460.0 * self.scale, 0.0], Condition::FirstUseEver)
             .size_constraints([360.0 * self.scale, 120.0 * self.scale], [900.0 * self.scale, 1200.0 * self.scale])
             .build(|| {
-                ui.text_colored(DIM, "Changes are saved to the ini files as you make them.");
+                let t = self.theme;
+                self.pending_theme = theme_picker(ui, t);
+                ui.separator();
+                ui.text_colored(t.dim, "Changes are saved to the ini files as you make them.");
                 ui.separator();
 
                 {
                     let _d = ui.begin_disabled(!self.looter_loaded);
-                    changed_looter |= presets_row(ui, &mut self.looter.model);
+                    changed_looter |= presets_row(ui, t, &mut self.looter.model);
                 }
                 ui.separator();
 
                 if ui.collapsing_header(section_title("Desert Looter", self.looter_loaded), TreeNodeFlags::DEFAULT_OPEN) {
-                    not_installed_line(ui, "DesertLooter.asi", self.looter_loaded);
+                    not_installed_line(ui, t, "DesertLooter.asi", self.looter_loaded);
                     let _d = ui.begin_disabled(!self.looter_loaded);
-                    changed_looter |= looter_section(ui, &mut self.looter.model);
-                    status_line(ui, self.looter.status.as_deref());
+                    changed_looter |= looter_section(ui, t, &mut self.looter.model);
+                    status_line(ui, t, self.looter.status.as_deref());
                 }
                 if ui.collapsing_header(section_title("Desert Gatherer", self.gatherer_loaded), TreeNodeFlags::DEFAULT_OPEN) {
-                    not_installed_line(ui, "DesertGatherer.asi", self.gatherer_loaded);
+                    not_installed_line(ui, t, "DesertGatherer.asi", self.gatherer_loaded);
                     let _d = ui.begin_disabled(!self.gatherer_loaded);
-                    changed_gatherer |= gatherer_section(ui, &mut self.gatherer.model);
-                    status_line(ui, self.gatherer.status.as_deref());
+                    changed_gatherer |= gatherer_section(ui, t, &mut self.gatherer.model);
+                    status_line(ui, t, self.gatherer.status.as_deref());
                 }
             });
 
@@ -352,15 +622,27 @@ fn section_title(name: &str, loaded: bool) -> String {
 
 /// One dim line explaining why a section is greyed out. Nothing when the
 /// plugin is there.
-fn not_installed_line(ui: &Ui, asi: &str, loaded: bool) {
+/// The theme picker at the top of the window. Returns the newly chosen theme
+/// on the frame the choice is made, which the caller applies next frame.
+fn theme_picker(ui: &Ui, current: &Theme) -> Option<&'static Theme> {
+    let mut index = current.index();
+    let changed = ui.combo("Theme", &mut index, themes::ALL, |t| Cow::Borrowed(t.title));
+    ui.text_colored(current.dim, current.blurb);
+    if !changed {
+        return None;
+    }
+    themes::ALL.get(index).copied().filter(|t| *t != current)
+}
+
+fn not_installed_line(ui: &Ui, t: &Theme, asi: &str, loaded: bool) {
     if !loaded {
-        ui.text_colored(DIM, format!("{asi} is not loaded in the game; these settings would go unread."));
+        ui.text_colored(t.dim, format!("{asi} is not loaded in the game; these settings would go unread."));
     }
 }
 
-fn presets_row(ui: &Ui, m: &mut LooterModel) -> bool {
+fn presets_row(ui: &Ui, t: &Theme, m: &mut LooterModel) -> bool {
     let mut changed = false;
-    ui.text_colored(DIM, "Presets (what auto-loot picks up):");
+    ui.text_colored(t.dim, "Presets (what auto-loot picks up):");
     for (i, p) in presets::ALL.iter().enumerate() {
         if i % 2 == 1 {
             ui.same_line();
@@ -376,13 +658,13 @@ fn presets_row(ui: &Ui, m: &mut LooterModel) -> bool {
     changed
 }
 
-fn looter_section(ui: &Ui, m: &mut LooterModel) -> bool {
+fn looter_section(ui: &Ui, t: &Theme, m: &mut LooterModel) -> bool {
     let mut changed = false;
 
     changed |= ui.checkbox("Enabled##looter", &mut m.enabled);
     changed |= ui.checkbox("Auto gather", &mut m.auto_gather);
 
-    ui.text_colored(DIM, "Gather families:");
+    ui.text_colored(t.dim, "Gather families:");
     changed |= ui.checkbox("Foraging##looter", &mut m.gather_foraging);
     ui.same_line();
     changed |= ui.checkbox("Logging##looter", &mut m.gather_logging);
@@ -413,7 +695,7 @@ fn looter_section(ui: &Ui, m: &mut LooterModel) -> bool {
     changed
 }
 
-fn gatherer_section(ui: &Ui, m: &mut GathererModel) -> bool {
+fn gatherer_section(ui: &Ui, t: &Theme, m: &mut GathererModel) -> bool {
     let mut changed = false;
 
     changed |= ui.checkbox("Enabled##gatherer", &mut m.enabled);
@@ -423,7 +705,7 @@ fn gatherer_section(ui: &Ui, m: &mut GathererModel) -> bool {
         ui.tooltip_text("Log what would change and write nothing to the game.");
     }
 
-    ui.text_colored(DIM, "Yield multipliers:");
+    ui.text_colored(t.dim, "Yield multipliers:");
     for (label, slot) in [
         ("Foraging##gatherer", &mut m.foraging),
         ("Logging##gatherer", &mut m.logging),
@@ -433,7 +715,7 @@ fn gatherer_section(ui: &Ui, m: &mut GathererModel) -> bool {
         changed |= ui.slider_config(label, MULT_RANGE.0, MULT_RANGE.1).display_format("%dx").build(slot);
     }
     ui.text_colored(
-        DIM,
+        t.dim,
         "Takes effect on records the game loads next; already-loaded ones keep their yields.",
     );
 
@@ -458,8 +740,8 @@ fn int_input(ui: &Ui, label: &str, value: &mut i32, (lo, hi): (i32, i32), step: 
 
 /// The red failure line under a section, or nothing at all when the last read
 /// and write both worked.
-fn status_line(ui: &Ui, status: Option<&str>) {
+fn status_line(ui: &Ui, t: &Theme, status: Option<&str>) {
     if let Some(msg) = status {
-        ui.text_colored(RED, msg);
+        ui.text_colored(t.error, msg);
     }
 }

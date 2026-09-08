@@ -81,8 +81,11 @@ it is only the *other* two files that are live):
 | `KeyMenu` | `Insert` | the key that shows and hides the menu |
 | `ShowOnStart` | `0` | `1` = the menu is already open at the first frame |
 | `Scale` | `0` | menu size: `0` follows the Windows display scaling, otherwise a fixed factor from `0.5` to `4` |
+| `FontSize` | `20` | height of the menu's text in pixels before `Scale` is applied, from `8` to `72`. The font is rasterised at that size, so a larger value is sharper rather than blockier |
+| `Font` | `segoeui.ttf` | the font the menu is drawn in. A bare file name is looked up in `%WINDIR%\Fonts`, an absolute path is used as it stands, and an empty value goes back to Dear ImGui's built-in font. `georgia.ttf`, `constan.ttf` and `cambria.ttc:0` give a more fantasy, serif look; the `:N` suffix picks a face out of a `.ttc` collection. A missing or unreadable file is a warning in the log and the built-in font |
 | `HdrBrightness` | `203` | paper white in nits on an HDR display: how bright the menu's white is drawn. `80` to `1000`; ignored on SDR |
 | `ColorSpace` | `auto` | what the menu's pixels are encoded for: `auto` (follow the swapchain), `sdr`, `hdr10` or `scrgb`. Anything else is `auto` with a warning in the log |
+| `Theme` | `banner` | the menu's colour theme: `classic`, `parchment`, `gilded`, `splash`, `banner` or `steel`. The picker at the top of the menu switches between them live; this key is what makes a choice stick across launches |
 
 The game presents an HDR10 (PQ) signal, so the menu is converted into the
 swapchain's colour space before it is drawn; without that its sRGB colours come

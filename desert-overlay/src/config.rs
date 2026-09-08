@@ -33,12 +33,23 @@ pub struct Config {
     /// UI scale. `0.0` = automatic from the Windows display scaling (125% =>
     /// 1.25); otherwise a fixed factor in `SCALE_MIN..=SCALE_MAX`.
     pub scale: f32,
+    /// Menu font height in pixels at [`Config::scale`] `1.0`, in
+    /// `FONT_SIZE_MIN..=FONT_SIZE_MAX`. What actually reaches the rasteriser
+    /// is `font_size * scale`.
+    pub font_size: f32,
+    /// The `Font` value exactly as the ini spelled it. [`Config::font_choice`]
+    /// turns it into a [`FontChoice`]; empty means imgui's built-in font.
+    pub font: String,
     /// Paper white in nits: how bright plain white is drawn on an HDR
     /// swapchain. Ignored entirely in SDR. In `HDR_MIN..=HDR_MAX`.
     pub hdr_brightness: f32,
     /// Which colour space the menu's pixels are encoded for.
     /// [`ColorSpace::Auto`] follows what the swapchain says.
     pub color_space: ColorSpace,
+    /// The colour theme, by its `name` in [`crate::themes::ALL`]. Always a
+    /// name that exists: an unknown one is replaced by the default with a
+    /// warning at parse time.
+    pub theme: &'static crate::theme::Theme,
 }
 
 /// Smallest and largest fixed `Scale` accepted from the ini.
@@ -53,6 +64,93 @@ pub const HDR_MAX: f32 = 1000.0;
 /// The ITU-R BT.2408 reference level for diffuse white, and what ReShade's own
 /// overlay uses (`HdrOverlayBrightness=203`).
 pub const DEFAULT_HDR_BRIGHTNESS: f32 = 203.0;
+
+/// Smallest and largest `FontSize` accepted from the ini, in pixels. Under 8
+/// nothing is legible at any scale; over 72 a single line of the menu is
+/// taller than a 4K screen can usefully spare.
+pub const FONT_SIZE_MIN: f32 = 8.0;
+pub const FONT_SIZE_MAX: f32 = 72.0;
+
+/// `FontSize` when the ini names none. imgui's own font is 13 px and was the
+/// whole reason the menu was hard to read on a 4K display.
+pub const DEFAULT_FONT_SIZE: f32 = 20.0;
+
+/// `Font` when the ini names none: Segoe UI, which every supported Windows
+/// ships in its Fonts directory.
+pub const DEFAULT_FONT: &str = "segoeui.ttf";
+
+/// What a `Font` value asks for, once the optional `:N` face suffix has been
+/// split off.
+///
+/// Only string work happens here so it is unit-tested natively on Linux; the
+/// Windows half of the overlay is the only thing that looks a name up in the
+/// Fonts directory or opens a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FontChoice {
+    /// An empty `Font` value: draw with imgui's built-in bitmap font.
+    BuiltIn,
+    /// A bare file name (`segoeui.ttf`), to be resolved against the Windows
+    /// Fonts directory.
+    Name {
+        /// The file name, with no directory part and no `:N` suffix.
+        file: String,
+        /// Face index inside a `.ttc` collection; 0 for a plain `.ttf`.
+        face: u32,
+    },
+    /// A value carrying a directory separator (`C:\fonts\mine.ttf`), opened as
+    /// it stands.
+    Path {
+        /// The path, with the `:N` suffix removed.
+        path: String,
+        /// Face index inside a `.ttc` collection.
+        face: u32,
+    },
+}
+
+impl FontChoice {
+    /// Split a `Font` value into a target and a face index.
+    ///
+    /// The `:N` suffix is only taken as a face index when everything after the
+    /// **last** colon is decimal digits, which is what keeps a drive letter in
+    /// `C:\Windows\Fonts\cambria.ttc` from being mistaken for one.
+    pub fn parse(value: &str) -> FontChoice {
+        let value = value.trim();
+        let (target, face) = split_face(value);
+        let target = target.trim();
+        if target.is_empty() {
+            return FontChoice::BuiltIn;
+        }
+        if target.contains('\\') || target.contains('/') {
+            FontChoice::Path { path: target.to_string(), face }
+        } else {
+            FontChoice::Name { file: target.to_string(), face }
+        }
+    }
+
+    /// The face index this choice selects, 0 for the built-in font.
+    pub fn face(&self) -> u32 {
+        match self {
+            FontChoice::BuiltIn => 0,
+            FontChoice::Name { face, .. } | FontChoice::Path { face, .. } => *face,
+        }
+    }
+}
+
+/// `("cambria.ttc:1")` => `("cambria.ttc", 1)`, `("C:\\f.ttf")` =>
+/// `("C:\\f.ttf", 0)`.
+fn split_face(value: &str) -> (&str, u32) {
+    let Some((head, tail)) = value.rsplit_once(':') else {
+        return (value, 0);
+    };
+    if head.is_empty() || tail.is_empty() || !tail.bytes().all(|b| b.is_ascii_digit()) {
+        return (value, 0);
+    }
+    match tail.parse::<u32>() {
+        Ok(n) => (head, n),
+        // Digits that do not fit a u32 are not a face index anybody meant.
+        Err(_) => (value, 0),
+    }
+}
 
 /// The `ColorSpace` key: what the menu's pixels are encoded for.
 ///
@@ -104,10 +202,29 @@ impl Default for Config {
             key_menu: DEFAULT_KEY_MENU,
             show_on_start: false,
             scale: 0.0,
+            font_size: DEFAULT_FONT_SIZE,
+            font: DEFAULT_FONT.to_string(),
             hdr_brightness: DEFAULT_HDR_BRIGHTNESS,
             color_space: ColorSpace::Auto,
+            theme: default_theme(),
         }
     }
+}
+
+impl Config {
+    /// The `Font` value as a resolved intent. Cheap, and called once.
+    pub fn font_choice(&self) -> FontChoice {
+        FontChoice::parse(&self.font)
+    }
+}
+
+/// The theme the ini gets when it names none.
+fn default_theme() -> &'static crate::theme::Theme {
+    // DEFAULT is checked against ALL by the theme tests, and ALL is never
+    // empty, so the fallbacks here can only fire on a broken build.
+    crate::theme::Theme::by_name(crate::themes::DEFAULT)
+        .or_else(|| crate::themes::ALL.first().copied())
+        .unwrap_or(&crate::themes::classic::THEME)
 }
 
 /// Parse ini text. Unknown keys and bad values are reported back so they can
@@ -134,6 +251,18 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                     cfg.scale
                 )),
             },
+            "fontsize" => match v.trim().parse::<f32>() {
+                Ok(f) if (FONT_SIZE_MIN..=FONT_SIZE_MAX).contains(&f) => cfg.font_size = f,
+                _ => warnings.push(format!(
+                    "FontSize: bad value {v:?} ({FONT_SIZE_MIN}..{FONT_SIZE_MAX} px), keeping {}",
+                    cfg.font_size
+                )),
+            },
+            // Every value is legal here: an empty one asks for the built-in
+            // font and anything else is a file name or a path, which only the
+            // Windows side can succeed or fail at opening. It says so in the
+            // log when it fails, and falls back to the built-in font.
+            "font" => cfg.font = v.trim().to_string(),
             "hdrbrightness" => match v.trim().parse::<f32>() {
                 Ok(f) if (HDR_MIN..=HDR_MAX).contains(&f) => cfg.hdr_brightness = f,
                 _ => warnings.push(format!(
@@ -146,6 +275,14 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                 None => warnings.push(format!(
                     "ColorSpace: unknown value {v:?} (auto, sdr, hdr10, scrgb), keeping {}",
                     cfg.color_space.as_str()
+                )),
+            },
+            "theme" => match crate::theme::Theme::by_name(v) {
+                Some(t) => cfg.theme = t,
+                None => warnings.push(format!(
+                    "Theme: unknown value {v:?} ({}), keeping {}",
+                    crate::themes::ALL.iter().map(|t| t.name).collect::<Vec<_>>().join(", "),
+                    cfg.theme.name
                 )),
             },
             "keymenu" => match ini::vk_from_name(v) {
@@ -174,13 +311,16 @@ mod tests {
         assert_eq!(ini::vk_from_name("Insert"), Some(DEFAULT_KEY_MENU));
         assert_eq!(c.hdr_brightness, 203.0);
         assert_eq!(c.color_space, ColorSpace::Auto);
+        assert_eq!(c.font_size, 20.0);
+        assert_eq!(c.font, "segoeui.ttf");
+        assert_eq!(c.font_choice(), FontChoice::Name { file: "segoeui.ttf".into(), face: 0 });
     }
 
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
             "; c\n[DesertOverlay]\nEnabled=0\nDebug=1\nKeyMenu=F4\nShowOnStart=yes\nScale=1.5\n\
-             HdrBrightness=400\nColorSpace=hdr10\n",
+             FontSize=28\nFont=georgia.ttf\nHdrBrightness=400\nColorSpace=hdr10\n",
         );
         assert!(!c.enabled);
         assert!(c.debug);
@@ -189,7 +329,75 @@ mod tests {
         assert_eq!(c.key_menu, 0x73);
         assert_eq!(c.hdr_brightness, 400.0);
         assert_eq!(c.color_space, ColorSpace::Hdr10);
+        assert_eq!(c.font_size, 28.0);
+        assert_eq!(c.font, "georgia.ttf");
         assert!(w.is_empty(), "{w:?}");
+    }
+
+    #[test]
+    fn font_size_out_of_range_is_refused_with_a_warning() {
+        for bad in ["0", "7.9", "73", "-20", "nope", ""] {
+            let (c, w) = parse(&format!("FontSize={bad}\n"));
+            assert_eq!(c.font_size, DEFAULT_FONT_SIZE, "{bad}");
+            assert_eq!(w.len(), 1, "{bad}: {w:?}");
+            assert!(w[0].starts_with("FontSize: bad value"), "{w:?}");
+        }
+        for good in ["8", "20", "72", " 24.5 "] {
+            let (_, w) = parse(&format!("FontSize={good}\n"));
+            assert!(w.is_empty(), "{good}: {w:?}");
+        }
+    }
+
+    #[test]
+    fn font_takes_a_name_a_path_or_nothing() {
+        for (text, want) in [
+            ("segoeui.ttf", FontChoice::Name { file: "segoeui.ttf".into(), face: 0 }),
+            ("  georgia.ttf  ", FontChoice::Name { file: "georgia.ttf".into(), face: 0 }),
+            ("", FontChoice::BuiltIn),
+            ("   ", FontChoice::BuiltIn),
+            (
+                "C:\\Windows\\Fonts\\constan.ttf",
+                FontChoice::Path { path: "C:\\Windows\\Fonts\\constan.ttf".into(), face: 0 },
+            ),
+            ("/usr/share/fonts/x.ttf", FontChoice::Path { path: "/usr/share/fonts/x.ttf".into(), face: 0 }),
+        ] {
+            let (c, w) = parse(&format!("Font={text}\n"));
+            assert_eq!(c.font_choice(), want, "{text:?}");
+            assert!(w.is_empty(), "{text:?}: {w:?}");
+        }
+    }
+
+    #[test]
+    fn a_trailing_colon_number_is_a_ttc_face_index() {
+        assert_eq!(
+            FontChoice::parse("cambria.ttc:0"),
+            FontChoice::Name { file: "cambria.ttc".into(), face: 0 }
+        );
+        assert_eq!(
+            FontChoice::parse("cambria.ttc:1"),
+            FontChoice::Name { file: "cambria.ttc".into(), face: 1 }
+        );
+        assert_eq!(FontChoice::parse("cambria.ttc:1").face(), 1);
+        // A drive letter is not a face index, and neither is a non-numeric
+        // suffix: both stay part of the name.
+        assert_eq!(
+            FontChoice::parse("C:\\Windows\\Fonts\\cambria.ttc"),
+            FontChoice::Path { path: "C:\\Windows\\Fonts\\cambria.ttc".into(), face: 0 }
+        );
+        assert_eq!(
+            FontChoice::parse("C:\\Windows\\Fonts\\cambria.ttc:2"),
+            FontChoice::Path { path: "C:\\Windows\\Fonts\\cambria.ttc".into(), face: 2 }
+        );
+        assert_eq!(
+            FontChoice::parse("weird:name.ttf"),
+            FontChoice::Name { file: "weird:name.ttf".into(), face: 0 }
+        );
+        assert_eq!(
+            FontChoice::parse("huge.ttc:99999999999999999999"),
+            FontChoice::Name { file: "huge.ttc:99999999999999999999".into(), face: 0 }
+        );
+        assert_eq!(FontChoice::parse(":3"), FontChoice::Name { file: ":3".into(), face: 0 });
+        assert_eq!(FontChoice::BuiltIn.face(), 0);
     }
 
     #[test]
