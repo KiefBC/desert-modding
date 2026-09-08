@@ -4,20 +4,10 @@ All notable changes to Desert Overlay. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
-## [Unreleased]
+## [0.1.0] - 2026-09-08
 
 Game build 25116796. Verified in game on 2026-09-07: the menu draws, moves and resizes, a preset
 click reaches `DesertLooter.ini` and Desert Looter reloads it within a second.
-
-### Fixed
-
-- The menu is no longer blown out and oversaturated on an HDR display. The game presents an HDR10
-  (PQ) swapchain, and hudhook wrote imgui's sRGB colours into it unconverted; the vendored hudhook
-  now tracks the swapchain's colour space (`IDXGISwapChain3::SetColorSpace1`, DXGI's default for
-  the back buffer format when the game never calls it) and converts in its pixel shader. Two new
-  ini keys steer it: `HdrBrightness` (paper white in nits, default `203`, `80` to `1000`) and
-  `ColorSpace` (`auto`, `sdr`, `hdr10`, `scrgb`, default `auto`). SDR is untouched: the shader's
-  passthrough mode is byte for byte what it did before.
 
 ### Added
 
@@ -78,6 +68,13 @@ click reaches `DesertLooter.ini` and Desert Looter reloads it within a second.
 
 ### Fixed
 
+- The menu is no longer blown out and oversaturated on an HDR display. The game presents an HDR10
+  (PQ) swapchain, and hudhook wrote imgui's sRGB colours into it unconverted; the vendored hudhook
+  now tracks the swapchain's colour space (`IDXGISwapChain3::SetColorSpace1`, DXGI's default for
+  the back buffer format when the game never calls it) and converts in its pixel shader. Two new
+  ini keys steer it: `HdrBrightness` (paper white in nits, default `203`, `80` to `1000`) and
+  `ColorSpace` (`auto`, `sdr`, `hdr10`, `scrgb`, default `auto`). SDR is untouched: the shader's
+  passthrough mode is byte for byte what it did before.
 - The window drew enlarged and clipped to part of itself whenever Windows display scaling was
   not 100%: the vendored hudhook set imgui's framebuffer scale to the DPI factor while its DX12
   renderer only scaled the viewport, not the scissor rectangles. The framebuffer scale is now 1
