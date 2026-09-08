@@ -124,9 +124,17 @@ impl crate::store::IniModel for DynModel {
     /// The created file's starting text comes from the schema itself
     /// ([`desert_core::schema::render_ini_defaults`]), so a mod the overlay
     /// has never heard of still gets a file with a header and every key at the
-    /// plugin's own default.
+    /// plugin's own default. The banner is the overlay's own: a plugin that
+    /// seeds its own ini writes a different one, and whichever got there first
+    /// says so.
     fn created_header(&self) -> String {
-        desert_core::schema::render_ini_defaults(&self.section)
+        let banner = format!(
+            "{} was missing, so Desert Overlay created it.\n\
+             Every key below is at the plugin's own default. Keys you add by hand are\n\
+             kept: the overlay only ever rewrites the lines it owns.",
+            self.section.ini
+        );
+        desert_core::schema::render_ini_defaults(&self.section, &banner)
     }
 
     fn parse_ini(&mut self, text: &str) {

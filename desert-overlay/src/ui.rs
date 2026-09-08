@@ -19,8 +19,12 @@
 //!   game input on the way in and out is not worth a second mechanism.
 //! * The game hides the hardware cursor and clips it to the window, so imgui
 //!   has to draw its own (`io.mouse_draw_cursor`, only while the hardware
-//!   cursor is really hidden) and the clip rectangle has
-//!   to be released, or the pointer cannot reach the window's edges.
+//!   cursor is really hidden) and the clip rectangle has to be released, or
+//!   the pointer cannot reach the window's edges. Releasing it here is only
+//!   the opening move: the game re-clips and re-centres the cursor every
+//!   frame, so what actually keeps the pointer free is [`crate::cursor`],
+//!   which hooks `ClipCursor` and `SetCursorPos` and neuters them for as long
+//!   as [`crate::cursor::set_menu_open`] says the menu is up.
 //! * `is_any_item_active` is what tells the store that a slider has been let
 //!   go, which is what turns a drag into four writes a second instead of one
 //!   per frame.
@@ -169,6 +173,10 @@ impl Overlay {
             );
         }
         let visible = cfg.show_on_start;
+        // The cursor hooks are installed later, on the plugin thread, but the
+        // flag they read is set here so a menu that opens with the game is
+        // already holding the pointer.
+        crate::cursor::set_menu_open(visible);
         let scale = if cfg.scale > 0.0 { cfg.scale } else { Self::system_scale() };
         let theme = cfg.theme;
         let choice = cfg.font_choice();
@@ -430,13 +438,21 @@ impl Overlay {
         }
     }
 
+    /// Release the cursor's confining rectangle on the frame the menu opens.
+    ///
     /// The game hides the cursor and calls `ClipCursor` to pin it inside the
-    /// window (and, in first-person-style camera control, to a single point).
-    /// imgui gets its mouse position from the raw-input deltas hudhook feeds
-    /// it, but a clipped cursor still cannot travel, so release the clip when
-    /// the menu opens. The game re-establishes it on its own the next time it
-    /// wants to; that is why this is only done on the opening edge and never
-    /// undone here.
+    /// window (and, in camera control, to a single point). imgui gets its
+    /// mouse position from the raw-input deltas hudhook feeds it, but hudhook
+    /// also assigns it the absolute position out of every `WM_MOUSEMOVE`, so
+    /// a pinned cursor snaps the pointer back as fast as the deltas move it.
+    ///
+    /// This call alone would fix nothing - the game re-clips on the next
+    /// frame. It is [`crate::cursor`]'s hook on `ClipCursor` that keeps the
+    /// clip off, and its hook on `SetCursorPos` that keeps the game from
+    /// re-centring the pointer; this releases whatever clip was already in
+    /// force when the menu came up, which the hook has no way to undo. The
+    /// clip is never restored here: the game establishes its own again as soon
+    /// as the menu closes and the hooks stand aside.
     fn unclip_cursor() {
         // SAFETY: ClipCursor(NULL) is the documented way to release the
         // cursor's confining rectangle. Null is the argument's own "no
@@ -469,6 +485,7 @@ impl Overlay {
 
     fn toggle(&mut self) {
         self.visible = !self.visible;
+        crate::cursor::set_menu_open(self.visible);
         if self.visible {
             Self::unclip_cursor();
         }

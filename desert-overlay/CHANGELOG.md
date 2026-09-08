@@ -28,6 +28,39 @@ Game build 25116796. In-game verification of the changes below is pending.
   game exe; the menu has nothing to show` when nothing is found. An empty menu now shows one dim
   line saying so instead of an empty window.
 
+### Fixed
+
+- The mouse pointer could not move while the menu was open: pressing the menu key drew the menu
+  but left the pointer pinned in place, and the only way to free it was to press the Windows key
+  to leave the game, click, and come back (which worked because a window that has lost and
+  regained focus with its input blocked by the overlay does not resume pinning until the menu
+  closes). The game claims the hardware cursor every frame for camera control, through user32
+  `ClipCursor` (clip to a point or rect) and `SetCursorPos` (re-centre it), and hudhook feeds
+  imgui's pointer from both raw-input deltas (`WM_INPUT`) and absolute `WM_MOUSEMOVE`
+  coordinates, so every re-pin snapped the imgui pointer straight back to the same spot. The
+  overlay already released the clip once when the menu opened, but the game re-applied it on the
+  next frame. `desert-overlay/src/cursor.rs` now installs two MinHook inline hooks on user32's
+  `ClipCursor` and `SetCursorPos` right after `Hudhook::apply` succeeds (the builder initialises
+  MinHook and `apply` enables its hooks, so this is the first moment ours can go in): while the menu is open, `ClipCursor` is forwarded with a null rectangle
+  (no clip) and `SetCursorPos` returns success without moving anything; while it is closed, both
+  pass straight through. This is the same fix ReShade's own overlay uses (`HookClipCursor` /
+  `HookSetCursorPos` in its `input.cpp`), which is why ReShade's menu never had the problem. New
+  log lines: `[cursor] ClipCursor and SetCursorPos are hooked; the game cannot pin the pointer
+  while the menu is open` on success, and `[cursor] WARN could not hook <what>: <why>; the
+  pointer may not move while the menu is open (Win key out and back frees it)` on failure, which
+  is not fatal - the menu still works, just with the old symptom.
+- `DesertOverlay.ini` was never created for a new install: Looter and Gatherer each seed a
+  missing ini from their schema (`schema::create_ini_if_missing`), but the overlay only logged
+  `DesertOverlay.ini not found, using defaults` and ran on defaults, so a user had no file to
+  edit unless they copied one out of the zip by hand. `main_thread` now writes the shipped, fully
+  commented `DesertOverlay.ini` (embedded with `include_str!`) beside the exe if it is absent,
+  using an atomic create-only open (`create_new`), so an existing file is never read, rewritten
+  or replaced. It can't go through the schema path the other two use: the overlay's own `Font`
+  key is free text, which `desert_core::schema::Kind` cannot express, and none of its keys are
+  live in the first place. New log line: `[ini] DesertOverlay.ini was missing, so it was created
+  with every key at its default`; on failure, `[ini] WARN could not create <path>: <err>; the
+  defaults are in effect`. Nothing changes for anyone who already has the file.
+
 ## [0.1.0] - 2026-09-08
 
 Game build 25116796. Verified in game on 2026-09-07: the menu draws, moves and resizes, a preset

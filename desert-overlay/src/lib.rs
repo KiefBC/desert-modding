@@ -57,9 +57,13 @@ pub mod store;
 pub mod theme;
 pub mod themes;
 
-// The Windows half: the hudhook render loop and the tracing bridge. hudhook
-// and imgui do not build for x86_64-unknown-linux-gnu (imgui-sys compiles the
-// Dear ImGui C++ sources for the target), so both stay behind the cfg.
+// The Windows half: the hudhook render loop, the tracing bridge and the two
+// user32 hooks that keep the game from pinning the mouse pointer while the
+// menu is open. hudhook and imgui do not build for x86_64-unknown-linux-gnu
+// (imgui-sys compiles the Dear ImGui C++ sources for the target), so all three
+// stay behind the cfg.
+#[cfg(windows)]
+pub mod cursor;
 #[cfg(windows)]
 pub mod trace;
 #[cfg(windows)]
@@ -100,6 +104,38 @@ mod entry {
             .unwrap_or_default()
     }
 
+    /// The commented ini that ships in the release zip. Looter and Gatherer
+    /// seed a missing ini from their schema; this one has no schema (`Font`
+    /// is free text, and nothing in it is live), so the shipped file is the
+    /// template instead. The test in `config.rs` keeps it parsing cleanly.
+    const INI_TEMPLATE: &str = include_str!("../DesertOverlay.ini");
+
+    /// Create the ini beside the exe if it is absent, so a first run leaves a
+    /// file to edit. `create_new` is the OS's atomic "only if absent": an
+    /// existing file is never read, rewritten or replaced, whatever it holds.
+    /// A failure is one WARN line; `Config::default()` covers a missing file.
+    fn seed_ini(path: &std::path::Path) {
+        use std::io::Write as _;
+        let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return,
+            Err(e) => {
+                crate::log!("[ini] WARN could not create {}: {e}; the defaults are in effect", path.display());
+                return;
+            }
+        };
+        match file.write_all(INI_TEMPLATE.as_bytes()) {
+            Ok(()) => crate::log!(
+                "[ini] {} was missing, so it was created with every key at its default",
+                INI_NAME
+            ),
+            Err(e) => crate::log!(
+                "[ini] WARN could not write {}: {e}; the defaults are in effect",
+                path.display()
+            ),
+        }
+    }
+
     fn load_config(path: &std::path::Path) -> Config {
         match std::fs::read_to_string(path) {
             Ok(text) => {
@@ -133,6 +169,7 @@ mod entry {
         crate::log!("Desert Overlay {} loaded, pid {}", crate::VERSION, pid);
 
         let ini_path = log::exe_dir().join(INI_NAME);
+        seed_ini(&ini_path);
         let cfg = load_config(&ini_path);
         crate::log!(
             "[ini] Enabled={} Debug={} KeyMenu=0x{:02X} ShowOnStart={} Scale={} FontSize={} \
@@ -172,10 +209,18 @@ mod entry {
         let t0 = std::time::Instant::now();
         match Hudhook::builder().with::<ImguiDx12Hooks>(overlay).with_hmodule(hmodule).build().apply()
         {
-            Ok(()) => crate::log!(
-                "[hudhook] DX12 hooks applied in {:.0} ms; press the menu key in game",
-                t0.elapsed().as_secs_f64() * 1000.0
-            ),
+            Ok(()) => {
+                crate::log!(
+                    "[hudhook] DX12 hooks applied in {:.0} ms; press the menu key in game",
+                    t0.elapsed().as_secs_f64() * 1000.0
+                );
+                // Only now: `Hudhook::builder()` is what initialises MinHook
+                // and `apply()` is what flushes its enable queue, so the
+                // cursor hooks have to come after it. `install` logs its own
+                // outcome; a failure only costs the pointer its freedom while
+                // the menu is open.
+                crate::cursor::install();
+            }
             // Deliberately NOT `hudhook::eject()`: unloading our own DLL out
             // from under the loader is a far bigger risk than a plugin that
             // sits there doing nothing, and the game must survive this.
