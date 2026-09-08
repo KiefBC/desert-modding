@@ -43,7 +43,7 @@
 //! ## The live path
 //!
 //! The loader runs once per session (the game's preload pass, ~9 s after
-//! launch, `docs/reference-internals.md` section 12), so an ini change after
+//! launch, `docs/reference-internals.md` section 16), so an ini change after
 //! that has no record left to intercept. [`reapply`] is the answer: the
 //! callback hands every gather record's vanilla blocks to [`crate::remember`]
 //! on the way past, whatever the ini says at the time, and `reapply` — on the
@@ -361,7 +361,7 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 
 /// Where the yields live in a *parsed* record, as opposed to the raw bytes the
 /// callback edits. Established by decompile and disassembly of build 25116796
-/// and written up in `docs/reference-internals.md` section 12.
+/// and written up in `docs/reference-internals.md` section 16.
 ///
 /// ```text
 /// mgr+0x08    u32   record_count

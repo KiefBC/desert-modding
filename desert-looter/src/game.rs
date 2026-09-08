@@ -1,7 +1,9 @@
 //! Resolution of game-side anchors (byte signatures, RTTI vtables) and the
 //! read-only survey. Nothing here touches game state.
 
-use crate::actors::{self, Vec3};
+use core::sync::atomic::{AtomicU64, Ordering};
+
+use crate::actors::{self, CatchClass, Vec3};
 use crate::config::Config;
 use crate::module::MainModule;
 use crate::pattern::{Found, Pattern};
@@ -259,8 +261,9 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
             }
             actors::Kind::Inert if !debug => {}
             // Characters, insects and everything unclassified: show the bytes
-            // the catch rule keys on (`actors::is_catchable`, section 15) so
-            // insects can be told apart from NPCs and animals. `Catchable` is
+            // the catch rule keys on (`actors::catch_class`, section 15) so
+            // insects and fish can be told apart from birds, NPCs and animals
+            // - `cat=` is the class byte that decides it. `Catchable` is
             // named here rather than left to `_` precisely because it is the
             // line that says whether the rule picked the right actor.
             actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Other => {
@@ -783,14 +786,34 @@ pub fn scene(m: &MainModule, w: &World) -> Result<Scene, String> {
     Ok(Scene { player, player_eid, route, ppos, entries: map.entries(), tabs })
 }
 
+/// One bit per [`actors::interaction_category`] value (256 of them in four
+/// words), set the first time a catchable creature of that class is passed
+/// over as unknown. A catch candidate is looked at every gather tick, so
+/// without this the log would carry the same line several times a second;
+/// with it each unrecognised class says its piece once per session. Four
+/// atomics, no allocation and no lock on the path that reads it.
+static UNKNOWN_CATCH_CATEGORIES: [AtomicU64; 4] =
+    [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+
+/// Claim the right to log category `c`: true exactly once per value per
+/// session. `c >> 6` is 0..=3 for any `u8`, so the `get` never misses; it is
+/// a `get` rather than an index because indexing is denied in shipped code.
+fn first_sighting_of(c: u8) -> bool {
+    let bit = 1u64 << (c & 63);
+    match UNKNOWN_CATCH_CATEGORIES.get(usize::from(c >> 6)) {
+        Some(word) => word.fetch_or(bit, Ordering::Relaxed) & bit == 0,
+        None => false,
+    }
+}
+
 /// Nearest node within `GatherRange` metres that classifies as `Gather`
 /// (interaction object present and the gimmick record is a
 /// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
-/// true. Ground items (`GatherItems`) and insects (`GatherBugs`) are
-/// candidates too; an insect comes back with `mode: Catch`, which is a
-/// different game event entirely (see `payload::catch_payload`). `cfg` is the
-/// live config, so what counts as a candidate follows the ini without this
-/// having to be told twice. Read-only.
+/// true. Ground items (`GatherItems`) and catchable creatures (`GatherBugs`
+/// for insects, `GatherFish` for fish) are candidates too; a creature comes
+/// back with `mode: Catch`, which is a different game event entirely (see
+/// `payload::catch_payload`). `cfg` is the live config, so what counts as a
+/// candidate follows the ini without this having to be told twice. Read-only.
 pub fn nearest_gather(
     m: &MainModule,
     sc: &Scene,
@@ -833,22 +856,46 @@ pub fn nearest_gather(
     }
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
-    // Nodes passed over only because their family is switched off. Insects
-    // skipped by `GatherBugs=0` are counted here too: to the player it is the
-    // same kind of "you switched that off", and the summary reads the same.
+    // Nodes passed over only because their family is switched off. Creatures
+    // skipped by `GatherBugs=0` or `GatherFish=0` are counted here too: to the
+    // player it is the same kind of "you switched that off", and the summary
+    // reads the same. A creature of an unknown class is *not* counted, because
+    // nothing the player can set would have taken it.
     let mut family_off_seen = 0usize;
     for &(d, eid, a, pos, kind) in &nodes {
-        // Insects carry no gimmick record, so they are decided before
-        // `node_identity` (which returns None for them) rather than after.
+        // Catchable creatures carry no gimmick record, so they are decided
+        // before `node_identity` (which returns None for them) rather than
+        // after. `Kind::Catchable` only says the actor is shaped like a
+        // creature the game lets you catch; the class byte says whether it is
+        // one we have ever actually caught, and birds in flight and several
+        // unidentified species pass the first test but fail the second.
         if kind == actors::Kind::Catchable {
-            if !cfg.gather_bugs {
-                family_off_seen += 1;
-                continue;
-            }
+            let (what, family) = match actors::catch_class(m, a) {
+                Some(CatchClass::Bug) if !cfg.gather_bugs => {
+                    family_off_seen += 1;
+                    continue;
+                }
+                Some(CatchClass::Fish) if !cfg.gather_fish => {
+                    family_off_seen += 1;
+                    continue;
+                }
+                Some(CatchClass::Bug) => ("bug", "Bug"),
+                Some(CatchClass::Fish) => ("fish", "Fish"),
+                Some(CatchClass::Unknown(c)) => {
+                    if first_sighting_of(c) {
+                        crate::log!(
+                            "[gather] catchable creature cat={c:02X} at {d:.0} m is not a known bug/fish class; skipped (catch one by hand with F7 recording to add it)"
+                        );
+                    }
+                    continue;
+                }
+                // Classified `Catchable` a moment ago and unreadable now: the
+                // actor went away mid-pass. Nothing to say about it.
+                None => continue,
+            };
             if skip(eid) {
                 continue;
             }
-            let ty = actors::type_byte(a).unwrap_or(0);
             return Ok(GatherTarget {
                 eid,
                 // No gimmick record: 0xFFFF is the same "none" the game's own
@@ -858,8 +905,8 @@ pub fn nearest_gather(
                 actor: a,
                 player_actor: sc.player,
                 dist: d,
-                name: format!("bug type={:02X} cat={}", ty, category_text(m, a)),
-                family: "Bug".to_string(),
+                name: format!("{what} cat={}", category_text(m, a)),
+                family: family.to_string(),
                 mode: crate::payload::PickupMode::Catch,
                 armed: true,
                 player_eid: sc.player_eid,
@@ -916,7 +963,7 @@ pub fn nearest_gather(
         return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
     }
     if family_off_seen > 0 {
-        return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs switches)"));
+        return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)"));
     }
     Err(format!("no Gather node within {range:.1} m"))
 }

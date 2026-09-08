@@ -3,7 +3,7 @@
 //!
 //! The game reads its gimmickinfo table exactly once, about nine seconds after
 //! launch, and never calls the loader again for a slot it has already filled
-//! (`docs/reference-internals.md` section 12). The hook's edit therefore lands
+//! (`docs/reference-internals.md` section 16). The hook's edit therefore lands
 //! once and the raw bytes are freed a couple of seconds later, so by the time
 //! the ini changes the vanilla numbers exist nowhere: the parsed object holds
 //! whatever multiplier was in force at boot, and dividing it back out is not

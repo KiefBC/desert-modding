@@ -465,8 +465,11 @@ pub fn node_name(m: &MainModule, actor: usize) -> Option<String> {
 pub enum Kind {
     Player,
     Character,
-    /// A creature the game lets the player catch by hand: an insect. See
-    /// [`classify`] and [`CATCHABLE_TYPE`] for the rule and its evidence.
+    /// A creature the game lets the player catch by hand: an insect, a fish,
+    /// or something whose class is not yet known. See [`catch_class`] for the
+    /// rule, its evidence, and which classes are actually taken - this kind
+    /// only says "the game shapes it like a catchable creature", which is why
+    /// the survey lists all of them.
     Catchable,
     /// Gimmick with the +0xE0 interaction object whose record is a known
     /// gather record (Foraging/Logging/Mining/Ore).
@@ -521,7 +524,7 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     let comps = component_names(m, actor);
     let has = |needle: &str| comps.iter().any(|(_, n)| n.contains(needle));
     if has("ClientAiActorComponent") || has("ClientCharacterControlActorComponent") {
-        return if is_catchable(m, actor) { Kind::Catchable } else { Kind::Character };
+        return if catch_class(m, actor).is_some() { Kind::Catchable } else { Kind::Character };
     }
     if !has("ClientGimmickActorComponent") {
         return Kind::Other;
@@ -760,24 +763,84 @@ pub fn type_byte(actor: usize) -> Option<u8> {
 /// `status` kind 0x20 and 0x1A; NPCs and horses read type 05 or 03.
 pub const CATCHABLE_TYPE: u8 = 6;
 
-/// Would-be [`Kind::Character`] that this build says is an insect:
-/// [`type_byte`] == [`CATCHABLE_TYPE`] and a readable
-/// `ClientStatusActorComponent` whose kind byte (+0x2C8) is 0.
+/// Would-be [`Kind::Character`] that this build says is a creature the player
+/// can catch by hand, and which kind of creature it is.
 ///
-/// The status-kind==0 half is a **first cut**, not a proven rule: it is what
-/// separated the three caught insects from the nearby NPCs and animals in the
-/// one survey we have, and it is expected to be tightened (or replaced by
-/// [`interaction_category`]) once field logs say what else reads 0. In the
-/// first verified session (2026-09-08) all six insects caught read
-/// [`interaction_category`] 0x80, so that byte is the next candidate for
-/// tightening this rule - it is not required here yet only because no
-/// NPC or animal sample of the same byte has been seen. The
-/// reference mod's own rule pairs the type byte with
-/// `ClientStatusActorComponent+0x273 == 6`, which reads **0** on this build
-/// for a confirmed insect, so that byte is stale and is not used here.
-pub fn is_catchable(m: &MainModule, actor: usize) -> bool {
-    type_byte(actor) == Some(CATCHABLE_TYPE)
-        && status_bytes(m, actor).is_some_and(|s| s.kind == 0)
+/// `Unknown(c)` is a creature that passes the type-and-status gate but whose
+/// [`interaction_category`] byte has never been seen on a creature we have
+/// actually caught. It is **never targeted**: the two lists below are exactly
+/// the categories observed on successful hand catches so far, nothing more,
+/// and a class that is not on them is reported once per session and skipped.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CatchClass {
+    Bug,
+    Fish,
+    Unknown(u8),
+}
+
+/// [`interaction_category`] values seen on insects that were caught by hand.
+///
+/// Six catches in the first verified field session (build 25116796,
+/// 2026-09-08) all read 0x80, across four item ids (1001254, 1000680,
+/// 1001238, 1001245). This is a list of what has been seen caught, not a
+/// range the game defines: an insect reading anything else would classify as
+/// [`CatchClass::Unknown`] and be skipped until a catch is recorded for it.
+pub const BUG_CATEGORIES: &[u8] = &[0x80];
+
+/// [`interaction_category`] values seen on fish that were caught by hand.
+///
+/// Fish are taken with the **same** event as insects
+/// (`TrocTrPushCharacterToInventoryOnceTimer`, 8-byte payload). Four manual
+/// catches at a lake on build 25116796 (2026-09-08), each surveyed with F11
+/// immediately before and recorded with F7, read `type=06 status=00/00` and:
+///
+/// ```text
+/// eid=B0100550  cat=83   -> [recv] item 29817 x1
+/// eid=B01005D8  cat=23   -> [recv] item 29805 x1
+/// eid=B01005AB  cat=23   -> [recv] item 29804 x1
+/// eid=B010068C  cat=83   -> [recv] item 29817 x1
+/// ```
+///
+/// As with [`BUG_CATEGORIES`], this is the set observed caught, not a set the
+/// game declares.
+pub const FISH_CATEGORIES: &[u8] = &[0x23, 0x83];
+
+/// Classify a catchable creature by its [`interaction_category`] byte.
+///
+/// `None` means the actor is not a catch candidate at all: its [`type_byte`]
+/// is not [`CATCHABLE_TYPE`], its `ClientStatusActorComponent` kind byte
+/// (+0x2C8) is not 0, or the category byte is not readable. That trio is what
+/// [`Kind::Catchable`] means, so the survey still lists every actor this
+/// returns `Some` for, whichever class comes back.
+///
+/// The class is what decides whether the plugin takes it. The same surveys
+/// that produced the tables above also showed, all reading
+/// `type=06 status=00/00` and so all `Kind::Catchable`:
+///
+/// - `cat=20` actors 9-25 m *above* the player (y 543-559 against the
+///   player's 535): birds in flight, never caught by hand.
+/// - `cat=2C`, `cat=44`, `cat=65` at ground and water level: unknown species,
+///   never caught by hand.
+///
+/// The type byte alone is therefore not enough, and the category byte alone
+/// is not either (type-05 characters at 37 m read `cat=80`, `8C` and `90`,
+/// and type-03 NPCs read `cat=33`, `66`, `71`, `21`): both gates are needed.
+/// See `docs/reference-internals.md` section 15.5.
+pub fn catch_class(m: &MainModule, actor: usize) -> Option<CatchClass> {
+    if type_byte(actor) != Some(CATCHABLE_TYPE) {
+        return None;
+    }
+    if !status_bytes(m, actor).is_some_and(|s| s.kind == 0) {
+        return None;
+    }
+    let cat = interaction_category(m, actor)?;
+    Some(if BUG_CATEGORIES.contains(&cat) {
+        CatchClass::Bug
+    } else if FISH_CATEGORIES.contains(&cat) {
+        CatchClass::Fish
+    } else {
+        CatchClass::Unknown(cat)
+    })
 }
 
 /// The interaction category byte the game's own interaction handler switches
