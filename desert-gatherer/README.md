@@ -25,8 +25,22 @@ Each family has its own multiplier, 1 to 100. Mining and Ore Nodes look alike
 in game but are separate families in the game's data; set both if you want all
 mining-style gathering raised together.
 
-It does **not** touch enemy loot, chests, fishing, skinning, quests, Abyss
-objects, artifacts, gates or fast travel.
+Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
+hand - insects on the ground and fish at the water's edge. Those are not
+gathering nodes and there is no record anywhere saying what one is worth: the
+game grants exactly one, from a constant in its own code. So that pair works
+differently from the four families - it is a small patch on that constant,
+applied as the creature is caught - and it is the one part of this plugin a
+game update can switch off on its own. If that happens the log says so once at
+startup (`[catch] signature not found; catch multipliers off`) and everything
+else here goes on working.
+
+Because that patch is in the game's own grant code rather than in anything
+Desert Looter sends, it multiplies the creatures **you** catch by hand exactly
+as it multiplies the ones Desert Looter's auto mode catches for you.
+
+It does **not** touch enemy loot, chests, rod-and-line fishing, skinning,
+quests, Abyss objects, artifacts, gates or fast travel.
 
 ## What to expect in game
 
@@ -153,6 +167,8 @@ pack; this plugin is its replacement, not its companion.
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
 | `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
+| `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
+| `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
 
 `1` means vanilla: that family's records are read and left untouched. A value
 outside 1..100, or one that is not a number, is refused with a warning in the
@@ -166,6 +182,15 @@ right after that line, and any record the game has not loaded yet still gets
 the new numbers the normal way when it loads. The section
 [How a changed multiplier becomes live](#how-a-changed-multiplier-becomes-live)
 explains the mechanism, the log lines to expect, and what a WARN there means.
+
+`Bugs` and `Fish` need none of that machinery: the multiplier is read at the
+moment the creature is caught, so a change there takes effect on the **next
+catch** with nothing to re-apply, whether you caught the creature yourself or
+Desert Looter caught it for you. Each multiplied catch logs one line,
+`[catch] fish class=23 -> x3`; a creature whose class the plugin has never
+seen caught is left vanilla and reported once per class per session
+(`[catch] class=2C not a known bug/fish class; vanilla`). `Enabled=0` and
+`DryRun=1` both mean "grant one, as the game would".
 
 If `DesertGatherer.ini` is missing, the plugin writes one itself on the next
 launch, with every key at its default, instead of leaving nothing to edit. An
@@ -325,6 +350,15 @@ patch. If the game changes the loader's shape or the block layout itself, the
 plugin will fail to resolve, log why, and leave vanilla yields. It never
 guesses: a refusal is a plugin that does nothing, and a wrong patch would be a
 crash.
+
+`Bugs` and `Fish` are the fragile part, and deliberately so. There is no
+record to edit for a caught creature, so that multiplier is a patch on the
+game's code: the plugin scans for the 21-byte instruction sequence that hands
+the catch handler its count, and refuses to patch unless the thirteen bytes it
+is about to overwrite are exactly the two instructions it expects. A game
+update that rewrites that function disables **only** those two keys, with a
+`[catch]` line saying which check failed - the four family multipliers are
+untouched by it, and the game is untouched by us.
 
 ## Building (developers)
 

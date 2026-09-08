@@ -12,6 +12,7 @@
 //! natively on Linux, so `cargo test --target x86_64-unknown-linux-gnu` works.
 
 pub mod collect;
+pub mod creature;
 pub mod gimmick;
 pub mod ini;
 pub mod log;

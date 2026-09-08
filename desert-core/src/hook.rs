@@ -17,6 +17,12 @@
 //! or relative branch; the caller is responsible for choosing `n` from a
 //! disassembly (for `area_sweep` on build 25116796 the first 15 bytes are
 //! three `mov [rsp+x],reg` spills).
+//!
+//! [`install_raw`] is the same machinery with the stub bytes supplied by the
+//! caller, for a hook that replaces an instruction instead of observing a
+//! prologue: Desert Gatherer's catch-count hook patches a `mov r8d,1` in the
+//! middle of a function and lets its callback decide the value
+//! ([`count_hook_stub`], `docs/reference-internals.md` section 17).
 
 use std::sync::Mutex;
 
@@ -31,7 +37,11 @@ use crate::safe;
 /// Callback shape: the hooked function's first four integer arguments.
 pub type Callback = unsafe extern "system" fn(usize, usize, usize, usize);
 
-pub use crate::trampoline::{patch_bytes, stub_bytes, MAX_STOLEN, MIN_STOLEN};
+/// Callback shape for a [`count_hook_stub`] stub: one pointer in, the `u32`
+/// the game will use in `r8d` out.
+pub type CountCallback = unsafe extern "system" fn(usize) -> u32;
+
+pub use crate::trampoline::{count_hook_stub, patch_bytes, stub_bytes, MAX_STOLEN, MIN_STOLEN};
 
 const STUB_SIZE: usize = 0xA0;
 const PAGE: usize = 0x1000;
@@ -66,14 +76,12 @@ fn alloc_stub() -> Result<usize, String> {
     Ok(stub)
 }
 
-/// Install an inline hook at `target`, stealing `stolen` bytes.
+/// Read and vet the `stolen` bytes about to be overwritten at `target`.
 ///
-/// # Safety
-/// `target` must be the start of a function whose first `stolen` bytes are
-/// whole, position-independent instructions. Best done before the game
-/// reaches its main loop, so no thread is executing the prologue while it is
-/// being rewritten (the reference mod patches at load time for the same reason).
-pub unsafe fn install(target: usize, stolen: usize, callback: Callback) -> Result<Hook, String> {
+/// The two checks are the same for every hook shape: a count outside the
+/// range the patch needs, and a target that already begins with our own
+/// `mov rax,imm64` (someone else's hook, or ours installed twice).
+fn original_bytes(target: usize, stolen: usize) -> Result<Vec<u8>, String> {
     if !(MIN_STOLEN..=MAX_STOLEN).contains(&stolen) {
         return Err(format!("stolen byte count {stolen} outside {MIN_STOLEN}..={MAX_STOLEN}"));
     }
@@ -84,13 +92,52 @@ pub unsafe fn install(target: usize, stolen: usize, callback: Callback) -> Resul
     if original.starts_with(&[0x48, 0xB8]) {
         return Err(format!("target 0x{target:X} already starts with mov rax,imm64: hooked by someone else?"));
     }
-    let stub = alloc_stub()?;
+    Ok(original)
+}
+
+/// Install an inline hook at `target`, stealing `stolen` bytes.
+///
+/// # Safety
+/// `target` must be the start of a function whose first `stolen` bytes are
+/// whole, position-independent instructions. Best done before the game
+/// reaches its main loop, so no thread is executing the prologue while it is
+/// being rewritten (the reference mod patches at load time for the same reason).
+pub unsafe fn install(target: usize, stolen: usize, callback: Callback) -> Result<Hook, String> {
+    let original = original_bytes(target, stolen)?;
     let stub_code = stub_bytes(target, &original, callback as usize);
+    // SAFETY: forwarded from this function's own `# Safety` contract - the
+    // caller has established that the `stolen` bytes at `target` are whole,
+    // position-independent instructions no thread is executing. `stub_bytes`
+    // replays exactly those bytes and jumps back to `target + stolen`, so the
+    // original function still runs in full.
+    unsafe { install_raw(target, stolen, &stub_code) }
+}
+
+/// Install an inline hook whose stub the caller built.
+///
+/// The RWX allocation, the prologue patch and the instruction-cache flush are
+/// the same as [`install`]; the only difference is that the stub bytes come
+/// from the caller instead of from [`stub_bytes`]. That is what lets a hook
+/// *replace* an instruction rather than observe a prologue - see
+/// [`count_hook_stub`], whose stub feeds the callback's return value into
+/// `r8d` instead of replaying the `mov r8d,<imm>` it was installed over.
+///
+/// # Safety
+/// As [`install`], plus: `stub_code` must be executable machine code that
+/// leaves the process in a state the game can continue from and ends by
+/// transferring control back into `target`'s function. Nothing here checks
+/// what those bytes do.
+pub unsafe fn install_raw(target: usize, stolen: usize, stub_code: &[u8]) -> Result<Hook, String> {
+    let original = original_bytes(target, stolen)?;
+    if stub_code.len() > STUB_SIZE {
+        return Err(format!("stub of {} bytes does not fit in {STUB_SIZE}", stub_code.len()));
+    }
+    let stub = alloc_stub()?;
     // SAFETY: `alloc_stub` handed us STUB_SIZE (0xA0) bytes of a page it
     // VirtualAlloc'd PAGE_EXECUTE_READWRITE and never hands out twice, and
-    // `stub_bytes` returns at most 0x48 + MAX_STOLEN = 0x66 bytes, so the whole
-    // copy lands inside our own writable stub. `stub_code` is a fresh local Vec,
-    // so source and destination cannot overlap.
+    // `stub_code.len()` was just checked against STUB_SIZE, so the whole copy
+    // lands inside our own writable stub. `stub_code` is the caller's slice
+    // and the destination is a page we just allocated, so they cannot overlap.
     unsafe {
         core::ptr::copy_nonoverlapping(stub_code.as_ptr(), stub as *mut u8, stub_code.len());
     }

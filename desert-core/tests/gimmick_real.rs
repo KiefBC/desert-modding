@@ -7,7 +7,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use desert_core::creature::{CATCH_BYTES, CATCH_SITE, CATCH_STOLEN};
 use desert_core::gimmick::{self, LOADER_PROLOGUE, LOADER_STOLEN};
+use desert_core::pattern::{Found, Pattern};
 use desert_core::pe;
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
@@ -16,6 +18,10 @@ const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../desert-gatherer-dmm"
 
 /// RVA of `FUN_1403856b0` on Steam build 25116796.
 const LOADER_RVA: usize = 0x3856b0;
+
+/// RVA of the `mov r8d,1` inside `FUN_142a73c20` on Steam build 25116796
+/// (`docs/reference-internals.md` section 17.4).
+const CATCH_RVA: usize = 0x2a74151;
 
 #[test]
 #[ignore]
@@ -33,6 +39,33 @@ fn resolves_the_record_loader_in_the_game_exe() {
     let prologue = img.get(LOADER_RVA..LOADER_RVA + LOADER_STOLEN).expect("prologue in image");
     println!("prologue      = {}", hex(prologue));
     assert_eq!(prologue, &LOADER_PROLOGUE[..]);
+}
+
+/// Desert Gatherer's second hook: the catch count for insects and fish.
+///
+/// Unlike the record loader, this one is a patch on the game's *code*, so the
+/// signature and the bytes it overwrites are the whole safety argument. Both
+/// are checked here: the site must be found exactly once, and the 13 bytes
+/// there must be the `mov r8d,1` + `lea rdx,[rbp+0x1d0]` the stub replaces
+/// and replays. If either fails after a game update, the plugin refuses to
+/// patch at runtime and only the Bugs/Fish multipliers stop working.
+#[test]
+#[ignore]
+fn finds_the_catch_count_site_in_the_game_exe() {
+    let file = std::fs::read(EXE).expect("game exe present");
+    let img = pe::file_to_image(&file).expect("image layout");
+
+    let pat = Pattern::parse(CATCH_SITE).expect("the catch-site pattern parses");
+    let at = match pat.find_unique(&img) {
+        Found::Unique(at) => at,
+        other => panic!("catch site: {other:?}"),
+    };
+    println!("catch count   = rva 0x{at:X} (0x{:X})", at + 0x1_4000_0000usize);
+    assert_eq!(at, CATCH_RVA);
+
+    let stolen = img.get(at..at + CATCH_STOLEN).expect("stolen bytes in image");
+    println!("stolen bytes  = {}", hex(stolen));
+    assert_eq!(stolen, &CATCH_BYTES[..]);
 }
 
 fn hex(b: &[u8]) -> String {

@@ -13,6 +13,61 @@ new rate, and setting it back to 1 restored vanilla the same way.
 
 ### Added
 
+- **Bugs and Fish: two more multipliers, for the creatures caught by hand.**
+  Insects and fish are not gather nodes - they are characters taken with
+  `TrocTrPushCharacterToInventoryOnceTimer`, and the amount granted is a hard-coded
+  constant in the game's code, not a field of any record. So this pair is not a table
+  edit like the four families: it is a 13-byte inline patch on the instruction that
+  loads that constant (`docs/reference-internals.md` section 17), installed at startup
+  after the plugin has scanned for a 21-byte signature that hits exactly once and
+  checked, byte for byte, that what it is about to overwrite is the `mov r8d,1` and the
+  `lea` it expects. A stub calls back into the plugin with the creature's actor, the
+  callback reads the type byte and the interaction class byte through
+  `desert_core::safe`, and the value it returns becomes the count. New keys `Bugs` and
+  `Fish`, both `1..100`, both defaulting to 1, both in the in-game menu under the same
+  **Yield multipliers:** heading as the four families.
+
+  Unlike the families, a change here needs no re-apply pass of any kind: the multiplier
+  is read at the instant of the catch, so it takes effect on the **next catch**.
+
+  Log lines to expect: `[catch] hook at +0x2A74151 -> stub 0x...; original bytes: 41 B8
+  01 00 00 00 48 8D 95 D0 01 00 00` once at startup, then one `[catch] bug class=80 ->
+  x3` or `[catch] fish class=23 -> x3` per multiplied catch (capped at 500 lines a
+  session). `DryRun=1` logs `[dry] fish class=23 would be x3, granting 1` and grants
+  one; `Enabled=0` grants one silently.
+
+  Only insects and fish the plugin has a **recorded hand catch** for are multiplied -
+  class bytes `0x80` (insects) and `0x23`/`0x83` (fish), the same lists Desert Looter
+  targets from. Anything else that reaches the same code is left completely alone and
+  reported once per class per session (`[catch] class=2C not a known bug/fish class;
+  vanilla`). That matters because the function this patches has five callers and only
+  one of them is the catch event; the class gate is what keeps the multiplier off the
+  other four.
+
+  **The game-update caveat, stated plainly: this is the one part of Desert Gatherer that
+  is a patch on code rather than on data, so it is the first thing a game update breaks.**
+  When it does, the plugin refuses to patch and says so once (`[catch] signature not
+  found; catch multipliers off`, or a line printing the bytes it found instead of the
+  ones it wanted), and everything else - the four family multipliers, the live re-apply -
+  carries on unaffected.
+
+  **Verified in game on 2026-09-08**, build 25116796, with `Bugs=10` and `Fish=10`. Three
+  insects caught by hand before auto mode was switched on each arrived as a single
+  `[recv] item 1001323 x10`; auto mode then took three more insects (`1001245` once,
+  `1001323` twice) and seven fish - six of class `0x23` (`29805`) and one of class `0x83`
+  (`29816`), the first class-`0x83` fish the plugin has taken itself - every one of them
+  at `x10`. Each count arrived as **one** `xN` receipt: the game's inventory add neither
+  clamps a count above 1 nor splits it into separate `x1` lines, so the multiplied amount
+  lands in a single pickup. Every creature vanished normally, 0.1-1.2 s after the catch.
+  The signature, its uniqueness and the thirteen stolen bytes are checked against the real
+  `CrimsonDesert.exe` by `just test-game` and `just sigscan`, and every byte of the stub
+  was verified against a disassembler.
+
+  **The multiplier applies to catches you make by hand too**, not only to the ones Desert
+  Looter takes for you - the patch sits in the game's own grant routine, downstream of
+  whatever asked for the catch. That is intended behaviour, not a side effect to work
+  around: `Bugs=10` means ten insects per insect, however you caught it.
+
 - **A changed multiplier now reaches the game on the next gather, not the next launch.** For every
   gather record the load-time hook already remembers the vanilla minimum, maximum and item id of
   each output block, plus the record's index, in a fixed table - even at `Enabled=0` and `1x`,
