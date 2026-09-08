@@ -208,6 +208,48 @@ mod entry {
         }
     }
 
+    /// Create `DesertGatherer.ini` beside the exe, at every key's default,
+    /// when the file is not there at all.
+    ///
+    /// This is the fallback for someone who dropped only the `.asi` into
+    /// `bin64` without the commented template the release zip ships: instead
+    /// of having nothing to edit, they get a bare file with every key present.
+    /// An existing ini is never read, rewritten or replaced - the create is
+    /// `create_new`, so a file that appears in the race window wins and the
+    /// user's own settings can never be clobbered.
+    ///
+    /// A failure is a WARN and nothing else. `Config::default()` already
+    /// covers a missing ini, so the plugin behaves identically either way;
+    /// the only thing lost is the file to edit.
+    ///
+    /// On the plugin's own thread, after `log::init`, never in `DllMain`.
+    fn write_default_ini() {
+        let banner = format!(
+            "{} was not found, so Desert Gatherer {} created it with every\n\
+             key at its default. Edit it here or from Desert Overlay's in-game menu; it\n\
+             is re-read while the game runs, once a second.\n\
+             \n\
+             The copy that ships in the release zip has a comment explaining every key.\n\
+             This one is bare. Nothing here is regenerated: your edits survive, and a key\n\
+             you add by hand is left alone.",
+            crate::INI_NAME,
+            crate::VERSION
+        );
+        match schema::create_ini_if_missing(&log::exe_dir(), &config::schema(), &banner) {
+            schema::Written::Written => crate::log!(
+                "[ini] {} was missing, so it was created with every key at its default",
+                crate::INI_NAME
+            ),
+            // The overwhelmingly common case: the file is there. `load_config`
+            // is about to log every value, so a line saying so is pure noise.
+            schema::Written::Unchanged => {}
+            schema::Written::Failed(why) => crate::log!(
+                "[ini] WARN could not create {}: {why}; the defaults are in effect",
+                crate::INI_NAME
+            ),
+        }
+    }
+
     /// Runs on its own thread for the life of the process.
     ///
     /// There is no boot grace here, unlike Desert Looter: the gimmickinfo
@@ -226,6 +268,9 @@ mod entry {
             crate::known_records()
         );
         let ini_path = log::exe_dir().join(crate::INI_NAME);
+        // Before the read, not after, so that on a first run `load_config`
+        // reads the file that was just written.
+        write_default_ini();
         let cfg = load_config(&ini_path);
         crate::log!("[ini] {}", ini_summary(&cfg));
         write_schema();

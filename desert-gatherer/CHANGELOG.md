@@ -8,8 +8,32 @@ Versioning](../VERSIONING.md).
 
 Game build 25116796. In-game verification of the changes below is pending.
 
+### Changed
+
+- **The shipped `DesertGatherer.ini` now sets all four multipliers to `1` (vanilla) instead of
+  `2`.** The plugin's built-in default has always been `1`, and the README's settings table has
+  always documented `1`, so the template was the odd one out: installing the mod quietly doubled
+  every yield before you had chosen anything. Raise the families you want, in the ini or from
+  Desert Overlay's menu. **If you extract a new release zip over an existing install it replaces
+  your `DesertGatherer.ini`**, so back it up first or re-enter your multipliers afterwards - this
+  is true of any release, but it is the one that will change your yields.
+
 ### Added
 
+- `Debug` is now in Desert Overlay's menu, at the bottom of the Desert Gatherer section under a
+  `Diagnostics:` heading, and so is also present in a plugin-generated ini. `DryRun` stays where it
+  was, near the top. Nothing about what the key does has changed - it was simply invisible to
+  anyone who had not read the shipped ini.
+- The plugin now writes `DesertGatherer.ini` itself when the file is not there at all, with every
+  key at its default and a short header saying where it came from. Dropping `DesertGatherer.asi`
+  into `bin64` on its own is now enough: the first launch leaves a file to edit, either by hand or
+  from Desert Overlay's menu, instead of nothing. The commented template that explains every key
+  still ships in the release zip and is still the better starting point; the generated file is
+  bare. An existing ini is never read, rewritten or replaced, so this cannot touch your settings.
+  Logged as `[ini] DesertGatherer.ini was missing, so it was created with every key at its
+  default`, or `[ini] WARN could not create DesertGatherer.ini: ...; the defaults are in effect`
+  if the folder is not writable - in which case the plugin runs on its built-in defaults exactly
+  as before.
 - `DesertGatherer.ini` is now re-read while the game runs, the same mechanism as Desert Looter: the
   plugin thread checks the file's modified time once a second and reloads on change, logging
   `[ini] reloaded: ...`. A changed multiplier applies to records the game loads from then on; the

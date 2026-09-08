@@ -219,13 +219,18 @@ fn mult(key: &str, help: &str) -> Field {
 /// `DesertGatherer.overlay.ini` at every launch (see `lib.rs`); the overlay
 /// reads that file and needs no knowledge of this plugin at all.
 ///
-/// `Debug` is deliberately absent - it is a diagnostic that costs 400 log
-/// lines, documented in the shipped ini - and a key the schema does not name
-/// is never written by the overlay, so a hand-edited one survives untouched.
+/// `Debug` is here too, at the bottom under `Diagnostics:`. It used to be left
+/// out as a diagnostic that costs 400 log lines, which stopped being tenable
+/// once this schema became what the plugin writes its own ini from
+/// (`schema::create_ini_if_missing`): a key that is not named here is missing
+/// from the generated file as well as from the menu, and a player working from
+/// that file would never find out it existed. `DryRun` stays where it is, near
+/// the top: it is the one diagnostic a player genuinely reaches for.
 ///
-/// Every default is `Config::default()` (vanilla yields, not the shipped
-/// template's 2x) and the multiplier range is [`MULT_MIN`]..=[`MULT_MAX`], the
-/// same consts `parse` enforces. Both facts are tested below.
+/// Every default is `Config::default()` (vanilla yields, which the shipped
+/// template now matches) and the multiplier range is
+/// [`MULT_MIN`]..=[`MULT_MAX`], the same consts `parse` enforces. Both facts
+/// are tested below.
 pub fn schema() -> Section {
     let d = Config::default();
     Section {
@@ -269,6 +274,15 @@ pub fn schema() -> Section {
                 "Ore",
                 "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining. 16 records.",
             ),
+            Field {
+                heading: Some("Diagnostics:".to_string()),
+                ..f(
+                    "Debug",
+                    "Debug",
+                    Kind::Bool { default: d.debug },
+                    "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
+                )
+            },
         ],
     }
 }
@@ -439,10 +453,10 @@ mod tests {
 
     #[test]
     fn schema_defaults_parse_back_to_the_default_config() {
-        let (cfg, w) = parse(&sch::render_ini_defaults(&schema()));
+        let (cfg, w) = parse(&sch::render_ini_defaults(&schema(), ""));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(cfg, Config::default());
-        assert!(cfg.all_vanilla(), "the menu opens at vanilla yields, not the template's 2x");
+        assert!(cfg.all_vanilla(), "the menu opens at vanilla yields; raising one is the player's call");
     }
 
     #[test]
@@ -495,6 +509,27 @@ mod tests {
         let (c, w) = parse("Foraging=0\nLogging=101\n");
         assert_eq!(w.len(), 2, "{w:?}");
         assert_eq!(c, Config::default());
+    }
+
+    #[test]
+    fn debug_is_in_the_schema_under_diagnostics_and_dry_run_is_not() {
+        let s = schema();
+        let debug = s.field("Debug").unwrap_or_else(|| panic!("the menu must offer Debug"));
+        assert_eq!(debug.heading.as_deref(), Some("Diagnostics:"));
+        assert_eq!(debug.kind, Kind::Bool { default: false });
+        assert_eq!(debug.kind.default_text(), "0");
+        // Last in the section: the heading groups the diagnostics at the end.
+        assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("Debug"));
+
+        // `DryRun` stays where it was, near the top and un-headed: it is the
+        // diagnostic a player reaches for after a game update.
+        let dry = s.field("DryRun").unwrap_or_else(|| panic!("no DryRun"));
+        assert_eq!(dry.heading, None);
+        assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
+
+        let (c, w) = parse("Debug=1\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.debug);
     }
 
     /// Prints the rendered schema. `cargo test -- --ignored --nocapture

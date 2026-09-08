@@ -74,8 +74,9 @@ Extract the archive straight into `<game>\bin64\`, next to `winmm.dll`, or copy
 two files there:
 
 - `DesertGatherer.asi`: the plugin. Rename the built `desert_gatherer.dll` to this.
-- `DesertGatherer.ini`: the settings. Optional; built-in defaults (everything
-  at 1x, i.e. vanilla) apply without it.
+- `DesertGatherer.ini`: the settings. Optional - if it is missing, the plugin
+  writes one itself with every key at its default (everything at 1x, i.e.
+  vanilla) on the next launch, so you always end up with a file to edit.
 
 To remove the plugin, delete `DesertGatherer.asi`. Nothing is installed
 anywhere else.
@@ -162,12 +163,19 @@ changed multiplier applies to records the game loads from then on; the game
 reloads its own gather table a few seconds after use, so you see the new
 value on your next gather, no restart or save reload needed.
 
+If `DesertGatherer.ini` is missing, the plugin writes one itself on the next
+launch, with every key at its default, instead of leaving nothing to edit. An
+existing file is never read, rewritten or replaced, so this can never touch
+your settings. The generated file is bare, unlike the shipped template's
+comments explaining each key, but every key in the table above is in it -
+including `Debug`, which the menu groups under `Diagnostics:`.
+
 ## Files in the game folder
 
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertGatherer.asi` | the plugin | yes, that uninstalls it |
-| `DesertGatherer.ini` | your settings, read at game start and re-read while it runs | yes, vanilla defaults are used |
+| `DesertGatherer.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch - vanilla `1x` for all four families, so deleting it turns your multipliers off |
 | `DesertGatherer.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertGatherer.overlay.ini` | written at every start for Desert Overlay's menu; describes `DesertGatherer.ini`, is not itself read for settings | yes, it is regenerated on the next launch |
 

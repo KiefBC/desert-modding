@@ -456,7 +456,7 @@ fn check_section(s: &schema::Section) -> Result<(), TestCaseError> {
         }
     }
     // the ini the overlay would create from this schema reads back as itself
-    for line in ini::lines(&schema::render_ini_defaults(s)) {
+    for line in ini::lines(&schema::render_ini_defaults(s, "")) {
         if let ini::Line::Pair(k, v) = line {
             let Some(f) = s.field(k) else {
                 return Err(TestCaseError::fail(format!("default ini line {k:?} is not a field")));

@@ -47,7 +47,9 @@ Requirements: the game, and Ultimate ASI Loader present in `bin64` as
 Extract the archive straight into `<game>\bin64\`, or copy two files there:
 
 - `DesertLooter.asi`: the plugin. Rename the built `desert_looter.dll` to this.
-- `DesertLooter.ini`: the settings. Optional; built-in defaults apply without it.
+- `DesertLooter.ini`: the settings. Optional - if it is missing, the plugin
+  writes one itself with every key at its default on the next launch, so you
+  always end up with a file to edit.
 
 To remove the plugin, delete `DesertLooter.asi`. Nothing is installed anywhere
 else and no game file is modified.
@@ -108,7 +110,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertLooter.asi` | the plugin | yes, that uninstalls it |
-| `DesertLooter.ini` | your settings, read at game start and re-read while it runs | yes, defaults are used |
+| `DesertLooter.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch |
 | `DesertLooter.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertLooter.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag (the node's own record is what says which items it gives) | yes, it relearns itself |
 | `DesertLooter.overlay.ini` | written at every start for Desert Overlay's menu; describes `DesertLooter.ini`, is not itself read for settings | yes, it is regenerated on the next launch |
@@ -139,6 +141,13 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
 | `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
 | `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | key names: F1..F24, A..Z, 0..9, NUM0..NUM9, HOME, END, INSERT, DELETE, PAGEUP, PAGEDOWN, MOUSE3..MOUSE5 and a few more |
+
+If `DesertLooter.ini` is missing, the plugin writes one itself on the next
+launch, with every key at its default, instead of leaving nothing to edit. An
+existing file is never read, rewritten or replaced, so this can never touch
+your settings. The generated file is bare, unlike the shipped template's
+comments explaining each key, but every key in the table above is in it -
+including the three the menu groups under `Diagnostics:`.
 
 ## Things worth knowing
 

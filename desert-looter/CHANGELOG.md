@@ -10,6 +10,21 @@ Game build 25116796. In-game verification of the changes below is pending.
 
 ### Added
 
+- `Debug`, `LogReceived` and `BagTab` are now in Desert Overlay's menu, grouped at the bottom of
+  the Desert Looter section under a `Diagnostics:` heading, and so are also present in a
+  plugin-generated ini. `Debug` and `LogReceived` are checkboxes; `BagTab` is a number input over
+  -1..15, where `-1` is the "auto" the parser has always accepted (the tab with the largest
+  capacity). Nothing about what the keys do has changed - they were simply invisible to anyone who
+  had not read the shipped ini.
+- The plugin now writes `DesertLooter.ini` itself when the file is not there at all, with every
+  key at its default and a short header saying where it came from. Dropping `DesertLooter.asi`
+  into `bin64` on its own is now enough: the first launch leaves a file to edit, either by hand or
+  from Desert Overlay's menu, instead of nothing. The commented template that explains every key
+  still ships in the release zip and is still the better starting point; the generated file is
+  bare. An existing ini is never read, rewritten or replaced, so this cannot touch your settings.
+  Logged as `[ini] DesertLooter.ini was missing, so it was created with every key at its default`,
+  or `[ini] WARN could not create DesertLooter.ini: ...; the defaults are in effect` if the folder
+  is not writable - in which case the plugin runs on its built-in defaults exactly as before.
 - Per-family gather switches `GatherForaging`, `GatherLogging`, `GatherMining` and `GatherOre`,
   default `1`, the same kind of gate `GatherItems` and `GatherGear` are for ground items. When a
   family is switched off, the "nothing found" message now says how many nearby nodes were skipped

@@ -510,6 +510,28 @@ fn kv(out: &mut String, key: &str, value: &str) {
     out.push('\n');
 }
 
+/// Emit `banner` as a comment block, one `;` line per line of `banner` (which
+/// is given **without** the `;`). A blank line becomes a bare `;` rather than
+/// `"; "`, so no line carries trailing whitespace - the shipped inis use the
+/// bare form for paragraph breaks and a generated file should read the same.
+///
+/// Returns whether anything was emitted, which is how the callers know an
+/// empty banner must not be followed by a blank separator line.
+fn banner_block(out: &mut String, banner: &str) -> bool {
+    let mut any = false;
+    for line in banner.lines() {
+        if line.is_empty() {
+            out.push_str(";\n");
+        } else {
+            out.push_str("; ");
+            out.push_str(line);
+            out.push('\n');
+        }
+        any = true;
+    }
+    any
+}
+
 /// Render a section as schema text. [`parse`] reads it back to an equal
 /// `Section` (a tested property).
 ///
@@ -518,11 +540,7 @@ fn kv(out: &mut String, key: &str, value: &str) {
 /// leading `;`, which this adds.
 pub fn render(section: &Section, banner: &str) -> String {
     let mut out = String::with_capacity(512);
-    for line in banner.lines() {
-        out.push_str("; ");
-        out.push_str(line);
-        out.push('\n');
-    }
+    banner_block(&mut out, banner);
 
     out.push_str("[overlay]\n");
     kv(&mut out, "Schema", &VERSION.to_string());
@@ -599,15 +617,21 @@ pub fn render(section: &Section, banner: &str) -> String {
     out
 }
 
-/// The ini text the overlay writes when the ini file is missing: a short
-/// comment header, `[<stem>]`, then every field at its default.
-pub fn render_ini_defaults(section: &Section) -> String {
+/// Render `section` as a default ini: the `banner` comment block, one blank
+/// line, `[<stem>]`, then every field at its default.
+///
+/// This is not the overlay's alone. It is what **any** plugin uses to write
+/// its own ini from its own schema when the file is missing (see
+/// [`create_ini_if_missing`]), which is why the header is the caller's and not
+/// baked in here: only the caller knows which mod is writing and why. `banner`
+/// is one or more lines **without** a leading `;`, which this adds, exactly as
+/// [`render`] does. An empty banner emits no comment lines and no leading
+/// blank line, so the text starts straight at `[<stem>]`.
+pub fn render_ini_defaults(section: &Section, banner: &str) -> String {
     let mut out = String::with_capacity(256);
-    out.push_str("; ");
-    out.push_str(&section.ini);
-    out.push_str(" was missing, so Desert Overlay created it.\n");
-    out.push_str("; Every key below is at the plugin's own default. Keys you add by hand are\n");
-    out.push_str("; kept: the overlay only ever rewrites the lines it owns.\n\n");
+    if banner_block(&mut out, banner) {
+        out.push('\n');
+    }
     out.push('[');
     out.push_str(ini_stem(&section.ini));
     out.push_str("]\n");
@@ -615,6 +639,46 @@ pub fn render_ini_defaults(section: &Section) -> String {
         kv(&mut out, &f.key, &f.kind.default_text());
     }
     out
+}
+
+/// Create `dir/<section.ini>` from [`render_ini_defaults`], but only when the
+/// file does not already exist. An existing file is never read, rewritten or
+/// replaced.
+///
+/// This deliberately does **not** use the tmp-file-then-rename dance
+/// [`write_beside`] uses. The schema file is ours and may be replaced at will;
+/// the ini belongs to the player, who edits it by hand, and clobbering it is
+/// the one outcome that is not allowed here. A rename would overwrite a file
+/// that appeared in the window between an `exists()` check and the write, so
+/// the check and the create have to be a single operation: `create_new` is the
+/// OS's own atomic "only if absent", and it cannot clobber.
+///
+/// The [`Written`] meanings shift slightly here, so do not read them across
+/// from [`write_beside`]:
+///
+/// - [`Written::Unchanged`] - **the file already existed**, whatever is in it.
+///   For [`write_beside`] that variant means "the content already matched";
+///   here nothing was compared, because nothing was read.
+/// - [`Written::Written`] - the file was absent and has been created.
+/// - [`Written::Failed`] - nothing was written; the string says why.
+///
+/// A failure is not fatal for the caller. A missing ini is already covered by
+/// the plugin's own `Config::default()`, so seeding the file is a convenience
+/// for the player and not a load-bearing step: log a WARN and carry on. Never
+/// panics.
+pub fn create_ini_if_missing(dir: &Path, section: &Section, banner: &str) -> Written {
+    use std::io::Write as _;
+
+    let target = dir.join(&section.ini);
+    let mut file = match std::fs::OpenOptions::new().write(true).create_new(true).open(&target) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Written::Unchanged,
+        Err(e) => return Written::Failed(format!("{}: {e}", target.display())),
+    };
+    if let Err(e) = file.write_all(render_ini_defaults(section, banner).as_bytes()) {
+        return Written::Failed(format!("{}: {e}", target.display()));
+    }
+    Written::Written
 }
 
 /// Write `render(section, banner)` to `dir/<schema_file_name>` if the file is
@@ -1067,30 +1131,104 @@ Set=Enabled=1;Foraging=4
     // The ini the overlay creates
     // -----------------------------------------------------------------------
 
+    /// The body is the same either way; the banner is the caller's, and an
+    /// empty one leaves the file starting at the section header.
     #[test]
     fn renders_a_default_ini() {
         let (s, _) = ok(SAMPLE);
-        let text = render_ini_defaults(&s);
+        const BODY: &str = "\
+[DesertLooter]
+Enabled=1
+ScanRange=40
+GatherInterval=500
+Foraging=1
+Theme=banner
+KeyToggle=F10
+";
+
+        let banner = "DesertLooter.ini was missing, so Desert Looter created it.\n\
+                      Every key below is at the plugin's own default.";
+        let text = render_ini_defaults(&s, banner);
         assert_eq!(
             text,
-            "; DesertLooter.ini was missing, so Desert Overlay created it.\n\
-             ; Every key below is at the plugin's own default. Keys you add by hand are\n\
-             ; kept: the overlay only ever rewrites the lines it owns.\n\
-             \n\
-             [DesertLooter]\n\
-             Enabled=1\n\
-             ScanRange=40\n\
-             GatherInterval=500\n\
-             Foraging=1\n\
-             Theme=banner\n\
-             KeyToggle=F10\n"
+            format!(
+                "; DesertLooter.ini was missing, so Desert Looter created it.\n\
+                 ; Every key below is at the plugin's own default.\n\
+                 \n\
+                 {BODY}"
+            )
         );
-        // and it reads back as the same values through the schema
-        for line in ini::lines(&text) {
-            let ini::Line::Pair(k, v) = line else { panic!("{text}") };
-            let f = s.field(k).unwrap();
-            assert_eq!(f.kind.normalize(v).as_deref(), Some(v), "{k}");
+
+        // no banner: no comment lines and no leading blank line
+        let bare = render_ini_defaults(&s, "");
+        assert_eq!(bare, BODY);
+
+        // and either way every emitted line reads back through the schema
+        for text in [&text, &bare] {
+            for line in ini::lines(text) {
+                let ini::Line::Pair(k, v) = line else { panic!("{text}") };
+                let f = s.field(k).unwrap();
+                assert_eq!(f.kind.normalize(v).as_deref(), Some(v), "{k}");
+            }
         }
+    }
+
+    /// A paragraph break in a banner is a bare `;`, not `"; "`. The shipped
+    /// inis are written that way and a generated one should not differ by a
+    /// trailing space no editor shows.
+    #[test]
+    fn a_blank_banner_line_carries_no_trailing_space() {
+        let (s, _) = ok(SAMPLE);
+        let text = render_ini_defaults(&s, "one\n\ntwo");
+        assert!(text.starts_with("; one\n;\n; two\n\n["), "{text}");
+        for line in text.lines() {
+            assert_eq!(line.trim_end(), line, "trailing space in {line:?}");
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Seeding a missing ini
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn creates_a_missing_ini() {
+        let dir = temp_dir("create");
+        let (s, _) = ok(SAMPLE);
+        let banner = "DesertLooter.ini was missing, so the test created it.";
+        let target = dir.join("DesertLooter.ini");
+
+        assert_eq!(create_ini_if_missing(&dir, &s, banner), Written::Written);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), render_ini_defaults(&s, banner));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The guarantee that matters: whatever the player has in their ini, a
+    /// second call leaves it byte-for-byte alone.
+    #[test]
+    fn never_clobbers_an_existing_ini() {
+        let dir = temp_dir("keep");
+        let (s, _) = ok(SAMPLE);
+        let target = dir.join("DesertLooter.ini");
+        let mine = "; hand written\n[DesertLooter]\nEnabled=0\nnot even a pair\n";
+        std::fs::write(&target, mine).unwrap();
+
+        assert_eq!(create_ini_if_missing(&dir, &s, "a banner"), Written::Unchanged);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), mine, "the file was left alone");
+
+        // and again, to show Unchanged is not a one-shot
+        assert_eq!(create_ini_if_missing(&dir, &s, ""), Written::Unchanged);
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), mine);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn create_ini_reports_a_failure_instead_of_panicking() {
+        let dir = temp_dir("create-fail").join("does-not-exist");
+        let (s, _) = ok(SAMPLE);
+        assert!(matches!(create_ini_if_missing(&dir, &s, "b"), Written::Failed(_)));
+        let _ = std::fs::remove_dir_all(dir.parent().unwrap());
     }
 
     // -----------------------------------------------------------------------

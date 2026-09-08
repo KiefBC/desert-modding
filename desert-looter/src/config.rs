@@ -25,6 +25,14 @@ pub const GATHER_RANGE_MENU_MIN: f32 = 1.0;
 /// hand-edited 500 still works - so these are the menu's ends, not a limit.
 pub const SCAN_RANGE_MENU: (f32, f32) = (1.0, 200.0);
 
+/// The top of `BagTab`'s menu input. `actors::MAX_INVENTORY_TABS` is 64 as a
+/// sanity ceiling on what the game hands back, but a real character carries a
+/// handful of tabs, so the menu stops well short of it - and that const cannot
+/// be named from here anyway: this file is always compiled and `actors` is
+/// `#[cfg(windows)]`. The parser has no upper bound of its own; a hand-edited
+/// larger id still works.
+const BAG_TAB_MENU_MAX: i64 = 15;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     pub enabled: bool,
@@ -163,11 +171,13 @@ fn preset(label: &str, hint: &str, families: (bool, bool, bool, bool)) -> Preset
 /// `DesertLooter.overlay.ini` at every launch (see `lib.rs`); the overlay reads
 /// that file and needs no knowledge of this plugin at all.
 ///
-/// The keys here are the subset a slider or a checkbox can express. `Debug`,
-/// `LogReceived` and `BagTab` are deliberately absent: they are diagnostics and
-/// a game-build detail, they are documented in the shipped ini, and a key the
-/// schema does not name is never written by the overlay, so a hand-edited one
-/// survives untouched.
+/// `Debug`, `LogReceived` and `BagTab` are here too, grouped at the bottom
+/// under `Diagnostics:`. They used to be left out as "diagnostics and a
+/// game-build detail", which stopped being tenable once this schema became
+/// what the plugin writes its own ini from (`schema::create_ini_if_missing`):
+/// a key that is not named here is missing from the generated file as well as
+/// from the menu, and a player working from that file would never find out it
+/// existed.
 ///
 /// Every default is `Config::default()` and every range is the const `parse`
 /// itself uses, so the menu can only produce values this parser accepts. Both
@@ -321,6 +331,34 @@ pub fn schema() -> Section {
                 "Gather the nearest node: one node per press, whatever the auto state."),
             key("KeyRecord", "Record events (debug)", d.key_record,
                 "Toggles recording of every event the game queues, capped at 300."),
+            under(
+                "Diagnostics:",
+                f(
+                    "Debug",
+                    "Debug",
+                    Kind::Bool { default: d.debug },
+                    "The very verbose survey: the first Survey press after this is on dumps hundreds of lines to the log. For working out why something is not picked up, not for playing.",
+                ),
+            ),
+            beside(f(
+                "LogReceived",
+                "Log received items",
+                Kind::Bool { default: d.log_received },
+                "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured.",
+            )),
+            f(
+                "BagTab",
+                "Bag tab",
+                Kind::Int {
+                    default: i64::from(d.bag_tab.unwrap_or(-1)),
+                    min: -1,
+                    max: BAG_TAB_MENU_MAX,
+                    step: 1,
+                    slider: false,
+                    format: None,
+                },
+                "Which inventory tab counts as the bag for the full check. 1 is the right answer on build 25116796; -1 means auto, i.e. whichever tab has the largest capacity.",
+            ),
         ],
     }
 }
@@ -468,7 +506,7 @@ mod tests {
 
     #[test]
     fn schema_defaults_parse_back_to_the_default_config() {
-        let (cfg, w) = parse(&sch::render_ini_defaults(&schema()));
+        let (cfg, w) = parse(&sch::render_ini_defaults(&schema(), ""));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(cfg, Config::default());
     }
@@ -595,6 +633,39 @@ mod tests {
             assert_eq!(ini::vk_from_name(&text), Some(vk), "{key}={text}");
         }
         assert_eq!(s.field("KeyToggle").map(|f| f.kind.default_text()), Some("F10".to_string()));
+    }
+
+    #[test]
+    fn the_diagnostics_keys_are_in_the_schema_and_bag_tab_reaches_auto() {
+        let s = schema();
+        for key in ["Debug", "LogReceived", "BagTab"] {
+            assert!(s.field(key).is_some(), "the menu must offer {key}");
+        }
+        // The heading is what groups the three at the bottom of the section.
+        assert_eq!(
+            s.field("Debug").and_then(|f| f.heading.clone()),
+            Some("Diagnostics:".to_string())
+        );
+
+        // `BagTab` opens at the default tab, and the bottom of its range is
+        // the "auto" the parser turns into `None`: a value the menu can
+        // actually produce, written and read back through the same two paths
+        // the overlay uses.
+        let field = s.field("BagTab").unwrap_or_else(|| panic!("no BagTab"));
+        assert_eq!(field.kind.default_text(), "1");
+        let auto = field.kind.normalize("-1").unwrap_or_else(|| panic!("-1 is out of range"));
+        assert_eq!(auto, "-1");
+        let (c, w) = parse(&format!("BagTab={auto}\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.bag_tab, None);
+        // One past the auto end is not something the menu can write.
+        assert_eq!(field.kind.normalize("-2"), None);
+        assert_eq!(field.kind.normalize(&(BAG_TAB_MENU_MAX + 1).to_string()), None);
+
+        let (c, w) = parse("Debug=1\nLogReceived=1\nBagTab=0\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.debug && c.log_received);
+        assert_eq!(c.bag_tab, Some(0));
     }
 
     /// Prints the rendered schema. `cargo test -- --ignored --nocapture
