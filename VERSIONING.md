@@ -137,7 +137,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    that the tagged commit is on `main` and that the tag's version equals the one in the source,
    re-runs the doc, clippy and test checks, builds **that package** with `tools/dist.sh` on a clean
    runner, and publishes a GitHub release named for the tag with its zip and `SHA256SUMS` attached.
-   Only the tagged package: the three are versioned separately, so rebuilding all of them for every
+   Only the tagged package: the four are versioned separately, so rebuilding all of them for every
    tag would eventually attach an untagged package's old version number to new bytes, and two
    release pages would disagree about what one version contains. The notes are the CHANGELOG entry
    for that version
@@ -146,7 +146,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 8. The same push then publishes to Nexus Mods, with no further action: the `nexus` job downloads
    the assets from the release it just made, checks them against `SHA256SUMS`, and adds that zip to
    its mod page as a new version of the existing file, with the CHANGELOG entry as the Nexus
-   changelog. All three packages are separate files on one page (`crimsondesert/mods/3369`), so a
+   changelog. All four packages are separate files on one page (`crimsondesert/mods/3369`), so a
    tag only ever touches its own file. The mod page's version follows the file and the previous version is
    archived. Which page each tag goes to is `tools/nexus-targets.json`; a package with no entry
    there is skipped, and its GitHub release still happens. The API can only add a version to a file

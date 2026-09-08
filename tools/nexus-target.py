@@ -67,7 +67,7 @@ def main() -> int:
     prefix, version = parse_tag(args.tag, list(targets))
     target = targets[prefix]
 
-    # One mod page holds all three files, so exactly one of them may own the
+    # One mod page holds all four files, so exactly one of them may own the
     # page's version field. Catch a second claimant here rather than watching
     # two releases overwrite each other on the site.
     owners = [name for name, t in targets.items() if t.get("update_mod_version")]
