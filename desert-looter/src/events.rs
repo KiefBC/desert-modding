@@ -168,7 +168,7 @@ pub struct PickupRequest {
     /// Gimmick record index of the target, for yield learning.
     pub record: u16,
     pub mode: PickupMode,
-    /// Actor pointers for the ownership check (ground items only).
+    /// Actor pointers for the ownership check.
     pub target_actor: usize,
     pub player_actor: usize,
     pub player_eid: u32,
@@ -196,6 +196,9 @@ fn mark_owned(eid: u32) {
 /// its interaction code does (`FUN_1429DB730`): the acting actor is
 /// `*(*(player+0xA0)+0xD0)`, the first argument its component at
 /// `sub+0x120`, then `FUN_14251BA50(comp, player, target, ctx, 7)`.
+/// Asked for every pickup, gather nodes as much as ground items: the game's
+/// handler makes this call for every interaction target with no category
+/// filter, and mode 7 has its own branch for gimmick actors.
 /// Game thread only. `Err` means "could not ask": treated as owned.
 unsafe fn would_steal(api: &EventApi, player: usize, target: usize) -> Result<bool, String> {
     if api.steal_check == 0 || api.steal_ctx == 0 {
@@ -466,19 +469,19 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     if size != PICKUP_PAYLOAD_SIZE {
         return Err(format!("payload size {size} != {PICKUP_PAYLOAD_SIZE}; refusing"));
     }
-    if r.mode == PickupMode::Item {
-        // SAFETY: `would_steal` requires the game thread, which `send_pickup`
-        // itself requires and the sweep hook - its only caller - provides.
-        match unsafe { would_steal(api, r.player_actor, r.target_actor) } {
-            Ok(false) => {}
-            Ok(true) => {
-                mark_owned(r.target_eid);
-                return Err("the game says taking this would be stealing; skipped".into());
-            }
-            Err(e) => {
-                mark_owned(r.target_eid);
-                return Err(format!("ownership unknown ({e}); skipped"));
-            }
+    // Every request, gather nodes included: the game's own interaction handler
+    // asks this for every target with no category filter (section 14).
+    // SAFETY: `would_steal` requires the game thread, which `send_pickup`
+    // itself requires and the sweep hook - its only caller - provides.
+    match unsafe { would_steal(api, r.player_actor, r.target_actor) } {
+        Ok(false) => {}
+        Ok(true) => {
+            mark_owned(r.target_eid);
+            return Err("the game says taking this would be stealing; skipped".into());
+        }
+        Err(e) => {
+            mark_owned(r.target_eid);
+            return Err(format!("ownership unknown ({e}); skipped"));
         }
     }
     let queue = safe::read_ptr(api.queue_slot).ok_or("queue global is null/unreadable")?;

@@ -13,9 +13,13 @@ nothing is simulated and no input is faked. Written in Rust, shipped as one
 - **Gathers nodes** within a few metres: flowers, berries, fruit, ore veins
   and rocks, and the firewood you cut from felled logs. Veins and rocks are
   mined outright, without a swing.
-- **Picks up plain ground items** such as ore chunks. Before every item it
-  asks the game whether taking it would count as stealing, and skips it if
-  so. Merchant goods, quest items and props are never touched.
+- **Picks up plain ground items** such as ore chunks. Merchant goods, quest
+  items and props are never touched.
+- **Asks the game about stealing first.** Before every pickup, node or ground
+  item alike, it asks the game whether taking that thing would count as
+  stealing, and skips it if so. The fruit trees and food plants inside a
+  settlement, which the game offers as "Steal" rather than "Gather", are left
+  alone; the same plants out in the wild are gathered as usual.
 - **Respects the bag.** Nothing is sent when the bag is full unless every
   item the node can give would stack onto a stack you already carry, read
   from the node's own record. Repeated refusals switch auto mode off.

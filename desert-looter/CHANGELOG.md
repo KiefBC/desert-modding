@@ -56,6 +56,15 @@ Game build 25116796. In-game verification of the changes below is pending.
   everything else: scanning, gathering, hotkey actions, `[recv]` logging and the startup beep.
   Setting it back to `1` in the ini while the game runs brings the plugin back without a restart.
 
+### Fixed
+
+- Gather nodes are now put to the game's own steal check exactly like ground items, which were the
+  only thing asked about before. The fruit trees and food plants inside a settlement, which the game
+  counts as stealing and offers as "Steal" rather than "Gather", are skipped instead of harvested;
+  the same plants in the wild are unaffected. A node the game says is owned is logged as `[event]
+  NOT sent for eid=...: the game says taking this would be stealing; skipped` and is left alone for
+  the rest of the session.
+
 ## [0.1.1] - 2026-09-07
 
 Game build 25116796.

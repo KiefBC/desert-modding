@@ -160,7 +160,7 @@ mod entry {
                 if api.steal_check != 0 && api.steal_ctx != 0 {
                     crate::log!("[event] steal_check=+0x{:X} ctx=+0x{:X}", module.rva(api.steal_check), module.rva(api.steal_ctx));
                 } else {
-                    crate::log!("[event] steal check NOT resolved: ground items will all be treated as owned");
+                    crate::log!("[event] steal check NOT resolved: every pickup (gather nodes and ground items) will be treated as owned and skipped");
                 }
                 events::set_api(api);
                 true
