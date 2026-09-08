@@ -10,10 +10,16 @@
 //! same scalars on disk; **the pack and DMM's built-in gathering multiplier
 //! must be unmounted, or yields multiply twice.**
 //!
+//! Two further multipliers, Bugs and Fish, scale the creatures the player
+//! catches by hand. Those are not gimmick records and have no yields in any
+//! table - the amount is an immediate in the game's code - so that one is a
+//! second, separate hook that replaces the immediate with whatever the ini
+//! says (`catch.rs`, `docs/reference-internals.md` section 17).
+//!
 //! Nothing is hard-coded to an address: the loader is found by content
-//! (`desert_core::gimmick::resolve_record_loader`) and the output blocks by
-//! their 68-byte signature. Every step that fails logs and leaves vanilla
-//! yields behind.
+//! (`desert_core::gimmick::resolve_record_loader`), the output blocks by
+//! their 68-byte signature and the catch site by a 21-byte signature that
+//! hits once. Every step that fails logs and leaves vanilla yields behind.
 //!
 //! The rules desert-core enforces hold here too: no panics
 //! (`panic = "abort"`), every foreign read through `desert_core::safe`, no
@@ -37,6 +43,8 @@ pub use desert_core::{module, safe};
 pub mod config;
 pub mod remember;
 
+#[cfg(windows)]
+pub mod catch;
 #[cfg(windows)]
 pub mod hook;
 
@@ -69,7 +77,7 @@ mod entry {
     use crate::config::{self, Config};
     use crate::gimmick;
     use crate::module::MainModule;
-    use crate::{hook, log, safe, schema};
+    use crate::{catch, hook, log, safe, schema};
 
     /// Seconds between two counter summaries in the log, and only when a
     /// counter moved since the last one. Record loading is a burst at level
@@ -109,14 +117,17 @@ mod entry {
     /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
     fn ini_summary(cfg: &Config) -> String {
         format!(
-            "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={}",
+            "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={} \
+             Bugs={} Fish={}",
             cfg.enabled as u8,
             cfg.dry_run as u8,
             cfg.debug as u8,
             cfg.foraging,
             cfg.logging,
             cfg.mining,
-            cfg.ore
+            cfg.ore,
+            cfg.bugs,
+            cfg.fish
         )
     }
 
@@ -318,8 +329,15 @@ mod entry {
 
         let t0 = std::time::Instant::now();
         let hooked = install_loader_hook(&module);
+        // Independent of the loader hook: it patches a different function for
+        // a different lever (the catch count, `docs/reference-internals.md`
+        // section 17), so one failing is no reason to skip the other. Also
+        // installed regardless of `Enabled`, for the same reason as the
+        // loader hook - `LiveConfig` is what gates the behaviour, because
+        // there is no later moment at which patching code is safer.
+        let catching = catch::install_catch_hook(&module);
         crate::log!("[hook] resolve+install took {:.0} ms", t0.elapsed().as_secs_f64() * 1000.0);
-        if !hooked {
+        if !hooked && !catching {
             crate::log!("no hook installed; the plugin is idle and the game is untouched");
             return 0;
         }

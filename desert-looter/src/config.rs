@@ -58,6 +58,15 @@ pub struct Config {
     pub gather_logging: bool,
     pub gather_mining: bool,
     pub gather_ore: bool,
+    /// Catch insects within `GatherRange`. Not a gather family: it is a
+    /// different game event (`TrocTrPushCharacterToInventoryOnceTimer`) sent
+    /// at a different kind of actor, so it has its own switch.
+    pub gather_bugs: bool,
+    /// Catch fish within `GatherRange`. The same game event as `gather_bugs`
+    /// at the same kind of actor, told apart only by the creature's class
+    /// byte (`actors::catch_class`), so it gets its own switch rather than
+    /// riding on that one.
+    pub gather_fish: bool,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -91,6 +100,8 @@ impl Default for Config {
             gather_logging: true,
             gather_mining: true,
             gather_ore: true,
+            gather_bugs: true,
+            gather_fish: true,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -274,6 +285,18 @@ pub fn schema() -> Section {
                 "1 = also target the nodes the game has not armed with interaction data, which is what lets auto mode mine a whole vein.",
             )),
             f(
+                "GatherBugs",
+                "Catch insects",
+                Kind::Bool { default: d.gather_bugs },
+                "1 = catch insects within GatherRange; the game's steal check still applies.",
+            ),
+            beside(f(
+                "GatherFish",
+                "Catch fish",
+                Kind::Bool { default: d.gather_fish },
+                "1 = catch fish within GatherRange by hand, the same event as insects; the steal check still applies.",
+            )),
+            f(
                 "ScanRange",
                 "Scan range",
                 Kind::Float {
@@ -415,6 +438,8 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherlogging" => cfg.gather_logging = bool_of(v),
             "gathermining" => cfg.gather_mining = bool_of(v),
             "gatherore" => cfg.gather_ore = bool_of(v),
+            "gatherbugs" => cfg.gather_bugs = bool_of(v),
+            "gatherfish" => cfg.gather_fish = bool_of(v),
             "stacklimit" => match v.parse::<u32>() {
                 Ok(n) if (STACK_LIMIT_RANGE.0..=STACK_LIMIT_RANGE.1).contains(&n) => cfg.stack_limit = n,
                 _ => warnings.push(format!("StackLimit: bad value {v:?}, keeping {}", cfg.stack_limit)),
@@ -489,6 +514,51 @@ mod tests {
         assert!(!c.allows_family(Family::Logging));
         assert!(!c.allows_family(Family::Mining));
         assert!(c.allows_family(Family::Ore));
+    }
+
+    /// `GatherBugs` and `GatherFish` are not gather families - they are one
+    /// different game event at a different kind of actor, with the creature's
+    /// class byte deciding which switch applies - so neither has an
+    /// `allows_family` arm and no preset touches either. What they do share
+    /// with the family switches is the shape: on by default, a plain bool in
+    /// the ini, and named by the schema.
+    #[test]
+    fn gather_bugs_defaults_on_and_parses_like_the_family_switches() {
+        assert!(Config::default().gather_bugs);
+        let (c, w) = parse("GatherBugs=0\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_bugs);
+        let (c, w) = parse("GatherBugs=on\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_bugs);
+        assert!(schema().field("GatherBugs").is_some(), "the menu must offer GatherBugs");
+        // No preset sets it: a preset only chooses what to gather, and every
+        // one of them is about node families and ground items.
+        for p in &schema().presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "GatherBugs"), "{}", p.label);
+        }
+    }
+
+    /// The same, for `GatherFish`. It is a sibling of `GatherBugs` in every
+    /// respect (see `actors::catch_class`), so it is held to the same shape.
+    #[test]
+    fn gather_fish_defaults_on_and_parses_like_gather_bugs() {
+        assert!(Config::default().gather_fish);
+        let (c, w) = parse("GatherFish=0\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_fish);
+        let (c, w) = parse("GatherFish=on\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_fish);
+        assert!(schema().field("GatherFish").is_some(), "the menu must offer GatherFish");
+        for p in &schema().presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "GatherFish"), "{}", p.label);
+        }
+        // The two switches are independent: turning insects off must not take
+        // fish with it, and vice versa.
+        let (c, w) = parse("GatherBugs=0\nGatherFish=1\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_bugs && c.gather_fish);
     }
 
     // -----------------------------------------------------------------------

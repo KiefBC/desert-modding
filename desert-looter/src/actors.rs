@@ -11,6 +11,15 @@
 //! - `actor+0x68 -> +0x1A0` is the transform; position floats at +0xB4/+0xB8/+0xBC,
 //!   plus an attachment offset at +0xEC/+0xF0/+0xF4 when the u32 at +0xC8 is
 //!   neither 0 nor 0xFFFFFFFF.
+//!
+//! What a creature *is* - the actor type byte and the bug/fish class lists -
+//! is not here: it lives in `desert_core::creature`, because Desert
+//! Gatherer's catch-count hook has to agree with this file about it. What
+//! stays here is how the looter *reaches* those bytes on an arbitrary actor
+//! (the `ClientStatusActorComponent` is found by RTTI name, not by a fixed
+//! slot) and what it does with the answer.
+
+use desert_core::creature::{self, CatchClass};
 
 use crate::module::MainModule;
 use crate::safe;
@@ -465,6 +474,12 @@ pub fn node_name(m: &MainModule, actor: usize) -> Option<String> {
 pub enum Kind {
     Player,
     Character,
+    /// A creature the game lets the player catch by hand: an insect, a fish,
+    /// or something whose class is not yet known. See [`catch_class`] for the
+    /// rule, its evidence, and which classes are actually taken - this kind
+    /// only says "the game shapes it like a catchable creature", which is why
+    /// the survey lists all of them.
+    Catchable,
     /// Gimmick with the +0xE0 interaction object whose record is a known
     /// gather record (Foraging/Logging/Mining/Ore).
     Gather,
@@ -518,7 +533,7 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     let comps = component_names(m, actor);
     let has = |needle: &str| comps.iter().any(|(_, n)| n.contains(needle));
     if has("ClientAiActorComponent") || has("ClientCharacterControlActorComponent") {
-        return Kind::Character;
+        return if catch_class(m, actor).is_some() { Kind::Catchable } else { Kind::Character };
     }
     if !has("ClientGimmickActorComponent") {
         return Kind::Other;
@@ -722,4 +737,113 @@ pub fn status_bytes(m: &MainModule, actor: usize) -> Option<StatusBytes> {
 /// Shop goods, quest items and decoration are never picked up.
 pub fn is_owned_or_special(st: StatusBytes) -> bool {
     matches!(st.kind, 1 | 0x0F | 0x11)
+}
+
+/// What this plugin makes of a would-be [`Kind::Character`] that the build
+/// says is a creature the player can catch by hand.
+///
+/// `Unknown(c)` is a creature that passes the type-and-status gate but whose
+/// [`interaction_category`] byte has never been seen on a creature we have
+/// actually caught (`desert_core::creature` holds the two lists and the
+/// evidence for them). It is **never targeted**, and it is a variant rather
+/// than a `None` because the looter has something to say about it: the class
+/// is reported once per value per session so the lists can be grown from a
+/// real log.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Catchable {
+    Known(CatchClass),
+    Unknown(u8),
+}
+
+impl Catchable {
+    /// The looter's view of an [`interaction_category`] byte: the shared
+    /// class when it is one a recorded catch has shown, `Unknown` otherwise.
+    /// Nothing here may invent a class - see `desert_core::creature`.
+    fn of_category(cat: u8) -> Self {
+        match creature::catch_class(cat) {
+            Some(c) => Catchable::Known(c),
+            None => Catchable::Unknown(cat),
+        }
+    }
+}
+
+/// Classify a catchable creature by its [`interaction_category`] byte.
+///
+/// `None` means the actor is not a catch candidate at all: its type byte is
+/// not one of `creature::CATCHABLE_TYPES`, its `ClientStatusActorComponent`
+/// kind byte (+0x2C8) is not 0, or the category byte is not readable. That
+/// trio is what
+/// [`Kind::Catchable`] means, so the survey still lists every actor this
+/// returns `Some` for, whichever class comes back.
+///
+/// The class is what decides whether the plugin takes it, and it comes from
+/// `desert_core::creature::catch_class` so that Desert Gatherer's catch-count
+/// hook cannot disagree about what a fish is. The same surveys that produced
+/// those lists also showed, all reading `type=06 status=00/00` and so all
+/// `Kind::Catchable`:
+///
+/// - `cat=20` actors 9-25 m *above* the player (y 543-559 against the
+///   player's 535): birds in flight, never caught by hand.
+/// - `cat=2C`, `cat=44`, `cat=65` at ground and water level: unknown species,
+///   never caught by hand.
+///
+/// The type byte alone is therefore not enough, and the category byte alone
+/// is not either (type-05 characters at 37 m read `cat=80`, `8C` and `90`):
+/// both gates are needed. Nor does the type byte say what a creature *is*:
+/// type 3 carries the NPCs that read `cat=33`, `66`, `71` and `21` **and**
+/// the Firefly Colony, which reads the insect class `cat=80` and is caught by
+/// hand with the same event as every other insect, which is why `creature`
+/// holds a list of types rather than a single value. See
+/// `docs/reference-internals.md` section 15.5.
+pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
+    if !creature::is_catchable_type(actor) {
+        return None;
+    }
+    if !status_bytes(m, actor).is_some_and(|s| s.kind == 0) {
+        return None;
+    }
+    let cat = interaction_category(m, actor)?;
+    Some(Catchable::of_category(cat))
+}
+
+/// The interaction category byte the game's own interaction handler switches
+/// on (`FUN_1429DB730`, build 25116796: `*(status + 0x5A)`), read off
+/// `ClientStatusActorComponent`. Diagnostic only for now; it is printed in
+/// the survey so the catch rule above can be sharpened from real logs.
+pub const STATUS_CATEGORY_OFF: usize = 0x5A;
+
+pub fn interaction_category(m: &MainModule, actor: usize) -> Option<u8> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    let (off, _) = component_names(m, actor)
+        .into_iter()
+        .find(|(_, n)| n.contains("ClientStatusActorComponent"))?;
+    let comp = safe::read_ptr(sub + off)?;
+    safe::read(comp + STATUS_CATEGORY_OFF)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// What the *shared* class bytes are, and that no other byte maps to one,
+    /// is asserted in `desert_core::creature` next to the lists themselves.
+    /// What this file owes is the other half of the rule: a category byte the
+    /// core does not recognise must come back as `Unknown`, never as a class,
+    /// because `game::nearest_gather` targets `Known` and only reports
+    /// `Unknown`. A creature we have never watched being caught is not taken.
+    #[test]
+    fn an_unrecognised_category_is_never_a_class() {
+        // 0x20 is the birds-in-flight class of section 15.5; the rest are the
+        // unidentified species the same surveys turned up, plus the ends.
+        for cat in [0x00, 0x20, 0x2C, 0x44, 0x65, 0xFF] {
+            assert_eq!(Catchable::of_category(cat), Catchable::Unknown(cat), "0x{cat:02X}");
+        }
+    }
+
+    #[test]
+    fn the_recorded_categories_carry_the_core_class_through() {
+        assert_eq!(Catchable::of_category(0x80), Catchable::Known(CatchClass::Bug));
+        assert_eq!(Catchable::of_category(0x23), Catchable::Known(CatchClass::Fish));
+        assert_eq!(Catchable::of_category(0x83), Catchable::Known(CatchClass::Fish));
+    }
 }

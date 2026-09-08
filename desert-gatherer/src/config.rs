@@ -5,15 +5,24 @@
 //! `desert_looter::config`: `parse` returns the config plus ready-to-log
 //! warnings, and a bad value never replaces the default.
 //!
-//! The four multiplier keys are the four independent gather families of
-//! `desert_core::collect::Family`, and they carry the vocabulary the DMM pack
-//! used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and Ore
-//! Nodes are separate internal families, and setting one does not touch the
-//! others.
+//! The four family multiplier keys are the four independent gather families
+//! of `desert_core::collect::Family`, and they carry the vocabulary the DMM
+//! pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and
+//! Ore Nodes are separate internal families, and setting one does not touch
+//! the others.
+//!
+//! `Bugs` and `Fish` are a different lever entirely. Creatures caught by hand
+//! are not gimmick records, so there is nothing in a table to multiply; the
+//! count is an immediate in the game's code (`docs/reference-internals.md`
+//! section 17) and the plugin patches it. They share the multiplier range and
+//! the parsing of the family keys, and nothing else - hence
+//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than a
+//! fifth and sixth `Family`.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use desert_core::collect::Family;
+use desert_core::creature::CatchClass;
 use desert_core::ini::{self, Line};
 use desert_core::schema::{Field, Kind, Section};
 
@@ -43,6 +52,13 @@ pub struct Config {
     /// Yield multiplier for `Family::Ore` (`collect_ore`: `ore_*` deposits,
     /// sulfur stone, collectible stalactites). Separate from Mining.
     pub ore: u32,
+    /// Count multiplier for insects caught by hand
+    /// (`desert_core::creature::CatchClass::Bug`). A code patch, not a table
+    /// edit: see the module docs.
+    pub bugs: u32,
+    /// Count multiplier for fish caught by hand
+    /// (`desert_core::creature::CatchClass::Fish`). Same patch as `bugs`.
+    pub fish: u32,
 }
 
 impl Default for Config {
@@ -55,6 +71,8 @@ impl Default for Config {
             logging: 1,
             mining: 1,
             ore: 1,
+            bugs: 1,
+            fish: 1,
         }
     }
 }
@@ -71,7 +89,20 @@ impl Config {
         }
     }
 
-    /// True if no family is multiplied, i.e. the hook would never write.
+    /// The configured multiplier for a creature caught by hand. Deliberately
+    /// separate from [`Config::multiplier`]: bugs and fish are not gather
+    /// families, they are not in `desert_core::collect`, and they are applied
+    /// by a code patch on the catch count rather than by editing a record.
+    pub fn catch_multiplier(&self, class: CatchClass) -> u32 {
+        match class {
+            CatchClass::Bug => self.bugs,
+            CatchClass::Fish => self.fish,
+        }
+    }
+
+    /// True if no gather family is multiplied, i.e. the record-loader hook
+    /// would never write. Says nothing about `Bugs`/`Fish`, which are not
+    /// families and never touch a record.
     pub fn all_vanilla(&self) -> bool {
         self.foraging <= 1 && self.logging <= 1 && self.mining <= 1 && self.ore <= 1
     }
@@ -99,6 +130,8 @@ pub struct LiveConfig {
     logging: AtomicU32,
     mining: AtomicU32,
     ore: AtomicU32,
+    bugs: AtomicU32,
+    fish: AtomicU32,
 }
 
 impl LiveConfig {
@@ -113,6 +146,8 @@ impl LiveConfig {
             logging: AtomicU32::new(1),
             mining: AtomicU32::new(1),
             ore: AtomicU32::new(1),
+            bugs: AtomicU32::new(1),
+            fish: AtomicU32::new(1),
         }
     }
 
@@ -127,6 +162,8 @@ impl LiveConfig {
         self.logging.store(cfg.logging, Ordering::Relaxed);
         self.mining.store(cfg.mining, Ordering::Relaxed);
         self.ore.store(cfg.ore, Ordering::Relaxed);
+        self.bugs.store(cfg.bugs, Ordering::Relaxed);
+        self.fish.store(cfg.fish, Ordering::Relaxed);
     }
 
     /// Snapshot the live values as a plain `Config`, e.g. for a log line.
@@ -139,6 +176,8 @@ impl LiveConfig {
             logging: self.logging.load(Ordering::Relaxed),
             mining: self.mining.load(Ordering::Relaxed),
             ore: self.ore.load(Ordering::Relaxed),
+            bugs: self.bugs.load(Ordering::Relaxed),
+            fish: self.fish.load(Ordering::Relaxed),
         }
     }
 
@@ -166,6 +205,17 @@ impl LiveConfig {
             Family::Logging => self.logging.load(Ordering::Relaxed),
             Family::Mining => self.mining.load(Ordering::Relaxed),
             Family::Ore => self.ore.load(Ordering::Relaxed),
+        }
+    }
+
+    /// The live multiplier for a creature caught by hand. Read from the catch
+    /// hook on the game thread, once per catch: one atomic load, no
+    /// allocation, no lock, so an ini change lands on the very next catch
+    /// with no re-apply pass of any kind.
+    pub fn catch_multiplier(&self, class: CatchClass) -> u32 {
+        match class {
+            CatchClass::Bug => self.bugs.load(Ordering::Relaxed),
+            CatchClass::Fish => self.fish.load(Ordering::Relaxed),
         }
     }
 }
@@ -244,7 +294,8 @@ pub fn schema() -> Section {
         order: 20,
         notice: Some(
             "Applied to the gather records the game has already loaded, so a change here takes \
-             effect on the next gather."
+             effect on the next gather. Bugs and Fish are read as the creature is caught, so \
+             they take effect on the next catch."
                 .to_string(),
         ),
         presets_label: None,
@@ -278,6 +329,11 @@ pub fn schema() -> Section {
                 "Ore",
                 "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining. 16 records.",
             ),
+            mult(
+                "Bugs",
+                "Insects caught by hand. One code patch on the catch count, not a table edit.",
+            ),
+            mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
             Field {
                 heading: Some("Diagnostics:".to_string()),
                 ..f(
@@ -308,11 +364,13 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "enabled" => cfg.enabled = ini::parse_bool(v),
             "dryrun" => cfg.dry_run = ini::parse_bool(v),
             "debug" => cfg.debug = ini::parse_bool(v),
-            "foraging" | "logging" | "mining" | "ore" => {
+            "foraging" | "logging" | "mining" | "ore" | "bugs" | "fish" => {
                 let slot: &mut u32 = match k.to_ascii_lowercase().as_str() {
                     "foraging" => &mut cfg.foraging,
                     "logging" => &mut cfg.logging,
                     "mining" => &mut cfg.mining,
+                    "bugs" => &mut cfg.bugs,
+                    "fish" => &mut cfg.fish,
                     _ => &mut cfg.ore,
                 };
                 match v.parse::<u32>() {
@@ -342,13 +400,16 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert_eq!(c.multiplier(f), 1);
         }
+        for k in [CatchClass::Bug, CatchClass::Fish] {
+            assert_eq!(c.catch_multiplier(k), 1);
+        }
     }
 
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
             "; comment\n[DesertGatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
-             Foraging=10\nLogging=2\nMining=5\nOre=100\n",
+             Foraging=10\nLogging=2\nMining=5\nOre=100\nBugs=3\nFish=7\n",
         );
         assert!(c.enabled);
         assert!(c.dry_run);
@@ -357,8 +418,30 @@ mod tests {
         assert_eq!(c.multiplier(Family::Logging), 2);
         assert_eq!(c.multiplier(Family::Mining), 5);
         assert_eq!(c.multiplier(Family::Ore), 100);
+        assert_eq!(c.catch_multiplier(CatchClass::Bug), 3);
+        assert_eq!(c.catch_multiplier(CatchClass::Fish), 7);
         assert!(!c.all_vanilla());
         assert!(w.is_empty(), "{w:?}");
+    }
+
+    #[test]
+    fn bugs_and_fish_parse_like_the_family_keys() {
+        let d = Config::default();
+        // Same case-insensitivity, same range, same "keep the default and
+        // warn" on a bad value as Foraging..Ore.
+        let (c, w) = parse("BUGS=2\nfIsH=100\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((c.bugs, c.fish), (2, MULT_MAX));
+
+        let (c, w) = parse("Bugs=0\nFish=101\n");
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert_eq!((c.bugs, c.fish), (d.bugs, d.fish));
+
+        // They are not gather families, so they never make `all_vanilla`
+        // false: the record-loader hook has nothing to do for them.
+        let (c, w) = parse("Bugs=10\nFish=10\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
     }
 
     #[test]
@@ -409,13 +492,17 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert_eq!(live.multiplier(f), 1);
         }
+        for k in [CatchClass::Bug, CatchClass::Fish] {
+            assert_eq!(live.catch_multiplier(k), 1);
+        }
     }
 
     #[test]
     fn live_config_publish_round_trips() {
         let live = LiveConfig::new();
         let (cfg, w) = parse(
-            "Enabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\nOre=100\n",
+            "Enabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\nOre=100\n\
+             Bugs=4\nFish=9\n",
         );
         assert!(w.is_empty(), "{w:?}");
         live.publish(&cfg);
@@ -427,6 +514,8 @@ mod tests {
         assert_eq!(live.multiplier(Family::Logging), 2);
         assert_eq!(live.multiplier(Family::Mining), 5);
         assert_eq!(live.multiplier(Family::Ore), 100);
+        assert_eq!(live.catch_multiplier(CatchClass::Bug), 4);
+        assert_eq!(live.catch_multiplier(CatchClass::Fish), 9);
     }
 
     #[test]
@@ -494,7 +583,7 @@ mod tests {
     #[test]
     fn schema_ranges_are_the_ones_parse_enforces() {
         let s = schema();
-        for key in ["Foraging", "Logging", "Mining", "Ore"] {
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish"] {
             match s.field(key).map(|f| f.kind.clone()) {
                 Some(Kind::Int { min, max, default, slider, .. }) => {
                     assert_eq!(min, i64::from(MULT_MIN), "{key}");
@@ -534,6 +623,31 @@ mod tests {
         let (c, w) = parse("Debug=1\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug);
+    }
+
+    #[test]
+    fn bugs_and_fish_are_the_last_two_yield_multipliers() {
+        let s = schema();
+        let keys: Vec<&str> = s.fields.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec!["Enabled", "DryRun", "Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish", "Debug"]
+        );
+        // Under the same heading as the four families: the menu shows one
+        // list of multipliers, not two.
+        for key in ["Bugs", "Fish"] {
+            let f = s.field(key).unwrap_or_else(|| panic!("the menu must offer {key}"));
+            assert_eq!(f.heading, None, "{key} continues the Yield multipliers: group");
+            assert!(!f.same_line, "{key}");
+        }
+        assert_eq!(
+            s.field("Foraging").and_then(|f| f.heading.clone()).as_deref(),
+            Some("Yield multipliers:")
+        );
+        // The notice has to say when a catch multiplier lands, because it is
+        // not the "next gather" the rest of the section talks about.
+        let notice = s.notice.clone().unwrap_or_default();
+        assert!(notice.contains("next catch"), "{notice}");
     }
 
     /// Prints the rendered schema. `cargo test -- --ignored --nocapture

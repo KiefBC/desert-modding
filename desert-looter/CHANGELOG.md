@@ -6,10 +6,99 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
-Game build 25116796. In-game verification of the changes below is pending.
+Game build 25116796. In-game verification of the changes below is pending except where an
+entry says otherwise.
 
 ### Added
 
+- **Catches insects and fish.** Auto mode and the gather key now also target
+  the small creatures the game lets you catch by hand, inside the same
+  `GatherRange`. A catch is not a pickup: it is the game's own
+  `TrocTrPushCharacterToInventoryOnceTimer` event with an 8-byte payload,
+  forged byte for byte from catches recorded live with `KeyRecord` (F7) on
+  build 25116796. Fish use the identical event and payload; nothing about the
+  send differs between the two. The steal check runs for a catch exactly as it
+  does for a node or a ground item, so a creature the game counts as someone
+  else's is refused and remembered. New keys `GatherBugs` and `GatherFish`,
+  both default `1`, each switching its own kind off. Both are in Desert
+  Overlay's menu as *Catch insects* and *Catch fish*, and no preset button
+  touches either.
+
+  **Only creatures of a class seen caught by hand are targeted.** Which kind
+  a creature is comes from the interaction-category byte on its own status
+  component (`ClientStatusActorComponent+0x5A`), which turns out to be a
+  species class rather than per-actor noise: insects read `0x80` (six
+  catches, four item ids), fish read `0x23` and `0x83` (four catches, item
+  ids 29817, 29805 and 29804). Anything else is skipped, and says so once per
+  class per session:
+
+  ```text
+  [gather] catchable creature cat=2C at 8 m is not a known bug/fish class; skipped (catch one by hand with F7 recording to add it)
+  ```
+
+  This replaces the first cut, which took any actor with type byte 6 and
+  status kind 0. That rule would have grabbed birds in flight - lake surveys
+  found them 9-25 m overhead reading `cat=20`, passing the type-and-status
+  test perfectly - along with three unidentified ground and water species
+  (`cat=2C`, `44`, `65`). The type byte still gates, because the class byte
+  alone does not: type-05 characters read `cat=80`, `8C` and `90`.
+
+  What to expect in the log:
+
+  ```text
+  [event] TrocTrPushCharacterToInventoryOnceTimer id=2048 payload=8 dispatch=1 (as expected)
+  [gather] auto: bug cat=80 (Bug) eid=B01002C3 at 3.4 m -> request #7 parked
+  [event] enqueued PushCharacterToInventory (Catch) for eid=B01002C3: event 0x...
+  ```
+
+  If the descriptor is not found the line reads
+  `[event] TrocTrPushCharacterToInventoryOnceTimer: ...; bugs will not be caught`
+  and everything else carries on unchanged.
+
+  **Insects verified in game on build 25116796 (2026-09-08):** the first field
+  session caught six insects in a row with no false positives - no non-insect
+  was ever targeted - and all six read interaction category `cat=80`.
+  **Fish verified in game the same day:** with `GatherFish=1` and every other
+  switch off, auto mode caught **seven fish in a row** at 3.6-5.8 m, each one
+  running the full path - `[gather] auto: fish cat=23 (Fish) eid=...`, then
+  `[event] enqueued PushCharacterToInventory (Catch)`, then `[recv] item 29805
+  x1` for the first and `[recv] item 29804 x1` for the other six, then
+  `[gather] fish cat=23 eid=... gone after 0.1 s`. No false targets, no
+  refusals and no `ownership unknown`. All seven read class `0x23`; `0x83` is
+  on the fish list from hand catches, but the plugin has not yet been watched
+  taking one. Two unknown classes were in range at 5 m, `cat=57` and `cat=2C`,
+  and both were skipped with the once-per-class line exactly as designed.
+
+  **The class lists grow from field logs, not from guesses.** A creature is
+  recognised structurally, with no name lookup: type byte 6, status kind byte
+  0, and a class byte on one of the two lists above. Only classes that have
+  been caught by hand and logged are on those lists, so the failure mode is
+  passing something over, never grabbing it. The survey (F11) prints `type=`,
+  `cat=` and `status=` for every character-shaped actor, and the skip line
+  names the class directly, which is all the evidence a new entry needs.
+  The reference mod's own test for this (`ClientStatusActorComponent+0x273 == 6`)
+  reads 0 on this build for a confirmed insect and is not used.
+
+  **Type-3 creatures with a known class are included too (2026-09-08).** The
+  Firefly Colony is caught by hand with the same event as every other insect
+  but surveys as `type=03 cat=80`, where every creature caught before it read
+  `type=06`; it was classified as a plain `Character` and never targeted. The
+  type gate is now the set {3, 6} rather than the single value 6, so a colony
+  is `Catchable` and is taken under `GatherBugs` like any other insect. The
+  class byte still decides everything - type 3 is mostly NPCs (`cat=21`, `33`,
+  `66`, `71`), and none of those is a known catch class, so nothing about
+  which creatures are taken changes apart from the colony itself. Note that a
+  colony grants a second, variable-count item by a separate path; both items
+  do follow Desert Gatherer's `Bugs` multiplier, the second one with variance
+  - see Desert Gatherer's changelog for what to expect from it.
+
+  The pre-check in front of the game's own steal check moved with it. It used
+  to run only for type bytes 4, 5 and 6, since those are the branch that reads
+  a target's owner record; the status-component and transform reads that
+  follow that branch happen for **every** non-gimmick type, so a type-3
+  creature was reaching them unchecked. The owner-record check is still asked
+  only of types 4-6, and the other two are now asked of everything except
+  gimmicks, whose path is untouched.
 - `Debug`, `LogReceived` and `BagTab` are now in Desert Overlay's menu, grouped at the bottom of
   the Desert Looter section under a `Diagnostics:` heading, and so are also present in a
   plugin-generated ini. `Debug` and `LogReceived` are checkboxes; `BagTab` is a number input over

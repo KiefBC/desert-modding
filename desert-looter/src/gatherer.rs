@@ -192,7 +192,7 @@ impl Gatherer {
         // Full: can it stack?
         let verdict: Result<String, String> = (|| {
             if target.mode != crate::payload::PickupMode::Gather {
-                return Err("ground items need a free slot (their contents are per instance)".into());
+                return Err("ground items and creatures need a free slot".into());
             }
             let yields = self.node_yields(m, target)?;
             let slots = actors::tab_slots(&bag).ok_or("bag slots unreadable")?;
@@ -267,8 +267,17 @@ impl Gatherer {
             // than index it: a miss just ends the review pass.
             let Some(d) = self.done.get(i) else { break };
             let age = d.sent.elapsed();
+            // The same candidate set `nearest_gather` builds: a caught insect
+            // leaves the world (or stops classifying as `Catchable`), which is
+            // what "gone after" measures.
             let still_gather = sc.actor(d.eid).is_some_and(|a| {
-                matches!(actors::classify(m, a, sc.player), actors::Kind::Gather | actors::Kind::Unarmed | actors::Kind::Item)
+                matches!(
+                    actors::classify(m, a, sc.player),
+                    actors::Kind::Gather
+                        | actors::Kind::Unarmed
+                        | actors::Kind::Item
+                        | actors::Kind::Catchable
+                )
             });
             if !still_gather {
                 self.gathered += 1;

@@ -15,6 +15,17 @@ nothing is simulated and no input is faked. Written in Rust, shipped as one
   mined outright, without a swing.
 - **Picks up plain ground items** such as ore chunks. Merchant goods, quest
   items and props are never touched.
+- **Catches insects and fish** within the same range, using the game's own
+  "catch" event rather than a pickup. Fish within reach at the water's edge
+  go the same way, with the very same event as an insect. The steal check
+  applies to both, so a creature the game counts as someone else's is left alone.
+  `GatherBugs=0` and `GatherFish=0` turn them off separately.
+- **Leaves alone what it does not recognise.** Insects and fish are told
+  apart from birds in flight and other wildlife by a class byte on the
+  creature itself, and only the classes that have actually been caught by
+  hand are ever targeted. Anything else is passed over and reported in the
+  log once per class, so an unrecognised species shows up as a line to add
+  rather than as something grabbed by mistake.
 - **Asks the game about stealing first.** Before every pickup, node or ground
   item alike, it asks the game whether taking that thing would count as
   stealing, and skips it if so. The fruit trees and food plants inside a
@@ -23,8 +34,8 @@ nothing is simulated and no input is faked. Written in Rust, shipped as one
 - **Respects the bag.** Nothing is sent when the bag is full unless every
   item the node can give would stack onto a stack you already carry, read
   from the node's own record. Repeated refusals switch auto mode off.
-- **Leaves alone**: standing trees, log chunks, creatures, furniture and, by
-  default, dropped weapons and armour.
+- **Leaves alone**: standing trees, log chunks, animals and NPCs, furniture
+  and, by default, dropped weapons and armour.
 
 ## Keys
 
@@ -139,6 +150,8 @@ start shows eight `[sig]` lines ending in `= +0x...`, two `[hook]` lines, the
 | `GatherLogging` | 1 | 0 = pass over firewood cut from felled trees |
 | `GatherMining` | 1 | 0 = pass over the `collect_mine` family: rocks, veins, stalactites |
 | `GatherOre` | 1 | 0 = pass over the `collect_ore` family: ore deposits and sulfur stone (separate from Mining; set both to gather all of them) |
+| `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
+| `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |

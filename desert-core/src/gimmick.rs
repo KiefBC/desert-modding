@@ -76,7 +76,7 @@ pub const ITEM_AT: usize = 5;
 /// Offset of the block's second copy of the item id, the last four bytes of
 /// the block. The signature demands the two copies agree, which is what makes
 /// either of them usable as an identity check against a parsed block object
-/// later (`docs/reference-internals.md` section 12: the parsed entry carries
+/// later (`docs/reference-internals.md` section 16: the parsed entry carries
 /// this one at `entry+0x08` and the item id at `block+0x6c`).
 pub const ITEM_TAIL_AT: usize = 64;
 
