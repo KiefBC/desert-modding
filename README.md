@@ -1,3 +1,5 @@
+<img src="assets/logo.png" alt="Desert Tooling goblin" width="96" align="left">
+
 # Crimson Desert mods
 
 Cargo workspace for my [Crimson Desert
@@ -5,6 +7,14 @@ Enhanced](https://store.steampowered.com/) mods (Steam build 25116796). They
 load as `.asi` plugins through [Ultimate ASI
 Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (`winmm.dll` in the
 game's `bin64`).
+
+<br clear="left">
+
+<p align="center">
+  <img src="assets/readme_image.webp" alt="The Desert Tooling in-game menu: a Desert Looter section with presets, gather families and ranges, and a Desert Gatherer section with the four yield multipliers" width="560">
+</p>
+
+<p align="center"><em>The in-game menu (Desert Overlay, <code>Insert</code>): every setting of both mods, saved to the ini files as you change them.</em></p>
 
 | Mod | Version | What it does |
 | --- | --- | --- |
