@@ -47,9 +47,19 @@ stdlib-only so CI can run it before the Nix shell exists.
 
 ### `sync-versions.py` (`just sync-versions`, `just check-versions`, and CI)
 Keeps the version numbers in `README.md`, `VERSIONING.md` and each shipping
-crate's `README.md` in step with the crate `Cargo.toml` files. `--check` is
-read-only and is what CI runs; without it the script rewrites the docs in
+crate's `README.md` in step with the crate `Cargo.toml` files, and the twelve
+`desert-gatherer-dmm/*.json` module files in step with `dmm_pack.json` (the DMM
+pack is not a crate and has its own `x.y` source of truth; each module repeats
+it twice, once at the top level and once inside `modinfo`). `--check` is
+read-only and is what CI runs; without it the script rewrites those files in
 place. Stdlib-only, for the same reason as `release-notes.py`.
+
+It also **checks** one thing it cannot write: that each shipping crate's
+`CHANGELOG.md` has a `## [<version>]` heading for the version in its
+`Cargo.toml`. That one fails in both modes, since `just sync-versions` must not
+exit 0 on a bump whose entry nobody has written yet. Without it, a missing entry
+goes unnoticed until the release workflow builds the notes — which is after the
+tag has been pushed, and a tag is the release.
 
 ### `nexus-target.py` + `nexus-targets.json` (release workflow only)
 Maps a tag to the Nexus Mods file it updates, and emits `key=value` lines for

@@ -18,9 +18,9 @@ game's `bin64`).
 
 | Mod | Version | What it does |
 | --- | --- | --- |
-| [desert-looter](desert-looter) | 0.1.1 | Auto-loot for gathering nodes |
-| [desert-gatherer](desert-gatherer) | 0.1.1 | Gathering yield multiplier |
-| [desert-overlay](desert-overlay) | 0.1.0 | In-game settings menu for the other two |
+| [desert-looter](desert-looter) | 0.2.0 | Auto-loot for gathering nodes |
+| [desert-gatherer](desert-gatherer) | 0.2.0 | Gathering yield multiplier |
+| [desert-overlay](desert-overlay) | 0.2.0 | In-game settings menu for the other two |
 
 Also here: [`desert-core/`](desert-core), the shared library the plugins link
 (logging, safe memory reads, hooks, PE/pattern scanning), and
@@ -34,9 +34,9 @@ Grab the zip from the mod's latest release, or build them yourself, then copy
 the `.asi` and its `.ini` into the game's `bin64`. Each mod is tagged and
 released on its own, so each has its own release page:
 
-- **Desert Looter**: [desert-looter-v0.1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-looter-v0.1.1)
-- **Desert Gatherer**: [desert-gatherer-v0.1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-v0.1.1)
-- **Desert Overlay**: [desert-overlay-v0.1.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-overlay-v0.1.0)
+- **Desert Looter**: [desert-looter-v0.2.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-looter-v0.2.0)
+- **Desert Gatherer**: [desert-gatherer-v0.2.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-v0.2.0)
+- **Desert Overlay**: [desert-overlay-v0.2.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-overlay-v0.2.0)
 - **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.1)
 
 Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).

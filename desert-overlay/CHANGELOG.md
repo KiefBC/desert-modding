@@ -4,9 +4,17 @@ All notable changes to Desert Overlay. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-08
 
-Game build 25116796. In-game verification of the changes below is pending.
+Game build 25116796. **The first published release.** 0.1.0 was prepared and verified but never
+tagged, so this is the version that reaches players first. Its entry in
+[the changelog](CHANGELOG.md) is where the menu itself, the fonts, the themes, the HDR handling
+and the vendored hudhook are described; the notes below cover only what changed after it.
+
+Verified in game on 2026-09-08: the menu drew and took input, the cursor hooks installed
+(`[cursor] ClipCursor and SetCursorPos are hooked`), both `DesertGatherer.overlay.ini` and
+`DesertLooter.overlay.ini` were discovered and drawn as sections, and the session logged no
+warnings.
 
 ### Changed
 

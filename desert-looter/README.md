@@ -1,7 +1,13 @@
 # Desert Looter
 
-**Version 0.1.1**, for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.2.0**, for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
+
+**Maturity:** verified in game on build 25116796. **It has not yet come through a game
+update.** Everything it needs is found by scanning the running image for content — eight
+byte signatures, an RTTI vtable, and both info-manager slots — rather than by hard-coded
+address, so an update has a fair chance of being survived with no more than a patch. That
+is a design claim, though, not a track record; the first update is what will test it.
 
 A gathering auto-loot plugin. It collects plants, ore, stone and wood around
 you by sending the game the same pickup event it sends when you press E, so

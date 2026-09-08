@@ -5,9 +5,9 @@ version: a single commit can bump one and leave the others exactly where they we
 
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
-| `desert-looter` | 0.1.1 | `DesertLooter.asi` | `desert-looter-v0.1.1` |
-| `desert-gatherer` | 0.1.1 | `DesertGatherer.asi` | `desert-gatherer-v0.1.1` |
-| `desert-overlay` | 0.1.0 | `DesertOverlay.asi` | `desert-overlay-v0.1.0` |
+| `desert-looter` | 0.2.0 | `DesertLooter.asi` | `desert-looter-v0.2.0` |
+| `desert-gatherer` | 0.2.0 | `DesertGatherer.asi` | `desert-gatherer-v0.2.0` |
+| `desert-overlay` | 0.2.0 | `DesertOverlay.asi` | `desert-overlay-v0.2.0` |
 | `desert-core` | 0.5.0 | nothing | never |
 
 ## What the version actually describes
@@ -62,31 +62,45 @@ put until the next one is real.
 | Minor | Earned when |
 | --- | --- |
 | 0.1 | it works in game for its core purpose, on one build |
-| 0.2 | it survived a game update on content-based resolution, a PATCH at most |
-| 0.3 | no hard-coded addresses left |
-| 0.4 | the feature set is decided and complete |
-| 0.5+ | stabilising: no known bugs, docs done, only fixes landing |
-| 1.0 | two game updates survived with no code changes, known-issues list empty |
+| 0.2 | no hard-coded addresses left: everything it needs, it finds by content |
+| 0.3 | the feature set is decided and complete |
+| 0.4+ | stabilising: no known bugs, docs done, only fixes landing |
+| 1.0 | the interface is settled and worth defending, known-issues list empty |
 
-Both sit at **0.1** today, for the same reason: each does the thing it exists to do, and each has
-been run in the game on build 25116796. That's the whole of the evidence. Neither has seen a game
-update, so neither has anything to show for 0.2 yet.
+Every rung is something this project can go and do. That is deliberate, and it is a change: the
+ladder used to gate 0.2 on *surviving a game update*, and 1.0 on surviving two.
 
-What they need for **0.2** is simply the next build. When it lands, re-target and re-verify. If
-the signatures and content lookups carry over on a PATCH (new offsets, no new keys, no behaviour
-change), the one that survived earns it. If a build forces a rewrite of how something gets found,
-it wasn't earned; fix it and stay at 0.1.
+### Why the game-update rung went away
 
-After that, **0.3** wants the last hard-coded address gone. Gatherer already resolves everything by
-content, so 0.3 is Looter's alone to earn: it still carries `GIMMICK_INFO_SLOT` and the other RVA
-slots in [`desert-looter/src/tables.rs`](desert-looter/src/tables.rs). **0.4** wants the feature set
-settled, which for Looter means creature catching decided: shipped, or ruled out on the record.
+It measured the game's behaviour, not the mod's. Crimson Desert updates often, and the rule cut
+badly in both directions. A quiet build that changed nothing near us would have handed out a MINOR
+for no work at all. A build that moved things would have meant real work — and the rule's own words
+were "if a build forces a rewrite of how something gets found, it wasn't earned; fix it and stay at
+0.1", so the harder the update hit, the longer the version stayed pinned. Doing more work lowered
+the number. That is backwards.
 
-They climb independently. That they're level today is coincidence, not a rule.
+It also put this document at odds with itself. "What bumps what" above says a new ini key defaulted
+to today's behaviour is a MINOR. Desert Looter added six of them and could not bump, because a
+patch note somewhere else had not landed. Two rules, one number, opposite answers.
 
-desert-overlay earned its 0.1 on 2026-09-07 on build 25116796: the menu drew, took input, wrote
-`DesertLooter.ini`, and Desert Looter reloaded the change within a second. It has no hard-coded
-addresses to resolve at all, so its 0.2 and 0.3 come down to nothing but surviving a game update.
+None of that means update-survival is uninteresting — it is the single most useful thing a player
+can know about an ASI mod. It just isn't a version digit. It goes in each mod's README and on its
+Nexus page as a plain statement of fact: which build it is verified on, and whether it has yet come
+through an update. That says more than a `0.2` ever did, and it stays true whatever the version is.
+
+### Where each one sits
+
+They climb independently; that two of them are level is coincidence, not a rule.
+
+All three clear **0.2** as of 2026-09-08. Desert Gatherer always did — it reaches the record loader
+through the accessor that names `gimmickinfo`, and the catch site by signature. Desert Overlay has
+no game addresses to resolve at all. Desert Looter was the last holdout, carrying `ITEM_INFO_SLOT`
+and `GIMMICK_INFO_SLOT` as bare RVAs in [`desert-looter/src/tables.rs`](desert-looter/src/tables.rs);
+both are now resolved by content through `desert_core::gimmick`, and there is no bare image address
+left in `desert-looter/src/`.
+
+**0.3** wants the feature set settled. For Desert Looter the open question was creature catching,
+and it is now decided by shipping: bugs and fish are caught, under `GatherBugs` and `GatherFish`.
 
 ## The version isn't the game build
 
@@ -129,8 +143,8 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
    `<crate>-v<version>` and push the tag:
    ```bash
-   git tag desert-looter-v0.1.1
-   git push origin desert-looter-v0.1.1
+   git tag desert-looter-v0.2.0
+   git push origin desert-looter-v0.2.0
    ```
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks

@@ -4,9 +4,13 @@ All notable changes to Desert Gatherer. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-08
 
-Game build 25116796. The live re-apply was verified in game on 2026-09-08: changing `Foraging`
+Game build 25116796. The catch multipliers were verified in game on 2026-09-08 with `Bugs=10` and
+`Fish=10`: the record-loader and catch hooks both installed, and the session logged 14
+`[catch] bug class=80 -> x10` and 12 `[catch] fish class=23 -> x10` lines with no warnings.
+
+The live re-apply was verified in game on 2026-09-08: changing `Foraging`
 from the overlay while playing logged `[live] re-applied ... 82 records rewritten, 193 unchanged,
 0 skipped; 644 scalars written` within 150 ms of the ini change, the next gather paid out at the
 new rate, and setting it back to 1 restored vanilla the same way.

@@ -1,6 +1,6 @@
 [package]
 name = "desert-overlay"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desert Overlay - in-game settings menu for the Crimson Desert mods (ASI plugin)"
 edition.workspace = true
 license.workspace = true

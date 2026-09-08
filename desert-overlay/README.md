@@ -1,7 +1,13 @@
 # Desert Overlay
 
-**Version 0.1.0**, for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.2.0**, for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
+
+**Maturity:** verified in game on build 25116796. **It has not yet come through a game
+update**, though it has the least to lose from one: it reads and writes ini files and never
+looks up a game address at all. What it depends on is the graphics layer — hooking the
+game's DirectX 12 present — so a change to how the game renders is the plausible way for it
+to break, not a change to the game's code layout.
 
 An in-game settings menu for Desert Looter and Desert Gatherer. Press **Insert**
 and a window appears over the game with the two mods' settings in it as

@@ -4,10 +4,12 @@ All notable changes to Desert Looter. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
-## [Unreleased]
+## [0.2.0] - 2026-09-08
 
-Game build 25116796. In-game verification of the changes below is pending except where an
-entry says otherwise.
+Game build 25116796. Verified in game on 2026-09-08: all eight signatures resolved
+(`[sig] 8 found, 0 missing, 1 actor-manager vtable(s)`), the two info-manager slots resolved by
+content, `DesertLooter.overlay.ini` was current, insects and fish were caught by hand and by auto
+mode, and the session logged no warnings.
 
 ### Added
 

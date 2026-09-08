@@ -1,7 +1,14 @@
 # Desert Gatherer
 
-**Version 0.1.1**, for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.2.0**, for Crimson Desert Enhanced, Steam build **25116796**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
+
+**Maturity:** verified in game on build 25116796. **It has not yet come through a game
+update.** The yield multipliers are found by content and should survive one with no more
+than a patch. The `Bugs` and `Fish` multipliers are the exception: they are a patch to the
+game's code at a scanned site, the only one in the project, so they are the first thing an
+update is likely to disable. If that happens they fail alone, with a `[catch]` line in the
+log saying so, and every other multiplier keeps working.
 
 A gathering yield multiplier, written in Rust and shipped as one `.asi` file.
 It replaces the DMM module pack of the same name: instead of patching the
