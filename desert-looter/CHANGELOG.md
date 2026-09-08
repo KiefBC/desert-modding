@@ -6,10 +6,48 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
-Game build 25116796. In-game verification of the changes below is pending.
+Game build 25116796. In-game verification of the changes below is pending except where an
+entry says otherwise.
 
 ### Added
 
+- **Catches insects.** Auto mode and the gather key now also target the small
+  creatures the game lets you catch by hand, inside the same `GatherRange`.
+  A catch is not a pickup: it is the game's own
+  `TrocTrPushCharacterToInventoryOnceTimer` event with an 8-byte payload,
+  forged byte for byte from three catches recorded live with `KeyRecord`
+  (F7) on build 25116796. The steal check runs for a catch exactly as it does
+  for a node or a ground item, so an insect the game counts as someone else's
+  is refused and remembered. New key `GatherBugs`, default `1`; set it to `0`
+  to switch insects off. It is also in Desert Overlay's menu as
+  *Catch insects*, and no preset button touches it.
+
+  What to expect in the log:
+
+  ```text
+  [event] TrocTrPushCharacterToInventoryOnceTimer id=2048 payload=8 dispatch=1 (as expected)
+  [gather] auto: bug type=06 cat=80 (Bug) eid=B01002C3 at 3.4 m -> request #7 parked
+  [event] enqueued PushCharacterToInventory (Catch) for eid=B01002C3: event 0x...
+  ```
+
+  If the descriptor is not found the line reads
+  `[event] TrocTrPushCharacterToInventoryOnceTimer: ...; bugs will not be caught`
+  and everything else carries on unchanged.
+
+  **Verified in game on build 25116796 (2026-09-08):** the first field session
+  caught six insects in a row with no false positives - no non-insect was ever
+  targeted - and all six read interaction category `cat=80`.
+
+  **The target rule is still a first cut.** An insect is recognised
+  structurally, with no name lookup: an actor that would otherwise be a
+  character, whose type byte is 6 and whose `ClientStatusActorComponent` kind
+  byte is 0. That is only what separated the caught insects from the NPCs,
+  horses and animals nearby, so it may over- or under-select on creatures those
+  sessions did not cover; it will be tightened from field logs, and `cat=80` is
+  the leading candidate. The survey (F11) prints `type=`, `cat=` and `status=`
+  for every character-shaped actor, which is the evidence that refinement needs.
+  The reference mod's own test for this (`ClientStatusActorComponent+0x273 == 6`)
+  reads 0 on this build for a confirmed insect and is not used.
 - `Debug`, `LogReceived` and `BagTab` are now in Desert Overlay's menu, grouped at the bottom of
   the Desert Looter section under a `Diagnostics:` heading, and so are also present in a
   plugin-generated ini. `Debug` and `LogReceived` are checkboxes; `BagTab` is a number input over

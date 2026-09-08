@@ -24,8 +24,11 @@ use crate::actors;
 use crate::module::MainModule;
 use crate::safe;
 
-pub use crate::payload::{PICKUP_DESCRIPTOR, PICKUP_ID_EXPECTED, PICKUP_PAYLOAD_SIZE};
-use crate::payload::{hex, pickup_payload, PickupMode};
+pub use crate::payload::{
+    CATCH_DESCRIPTOR, CATCH_ID_EXPECTED, CATCH_PAYLOAD_SIZE, PICKUP_DESCRIPTOR, PICKUP_ID_EXPECTED,
+    PICKUP_PAYLOAD_SIZE,
+};
+use crate::payload::{catch_payload, hex, pickup_payload, PickupMode};
 
 pub const MAX_DESCRIPTOR_ID: u32 = 0x1FFF;
 /// Event object size from the allocator (`FUN_1413A9790`: alloc(0x80, 0x10)).
@@ -192,6 +195,44 @@ fn mark_owned(eid: u32) {
     }
 }
 
+/// Everything `FUN_14251BA50`'s character branch dereferences without a null
+/// check, verified before we hand it a creature (section 14 and section 15 of
+/// `docs/reference-internals.md`). From its decompile, build 25116796:
+///
+/// ```text
+/// cVar5 = *(char *)(*(longlong *)(param_3 + 0x88) + 1);
+/// if ((cVar5 == 4) || ((byte)(cVar5 - 5U) < 2)) {                  // types 4, 5, 6
+///     lVar6 = *(longlong *)(*(longlong *)(param_3 + 0x68) + 0x118); // owner record
+///     if ((*(char *)(lVar6 + 0x2c) != '\0') ||
+///         (*(int *)(*(longlong *)(param_1 + 8) + 0x60) == *(int *)(lVar6 + 0x18))) { return false; }
+/// }
+/// // then, for every non-gimmick type:
+/// lVar6 = *(longlong *)(*(longlong *)(param_3 + 0x68) + 0x20);     // status component
+/// iVar1 = *(int *)(lVar6 + 0x300);  ...  FUN_1416f8b90(lVar6 + 0x2e8, param_3)
+/// ```
+///
+/// The owner record at `sub+0x118` is read straight through, and the status
+/// component is indexed out to `+0x300`/`+0x2E8`; the shared tail then reads
+/// the transform at `sub+0x1A0` out to `+0x4C8`/`+0x4D0`. Until `PickupMode::Catch`
+/// existed every target was a gimmick (type byte 7) and none of this ran. A
+/// null or unmapped one of them would fault on the game thread, which is a
+/// crash to desktop, so we check each before asking rather than after.
+fn creature_preflight(target: usize) -> Result<(), String> {
+    let sub = safe::read_ptr(target + 0x68).ok_or("creature has no sub-object at +0x68")?;
+    // `read_ptr` already rejects a null or unreadable slot; `readable` then
+    // covers the fields the branch indexes out to.
+    if safe::read_ptr(sub + 0x118).is_none_or(|owner| !safe::readable(owner, 0x30)) {
+        return Err("creature has no readable owner record at sub+0x118; not asking the steal check".into());
+    }
+    if safe::read_ptr(sub + 0x20).is_none_or(|status| !safe::readable(status, 0x340)) {
+        return Err("creature status component unreadable".into());
+    }
+    if safe::read_ptr(sub + 0x1A0).is_none_or(|tf| !safe::readable(tf, 0x4D8)) {
+        return Err("creature transform unreadable".into());
+    }
+    Ok(())
+}
+
 /// Ask the game whether picking `target` up would be stealing, exactly as
 /// its interaction code does (`FUN_1429DB730`): the acting actor is
 /// `*(*(player+0xA0)+0xD0)`, the first argument its component at
@@ -199,10 +240,21 @@ fn mark_owned(eid: u32) {
 /// Asked for every pickup, gather nodes as much as ground items: the game's
 /// handler makes this call for every interaction target with no category
 /// filter, and mode 7 has its own branch for gimmick actors.
+///
+/// A `Catch` request is the first target that is **not** a gimmick, and mode
+/// 7's character branch (type byte 4/5/6) dereferences the owner record, the
+/// status component and the transform with no null check of its own, so
+/// [`creature_preflight`] verifies all three first (section 15). Gimmick
+/// targets are unaffected: nothing about the type-7 path changed.
 /// Game thread only. `Err` means "could not ask": treated as owned.
 unsafe fn would_steal(api: &EventApi, player: usize, target: usize) -> Result<bool, String> {
     if api.steal_check == 0 || api.steal_ctx == 0 {
         return Err("steal check not resolved".into());
+    }
+    // Types 4, 5 and 6 are the character branch's own test (`cVar5 == 4 ||
+    // (byte)(cVar5 - 5) < 2`).
+    if matches!(actors::type_byte(target), Some(4..=6)) {
+        creature_preflight(target)?;
     }
     let link = safe::read_ptr(player + 0xA0).ok_or("player+0xA0 is null")?;
     let acting = safe::read_ptr(link + 0xD0).ok_or("acting actor is null")?;
@@ -229,6 +281,9 @@ pub fn set_module(m: MainModule) {
     let _ = MODULE.set(m);
 }
 static DESCRIPTOR: OnceLock<Descriptor> = OnceLock::new();
+/// `TrocTrPushCharacterToInventoryOnceTimer`, the catch event. Resolved
+/// separately and optional: gathering works without it.
+static CATCH_DESCRIPTOR_SLOT: OnceLock<Descriptor> = OnceLock::new();
 static PENDING: Mutex<Option<(PickupRequest, std::time::Instant)>> = Mutex::new(None);
 static PENDING_FLAG: AtomicBool = AtomicBool::new(false);
 static SWEEP_CALLS: AtomicU64 = AtomicU64::new(0);
@@ -245,6 +300,10 @@ pub fn api() -> Option<EventApi> {
 
 pub fn set_descriptor(d: Descriptor) {
     let _ = DESCRIPTOR.set(d);
+}
+
+pub fn set_catch_descriptor(d: Descriptor) {
+    let _ = CATCH_DESCRIPTOR_SLOT.set(d);
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +414,10 @@ pub fn descriptor() -> Option<&'static Descriptor> {
     DESCRIPTOR.get()
 }
 
+pub fn catch_descriptor() -> Option<&'static Descriptor> {
+    CATCH_DESCRIPTOR_SLOT.get()
+}
+
 pub fn sweep_calls() -> u64 {
     SWEEP_CALLS.load(Ordering::Relaxed)
 }
@@ -433,7 +496,11 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
                 if r.mode == PickupMode::Gather {
                     *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some((r.record, std::time::Instant::now()));
                 }
-                crate::log!("[event] enqueued PickUpItem ({:?}) for eid={:08X}: event 0x{ev:X}", r.mode, r.target_eid);
+                let what = match r.mode {
+                    PickupMode::Catch => "PushCharacterToInventory",
+                    PickupMode::Gather | PickupMode::Item => "PickUpItem",
+                };
+                crate::log!("[event] enqueued {what} ({:?}) for eid={:08X}: event 0x{ev:X}", r.mode, r.target_eid);
             }
             Err(e) => crate::log!("[event] NOT sent for eid={:08X}: {e}", r.target_eid),
         }
@@ -464,10 +531,21 @@ pub fn route_entry(queue: usize, route: u32) -> Result<Option<usize>, String> {
 /// Build and enqueue one gather event. Game thread only.
 unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     let api = API.get().ok_or("event api not resolved")?;
-    let desc = DESCRIPTOR.get().ok_or("descriptor not resolved")?;
+    // Two descriptors, two payload layouts: a catch is its own event, not a
+    // `PickUpItem` with a different mode byte (section 15).
+    let (desc, want) = match r.mode {
+        PickupMode::Catch => (
+            CATCH_DESCRIPTOR_SLOT.get().ok_or("catch descriptor not resolved")?,
+            CATCH_PAYLOAD_SIZE,
+        ),
+        PickupMode::Gather | PickupMode::Item => (
+            DESCRIPTOR.get().ok_or("descriptor not resolved")?,
+            PICKUP_PAYLOAD_SIZE,
+        ),
+    };
     let size = desc.payload_size as usize;
-    if size != PICKUP_PAYLOAD_SIZE {
-        return Err(format!("payload size {size} != {PICKUP_PAYLOAD_SIZE}; refusing"));
+    if size != want {
+        return Err(format!("payload size {size} != {want}; refusing"));
     }
     // Every request, gather nodes included: the game's own interaction handler
     // asks this for every target with no category filter (section 14).
@@ -534,15 +612,28 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
         && safe::write::<u64>(ev + 0x60, desc.ptr as u64)
         && safe::write::<u16>(ev + 0x68, desc.payload_size)
         && safe::write::<u8>(ev + 0x78, 1);
-    let payload = pickup_payload(desc.id, r.target_eid, r.mode);
-    let ok = ok && safe::write_into(buf, &payload);
+    let ok = ok
+        && match r.mode {
+            PickupMode::Catch => safe::write_into(buf, &catch_payload(desc.id, r.target_eid)),
+            PickupMode::Gather | PickupMode::Item => {
+                match pickup_payload(desc.id, r.target_eid, r.mode) {
+                    Some(p) => safe::write_into(buf, &p),
+                    // Unreachable: `pickup_payload` only refuses `Catch`,
+                    // which the arm above took. Treated as a write failure
+                    // rather than asserted, because this must never panic.
+                    None => false,
+                }
+            }
+        };
     if !ok {
         // The event is the game's memory now; leaking one 0x80-byte object
         // beats calling a destructor we have not verified.
         return Err(format!("writing event fields at 0x{ev:X} failed; event leaked"));
     }
     let mut hdr = [0u8; 0x50];
-    let mut back = [0u8; PICKUP_PAYLOAD_SIZE];
+    // Sized to this event's payload, not to the 13-byte one: reading 13 bytes
+    // out of an 8-byte buffer would log five bytes of somebody else's heap.
+    let mut back = vec![0u8; size];
     safe::read_into(ev + 0x30, &mut hdr);
     safe::read_into(buf, &mut back);
     crate::log!(

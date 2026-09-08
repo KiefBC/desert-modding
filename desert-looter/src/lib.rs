@@ -194,6 +194,25 @@ mod entry {
                     }
                     Err(e) => crate::log!("[event] {}: {e}; yields will not be learned", events::HANDLE_GAME_EVENT),
                 }
+                // The catch event is optional: without it insects are simply
+                // not caught, and gathering carries on exactly as before.
+                match events::find_descriptor(module, api, events::CATCH_DESCRIPTOR) {
+                    Ok(c) => {
+                        let note = if c.id == events::CATCH_ID_EXPECTED
+                            && c.payload_size as usize == events::CATCH_PAYLOAD_SIZE
+                        {
+                            "as expected"
+                        } else {
+                            "DIFFERS from the recorded 2048/8"
+                        };
+                        crate::log!(
+                            "[event] {} id={} payload={} dispatch={} ({note})",
+                            c.name, c.id, c.payload_size, c.dispatch
+                        );
+                        events::set_catch_descriptor(c);
+                    }
+                    Err(e) => crate::log!("[event] {}: {e}; bugs will not be caught", events::CATCH_DESCRIPTOR),
+                }
                 true
             }
             Err(e) => {
@@ -307,10 +326,10 @@ mod entry {
     /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
     fn ini_summary(cfg: &Config) -> String {
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherBugs={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_bugs as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

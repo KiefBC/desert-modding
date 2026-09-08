@@ -465,6 +465,9 @@ pub fn node_name(m: &MainModule, actor: usize) -> Option<String> {
 pub enum Kind {
     Player,
     Character,
+    /// A creature the game lets the player catch by hand: an insect. See
+    /// [`classify`] and [`CATCHABLE_TYPE`] for the rule and its evidence.
+    Catchable,
     /// Gimmick with the +0xE0 interaction object whose record is a known
     /// gather record (Foraging/Logging/Mining/Ore).
     Gather,
@@ -518,7 +521,7 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     let comps = component_names(m, actor);
     let has = |needle: &str| comps.iter().any(|(_, n)| n.contains(needle));
     if has("ClientAiActorComponent") || has("ClientCharacterControlActorComponent") {
-        return Kind::Character;
+        return if is_catchable(m, actor) { Kind::Catchable } else { Kind::Character };
     }
     if !has("ClientGimmickActorComponent") {
         return Kind::Other;
@@ -722,4 +725,72 @@ pub fn status_bytes(m: &MainModule, actor: usize) -> Option<StatusBytes> {
 /// Shop goods, quest items and decoration are never picked up.
 pub fn is_owned_or_special(st: StatusBytes) -> bool {
     matches!(st.kind, 1 | 0x0F | 0x11)
+}
+
+/// The actor's type byte: `*(actor+0x88) -> byte @1`.
+///
+/// The reference mod reads it as its per-actor "flag byte +0x2E"
+/// (`FUN_18000e560`, `docs/reference-internals.md` section 10.1) and treats
+/// 6 as "catchable"; its catch rule (section 10, rule 2) pairs that with a
+/// category byte in {5, 9} and `ClientStatusActorComponent+0x273 == 6`.
+/// The game's own steal check (`FUN_14251BA50`, section 14) switches on the
+/// same byte: 4/5/6 are characters, 7 is a gimmick.
+pub const TYPE_OBJECT_OFF: usize = 0x88;
+pub const TYPE_BYTE_OFF: usize = 1;
+
+pub fn type_byte(actor: usize) -> Option<u8> {
+    let p = safe::read_ptr(actor + TYPE_OBJECT_OFF)?;
+    safe::read(p + TYPE_BYTE_OFF)
+}
+
+/// Type byte of a creature the player can catch by hand (an insect).
+///
+/// Recorded live on build 25116796 (2026-09-08) by surveying the world and
+/// then catching the very actors the survey had just listed, with the F7
+/// event recorder running. All three insects read the same way:
+///
+/// ```text
+/// Character eid=B01002C3 ClientNormalInGameActor type=06 status=00/00
+///   comps=[Status EquipSlot CharacterControl Vehicle Detect Ai Effect
+///          FrameEvent Catch RemoteCatch Attack]
+/// ```
+///
+/// and each catch queued one `TrocTrPushCharacterToInventoryOnceTimer`
+/// naming that eid. Two other type-06 characters standing further off read
+/// `status` kind 0x20 and 0x1A; NPCs and horses read type 05 or 03.
+pub const CATCHABLE_TYPE: u8 = 6;
+
+/// Would-be [`Kind::Character`] that this build says is an insect:
+/// [`type_byte`] == [`CATCHABLE_TYPE`] and a readable
+/// `ClientStatusActorComponent` whose kind byte (+0x2C8) is 0.
+///
+/// The status-kind==0 half is a **first cut**, not a proven rule: it is what
+/// separated the three caught insects from the nearby NPCs and animals in the
+/// one survey we have, and it is expected to be tightened (or replaced by
+/// [`interaction_category`]) once field logs say what else reads 0. In the
+/// first verified session (2026-09-08) all six insects caught read
+/// [`interaction_category`] 0x80, so that byte is the next candidate for
+/// tightening this rule - it is not required here yet only because no
+/// NPC or animal sample of the same byte has been seen. The
+/// reference mod's own rule pairs the type byte with
+/// `ClientStatusActorComponent+0x273 == 6`, which reads **0** on this build
+/// for a confirmed insect, so that byte is stale and is not used here.
+pub fn is_catchable(m: &MainModule, actor: usize) -> bool {
+    type_byte(actor) == Some(CATCHABLE_TYPE)
+        && status_bytes(m, actor).is_some_and(|s| s.kind == 0)
+}
+
+/// The interaction category byte the game's own interaction handler switches
+/// on (`FUN_1429DB730`, build 25116796: `*(status + 0x5A)`), read off
+/// `ClientStatusActorComponent`. Diagnostic only for now; it is printed in
+/// the survey so the catch rule above can be sharpened from real logs.
+pub const STATUS_CATEGORY_OFF: usize = 0x5A;
+
+pub fn interaction_category(m: &MainModule, actor: usize) -> Option<u8> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    let (off, _) = component_names(m, actor)
+        .into_iter()
+        .find(|(_, n)| n.contains("ClientStatusActorComponent"))?;
+    let comp = safe::read_ptr(sub + off)?;
+    safe::read(comp + STATUS_CATEGORY_OFF)
 }
