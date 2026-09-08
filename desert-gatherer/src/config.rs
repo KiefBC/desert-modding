@@ -15,6 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use desert_core::collect::Family;
 use desert_core::ini::{self, Line};
+use desert_core::schema::{Field, Kind, Section};
 
 /// Multipliers below this are meaningless (0 would zero out every yield) and
 /// above it are almost certainly a typo, so both are refused.
@@ -176,6 +177,102 @@ impl Default for LiveConfig {
 /// main thread (startup, and its ~1s ini-reload loop); read only by the hook.
 pub static LIVE: LiveConfig = LiveConfig::new();
 
+// ---------------------------------------------------------------------------
+// The menu schema
+// ---------------------------------------------------------------------------
+
+/// The `.asi` the overlay looks for before it lets this section be edited.
+const MODULE: &str = "DesertGatherer.asi";
+
+/// One field with no heading, on its own row.
+fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
+    Field {
+        key: key.to_string(),
+        label: label.to_string(),
+        kind,
+        heading: None,
+        same_line: false,
+        help: Some(help.to_string()),
+    }
+}
+
+/// One of the four family multipliers: an identical `1..=100` slider, so the
+/// four differ only in their key, label and help.
+fn mult(key: &str, help: &str) -> Field {
+    f(
+        key,
+        key,
+        Kind::Int {
+            default: i64::from(MULT_MIN),
+            min: i64::from(MULT_MIN),
+            max: i64::from(MULT_MAX),
+            step: 1,
+            slider: true,
+            format: Some("%dx".to_string()),
+        },
+        help,
+    )
+}
+
+/// What Desert Overlay draws for `DesertGatherer.ini`: the keys, in menu
+/// order, with the labels, ranges and help the menu shows. Written to
+/// `DesertGatherer.overlay.ini` at every launch (see `lib.rs`); the overlay
+/// reads that file and needs no knowledge of this plugin at all.
+///
+/// `Debug` is deliberately absent - it is a diagnostic that costs 400 log
+/// lines, documented in the shipped ini - and a key the schema does not name
+/// is never written by the overlay, so a hand-edited one survives untouched.
+///
+/// Every default is `Config::default()` (vanilla yields, not the shipped
+/// template's 2x) and the multiplier range is [`MULT_MIN`]..=[`MULT_MAX`], the
+/// same consts `parse` enforces. Both facts are tested below.
+pub fn schema() -> Section {
+    let d = Config::default();
+    Section {
+        title: "Desert Gatherer".to_string(),
+        ini: crate::INI_NAME.to_string(),
+        module: Some(MODULE.to_string()),
+        // After Desert Looter's 10.
+        order: 20,
+        notice: Some(
+            "Takes effect on records the game loads next; already-loaded ones keep their yields."
+                .to_string(),
+        ),
+        presets_label: None,
+        presets: Vec::new(),
+        fields: vec![
+            f(
+                "Enabled",
+                "Enabled",
+                Kind::Bool { default: d.enabled },
+                "Master switch. 0 = the record-loader hook is installed but a pass-through: it reads and writes nothing.",
+            ),
+            Field {
+                same_line: true,
+                ..f(
+                    "DryRun",
+                    "Dry run",
+                    Kind::Bool { default: d.dry_run },
+                    "Log what would change and write nothing to the game.",
+                )
+            },
+            Field {
+                heading: Some("Yield multipliers:".to_string()),
+                ..mult("Foraging", "Plants, fruit, berries, mushrooms, crops. 82 records.")
+            },
+            mult("Logging", "Firewood cut from felled trees (firewood_*). 141 records."),
+            mult(
+                "Mining",
+                "The collect_mine family: mine_* rocks and veins, breakable stalactites. 36 records.",
+            ),
+            mult(
+                "Ore",
+                "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining. 16 records.",
+            ),
+        ],
+    }
+}
+
 /// Parse ini text. Unknown keys and bad values are reported back so they can
 /// be logged; the config always comes back usable.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
@@ -326,5 +423,85 @@ mod tests {
         // just the ones that changed.
         live.publish(&Config::default());
         assert_eq!(live.load(), Config::default());
+    }
+
+    // -----------------------------------------------------------------------
+    // The menu schema
+    //
+    // The schema is read by a different program (Desert Overlay) that writes
+    // this plugin's ini back. These tests are the contract: every key the
+    // schema names is one `parse` accepts, every default it declares is the
+    // one `parse` would have produced anyway, and the multiplier range it
+    // hands the menu is the range `parse` enforces.
+    // -----------------------------------------------------------------------
+
+    use desert_core::schema as sch;
+
+    #[test]
+    fn schema_defaults_parse_back_to_the_default_config() {
+        let (cfg, w) = parse(&sch::render_ini_defaults(&schema()));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(cfg, Config::default());
+        assert!(cfg.all_vanilla(), "the menu opens at vanilla yields, not the template's 2x");
+    }
+
+    #[test]
+    fn schema_survives_a_render_and_parse_round_trip() {
+        let want = schema();
+        let text = sch::render(&want, "written by the test");
+        let (got, w) = sch::parse(&text).expect("the rendered schema must parse");
+        assert!(w.is_empty(), "{w:?}\n{text}");
+        assert_eq!(got, want, "{text}");
+    }
+
+    #[test]
+    fn parse_accepts_every_key_the_schema_names() {
+        for field in &schema().fields {
+            let text = format!("{}={}\n", field.key, field.kind.default_text());
+            let (_, w) = parse(&text);
+            assert!(w.is_empty(), "{}: {w:?}", field.key);
+        }
+    }
+
+    #[test]
+    fn the_schema_names_the_files_this_crate_ships() {
+        let s = schema();
+        assert_eq!(s.ini, crate::INI_NAME);
+        assert_eq!(s.module.as_deref(), Some("DesertGatherer.asi"));
+        assert_eq!(s.schema_file_name(), "DesertGatherer.overlay.ini");
+        assert!(s.presets.is_empty(), "there is nothing to preset: four independent numbers");
+        assert!(s.notice.is_some(), "the section says when a change takes effect");
+    }
+
+    #[test]
+    fn schema_ranges_are_the_ones_parse_enforces() {
+        let s = schema();
+        for key in ["Foraging", "Logging", "Mining", "Ore"] {
+            match s.field(key).map(|f| f.kind.clone()) {
+                Some(Kind::Int { min, max, default, slider, .. }) => {
+                    assert_eq!(min, i64::from(MULT_MIN), "{key}");
+                    assert_eq!(max, i64::from(MULT_MAX), "{key}");
+                    assert_eq!(default, i64::from(MULT_MIN), "{key}");
+                    assert!(slider, "{key} is drawn as a slider");
+                }
+                other => panic!("{key} is not an int field: {other:?}"),
+            }
+        }
+        // Both ends survive `parse`, one past either end does not: the
+        // slider's stops are the real stops.
+        let (c, w) = parse("Foraging=1\nLogging=100\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((c.foraging, c.logging), (MULT_MIN, MULT_MAX));
+        let (c, w) = parse("Foraging=0\nLogging=101\n");
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert_eq!(c, Config::default());
+    }
+
+    /// Prints the rendered schema. `cargo test -- --ignored --nocapture
+    /// show_schema` is how the file's exact text gets read by a human.
+    #[test]
+    #[ignore]
+    fn show_schema() {
+        println!("{}", sch::render(&schema(), ""));
     }
 }

@@ -10,7 +10,7 @@
 // crate has always used, so `crate::log!`, `crate::safe::read`, `crate::pe`,
 // ... keep resolving inside every module here. `log` names both a module and
 // the exported macro; one `use` brings in both.
-pub use desert_core::{collect, ini, log, pattern, pe, rtti, trampoline};
+pub use desert_core::{collect, ini, log, pattern, pe, rtti, schema, trampoline};
 #[cfg(windows)]
 pub use desert_core::{hook, hotkey, module, safe};
 
@@ -57,7 +57,7 @@ mod entry {
     use crate::hotkey::Hotkey;
     use crate::module::MainModule;
     use crate::gatherer::Gatherer;
-    use crate::{events, game, hook, log};
+    use crate::{events, game, hook, log, schema};
 
     /// The `area_sweep` signature hits 15 bytes into the function; the
     /// function starts with three 5-byte `mov [rsp+x],reg` spills, which are
@@ -316,6 +316,36 @@ mod entry {
         )
     }
 
+    /// Write `DesertLooter.overlay.ini` beside the exe, so Desert Overlay can
+    /// draw this plugin's settings without knowing anything about it.
+    ///
+    /// Regenerated at every launch, and only actually written when the text
+    /// differs, so a matching file costs one read. A failure is a WARN and
+    /// nothing else: the overlay simply does not offer this section, and the
+    /// plugin itself is unaffected - the ini stays the only thing it reads.
+    ///
+    /// On the plugin's own thread, after `log::init`, never in `DllMain`.
+    fn write_schema() {
+        let section = config::schema();
+        let name = section.schema_file_name();
+        let banner = format!(
+            "{name} - written by Desert Looter {} every time the game starts.\n\
+             It tells Desert Overlay what {} contains and how to draw it. Editing\n\
+             this file has no effect: the plugin regenerates it at the next launch.\n\
+             Change the settings in {} instead.",
+            crate::VERSION,
+            crate::INI_NAME,
+            crate::INI_NAME
+        );
+        match schema::write_beside(&log::exe_dir(), &section, &banner) {
+            schema::Written::Written => crate::log!("[schema] wrote {name}"),
+            schema::Written::Unchanged => crate::log!("[schema] {name} is current"),
+            schema::Written::Failed(why) => {
+                crate::log!("[schema] WARN could not write {name}: {why}")
+            }
+        }
+    }
+
     /// Runs on its own thread for the life of the process.
     unsafe extern "system" fn main_thread(_param: *mut c_void) -> u32 {
         log::init(crate::LOG_NAME);
@@ -326,6 +356,7 @@ mod entry {
         let ini_path = log::exe_dir().join(crate::INI_NAME);
         let (mut ini_seen, mut cfg) = load_config(&ini_path);
         crate::log!("[ini] {}", ini_summary(&cfg));
+        write_schema();
         events::set_log_received(cfg.enabled && cfg.log_received);
         if !cfg.enabled {
             // This no longer returns: the two prologues can only be patched

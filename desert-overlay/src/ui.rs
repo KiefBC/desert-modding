@@ -1,10 +1,15 @@
 //! The menu: hudhook's render loop, the key that shows it, and the input
 //! blocking that keeps the game from reacting while it is on screen.
 //!
-//! Everything the window does is a read or a write of the two ini files
+//! Everything the window does is a read or a write of a mod's ini file
 //! through [`crate::store`]. There is no other channel to the plugins, and
 //! this module never touches game memory, calls a game function, or holds a
 //! lock a render thread could block on.
+//!
+//! Nothing below names a mod, a key or a range. The sections, their widgets
+//! and their presets all come from the schema files [`crate::sections`] found
+//! beside the game exe: this module is a renderer for
+//! [`desert_core::schema::Field`] and nothing more.
 //!
 //! Three things about running inside somebody else's frame:
 //!
@@ -31,19 +36,33 @@ use imgui::{
 };
 
 use desert_core::hotkey::Hotkey;
+use desert_core::ini;
+use desert_core::schema::{Kind, Section};
 
 use crate::config::{ColorSpace, Config, FontChoice};
+use crate::dynmodel::{self, DynModel};
 use crate::logo;
-use crate::model::{
-    GathererModel, LooterModel, GATHER_RANGE, MS_RANGE, MULT_RANGE, SCAN_RANGE, STACK_LIMIT_RANGE,
-};
-use crate::presets;
-use crate::store::{Flushed, Store};
+use crate::sections::{SectionEntry, Sections};
+use crate::store::Flushed;
 use crate::theme::{Role, Theme};
 use crate::themes;
 
-/// How often the two plugin DLLs are looked up in the process.
+/// How often each section's plugin DLL is looked up in the process.
 const PLUGIN_POLL: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// What the window says when no mod beside the game exe describes an ini.
+const NO_SECTIONS: &str = "No mod settings found: nothing beside the game exe describes an ini \
+                           file (Desert Looter and Desert Gatherer write one at startup).";
+
+/// The label above a section's preset buttons when its schema does not give
+/// one of its own.
+const PRESETS_LABEL: &str = "Presets:";
+
+/// Widest bound handed to a float slider. Dear ImGui aborts on a slider range
+/// wider than half `f32`'s, and the bounds come out of a text file some other
+/// mod wrote, so they are clamped to something no settings menu can need. A
+/// value is still checked against the schema's own range before it is written.
+const SLIDER_LIMIT: f32 = 1.0e9;
 
 /// The largest font file the overlay will pull into the game's address space.
 /// Every Windows system font is a couple of megabytes at most (`cambria.ttc`,
@@ -72,12 +91,13 @@ const LOGO_RATIO: f32 = 2.2;
 
 pub struct Overlay {
     cfg: Config,
-    /// Whether `DesertLooter.asi` / `DesertGatherer.asi` are loaded in this
-    /// process, refreshed every [`PLUGIN_POLL`]. A section whose plugin is
-    /// absent is drawn greyed out with a "not installed" note: its ini would
-    /// still be written, but nothing would read it.
-    looter_loaded: bool,
-    gatherer_loaded: bool,
+    /// One section per schema file beside the game exe, rescanned once a
+    /// second. Each owns the store on the ini its schema describes.
+    sections: Sections,
+    /// When each section's `Module` was last looked up in the process. A
+    /// section whose plugin is absent is drawn greyed out with a "not
+    /// installed" note: its ini would still be written, but nothing would read
+    /// it.
     last_plugin_poll: Option<Instant>,
     /// UI scale applied once in [`ImguiRenderLoop::initialize`]: fonts, style
     /// paddings and the window's own geometry. From `Scale` in the ini, or the
@@ -130,16 +150,24 @@ pub struct Overlay {
     window_resized_at: Option<Instant>,
     visible: bool,
     menu_key: Hotkey,
-    looter: Store<LooterModel>,
-    gatherer: Store<GathererModel>,
 }
 
 impl Overlay {
-    /// Reads both ini files and the menu font once. Called from the plugin's
-    /// own thread, never from `DllMain` and never from a render thread.
+    /// Reads the schema files, the ini files they name and the menu font once.
+    /// Called from the plugin's own thread, never from `DllMain` and never
+    /// from a render thread.
     pub fn new(cfg: Config) -> Self {
         let dir = desert_core::log::exe_dir();
         let now = Instant::now();
+        let mut sections = Sections::new(&dir);
+        for line in sections.scan(now) {
+            desert_core::log::write(&line);
+        }
+        if sections.is_empty() {
+            desert_core::log::write(
+                "[schema] no *.overlay.ini beside the game exe; the menu has nothing to show",
+            );
+        }
         let visible = cfg.show_on_start;
         let scale = if cfg.scale > 0.0 { cfg.scale } else { Self::system_scale() };
         let theme = cfg.theme;
@@ -153,10 +181,7 @@ impl Overlay {
             window_size: [0.0, 0.0],
             window_resized_at: None,
             menu_key: Hotkey::new(cfg.key_menu),
-            looter: Store::new(&dir, now),
-            gatherer: Store::new(&dir, now),
-            looter_loaded: false,
-            gatherer_loaded: false,
+            sections,
             last_plugin_poll: None,
             font_data,
             font_label,
@@ -468,40 +493,53 @@ impl Overlay {
         !h.is_null()
     }
 
-    /// Once a second: which plugins are actually present.
+    /// Once a second: which of the sections' plugins are actually present.
+    /// A section whose schema names no `Module` is always treated as loaded.
     fn poll_plugins(&mut self, now: Instant) {
         if self.last_plugin_poll.is_some_and(|t| now.duration_since(t) < PLUGIN_POLL) {
             return;
         }
         self.last_plugin_poll = Some(now);
-        let (l, g) = (Self::module_loaded("DesertLooter.asi"), Self::module_loaded("DesertGatherer.asi"));
-        if (l, g) != (self.looter_loaded, self.gatherer_loaded) {
-            desert_core::log::write(&format!(
-                "[menu] plugins loaded: DesertLooter.asi={} DesertGatherer.asi={}",
-                l as u8, g as u8
-            ));
+        for entry in self.sections.entries_mut() {
+            // Cloned rather than borrowed so the flag beside it can be written
+            // in the same breath; it is one small string a second.
+            let Some(module) = entry.store.model.section.module.clone() else { continue };
+            let loaded = Self::module_loaded(&module);
+            if loaded != entry.loaded {
+                desert_core::log::write(&format!(
+                    "[menu] {module} is {}",
+                    if loaded { "loaded" } else { "not loaded" }
+                ));
+            }
+            entry.loaded = loaded;
         }
-        self.looter_loaded = l;
-        self.gatherer_loaded = g;
     }
 
+    /// One frame's worth of watching: the schema files beside the exe, then
+    /// each section's ini.
     fn poll_files(&mut self, now: Instant) {
-        if self.looter.poll(now) && self.cfg.debug {
-            desert_core::log::write("[ini] DesertLooter.ini changed on disk, menu refreshed");
+        for line in self.sections.scan(now) {
+            desert_core::log::write(&line);
         }
-        if self.gatherer.poll(now) && self.cfg.debug {
-            desert_core::log::write("[ini] DesertGatherer.ini changed on disk, menu refreshed");
+        let debug = self.cfg.debug;
+        for entry in self.sections.entries_mut() {
+            if entry.store.poll(now) && debug {
+                desert_core::log::write(&format!(
+                    "[ini] {} changed on disk, menu refreshed",
+                    entry.store.file_name()
+                ));
+            }
         }
     }
 
     /// End of frame: write back whatever the widgets changed.
     fn flush_files(&mut self, now: Instant, released: bool) {
-        for (name, outcome) in [
-            ("DesertLooter.ini", self.looter.flush(now, released)),
-            ("DesertGatherer.ini", self.gatherer.flush(now, released)),
-        ] {
+        let debug = self.cfg.debug;
+        for entry in self.sections.entries_mut() {
+            let outcome = entry.store.flush(now, released);
+            let name = entry.store.file_name();
             match outcome {
-                Some(Flushed::Wrote) if self.cfg.debug => {
+                Some(Flushed::Wrote) if debug => {
                     desert_core::log::write(&format!("[ini] wrote {name}"));
                 }
                 Some(Flushed::Created) => {
@@ -510,12 +548,8 @@ impl Overlay {
                 Some(Flushed::Failed) => {
                     // The store already put the reason in its status line; log
                     // it once here so a bug report carries it too.
-                    let status = if name.contains("Looter") {
-                        self.looter.status.as_deref()
-                    } else {
-                        self.gatherer.status.as_deref()
-                    };
-                    desert_core::log::write(&format!("[ini] {}", status.unwrap_or(name)));
+                    let status = entry.store.status.as_deref().unwrap_or(name);
+                    desert_core::log::write(&format!("[ini] {status}"));
                 }
                 _ => {}
             }
@@ -664,8 +698,6 @@ impl ImguiRenderLoop for Overlay {
         if !self.visible {
             return;
         }
-        let mut changed_looter = false;
-        let mut changed_gatherer = false;
         let mut window_size = self.window_size;
 
         ui.window(TITLE)
@@ -684,30 +716,23 @@ impl ImguiRenderLoop for Overlay {
                 ui.text_colored(t.dim, "Changes are saved to the ini files as you make them.");
                 ui.separator();
 
-                if ui.collapsing_header(section_title("Desert Looter", self.looter_loaded), TreeNodeFlags::DEFAULT_OPEN) {
-                    not_installed_line(ui, t, "DesertLooter.asi", self.looter_loaded);
-                    let _d = ui.begin_disabled(!self.looter_loaded);
-                    changed_looter |= presets_row(ui, t, &mut self.looter.model);
-                    ui.separator();
-                    changed_looter |= looter_section(ui, t, &mut self.looter.model);
-                    status_line(ui, t, self.looter.status.as_deref());
+                // One collapsible section per schema file found beside the
+                // exe, in the order they sorted into. Nothing in here knows
+                // which mod it is drawing.
+                if self.sections.is_empty() {
+                    // Wrapped, not `text_colored`: it is the longest line in
+                    // the window and would otherwise put a horizontal
+                    // scrollbar under an otherwise empty menu.
+                    let _dim = ui.push_style_color(StyleColor::Text, t.dim);
+                    ui.text_wrapped(NO_SECTIONS);
                 }
-                if ui.collapsing_header(section_title("Desert Gatherer", self.gatherer_loaded), TreeNodeFlags::DEFAULT_OPEN) {
-                    not_installed_line(ui, t, "DesertGatherer.asi", self.gatherer_loaded);
-                    let _d = ui.begin_disabled(!self.gatherer_loaded);
-                    changed_gatherer |= gatherer_section(ui, t, &mut self.gatherer.model);
-                    status_line(ui, t, self.gatherer.status.as_deref());
+                for entry in self.sections.entries_mut() {
+                    draw_section(ui, t, entry);
                 }
                 window_size = ui.window_size();
             });
         self.note_window_size(window_size, Instant::now());
 
-        if changed_looter {
-            self.looter.touch();
-        }
-        if changed_gatherer {
-            self.gatherer.touch();
-        }
         // Nothing held means a drag just ended, which is the moment a pending
         // edit should reach disk immediately rather than waiting out the
         // debounce.
@@ -728,21 +753,19 @@ impl ImguiRenderLoop for Overlay {
     }
 }
 
-/// The preset buttons, two to a row: "Rock and ore only" is long enough that
-/// four across would run off the edge of the window at its default width.
-/// Header text for a plugin section. The `##` suffix keeps imgui's widget id
-/// stable when the visible text changes, so the section does not collapse or
-/// re-open the moment a plugin appears or disappears.
-fn section_title(name: &str, loaded: bool) -> String {
+/// Header text for a section. The `##` suffix is the schema's ini file name,
+/// which keeps imgui's widget id stable when the visible text changes, so the
+/// section does not collapse or re-open the moment a plugin appears or
+/// disappears - and two mods that happen to share a title still get one id
+/// each.
+fn section_title(title: &str, ini: &str, loaded: bool) -> String {
     if loaded {
-        format!("{name}##{name}")
+        format!("{title}##{ini}")
     } else {
-        format!("{name} (not installed)##{name}")
+        format!("{title} (not installed)##{ini}")
     }
 }
 
-/// One dim line explaining why a section is greyed out. Nothing when the
-/// plugin is there.
 /// How long a window size has to hold still before it is logged.
 const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
 
@@ -787,92 +810,179 @@ fn theme_picker(ui: &Ui, current: &Theme) -> Option<&'static Theme> {
     themes::ALL.get(index).copied().filter(|t| *t != current)
 }
 
-fn not_installed_line(ui: &Ui, t: &Theme, asi: &str, loaded: bool) {
-    if !loaded {
-        ui.text_colored(t.dim, format!("{asi} is not loaded in the game; these settings would go unread."));
+/// One dim line explaining why a section is greyed out. Nothing when the
+/// plugin is there, or when the schema names no module at all.
+fn not_installed_line(ui: &Ui, t: &Theme, module: Option<&str>, loaded: bool) {
+    if loaded {
+        return;
+    }
+    if let Some(asi) = module {
+        ui.text_colored(
+            t.dim,
+            format!("{asi} is not loaded in the game; these settings would go unread."),
+        );
     }
 }
 
-fn presets_row(ui: &Ui, t: &Theme, m: &mut LooterModel) -> bool {
+/// One mod's whole section: the header, its presets, its fields, its notice
+/// and its status line, all of it out of the schema.
+///
+/// The section is drawn even when its plugin is missing, but disabled: the
+/// settings are still on disk and still worth looking at, and a greyed-out
+/// section with a reason under it is a better answer than an empty window.
+fn draw_section(ui: &Ui, t: &Theme, entry: &mut SectionEntry) {
+    let loaded = entry.loaded;
+    let title = section_title(entry.title(), entry.store.file_name(), loaded);
+    if !ui.collapsing_header(&title, TreeNodeFlags::DEFAULT_OPEN) {
+        return;
+    }
+    not_installed_line(ui, t, entry.module(), loaded);
+    let _disabled = ui.begin_disabled(!loaded);
+
+    // Split borrow: the schema is read while the values are written, which is
+    // why `DynModel` keeps them as two fields rather than behind a method.
+    let DynModel { section, values } = &mut entry.store.model;
     let mut changed = false;
-    ui.text_colored(t.dim, "Presets (what auto-loot picks up):");
-    for (i, p) in presets::ALL.iter().enumerate() {
+    if !section.presets.is_empty() {
+        changed |= presets_row(ui, t, section, values);
+        ui.separator();
+    }
+    changed |= fields(ui, t, section, values);
+    if let Some(notice) = &section.notice {
+        ui.text_colored(t.dim, notice);
+    }
+
+    if changed {
+        entry.store.touch();
+    }
+    status_line(ui, t, entry.store.status.as_deref());
+}
+
+/// The preset buttons, two to a row: a label like "Rock and ore only" is long
+/// enough that four across would run off the edge of the window at its default
+/// width.
+fn presets_row(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> bool {
+    let mut changed = false;
+    ui.text_colored(t.dim, section.presets_label.as_deref().unwrap_or(PRESETS_LABEL));
+    for (i, preset) in section.presets.iter().enumerate() {
         if i % 2 == 1 {
             ui.same_line();
         }
-        if ui.button(p.label()) {
-            p.apply(m);
-            changed = true;
+        // The id carries the ini and the preset's position, so two mods may
+        // both have an "Everything" button.
+        if ui.button(format!("{}##{}.preset{i}", preset.label, section.ini)) {
+            changed |= dynmodel::apply_preset(section, values, preset);
         }
-        if ui.is_item_hovered() {
-            ui.tooltip_text(p.hint());
+        if let Some(hint) = &preset.hint {
+            if ui.is_item_hovered() {
+                ui.tooltip_text(hint);
+            }
         }
     }
     changed
 }
 
-fn looter_section(ui: &Ui, t: &Theme, m: &mut LooterModel) -> bool {
+/// Every field of the schema, in the order the schema lists them.
+fn fields(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> bool {
     let mut changed = false;
-
-    changed |= ui.checkbox("Enabled##looter", &mut m.enabled);
-    changed |= ui.checkbox("Auto gather", &mut m.auto_gather);
-
-    ui.text_colored(t.dim, "Gather families:");
-    changed |= ui.checkbox("Foraging##looter", &mut m.gather_foraging);
-    ui.same_line();
-    changed |= ui.checkbox("Logging##looter", &mut m.gather_logging);
-    ui.same_line();
-    changed |= ui.checkbox("Mining##looter", &mut m.gather_mining);
-    ui.same_line();
-    changed |= ui.checkbox("Ore##looter", &mut m.gather_ore);
-
-    changed |= ui.checkbox("Ground items", &mut m.gather_items);
-    ui.same_line();
-    changed |= ui.checkbox("Dropped gear", &mut m.gather_gear);
-    ui.same_line();
-    changed |= ui.checkbox("Unarmed nodes", &mut m.gather_unarmed);
-
-    changed |= ui
-        .slider_config("Scan range", SCAN_RANGE.0, SCAN_RANGE.1)
-        .display_format("%.0f m")
-        .build(&mut m.scan_range);
-    changed |= ui
-        .slider_config("Gather range", GATHER_RANGE.0, GATHER_RANGE.1)
-        .display_format("%.1f m")
-        .build(&mut m.gather_range);
-
-    changed |= int_input(ui, "Gather interval (ms)", &mut m.gather_interval_ms, MS_RANGE, 50);
-    changed |= int_input(ui, "Node cooldown (ms)", &mut m.node_cooldown_ms, MS_RANGE, 500);
-    changed |= int_input(ui, "Stack limit", &mut m.stack_limit, STACK_LIMIT_RANGE, 10);
-
+    for (i, field) in section.fields.iter().enumerate() {
+        let Some(slot) = values.get_mut(i) else { continue };
+        if let Some(heading) = &field.heading {
+            ui.text_colored(t.dim, heading);
+        }
+        if field.same_line {
+            ui.same_line();
+        }
+        // `##<ini>.<key>` so two sections can show the same label, and so a
+        // relabelled field keeps its widget state.
+        let label = format!("{}##{}.{}", field.label, section.ini, field.key);
+        changed |= widget(ui, &label, &field.kind, slot);
+        if let Some(help) = &field.help {
+            if ui.is_item_hovered() {
+                ui.tooltip_text(help);
+            }
+        }
+    }
     changed
 }
 
-fn gatherer_section(ui: &Ui, t: &Theme, m: &mut GathererModel) -> bool {
-    let mut changed = false;
-
-    changed |= ui.checkbox("Enabled##gatherer", &mut m.enabled);
-    ui.same_line();
-    changed |= ui.checkbox("Dry run", &mut m.dry_run);
-    if ui.is_item_hovered() {
-        ui.tooltip_text("Log what would change and write nothing to the game.");
+/// One field's widget, chosen by its kind. `slot` is the value in its written
+/// spelling and is only replaced when the field accepts the new value, so a
+/// widget can never put something in the ini that the plugin would reject.
+fn widget(ui: &Ui, label: &str, kind: &Kind, slot: &mut String) -> bool {
+    match kind {
+        Kind::Bool { .. } => {
+            let mut on = dynmodel::as_bool(slot.as_str());
+            if !ui.checkbox(label, &mut on) {
+                return false;
+            }
+            *slot = if on { "1" } else { "0" }.to_string();
+            true
+        }
+        Kind::Int { min, max, step, slider, format, .. } => {
+            // imgui's integer widgets are i32; a schema bound too wide for one
+            // saturates, and `normalize` still holds the real range.
+            let (lo, hi) = (dynmodel::i32_of(*min), dynmodel::i32_of(*max));
+            let mut value = dynmodel::i32_of(dynmodel::as_int(kind, slot.as_str()));
+            let edited = if *slider {
+                let s = ui.slider_config(label, lo, hi);
+                match format {
+                    Some(f) => s.display_format(f).build(&mut value),
+                    None => s.build(&mut value),
+                }
+            } else {
+                int_input(ui, label, &mut value, (lo, hi), dynmodel::i32_of(*step).max(1))
+            };
+            // Ctrl+click on a slider types a number straight in, and imgui
+            // does not clamp that unless asked, so clamp before writing.
+            edited && set_text(kind, slot, &value.clamp(lo, hi).to_string())
+        }
+        Kind::Float { min, max, format, .. } => {
+            let (lo, hi) = (min.max(-SLIDER_LIMIT), max.min(SLIDER_LIMIT));
+            let mut value = dynmodel::as_float(kind, slot.as_str());
+            let s = ui.slider_config(label, lo, hi);
+            let edited = match format {
+                Some(f) => s.display_format(f).build(&mut value),
+                None => s.build(&mut value),
+            };
+            edited && set_text(kind, slot, &format!("{}", value.clamp(lo, hi)))
+        }
+        Kind::Choice { options, .. } => {
+            let mut index = dynmodel::option_index(options, slot.as_str());
+            if !ui.combo(label, &mut index, options, |o| Cow::Borrowed(o.as_str())) {
+                return false;
+            }
+            match options.get(index) {
+                Some(picked) => set_text(kind, slot, picked),
+                None => false,
+            }
+        }
+        Kind::Key { .. } => {
+            // The picker is every name the ini parser accepts, so a binding
+            // chosen here always reads back.
+            let names = ini::key_names();
+            let mut index = dynmodel::key_index(slot.as_str());
+            if !ui.combo(label, &mut index, names, |n| Cow::Borrowed(*n)) {
+                return false;
+            }
+            match names.get(index) {
+                Some(picked) => set_text(kind, slot, picked),
+                None => false,
+            }
+        }
     }
+}
 
-    ui.text_colored(t.dim, "Yield multipliers:");
-    for (label, slot) in [
-        ("Foraging##gatherer", &mut m.foraging),
-        ("Logging##gatherer", &mut m.logging),
-        ("Mining##gatherer", &mut m.mining),
-        ("Ore##gatherer", &mut m.ore),
-    ] {
-        changed |= ui.slider_config(label, MULT_RANGE.0, MULT_RANGE.1).display_format("%dx").build(slot);
+/// Put `raw` in `slot` if the field accepts it, in the field's own written
+/// spelling. `false` leaves the old value alone and reports no change.
+fn set_text(kind: &Kind, slot: &mut String, raw: &str) -> bool {
+    match kind.normalize(raw) {
+        Some(text) => {
+            *slot = text;
+            true
+        }
+        None => false,
     }
-    ui.text_colored(
-        t.dim,
-        "Takes effect on records the game loads next; already-loaded ones keep their yields.",
-    );
-
-    changed
 }
 
 /// An `input_int` that only reports a change once the field is committed

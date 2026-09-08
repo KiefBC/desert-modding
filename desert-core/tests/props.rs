@@ -13,7 +13,8 @@ use std::collections::HashSet;
 
 use desert_core::gimmick::{self, BLOCK, MAX_AT, MAX_COUNT, MIN_AT};
 use desert_core::pattern::Pattern;
-use desert_core::{ini, pe, rtti};
+use desert_core::schema::Kind;
+use desert_core::{ini, pe, rtti, schema};
 use proptest::prelude::*;
 
 fn cfg() -> ProptestConfig {
@@ -358,5 +359,205 @@ proptest! {
         }
         let _ = ini::vk_from_name(&text);
         let _ = ini::parse_bool(&text);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// schema
+// ---------------------------------------------------------------------------
+
+/// The value texts a generated field block picks its `Default` from: some are
+/// right for one kind, most are wrong for every kind.
+const DEFAULTS: &[&str] = &["1", "0", "40", "6.5", "-3", "F10", "num5", "banner", "x", ""];
+const BOUNDS: &[&str] = &["0", "1", "-5", "200", "60000", "x", ""];
+const OPTION_LISTS: &[&str] = &["classic;parchment;banner", "a;b", "banner", ";;", ""];
+const KINDS: &[&str] = &["bool", "int", "float", "choice", "key", "colour", ""];
+
+/// One `[<key>]` block, occasionally a well-formed one.
+fn field_block() -> impl Strategy<Value = String> {
+    (
+        "[A-Za-z][A-Za-z0-9_]{0,6}",
+        prop::sample::select(KINDS),
+        prop::sample::select(DEFAULTS),
+        prop::sample::select(BOUNDS),
+        prop::sample::select(BOUNDS),
+        prop::sample::select(OPTION_LISTS),
+        any::<(bool, bool)>(),
+    )
+        .prop_map(|(key, kind, default, min, max, options, (same_line, slider))| {
+            let mut b = format!("[{key}]\nKind={kind}\nDefault={default}\nMin={min}\nMax={max}\n");
+            b.push_str(&format!("Options={options}\n"));
+            if same_line {
+                b.push_str("SameLine=1\nHeading=Group:\nHelp=What it does.\n");
+            }
+            if slider {
+                b.push_str("Widget=slider\nFormat=%dx\nLabel=A label\n");
+            }
+            b
+        })
+}
+
+/// One `[preset:<label>]` block; its `Set` is as likely to name a field that
+/// does not exist as one that does.
+fn preset_block() -> impl Strategy<Value = String> {
+    ("[A-Za-z ]{0,6}", "[A-Za-z0-9_=;. ]{0,24}", any::<bool>()).prop_map(|(label, set, hint)| {
+        let mut b = format!("[preset:{label}]\nSet={set}\n");
+        if hint {
+            b.push_str("Hint=A hint.\n");
+        }
+        b
+    })
+}
+
+/// Plausible schema text: a header that is right about as often as it is wrong,
+/// then some field and preset blocks.
+fn schema_text() -> impl Strategy<Value = String> {
+    (
+        "[A-Za-z ]{0,10}",
+        prop::sample::select(vec!["DesertLooter.ini", "T.ini", "sub/T.ini", "..\\T.ini", "T", ""]),
+        0u32..3,
+        prop::collection::vec(field_block(), 0..5),
+        prop::collection::vec(preset_block(), 0..3),
+        any::<bool>(),
+    )
+        .prop_map(|(title, ini, schema, fields, presets, module)| {
+            let mut t = format!("; a banner\n[overlay]\nSchema={schema}\nTitle={title}\nIni={ini}\n");
+            t.push_str("Order=10\nNotice=A notice.\nPresetsLabel=Presets:\n");
+            if module {
+                t.push_str("Module=DesertLooter.asi\n");
+            }
+            for b in fields.iter().chain(presets.iter()) {
+                t.push('\n');
+                t.push_str(b);
+            }
+            t
+        })
+}
+
+/// Everything a parsed section promises, checked on the section itself and on
+/// the text `render` writes for it.
+fn check_section(s: &schema::Section) -> Result<(), TestCaseError> {
+    prop_assert!(s.schema_file_name().ends_with(schema::FILE_SUFFIX));
+    prop_assert!(!s.ini.is_empty() && !s.title.is_empty());
+    for f in &s.fields {
+        // a field's own default is always a value it accepts
+        let text = f.kind.default_text();
+        let round = f.kind.normalize(&text);
+        prop_assert_eq!(round.as_deref(), Some(text.as_str()));
+        prop_assert_eq!(s.field(&f.key.to_ascii_lowercase()), Some(f));
+    }
+    for p in &s.presets {
+        for (k, v) in &p.set {
+            let Some(f) = s.field(k) else {
+                return Err(TestCaseError::fail(format!("preset names unknown field {k:?}")));
+            };
+            let round = f.kind.normalize(v);
+            prop_assert_eq!(round.as_deref(), Some(v.as_str()));
+        }
+    }
+    // the ini the overlay would create from this schema reads back as itself
+    for line in ini::lines(&schema::render_ini_defaults(s)) {
+        if let ini::Line::Pair(k, v) = line {
+            let Some(f) = s.field(k) else {
+                return Err(TestCaseError::fail(format!("default ini line {k:?} is not a field")));
+            };
+            let round = f.kind.normalize(v);
+            prop_assert_eq!(round.as_deref(), Some(v));
+        }
+    }
+    Ok(())
+}
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// Arbitrary text is either a rejected file or a section, never a panic;
+    /// and what `render` writes for a section parses back to the same section.
+    #[test]
+    fn schema_parse_never_panics_and_render_round_trips(text in "(?s).{0,512}") {
+        if let Ok((s, _)) = schema::parse(&text) {
+            check_section(&s)?;
+            let again = schema::parse(&schema::render(&s, "banner\nlines")).map(|(s, _)| s);
+            prop_assert_eq!(again, Ok(s));
+        }
+    }
+
+    /// The same, on text shaped like a schema file, so the `Ok` branch is the
+    /// one being exercised.
+    #[test]
+    fn plausible_schema_text_round_trips(text in schema_text()) {
+        if let Ok((s, _)) = schema::parse(&text) {
+            check_section(&s)?;
+            let again = schema::parse(&schema::render(&s, "banner")).map(|(s, _)| s);
+            prop_assert_eq!(again, Ok(s));
+        }
+    }
+
+    /// Every kind takes arbitrary value text without panicking, and what it
+    /// gives back it accepts again.
+    #[test]
+    fn kind_normalize_never_panics(
+        text in "(?s).{0,64}",
+        (default, min, max) in (any::<i64>(), any::<i64>(), any::<i64>()),
+        (fdefault, fmin, fmax) in (any::<f32>(), any::<f32>(), any::<f32>()),
+    ) {
+        let kinds = [
+            Kind::Bool { default: default > 0 },
+            Kind::Int { default, min, max, step: 1, slider: false, format: None },
+            Kind::Float { default: fdefault, min: fmin, max: fmax, format: None },
+            Kind::Choice { default: text.clone(), options: vec![text.clone(), "a".to_string()] },
+            Kind::Key { default: "F10".to_string() },
+        ];
+        for kind in &kinds {
+            let _ = kind.default_text();
+            if let Some(once) = kind.normalize(&text) {
+                prop_assert_eq!(kind.normalize(&once), Some(once.clone()));
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ini::entries
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// `entries` is `lines` plus the section headers: every entry that is not a
+    /// header is the line `lines` reports at that position, in the same order.
+    #[test]
+    fn ini_entries_agree_with_lines(text in "(?s).{0,256}") {
+        let mut want = ini::lines(&text);
+        let mut sections = 0;
+        for entry in ini::entries(&text) {
+            match entry {
+                ini::Entry::Section(name) => {
+                    prop_assert_eq!(name, name.trim());
+                    prop_assert!(!name.contains('\n'));
+                    sections += 1;
+                }
+                ini::Entry::Pair(k, v) => {
+                    prop_assert_eq!(k, k.trim());
+                    prop_assert!(!k.contains('='));
+                    prop_assert_eq!(want.next(), Some(ini::Line::Pair(k, v)));
+                }
+                ini::Entry::Bad(why) => prop_assert_eq!(want.next(), Some(ini::Line::Bad(why))),
+            }
+        }
+        prop_assert_eq!(want.next(), None);
+        prop_assert_eq!(ini::entries(&text).count(), ini::lines(&text).count() + sections);
+    }
+
+    /// Every name the picker lists resolves, and canonicalising is idempotent.
+    #[test]
+    fn key_names_resolve_and_canonicalise(text in "(?s).{0,32}") {
+        for name in ini::key_names() {
+            prop_assert!(ini::vk_from_name(name).is_some());
+        }
+        if let Some(canon) = ini::canonical_key_name(&text) {
+            prop_assert!(ini::key_names().contains(&canon.as_str()));
+            prop_assert_eq!(ini::canonical_key_name(&canon), Some(canon.clone()));
+        }
     }
 }

@@ -6,6 +6,8 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
+Game build 25116796. In-game verification of the changes below is pending.
+
 ### Added
 
 - `DesertGatherer.ini` is now re-read while the game runs, the same mechanism as Desert Looter: the
@@ -13,6 +15,12 @@ Versioning](../VERSIONING.md).
   `[ini] reloaded: ...`. A changed multiplier applies to records the game loads from then on; the
   game reloads its own gather table a few seconds after use, so the change is seen on the next
   gather.
+- `config::schema()` declares every ini key, its default and its widget for Desert Overlay's menu.
+  The plugin writes it as `DesertGatherer.overlay.ini` beside `DesertGatherer.ini` at every start,
+  logging `[schema] wrote ...` / `[schema] ... is current` / `[schema] WARN could not write ...`;
+  editing that file has no effect, and the overlay redraws its section from it within a second of a
+  change. This is what lets Desert Overlay draw the Desert Gatherer section without any
+  Desert-Gatherer-specific code of its own.
 
 ### Changed
 

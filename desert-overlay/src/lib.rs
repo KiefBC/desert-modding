@@ -2,18 +2,28 @@
 //! an ASI plugin.
 //!
 //! It draws a Dear ImGui window inside the game's own DirectX 12 frame (via
-//! the `hudhook` crate) and uses it to edit `DesertLooter.ini` and
-//! `DesertGatherer.ini` while the game runs. Desert Looter and Desert Gatherer
-//! re-read their ini about once a second, so a checkbox ticked here takes
-//! effect in a second or so without a restart.
+//! the `hudhook` crate) and uses it to edit the mods' ini files while the game
+//! runs. Desert Looter and Desert Gatherer re-read their ini about once a
+//! second, so a checkbox ticked here takes effect in a second or so without a
+//! restart.
 //!
 //! **The ini files are the whole contract.** The overlay never calls into the
-//! other two plugins, shares no memory with them and does not care whether
-//! they are installed at all; the file beside the game exe is the source of
-//! truth, and a hand edit made in Notepad shows up in the menu just as fast as
-//! a click in the menu shows up on disk. That is also why the key lists and
-//! defaults are duplicated in [`model`] rather than imported: each plugin is a
-//! `cdylib` exporting its own `DllMain`, so they cannot be linked together.
+//! other plugins, shares no memory with them and does not care whether they
+//! are installed at all; the file beside the game exe is the source of truth,
+//! and a hand edit made in Notepad shows up in the menu just as fast as a
+//! click in the menu shows up on disk.
+//!
+//! **It knows nothing about any particular mod.** There is no list of keys,
+//! defaults or ranges in this crate. Each plugin writes a small **schema**
+//! file beside its ini at startup (`DesertLooter.ini` ->
+//! `DesertLooter.overlay.ini`, the format is [`desert_core::schema`]) saying
+//! what its ini holds and how to draw it; [`sections`] scans the exe directory
+//! for those files once a second and builds one collapsible section per file,
+//! [`dynmodel`] holds the values, and [`ui`] draws whatever the schema
+//! describes. A new mod appears in the menu by shipping a schema file - this
+//! crate needs no change and is not rebuilt. That indirection is also what
+//! keeps the plugins out of the link: each is a `cdylib` exporting its own
+//! `DllMain`, and two of those cannot live in one DLL.
 //!
 //! It touches no game memory at all - no signatures, no RVAs, nothing to
 //! rebase after a game update. What can break on an update is the graphics
@@ -33,15 +43,16 @@ pub use desert_core::{ini, log};
 #[cfg(windows)]
 pub use desert_core::hotkey;
 
-// The pure half: the ini model, the comment-preserving rewrite, the presets,
-// the file store and the embedded logo bytes. All of it links and unit-tests
-// natively on Linux, which is where every rule about what the overlay writes
-// is actually verified.
+// The pure half: the overlay's own ini, the schema-driven model, the schema
+// discovery scan, the comment-preserving rewrite, the file store and the
+// embedded logo bytes. All of it links and unit-tests natively on Linux,
+// which is where every rule about what the overlay writes is actually
+// verified.
 pub mod config;
+pub mod dynmodel;
 pub mod logo;
-pub mod model;
-pub mod presets;
 pub mod rewrite;
+pub mod sections;
 pub mod store;
 pub mod theme;
 pub mod themes;
@@ -149,8 +160,9 @@ mod entry {
         }
 
         let debug = cfg.debug;
+        // `Overlay::new` scans the exe directory for schema files and logs one
+        // `[schema]` line per mod it found, so there is nothing to say here.
         let overlay = Overlay::new(cfg);
-        crate::log!("[ini] read DesertLooter.ini and DesertGatherer.ini");
 
         // hudhook wants the HINSTANCE from its own `windows` crate; `param` is
         // the HMODULE DllMain was handed, passed through as a plain pointer
@@ -219,13 +231,12 @@ mod entry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use model::IniModel as _;
 
     #[test]
-    fn the_three_file_names_agree_with_the_shipped_layout() {
+    fn the_overlays_own_file_names_agree_with_the_shipped_layout() {
+        // The only two file names this crate still decides. Every other file
+        // it reads or writes is named by a schema at runtime.
         assert_eq!(INI_NAME, "DesertOverlay.ini");
         assert_eq!(LOG_NAME, "DesertOverlay.log");
-        assert_eq!(model::LooterModel::FILE_NAME, "DesertLooter.ini");
-        assert_eq!(model::GathererModel::FILE_NAME, "DesertGatherer.ini");
     }
 }

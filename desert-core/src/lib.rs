@@ -3,8 +3,9 @@
 //! This crate ships nothing on its own; it is linked into `desert-looter` and
 //! `desert-gatherer`. It holds exactly the things that must not exist twice:
 //! the crash-safe logger, the guarded game-memory reads, the inline
-//! trampoline hook, PE/RTTI/pattern scanning, the ini reader, and the gather
-//! record table both mods classify nodes with.
+//! trampoline hook, PE/RTTI/pattern scanning, the ini reader, the settings
+//! schema the overlay draws every mod's menu from, and the gather record table
+//! both mods classify nodes with.
 //!
 //! Module split, same rule as the plugins: modules that touch the Win32 API
 //! are `#[cfg(windows)]`, everything else compiles (and is unit tested)
@@ -17,6 +18,7 @@ pub mod log;
 pub mod pattern;
 pub mod pe;
 pub mod rtti;
+pub mod schema;
 pub mod trampoline;
 
 #[cfg(windows)]

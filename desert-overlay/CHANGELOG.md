@@ -4,6 +4,30 @@ All notable changes to Desert Overlay. The format is [Keep a
 Changelog](https://keepachangelog.com/en/1.1.0/), and the project follows [Semantic
 Versioning](../VERSIONING.md).
 
+## [Unreleased]
+
+Game build 25116796. In-game verification of the changes below is pending.
+
+### Changed
+
+- The menu no longer hard-codes Desert Looter's and Desert Gatherer's ini keys, defaults, ranges
+  and widgets. Each plugin now declares a `desert_core::schema::Section` in its own `config.rs` and
+  writes it as `<Name>.overlay.ini` beside its ini at every start; the overlay scans `bin64` for
+  `*.overlay.ini` once a second, parses each through the new `desert_core::schema` module, and
+  builds one collapsible section per file (`sections.rs` for discovery, `dynmodel.rs` for the
+  values, replacing `model.rs` and `presets.rs`). Widgets, labels, ranges, headings, same-line rows,
+  tooltips, presets and the notice line all now come from the schema, so a new mod appears in the
+  menu by shipping a schema file - this crate needs no change. The header, the logo, the fonts, the
+  themes and HDR handling are untouched.
+- Desert Looter's section gained the four `Key*` bindings (`KeyToggle`, `KeyScan`, `KeyGather`,
+  `KeyRecord`) as key pickers over the same key names the ini accepts; they were not editable from
+  the menu before.
+- New log lines: `[schema] <file>: <title>, N fields, M presets` when a section loads, `[schema]
+  WARN <file>: <why>` when a schema file will not parse (once per modified time), `[schema] <file>
+  is gone; <title> left the menu` when one disappears, and `[schema] no *.overlay.ini beside the
+  game exe; the menu has nothing to show` when nothing is found. An empty menu now shows one dim
+  line saying so instead of an empty window.
+
 ## [0.1.0] - 2026-09-08
 
 Game build 25116796. Verified in game on 2026-09-07: the menu draws, moves and resizes, a preset

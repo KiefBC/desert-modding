@@ -96,6 +96,12 @@ to run with only this mod installed. Desert Overlay has its own release zip and
 its own version number, and a mod zip carries whichever version was current
 when the mod was released.
 
+To draw that section, Desert Gatherer writes `DesertGatherer.overlay.ini` beside its own ini at
+every start - a small description of what the ini contains, for Desert Overlay to read. Editing
+that file does nothing; the plugin regenerates it on the next launch, and `DesertGatherer.ini` is
+still the only file that changes what the plugin does. It is safe to ignore if you never install
+Desert Overlay, and uninstalling this plugin means deleting it along with `DesertGatherer.asi`.
+
 ### Install with DMM
 
 Definitive Mod Manager accepts an ASI mod as either a single `.asi` file or a
@@ -163,6 +169,7 @@ value on your next gather, no restart or save reload needed.
 | `DesertGatherer.asi` | the plugin | yes, that uninstalls it |
 | `DesertGatherer.ini` | your settings, read at game start and re-read while it runs | yes, vanilla defaults are used |
 | `DesertGatherer.log` | append-only log of what the plugin did; grows every session | yes, any time |
+| `DesertGatherer.overlay.ini` | written at every start for Desert Overlay's menu; describes `DesertGatherer.ini`, is not itself read for settings | yes, it is regenerated on the next launch |
 
 A healthy log starts with the version line, one `[ini]` line echoing every
 setting, a `[module]` line, a `[gimmick] record loader at +0x...` line and a

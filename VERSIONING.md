@@ -8,7 +8,7 @@ version: a single commit can bump one and leave the others exactly where they we
 | `desert-looter` | 0.1.1 | `DesertLooter.asi` | `desert-looter-v0.1.1` |
 | `desert-gatherer` | 0.1.1 | `DesertGatherer.asi` | `desert-gatherer-v0.1.1` |
 | `desert-overlay` | 0.1.0 | `DesertOverlay.asi` | `desert-overlay-v0.1.0` |
-| `desert-core` | 0.2.0 | nothing | never |
+| `desert-core` | 0.3.0 | nothing | never |
 
 ## What the version actually describes
 

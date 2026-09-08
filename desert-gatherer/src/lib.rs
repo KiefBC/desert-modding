@@ -27,7 +27,7 @@
 // `hook` is deliberately NOT re-exported: this crate has its own `hook`
 // module, which re-exports `desert_core::hook::{install, hex}` so that
 // `crate::hook::install` and `crate::hook::on_record_load` both resolve.
-pub use desert_core::{collect, gimmick, ini, log, pattern, pe, rtti, trampoline};
+pub use desert_core::{collect, gimmick, ini, log, pattern, pe, rtti, schema, trampoline};
 #[cfg(windows)]
 pub use desert_core::{module, safe};
 
@@ -68,7 +68,7 @@ mod entry {
     use crate::config::{self, Config};
     use crate::gimmick;
     use crate::module::MainModule;
-    use crate::{hook, log, safe};
+    use crate::{hook, log, safe, schema};
 
     /// Seconds between two counter summaries in the log, and only when a
     /// counter moved since the last one. Record loading is a burst at level
@@ -178,6 +178,36 @@ mod entry {
         }
     }
 
+    /// Write `DesertGatherer.overlay.ini` beside the exe, so Desert Overlay
+    /// can draw this plugin's settings without knowing anything about it.
+    ///
+    /// Regenerated at every launch, and only actually written when the text
+    /// differs, so a matching file costs one read. A failure is a WARN and
+    /// nothing else: the overlay simply does not offer this section, and the
+    /// plugin itself is unaffected - the ini stays the only thing it reads.
+    ///
+    /// On the plugin's own thread, after `log::init`, never in `DllMain`.
+    fn write_schema() {
+        let section = config::schema();
+        let name = section.schema_file_name();
+        let banner = format!(
+            "{name} - written by Desert Gatherer {} every time the game starts.\n\
+             It tells Desert Overlay what {} contains and how to draw it. Editing\n\
+             this file has no effect: the plugin regenerates it at the next launch.\n\
+             Change the settings in {} instead.",
+            crate::VERSION,
+            crate::INI_NAME,
+            crate::INI_NAME
+        );
+        match schema::write_beside(&log::exe_dir(), &section, &banner) {
+            schema::Written::Written => crate::log!("[schema] wrote {name}"),
+            schema::Written::Unchanged => crate::log!("[schema] {name} is current"),
+            schema::Written::Failed(why) => {
+                crate::log!("[schema] WARN could not write {name}: {why}")
+            }
+        }
+    }
+
     /// Runs on its own thread for the life of the process.
     ///
     /// There is no boot grace here, unlike Desert Looter: the gimmickinfo
@@ -198,6 +228,7 @@ mod entry {
         let ini_path = log::exe_dir().join(crate::INI_NAME);
         let cfg = load_config(&ini_path);
         crate::log!("[ini] {}", ini_summary(&cfg));
+        write_schema();
         if !cfg.enabled {
             // The hook is installed anyway and `LiveConfig::enabled` gates
             // it per call. Installing it later, when the ini flips `Enabled`

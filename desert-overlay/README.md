@@ -10,8 +10,12 @@ without leaving the game and without a restart.
 
 ## What it actually does
 
-It edits `DesertLooter.ini` and `DesertGatherer.ini` in `bin64`, in place, while
-the game runs. That is the whole mechanism. The overlay does not talk to the two
+It edits ini files in `bin64`, in place, while the game runs, and it has no list
+of which ones. Desert Looter and Desert Gatherer each write a small **schema**
+file beside their own ini at every start (`DesertLooter.overlay.ini`,
+`DesertGatherer.overlay.ini`) saying what their ini contains and how the menu
+should draw it; the overlay scans `bin64` for these once a second and builds one
+collapsible section per file it finds. The overlay does not talk to the two
 plugins at all; they re-read their own ini once a second and pick the change up.
 
 Three things follow from that, and they are the reason it works this way:
@@ -22,14 +26,13 @@ Three things follow from that, and they are the reason it works this way:
   The menu notices within a second and shows the new value.
 - **Your files are not rewritten, only edited.** The overlay replaces the value
   on the lines whose key it owns and touches nothing else: your comments, your
-  ordering, and the keys it does not show (`BagTab`, `LogReceived`, `Debug`, the
-  `KeyToggle`/`KeyScan`/`KeyGather`/`KeyRecord` bindings) come through exactly as
-  they were. Writes go through a temporary file and a rename, so a plugin reading
-  the file at the wrong moment never sees half of it.
+  ordering, and the keys it does not show (`BagTab`, `LogReceived` and `Debug`)
+  come through exactly as they were. Writes go through a temporary file and a
+  rename, so a plugin reading the file at the wrong moment never sees half of it.
 
 The overlay reads and writes files. It does not read or write the game's memory,
 has no byte signatures and no hard-coded addresses, and cannot affect the game's
-behaviour except through those two ini files.
+behaviour except through the ini files a schema names.
 
 A section whose plugin is not loaded in the game is greyed out and marked "not installed", so the
 menu can be shipped with either mod on its own.
@@ -52,19 +55,25 @@ menu can be shipped with either mod on its own.
    folder, next to `winmm.dll` and the other `.asi` files.
 2. Launch the game and press **Insert**.
 
-To uninstall, delete the two files. Nothing else is touched.
+To uninstall, delete the two files. Nothing else is touched: the `*.overlay.ini` schema files the
+menu draws its sections from belong to Desert Looter and Desert Gatherer, not to this plugin, and
+removing this `.asi` does not remove them - they just stop being read by anything until this plugin
+comes back.
 
 ## Using the menu
 
+Each section comes from the schema its plugin wrote, in the order the schema gives (Desert Looter
+before Desert Gatherer today, by each plugin's own `Order`). What is currently in them:
+
 | section | what is in it |
 |---|---|
-| Presets | `Everything`, `Plants only`, `Wood only`, `Rock and ore only` - one click sets Desert Looter's four gather families and turns ground items on. Nothing else is changed, so tuned ranges and timings survive a preset. |
-| Desert Looter | the master switch, auto gather, the four gather families, ground items / dropped gear / unarmed nodes, scan and gather range, gather interval, node cooldown and stack limit |
+| Desert Looter | the master switch, auto gather, the four gather families, ground items / dropped gear / unarmed nodes, scan and gather range, gather interval, node cooldown, stack limit, and the four hotkeys (`KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord`) as key pickers. Presets above the fields: `Everything`, `Plants only`, `Wood only`, `Rock and ore only` - one click sets the four gather families and ground items and leaves everything else alone. |
 | Desert Gatherer | the master switch, dry run, and the four yield multipliers |
 
 The sliders and the number fields stop at the ranges the plugins accept, so the
 menu cannot produce a value its plugin would refuse. A number typed into a field
 is written when you press Enter or click away, not while you are still typing.
+A mod that ships no schema file simply has no section; see "Adding a mod to the menu" below.
 
 If a file cannot be read or written, the reason appears as a red line under that
 section and in `DesertOverlay.log`. Nothing is lost and the game is unaffected.
@@ -108,6 +117,44 @@ messages are not blocked: alt-tab still works. The game hides the hardware
 cursor, so the overlay draws its own and releases the cursor clip when the menu
 opens; the game takes the cursor back the next time it wants it.
 
+## Adding a mod to the menu
+
+There is no list of mods to edit anywhere in this plugin. A section appears because something
+beside the game exe named `<Name>.overlay.ini` describes an ini file; Desert Looter and Desert
+Gatherer write theirs at every start, and any other ASI plugin can do the same. The format is
+`desert_core::ini`'s own dialect - `Key=Value`, `;` comments, `[Section]` headers - and the full
+rules (every key, every `Kind`, what makes a file get skipped) live in `desert-core/src/schema.rs`.
+A small example, a header and two fields and a preset:
+
+```ini
+; MyMod.overlay.ini - written by My Mod at every start.
+[overlay]
+Schema=1
+Title=My Mod
+Ini=MyMod.ini
+Module=MyMod.asi
+
+[Enabled]
+Kind=bool
+Label=Enabled
+Default=1
+Help=Master switch.
+
+[Speed]
+Kind=int
+Label=Speed
+Default=10
+Min=1
+Max=100
+
+[preset:Fast]
+Set=Enabled=1;Speed=50
+```
+
+Drop that beside `MyMod.ini` and a "My Mod" section appears in the menu within a second, greyed out
+as "not installed" if `MyMod.asi` is not loaded. Nothing in Desert Overlay needs to change or be
+rebuilt.
+
 ## Log
 
 `bin64/DesertOverlay.log`, written beside the game exe. The first line names the
@@ -119,6 +166,13 @@ report that the game will not start; it stops after 20000 hudhook lines so the
 file cannot grow all session. Resizing the menu logs one `[menu] window size`
 line once the drag has settled, in pixels and in unscaled units, which is how a
 size that looks right in game becomes the default.
+
+Schema discovery adds its own lines: `[schema] <file>: <title>, N fields, M presets` when a section
+loads, `[schema] WARN <file>: <why>` when a schema file will not parse (once per modified time, not
+once a second), `[schema] <file> is gone; <title> left the menu` when a schema file disappears, and
+`[schema] no *.overlay.ini beside the game exe; the menu has nothing to show` when nothing is found
+at all. `[menu] <module> is loaded` / `[menu] <module> is not loaded` mark a section's plugin
+appearing or vanishing from the process.
 
 ## Credits and licence
 

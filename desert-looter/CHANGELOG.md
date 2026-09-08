@@ -6,12 +6,21 @@ Versioning](../VERSIONING.md).
 
 ## [Unreleased]
 
+Game build 25116796. In-game verification of the changes below is pending.
+
 ### Added
 
 - Per-family gather switches `GatherForaging`, `GatherLogging`, `GatherMining` and `GatherOre`,
   default `1`, the same kind of gate `GatherItems` and `GatherGear` are for ground items. When a
   family is switched off, the "nothing found" message now says how many nearby nodes were skipped
   for that reason.
+- `config::schema()` declares every ini key, its default and its widget for Desert Overlay's menu,
+  including the four `Key*` bindings as key pickers and the four gather presets, which moved here
+  from the overlay. The plugin writes it as `DesertLooter.overlay.ini` beside `DesertLooter.ini` at
+  every start, logging `[schema] wrote ...` / `[schema] ... is current` / `[schema] WARN could not
+  write ...`; editing that file has no effect, and the overlay redraws its section from it within a
+  second of a change. This is what lets Desert Overlay draw the Desert Looter section without any
+  Desert-Looter-specific code of its own.
 
 ### Changed
 
