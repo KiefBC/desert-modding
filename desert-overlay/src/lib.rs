@@ -33,10 +33,12 @@ pub use desert_core::{ini, log};
 #[cfg(windows)]
 pub use desert_core::hotkey;
 
-// The pure half: the ini model, the comment-preserving rewrite, the presets
-// and the file store. All of it links and unit-tests natively on Linux, which
-// is where every rule about what the overlay writes is actually verified.
+// The pure half: the ini model, the comment-preserving rewrite, the presets,
+// the file store and the embedded logo bytes. All of it links and unit-tests
+// natively on Linux, which is where every rule about what the overlay writes
+// is actually verified.
 pub mod config;
+pub mod logo;
 pub mod model;
 pub mod presets;
 pub mod rewrite;

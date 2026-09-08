@@ -26,12 +26,14 @@ use std::time::Instant;
 
 use hudhook::{ImguiRenderLoop, MessageFilter};
 use imgui::{
-    Condition, Context, FontAtlas, FontConfig, FontSource, Io, Style, StyleColor, TreeNodeFlags, Ui,
+    Condition, Context, FontAtlas, FontConfig, FontId, FontSource, Io, Style, StyleColor,
+    TextureId, TreeNodeFlags, Ui,
 };
 
 use desert_core::hotkey::Hotkey;
 
 use crate::config::{ColorSpace, Config, FontChoice};
+use crate::logo;
 use crate::model::{
     GathererModel, LooterModel, GATHER_RANGE, MS_RANGE, MULT_RANGE, SCAN_RANGE, STACK_LIMIT_RANGE,
 };
@@ -52,6 +54,21 @@ const FONT_MAX_BYTES: u64 = 32 * 1024 * 1024;
 
 /// What the log calls the font when there is no file behind it.
 const BUILT_IN_FONT: &str = "built-in ProggyClean";
+
+/// The name on the window and in the header, in one place so the two cannot
+/// drift apart. It is also the imgui window id, so changing it resets a
+/// window position remembered within a session.
+const TITLE: &str = "Desert Tooling";
+
+/// The header title's face, as a multiple of the menu font's size. Big enough
+/// to read as a heading beside the logo, small enough that it still fits
+/// inside the logo's height without the row growing.
+const TITLE_FONT_RATIO: f32 = 1.6;
+
+/// The logo's drawn size, square, as a multiple of the menu font's size. The
+/// embedded picture is 128 px and the DX12 sampler is linear, so at 40-70
+/// physical pixels this is a clean shrink of a sharp image.
+const LOGO_RATIO: f32 = 2.2;
 
 pub struct Overlay {
     cfg: Config,
@@ -83,12 +100,34 @@ pub struct Overlay {
     font_face: u32,
     /// `FontSize` from the ini, in pixels before [`Overlay::scale`].
     font_size: f32,
+    /// Where the bigger face the header title is drawn in sits in the atlas:
+    /// an *index*, not a [`FontId`], because a `FontId` is a raw `*const
+    /// Font` and hudhook requires the render loop to be `Send + Sync`. The
+    /// index is resolved back to an id inside the frame, where the atlas is
+    /// there to be asked.
+    ///
+    /// `None` until [`ImguiRenderLoop::initialize`] has run; the title then
+    /// falls back to the menu font, which is imgui's default.
+    title_font: Option<usize>,
+    /// The logo, uploaded to the renderer in
+    /// [`ImguiRenderLoop::initialize`]. `None` means the upload failed, which
+    /// was logged at the time; the header then draws its text alone.
+    ///
+    /// Not cached across swapchain resets: `initialize` runs again on a fresh
+    /// engine whose texture heap knows nothing about the old id, so the
+    /// picture is uploaded once per pipeline.
+    logo: Option<TextureId>,
     /// The colour theme in force, from `Theme` in the ini until the picker
     /// changes it.
     theme: &'static Theme,
     /// A theme chosen in the picker this frame. `render` has no access to
     /// the imgui style, so it is applied in the next `before_render`.
     pending_theme: Option<&'static Theme>,
+    /// The window's size on the last frame and when it last changed, so a
+    /// resize is logged once it has settled rather than on every frame of the
+    /// drag. That log line is how a good default size gets chosen.
+    window_size: [f32; 2],
+    window_resized_at: Option<Instant>,
     visible: bool,
     menu_key: Hotkey,
     looter: Store<LooterModel>,
@@ -111,6 +150,8 @@ impl Overlay {
         Overlay {
             theme,
             pending_theme: None,
+            window_size: [0.0, 0.0],
+            window_resized_at: None,
             menu_key: Hotkey::new(cfg.key_menu),
             looter: Store::new(&dir, now),
             gatherer: Store::new(&dir, now),
@@ -121,6 +162,8 @@ impl Overlay {
             font_label,
             font_face,
             font_size,
+            title_font: None,
+            logo: None,
             cfg,
             scale,
             visible,
@@ -195,11 +238,21 @@ impl Overlay {
         }
     }
 
-    /// Add the menu font to a freshly built atlas at `px` pixels.
+    /// The menu font's final size in pixels: `FontSize` from the ini through
+    /// [`Overlay::scale`]. The one place that decides it, so the atlas, the
+    /// log line and the header's geometry cannot disagree.
+    fn font_px(&self) -> f32 {
+        (self.font_size * self.scale).round().max(1.0)
+    }
+
+    /// Add the menu font to a freshly built atlas at `px` pixels, and return
+    /// the id imgui gave it.
     ///
     /// Called from [`ImguiRenderLoop::initialize`], which hudhook runs before
     /// it builds and uploads the atlas, so this is the font that gets drawn.
-    fn add_font(&self, fonts: &mut FontAtlas, px: f32) {
+    /// The first face added to an atlas is imgui's default, which is why the
+    /// menu font goes in before the bigger title face.
+    fn add_font(&self, fonts: &mut FontAtlas, px: f32) -> FontId {
         let config = FontConfig {
             size_pixels: px,
             // 2x horizontal oversampling is what makes small text on an LCD
@@ -211,7 +264,7 @@ impl Overlay {
         };
         match &self.font_data {
             Some(bytes) => {
-                fonts.add_font(&[FontSource::TtfData {
+                let id = fonts.add_font(&[FontSource::TtfData {
                     data: bytes,
                     size_pixels: px,
                     config: Some(config),
@@ -219,10 +272,9 @@ impl Overlay {
                 if self.font_face > 0 {
                     Self::select_ttc_face(fonts, self.font_face);
                 }
+                id
             }
-            None => {
-                fonts.add_font(&[FontSource::DefaultFontData { config: Some(config) }]);
-            }
+            None => fonts.add_font(&[FontSource::DefaultFontData { config: Some(config) }]),
         }
     }
 
@@ -469,10 +521,52 @@ impl Overlay {
             }
         }
     }
+
+    /// The banner at the top of the window: the goblin, then the name in the
+    /// bigger face, then the rule that separates them from the settings.
+    ///
+    /// The image is square at [`LOGO_RATIO`] times the menu font size, so the
+    /// whole row scales with `FontSize` and `Scale` and never needs a pixel
+    /// figure of its own. imgui puts the text baseline at the top of the row
+    /// after a `same_line`, so the cursor is nudged down by half the leftover
+    /// height to centre the words against the picture; the title is drawn in
+    /// the normal text colour, which is what makes it gold on the banner
+    /// theme rather than the muted grey used for explanatory lines.
+    ///
+    /// With no texture there is nothing to centre against and the title is
+    /// simply drawn where the cursor already is.
+    fn header(&self, ui: &Ui) {
+        let h = (LOGO_RATIO * self.font_px()).round();
+        // The group is what makes the row as tall as the *image* even though
+        // the text was nudged down inside it: moving the cursor by hand ends
+        // imgui's line-height bookkeeping, so without this the separator
+        // underneath would ride up over the goblin's feet.
+        ui.group(|| {
+            let mut top = ui.cursor_pos()[1];
+            if let Some(tex) = self.logo {
+                imgui::Image::new(tex, [h, h]).build(ui);
+                ui.same_line();
+                top = ui.cursor_pos()[1];
+            }
+            // `push_font` panics on an id this atlas does not hold, and a
+            // panic here is a crash to desktop, so the index is resolved
+            // through the live atlas and anything unexpected simply leaves
+            // the default face in place.
+            let _face = self
+                .title_font
+                .and_then(|i| ui.fonts().fonts().get(i).copied())
+                .map(|id| ui.push_font(id));
+            let text_h = ui.calc_text_size(TITLE)[1];
+            if self.logo.is_some() && text_h < h {
+                ui.set_cursor_pos([ui.cursor_pos()[0], top + (h - text_h) * 0.5]);
+            }
+            ui.text(TITLE);
+        });
+    }
 }
 
 impl ImguiRenderLoop for Overlay {
-    fn initialize(&mut self, ctx: &mut Context, _rc: &mut dyn hudhook::RenderContext) {
+    fn initialize(&mut self, ctx: &mut Context, rc: &mut dyn hudhook::RenderContext) {
         // imgui otherwise writes an `imgui.ini` of window positions into the
         // process's working directory - which for a Steam game is somebody
         // else's folder - on every window move. The overlay has exactly one
@@ -489,8 +583,16 @@ impl ImguiRenderLoop for Overlay {
         ctx.style_mut().scale_all_sizes(self.scale);
         // Before hudhook's `setup_fonts` builds and uploads the atlas, which
         // is the whole reason the font is added from here.
-        let px = (self.font_size * self.scale).round().max(1.0);
+        let px = self.font_px();
         self.add_font(ctx.fonts(), px);
+        // A second face, same font file, for the header title. It is added
+        // after the menu font on purpose: imgui draws everything in the first
+        // face an atlas was given unless a `push_font` says otherwise, and
+        // this one is only ever pushed around the title. `add_font` appends,
+        // so its index is however many faces the atlas held before it.
+        let before = ctx.fonts().fonts().len();
+        self.add_font(ctx.fonts(), (px * TITLE_FONT_RATIO).round().max(1.0));
+        self.title_font = Some(before);
         // The theme goes on after the scaling, so its rounding is applied in
         // scaled pixels exactly once, and again from `before_render` whenever
         // the picker changes it.
@@ -514,6 +616,21 @@ impl ImguiRenderLoop for Overlay {
             "[menu] font: {} {:.0} px (FontSize {} x scale {:.2})",
             self.font_label, px, self.font_size, self.scale
         ));
+        // Re-uploaded every time, never carried over: after a swapchain reset
+        // this runs again against a brand new engine whose texture heap has
+        // never heard of the previous id.
+        self.logo = match rc.load_texture(logo::RGBA, logo::WIDTH, logo::HEIGHT) {
+            Ok(id) => Some(id),
+            // A menu with no picture in the corner is a cosmetic loss and
+            // nothing more, so this is a warning and the frame goes on.
+            Err(e) => {
+                desert_core::log::write(&format!(
+                    "[menu] WARN the logo texture could not be uploaded: {e:?}; the header shows \
+                     its title only"
+                ));
+                None
+            }
+        };
     }
 
     fn before_render(&mut self, ctx: &mut Context, _rc: &mut dyn hudhook::RenderContext) {
@@ -549,27 +666,29 @@ impl ImguiRenderLoop for Overlay {
         }
         let mut changed_looter = false;
         let mut changed_gatherer = false;
+        let mut window_size = self.window_size;
 
-        ui.window("Desert Mods")
+        ui.window(TITLE)
             .position([40.0 * self.scale, 40.0 * self.scale], Condition::FirstUseEver)
-            .size([460.0 * self.scale, 0.0], Condition::FirstUseEver)
+            // Measured in game on 2026-09-08 (the `[menu] window size` log
+            // line at scale 1.25): the size at which everything fits with no
+            // scrollbar. Unscaled units, the same as the constraints below.
+            .size([575.0 * self.scale, 770.0 * self.scale], Condition::FirstUseEver)
             .size_constraints([360.0 * self.scale, 120.0 * self.scale], [900.0 * self.scale, 1200.0 * self.scale])
             .build(|| {
                 let t = self.theme;
+                self.header(ui);
+                ui.separator();
                 self.pending_theme = theme_picker(ui, t);
                 ui.separator();
                 ui.text_colored(t.dim, "Changes are saved to the ini files as you make them.");
                 ui.separator();
 
-                {
-                    let _d = ui.begin_disabled(!self.looter_loaded);
-                    changed_looter |= presets_row(ui, t, &mut self.looter.model);
-                }
-                ui.separator();
-
                 if ui.collapsing_header(section_title("Desert Looter", self.looter_loaded), TreeNodeFlags::DEFAULT_OPEN) {
                     not_installed_line(ui, t, "DesertLooter.asi", self.looter_loaded);
                     let _d = ui.begin_disabled(!self.looter_loaded);
+                    changed_looter |= presets_row(ui, t, &mut self.looter.model);
+                    ui.separator();
                     changed_looter |= looter_section(ui, t, &mut self.looter.model);
                     status_line(ui, t, self.looter.status.as_deref());
                 }
@@ -579,7 +698,9 @@ impl ImguiRenderLoop for Overlay {
                     changed_gatherer |= gatherer_section(ui, t, &mut self.gatherer.model);
                     status_line(ui, t, self.gatherer.status.as_deref());
                 }
+                window_size = ui.window_size();
             });
+        self.note_window_size(window_size, Instant::now());
 
         if changed_looter {
             self.looter.touch();
@@ -622,12 +743,44 @@ fn section_title(name: &str, loaded: bool) -> String {
 
 /// One dim line explaining why a section is greyed out. Nothing when the
 /// plugin is there.
+/// How long a window size has to hold still before it is logged.
+const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(500);
+
+impl Overlay {
+    /// Log the window's size once a resize has settled, in pixels and in the
+    /// unscaled units `render` passes to `.size()`, so a size that looks
+    /// right in game can be copied straight into the code as the default.
+    fn note_window_size(&mut self, size: [f32; 2], now: Instant) {
+        if size != self.window_size {
+            self.window_size = size;
+            self.window_resized_at = Some(now);
+            return;
+        }
+        if self.window_resized_at.is_some_and(|at| now.duration_since(at) >= RESIZE_SETTLE) {
+            self.window_resized_at = None;
+            let scale = if self.scale > 0.0 { self.scale } else { 1.0 };
+            desert_core::log::write(&format!(
+                "[menu] window size {:.0}x{:.0} px = {:.0}x{:.0} at scale 1.0 (scale {:.2})",
+                size[0],
+                size[1],
+                size[0] / scale,
+                size[1] / scale,
+                self.scale
+            ));
+        }
+    }
+}
+
 /// The theme picker at the top of the window. Returns the newly chosen theme
 /// on the frame the choice is made, which the caller applies next frame.
 fn theme_picker(ui: &Ui, current: &Theme) -> Option<&'static Theme> {
     let mut index = current.index();
     let changed = ui.combo("Theme", &mut index, themes::ALL, |t| Cow::Borrowed(t.title));
-    ui.text_colored(current.dim, current.blurb);
+    // The blurb only shows as a tooltip: a line of prose under the picker
+    // was clutter once a theme had been chosen.
+    if ui.is_item_hovered() {
+        ui.tooltip_text(current.blurb);
+    }
     if !changed {
         return None;
     }

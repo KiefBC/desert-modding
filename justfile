@@ -90,6 +90,10 @@ sync-versions:
 check-versions:
     {{nix}} python3 tools/sync-versions.py --check
 
+# Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
+logo:
+    {{nix}} python3 tools/logo-to-rgba.py
+
 # Re-check every byte signature against the game exe (each must hit once).
 sigscan:
     {{nix}} python3 tools/sigscan.py

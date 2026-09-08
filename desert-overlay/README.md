@@ -116,7 +116,9 @@ in. If the menu never appears, that file says why - and if hudhook itself
 refused, its reason is in there too. `Debug=1` adds a line per ini write and
 turns on hudhook's own debug and trace output, which is what to send with a
 report that the game will not start; it stops after 20000 hudhook lines so the
-file cannot grow all session.
+file cannot grow all session. Resizing the menu logs one `[menu] window size`
+line once the drag has settled, in pixels and in unscaled units, which is how a
+size that looks right in game becomes the default.
 
 ## Credits and licence
 

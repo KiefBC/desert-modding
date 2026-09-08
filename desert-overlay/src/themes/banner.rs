@@ -29,6 +29,7 @@ fn colors() -> Vec<(Role, Rgba)> {
 
     // Blood red, reserved for active and pressed states.
     let blood = rgb(0x9E1B1E, 1.0);
+    let blood_deep = rgb(0x6E1214, 1.0); // the splash's darker red, section headers at rest
 
     // Neutrals: the banner black and the warm greys inside it.
     let banner_black = rgb(0x1C1B1A, 0.96); // the poster's black banner, window background
@@ -66,9 +67,12 @@ fn colors() -> Vec<(Role, Rgba)> {
         (Role::Button, button),
         (Role::ButtonHovered, gold_shadow),
         (Role::ButtonActive, blood),
-        (Role::Header, charcoal),
-        (Role::HeaderHovered, gold_shadow),
-        (Role::HeaderActive, blood),
+        // Section headers are separators, not frames, so they carry the
+        // splash's red rather than the charcoal the widgets sit on: deep red at
+        // rest, the brighter splash red under the pointer, gold when pressed.
+        (Role::Header, blood_deep),
+        (Role::HeaderHovered, blood),
+        (Role::HeaderActive, gold_shadow),
         (Role::Separator, rgb(0xC9A648, 0.4)),
         (Role::SeparatorHovered, gold_bright),
         (Role::SeparatorActive, blood),

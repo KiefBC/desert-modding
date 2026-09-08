@@ -21,6 +21,11 @@ click reaches `DesertLooter.ini` and Desert Looter reloads it within a second.
 
 ### Added
 
+- The menu window is titled "Desert Tooling" and opens with a header row: the goblin logo beside
+  the name in a larger size of the menu font. The picture is embedded in the plugin as raw RGBA
+  pixels, generated from `assets/logo.svg` by `tools/logo-to-rgba.py` (`just logo`); it is uploaded
+  to the renderer once per graphics pipeline, and a failed upload is a warning in the log and a
+  header with only its title.
 - The menu is drawn in a real TrueType font instead of Dear ImGui's 13 px bitmap face blown up by
   the scale factor, which is what made it hard to read on a 4K display. Two ini keys steer it:
   `FontSize` (pixels before `Scale`, default `20`, `8` to `72`) and `Font` (default `segoeui.ttf`,
