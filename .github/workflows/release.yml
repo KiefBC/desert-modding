@@ -21,7 +21,7 @@
 #   * SHA256SUMS verifies against the zips just built
 #
 # Then, in a second job, that zip goes to Nexus Mods as a new version of the file
-# already there. All three packages share one mod page (crimsondesert/mods/3369)
+# already there. All four packages share one mod page (crimsondesert/mods/3369)
 # as three separate files, so which file a tag updates is what
 # tools/nexus-targets.json says. That job reads the release it just made rather
 # than rebuilding, so Nexus gets the bytes GitHub is serving, and it skips any
@@ -92,7 +92,7 @@ jobs:
       - name: Tests (native)
         run: nix develop --command just test-native
 
-      # Just this tag's package. dist.sh with no argument still builds all three,
+      # Just this tag's package. dist.sh with no argument still builds all four,
       # which is what `just dist` and a local build want.
       - name: Build the package
         run: nix develop --command tools/dist.sh "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --package)"
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Which of the three zips this tag is for, and which Nexus file it updates.
+      # Which of the four zips this tag is for, and which Nexus file it updates.
       # Also validates the version and display name against what the API accepts,
       # so a bad name is caught here and not after the bytes are uploaded.
       - name: Which Nexus file this tag publishes to
@@ -184,7 +184,7 @@ jobs:
 
       # The changelog entry only. The release notes' file list and checksum table
       # are GitHub's; the Files tab already lists what is on the page. The page's
-      # changelog is keyed by version string and appends, so all three files can
+      # changelog is keyed by version string and appends, so all four files can
       # write to it without overwriting each other.
       - name: Changelog for the Nexus page
         id: changelog
