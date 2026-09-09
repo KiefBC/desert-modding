@@ -42,6 +42,7 @@ use imgui::{
 use desert_core::hotkey::Hotkey;
 use desert_core::ini;
 use desert_core::schema::{Kind, Section};
+use desert_core::telemetry;
 
 use crate::config::{ColorSpace, Config, FontChoice};
 use crate::dynmodel::{self, DynModel, SectionEntry};
@@ -77,6 +78,24 @@ const FONT_MAX_BYTES: u64 = 32 * 1024 * 1024;
 
 /// What the log calls the font when there is no file behind it.
 const BUILT_IN_FONT: &str = "built-in ProggyClean";
+
+/// The widest the position readout ever gets, and the string the row is laid
+/// out against. Never displayed.
+const READOUT_WIDEST: &str = "X -000000.0   Y -000000.0   Z -000000.0";
+
+/// What the readout says when no position has been published lately: the world
+/// is not up yet, the player is on a load screen, or the subsystem that
+/// publishes it is not running in this build.
+const NO_POSITION: &str = "position unavailable";
+
+/// The readout's tooltip. It says which axis is which because the answer is
+/// not the intuitive one.
+const POSITION_HELP: &str = "The player character's position in the game world. Y is altitude: X \
+                             and Z are the two that place you on the map.";
+
+/// The narrowest the theme combo is allowed to get before it stops making room
+/// for the readout beside it.
+const COMBO_MIN_WIDTH: f32 = 80.0;
 
 /// The name on the window and in the header, in one place so the two cannot
 /// drift apart. It is also the imgui window id, so changing it resets a
@@ -734,7 +753,8 @@ impl ImguiRenderLoop for Overlay {
                 let t = self.theme;
                 self.header(ui);
                 ui.separator();
-                self.pending_theme = theme_picker(ui, t);
+                self.pending_theme = theme_picker(ui, t, position_reserve(ui));
+                position_readout(ui, t);
                 ui.separator();
                 ui.text_colored(t.dim, "Changes are saved to the ini as you make them.");
                 ui.separator();
@@ -819,13 +839,65 @@ impl Overlay {
 
 /// The theme picker at the top of the window. Returns the newly chosen theme
 /// on the frame the choice is made, which the caller applies next frame.
-fn theme_picker(ui: &Ui, current: &Theme) -> Option<&'static Theme> {
+///
+/// `reserve` is how much room to leave on its right for [`position_readout`],
+/// which shares this row. Left to itself an imgui combo takes about 65% of the
+/// window, which at the default width leaves the coordinates nowhere to go, so
+/// the width is set here rather than fought over afterwards.
+fn theme_picker(ui: &Ui, current: &Theme, reserve: f32) -> Option<&'static Theme> {
     let mut index = current.index();
+    let label = ui.calc_text_size("Theme")[0] + ui.clone_style().item_inner_spacing[0];
+    let width = ui.content_region_avail()[0] - label - reserve;
+    // A window dragged narrow enough would ask for a negative width, which
+    // imgui reads as "measured back from the right edge" and turns into a
+    // combo wider than the window rather than a smaller one. Below the floor
+    // the picker keeps its default size and the readout gets squeezed instead.
+    if width >= COMBO_MIN_WIDTH {
+        ui.set_next_item_width(width);
+    }
     let changed = ui.combo("Theme", &mut index, themes::ALL, |t| Cow::Borrowed(t.title));
     if !changed {
         return None;
     }
     themes::ALL.get(index).copied().filter(|t| *t != current)
+}
+
+/// The player's position, right-aligned on the theme picker's row.
+///
+/// The overlay reads no game memory (`crate` docs): these coordinates come
+/// from [`desert_core::telemetry`], where the looter publishes them from its
+/// own thread about thirty times a second. Nothing here knows how they were
+/// obtained, and a build whose looter never started simply shows
+/// [`NO_POSITION`] forever.
+///
+/// `y` is altitude, which is why the readout names all three axes instead of
+/// implying that the first two are the map.
+fn position_readout(ui: &Ui, t: &Theme) {
+    let text = match telemetry::read() {
+        Some(p) => format!("X {:.1}   Y {:.1}   Z {:.1}", p.x, p.y, p.z),
+        None => NO_POSITION.to_string(),
+    };
+    ui.same_line();
+    // imgui puts the cursor at the top of the row after a `same_line`, so the
+    // text would sit against the combo's upper edge; half the frame padding
+    // is the difference between a text line's height and a widget's.
+    let row_top = ui.cursor_pos()[1];
+    let right = ui.content_region_max()[0];
+    let x = (right - ui.calc_text_size(&text)[0]).max(ui.cursor_pos()[0]);
+    ui.set_cursor_pos([x, row_top + ui.clone_style().frame_padding[1]]);
+    ui.text_colored(t.dim, &text);
+    if ui.is_item_hovered() {
+        ui.tooltip_text(POSITION_HELP);
+    }
+}
+
+/// How wide to keep the right-hand end of the theme picker's row free.
+///
+/// Measured off a worst case rather than off the live text: the numbers change
+/// every frame, and sizing the combo from them would make it twitch as the
+/// player walks. Six digits and a sign is wider than the map.
+fn position_reserve(ui: &Ui) -> f32 {
+    ui.calc_text_size(READOUT_WIDEST)[0] + ui.clone_style().item_spacing[0]
 }
 
 /// One dim line explaining why a section is greyed out. Nothing when the

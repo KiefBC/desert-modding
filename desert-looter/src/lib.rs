@@ -15,7 +15,7 @@
 // crate has always used, so `crate::log!`, `crate::safe::read`, `crate::pe`,
 // ... keep resolving inside every module here. `log` names both a module and
 // the exported macro; one `use` brings in both.
-pub use desert_core::{collect, ini, log, pattern, pe, rtti, schema, trampoline};
+pub use desert_core::{collect, ini, log, pattern, pe, rtti, schema, telemetry, trampoline};
 #[cfg(windows)]
 pub use desert_core::{hook, hotkey, module, safe};
 
@@ -58,7 +58,7 @@ mod entry {
     use crate::hotkey::Hotkey;
     use crate::module::MainModule;
     use crate::gatherer::Gatherer;
-    use crate::{events, game, hook, log};
+    use crate::{actors, events, game, hook, log};
 
     /// The `area_sweep` signature hits 15 bytes into the function; the
     /// function starts with three 5-byte `mov [rsp+x],reg` spills, which are
@@ -171,6 +171,32 @@ mod entry {
                 false
             }
         }
+    }
+
+    /// Sample the player's position and hand it to `desert_core::telemetry`
+    /// for the overlay to draw.
+    ///
+    /// Cheap and unconditional: three guarded pointer reads and six floats,
+    /// once per 30 ms tick. It needs no hook and no game thread because it
+    /// only *reads* - the `gs:[0x58]` constraint in `events.rs` is about
+    /// building and sending events, not about looking at memory, and every
+    /// read here goes through `safe` like all the others.
+    ///
+    /// The manager is re-read from its global slot rather than taken from the
+    /// cached `World`, the same way `game::survey` does it, so the readout
+    /// survives the manager moving across a load screen. Anything unreadable
+    /// publishes `None`, which is what puts the menu back to "unavailable"
+    /// instead of freezing the last coordinates on screen.
+    fn publish_position(world: Option<&game::World>) {
+        let pos = world.and_then(|w| {
+            let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+            actors::player_actor(manager).and_then(actors::actor_position)
+        });
+        crate::telemetry::publish(pos.map(|p| crate::telemetry::Position {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+        }));
     }
 
     /// Walk the descriptor table once the game has built it (after the boot grace).
@@ -458,15 +484,21 @@ mod entry {
             // consumed rather than fired the moment it goes back to 1.
             let (press_toggle, press_record, press_gather, press_scan) =
                 (k_toggle.pressed(), k_record.pressed(), k_gather.pressed(), k_scan.pressed());
-            if !cfg.enabled {
-                std::thread::sleep(std::time::Duration::from_millis(30));
-                continue;
-            }
+            // Above the `Enabled` gate, and deliberately: the overlay's
+            // coordinate readout is fed from here, and a readout that goes
+            // blank because somebody switched auto-gathering off would be
+            // reporting on this subsystem rather than on the player. Finding
+            // the world is the same work either way and it is done once.
             if world.is_none() && std::time::Instant::now() >= next_world_try {
                 world = game::find_world(&module, &anchors);
                 if world.is_none() {
                     next_world_try = std::time::Instant::now() + std::time::Duration::from_secs(3);
                 }
+            }
+            publish_position(world.as_ref());
+            if !cfg.enabled {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                continue;
             }
             if world.is_some() && api_ok && !descriptor_ok {
                 // Same cadence as the world retry: the table exists once the
