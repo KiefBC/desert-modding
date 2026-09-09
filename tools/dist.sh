@@ -1,39 +1,24 @@
 #!/usr/bin/env bash
 #
-# Build the release packages: every plugin and the DMM module pack.
+# Build the release packages: the plugin and the DMM module pack.
 #
-#   nix develop --command tools/dist.sh                  every package
-#   nix develop --command tools/dist.sh desert-looter    just that one
+#   nix develop --command tools/dist.sh                   both packages
+#   nix develop --command tools/dist.sh desert-tooling    just that one
 #
-# Writes dist/DesertLooter-<version>.zip, dist/DesertGatherer-<version>.zip,
-# dist/DesertOverlay-<version>.zip, dist/DesertGatherer-DMM-<version>.zip and
-# dist/SHA256SUMS. dist/ is gitignored; the zips are what gets attached to a
-# GitHub release.
+# Writes dist/DesertTooling-<version>.zip,
+# dist/DesertGatherer-DMM-<version>.zip and dist/SHA256SUMS. dist/ is
+# gitignored; the zips are what gets attached to a GitHub release.
 #
 # The release workflow passes the single package its tag names, so a release
-# carries only the zip it is actually about. That is not tidiness: the
-# packages are versioned separately, so rebuilding all of them for every tag
-# would eventually publish an untagged package's OLD version number over NEW
-# bytes (any change to desert-core between two releases does it), and two
+# carries only the zip it is actually about. That is not tidiness: the two
+# packages are versioned separately (the plugin from its Cargo.toml, the pack
+# from dmm_pack.json), so rebuilding both for every tag would eventually
+# publish an untagged package's OLD version number over NEW bytes, and two
 # releases would then disagree about the contents of one version.
-#
-# The looter and gatherer zips also carry DesertOverlay.asi and its ini, the
-# same two files the overlay's own zip ships. The overlay greys out the section
-# of any plugin that is not loaded, so it is useful and harmless in either mod
-# on its own, and a player who installs one mod gets the menu without having to
-# find a second download. DesertOverlay-<version>.zip stays the canonical
-# overlay release; the copies in the mod zips are a convenience.
-#
-# Bundling does not change the separate-versioning rule above, it just means a
-# mod zip carries whichever overlay version was current when the mod was
-# tagged. An overlay-only change therefore reaches those users either through
-# the overlay's own release or through the mod's next release, whichever comes
-# first; it never re-cuts the mod's zip on its own. Both zips ship the same
-# file, so a player with both installs one copy in bin64 and the newer wins.
 #
 # dist/ is wiped first, so SHA256SUMS only ever lists what this run built.
 #
-# The layout inside each zip is FLAT - the plugin files sit at the zip root,
+# The layout inside the plugin zip is FLAT - its files sit at the zip root,
 # with no wrapper folder. That is what makes one archive serve both kinds of
 # user:
 #
@@ -71,7 +56,7 @@ done
 
 # Package names are the release-tag prefixes (VERSIONING.md step 6), so the
 # workflow can pass through what tools/release-notes.py --package printed.
-all_packages=(desert-looter desert-gatherer desert-overlay desert-gatherer-dmm)
+all_packages=(desert-tooling desert-gatherer-dmm)
 selected=("$@")
 [ "${#selected[@]}" -gt 0 ] || selected=("${all_packages[@]}")
 
@@ -92,9 +77,9 @@ fi
 rm -rf "$dist"
 mkdir -p "$dist"
 
-# crate-dir  ShippedName  built-dll  [bundle-overlay]
+# crate-dir  ShippedName  built-dll
 package() {
-  local crate="$1" name="$2" dll="$3" bundle="${4:-no}"
+  local crate="$1" name="$2" dll="$3"
 
   # The crate's Cargo.toml version is the single source of truth (VERSIONING.md).
   local version
@@ -105,20 +90,17 @@ package() {
   rm -rf "$stage"
   mkdir -p "$stage"
 
-  # Fixed order, and the same four names in every zip: the plugin, its ini and
-  # the mod's two docs. The looter and gatherer zips then add the overlay's two
-  # files after them, so the first four are identical across all three.
+  # Fixed order: the plugin, its ini, the two docs, then the licence. That is
+  # the whole install - one .asi and one .ini, both dropped straight into
+  # bin64. The licence rides along because the zip, not the repository, is what
+  # most people ever see of this project.
   install -m 644 "$built/$dll"                 "$stage/$name.asi"
   install -m 644 "$root/$crate/$name.ini"      "$stage/$name.ini"
   install -m 644 "$root/$crate/README.md"      "$stage/README.md"
   install -m 644 "$root/$crate/CHANGELOG.md"   "$stage/CHANGELOG.md"
+  install -m 644 "$root/LICENSE"               "$stage/LICENSE"
 
-  local files=("$name.asi" "$name.ini" README.md CHANGELOG.md)
-  if [ "$bundle" = overlay ]; then
-    install -m 644 "$built/desert_overlay.dll"               "$stage/DesertOverlay.asi"
-    install -m 644 "$root/desert-overlay/DesertOverlay.ini"  "$stage/DesertOverlay.ini"
-    files+=(DesertOverlay.asi DesertOverlay.ini)
-  fi
+  local files=("$name.asi" "$name.ini" README.md CHANGELOG.md LICENSE)
   touch -d "@$DIST_EPOCH" "$stage"/*
 
   local zipfile="$dist/$name-$version.zip"
@@ -163,9 +145,7 @@ package_dmm() {
 
 for name in "${selected[@]}"; do
   case "$name" in
-    desert-looter)       package desert-looter   DesertLooter   desert_looter.dll   overlay ;;
-    desert-gatherer)     package desert-gatherer DesertGatherer desert_gatherer.dll overlay ;;
-    desert-overlay)      package desert-overlay  DesertOverlay  desert_overlay.dll ;;
+    desert-tooling)      package desert-tooling DesertTooling desert_tooling.dll ;;
     desert-gatherer-dmm) package_dmm ;;
   esac
 done

@@ -10,9 +10,9 @@ workspace = true
 
 [lib]
 name = "desert_looter"
-# cdylib -> the Windows .dll (renamed .asi). rlib -> lets `cargo test` link the
-# platform-independent modules natively on Linux.
-crate-type = ["cdylib", "rlib"]
+# rlib only. This crate stopped being a plugin of its own: `desert-tooling` is
+# the single cdylib and links this in as the auto-loot subsystem.
+crate-type = ["rlib"]
 
 [dependencies]
 desert-core.workspace = true

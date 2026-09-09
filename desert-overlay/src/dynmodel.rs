@@ -1,14 +1,21 @@
-//! One plugin's ini file as the menu sees it: a [`Section`] read from that
-//! plugin's schema file, plus one value per field.
+//! One subsystem's slice of the ini as the menu sees it: the
+//! [`Section`] that subsystem declared, plus one value per field.
 //!
 //! The overlay knows nothing about any particular mod. Everything it draws -
 //! the keys, their labels, their defaults, their accepted ranges - arrives at
-//! runtime in a `*.overlay.ini` schema written by the plugin itself, parsed by
-//! [`desert_core::schema`]. This module is what turns that description into
-//! something editable: [`DynModel::values`] holds one string per field, in the
-//! field's **written spelling** (`1`/`0`, `40`, `6.5`, `F10`, the option's own
-//! capitalisation), index-aligned with `section.fields`, so writing the file is
-//! nothing more than pairing each field's key with its slot.
+//! startup as a [`desert_core::schema::Section`] the subsystem built in its own
+//! `config.rs` and `desert-tooling` handed to [`crate::start`]. This module is
+//! what turns that description into something editable: [`DynModel::values`]
+//! holds one string per field, in the field's **written spelling** (`1`/`0`,
+//! `40`, `6.5`, `F10`, the option's own capitalisation), index-aligned with
+//! `section.fields`, so writing the file is nothing more than pairing each
+//! field's key with its slot.
+//!
+//! All three models sit on the **same** file and are told apart by the
+//! `[Section]` header each owns ([`Section::ini_section`]): reads go through
+//! [`ini::lines_in_section`] and writes through [`crate::rewrite::rewrite`],
+//! both scoped to that header, because `Enabled` exists under all three of
+//! them.
 //!
 //! Values stay in text for two reasons. It is the spelling the ini already
 //! uses, so a value that came off disk unchanged is written back byte for
@@ -17,12 +24,17 @@
 //! plugin would reject. An unacceptable value is not clamped or coerced: the
 //! default stays, which is exactly what the plugin does with the same file.
 //!
-//! Keys the schema does not mention are ignored on read and never written -
+//! Keys the section does not mention are ignored on read and never written -
 //! [`crate::rewrite`] only touches the lines whose key it was handed, so hand
 //! edits and keys a newer plugin added survive an edit from the menu.
 
+use std::path::Path;
+use std::time::Instant;
+
 use desert_core::ini::{self, Line};
 use desert_core::schema::{Kind, Preset, Section};
+
+use crate::store::Store;
 
 /// A schema and its current values.
 ///
@@ -48,9 +60,15 @@ impl DynModel {
         DynModel { section, values }
     }
 
-    /// The ini file this model edits, e.g. `DesertLooter.ini`.
+    /// The ini file this model edits: `DesertTooling.ini`, the same one for
+    /// every model.
     pub fn file_name(&self) -> &str {
         &self.section.ini
+    }
+
+    /// The `[Section]` header inside that file this model owns.
+    pub fn ini_section(&self) -> &str {
+        &self.section.ini_section
     }
 
     /// The value at `i`, or `""` for an index no field has (which cannot
@@ -76,18 +94,23 @@ impl DynModel {
         self.values.extend(self.section.fields.iter().map(|f| f.kind.default_text()));
     }
 
-    /// Read ini text through the schema: a key the schema names takes the
+    /// Read ini text through the section: a key the section names takes the
     /// file's value when the field accepts it, and keeps its default when it
     /// does not (an out-of-range number, a choice that is not an option, a key
-    /// name nothing maps to) - which is what the plugin itself does, so the
+    /// name nothing maps to) - which is what the subsystem itself does, so the
     /// menu shows the value in force rather than the value on disk.
     ///
-    /// Every other key in the file is ignored. Values not mentioned at all
-    /// fall back to their defaults, so a model is never left showing what a
+    /// **Only the model's own `[Section]` is read**, exactly as the subsystem
+    /// reads it, so the looter's `Enabled` cannot be shown in the gatherer's
+    /// row. Every other key in the file is ignored, and values not mentioned at
+    /// all fall back to their defaults, so a model is never left showing what a
     /// previous file said.
     pub fn parse_ini(&mut self, text: &str) {
         self.reset();
-        for line in ini::lines(text) {
+        // Cloned, because the iterator borrows `self.section` otherwise and the
+        // loop writes `self.values`. One short string per read.
+        let section = self.section.ini_section.clone();
+        for line in ini::lines_in_section(text, &section) {
             let Line::Pair(key, value) = line else { continue };
             let Some(i) = self.index_of(key) else { continue };
             set_value(&self.section, &mut self.values, i, value);
@@ -121,12 +144,16 @@ impl crate::store::IniModel for DynModel {
         DynModel::file_name(self)
     }
 
-    /// The created file's starting text comes from the schema itself
-    /// ([`desert_core::schema::render_ini_defaults`]), so a mod the overlay
-    /// has never heard of still gets a file with a header and every key at the
-    /// plugin's own default. The banner is the overlay's own: a plugin that
-    /// seeds its own ini writes a different one, and whichever got there first
-    /// says so.
+    fn ini_section(&self) -> &str {
+        DynModel::ini_section(self)
+    }
+
+    /// The created file's starting text comes from the section itself
+    /// ([`desert_core::schema::render_ini_defaults`]), so a menu edit made
+    /// against a file somebody deleted still produces a file with a banner, the
+    /// `[Section]` header and every key at the subsystem's own default. The
+    /// banner is the overlay's own: `desert-tooling` seeds the file with a
+    /// different one at startup, and whichever got there first says so.
     fn created_header(&self) -> String {
         let banner = format!(
             "{} was missing, so Desert Overlay created it.\n\
@@ -144,6 +171,68 @@ impl crate::store::IniModel for DynModel {
     fn pairs(&self) -> Vec<(&str, String)> {
         DynModel::pairs(self)
     }
+}
+
+// ---------------------------------------------------------------------------
+// One menu section
+// ---------------------------------------------------------------------------
+
+/// One subsystem's section of the menu: its model over the shared ini, and
+/// whether its module is actually in the process.
+///
+/// There is nothing to discover any more - the sections arrive in
+/// [`crate::start`] and this list is fixed for the life of the process - so an
+/// entry is only the pairing of a [`Store`] with the "is it loaded" flag the
+/// Windows side refreshes once a second.
+pub struct SectionEntry {
+    /// Whether the section's `Module` is loaded in the game process. A section
+    /// that names no module (which is all of them now that the subsystems ship
+    /// in one `.asi`) is always true; for the rest the Windows side refreshes
+    /// this once a second, and a false one is drawn disabled.
+    pub loaded: bool,
+    /// The ini the section describes, watched and written as before.
+    pub store: Store<DynModel>,
+}
+
+impl SectionEntry {
+    pub fn section(&self) -> &Section {
+        &self.store.model.section
+    }
+
+    pub fn title(&self) -> &str {
+        &self.store.model.section.title
+    }
+
+    /// The `[Section]` header this entry owns in the ini. Also the imgui id
+    /// that keeps two sections' identically named widgets apart.
+    pub fn ini_section(&self) -> &str {
+        &self.store.model.section.ini_section
+    }
+
+    /// The `.asi` whose presence decides [`SectionEntry::loaded`], if the
+    /// section names one.
+    pub fn module(&self) -> Option<&str> {
+        self.store.model.section.module.as_deref()
+    }
+}
+
+/// Build one entry per section, in display order: the section's own `order`,
+/// then its title, exactly as the discovery scan used to sort them. Each store
+/// reads the file once here, on the caller's thread and never on a render
+/// thread.
+pub fn entries(dir: &Path, sections: Vec<Section>, now: Instant) -> Vec<SectionEntry> {
+    let mut entries: Vec<SectionEntry> = sections
+        .into_iter()
+        .map(|section| {
+            let loaded = section.module.is_none();
+            SectionEntry { loaded, store: Store::new(dir, DynModel::new(section), now) }
+        })
+        .collect();
+    entries.sort_by(|a, b| {
+        let (x, y) = (a.section(), b.section());
+        x.order.cmp(&y.order).then_with(|| x.title.cmp(&y.title))
+    });
+    entries
 }
 
 /// [`DynModel::set`] against a split borrow, for the render loop.
@@ -240,69 +329,95 @@ pub fn i32_of(v: i64) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use desert_core::schema;
+    use desert_core::schema::{Field, Preset};
 
-    /// A schema with one field of every kind, a heading, a same-line pair and
-    /// two presets - the shapes the menu has to draw.
-    const SCHEMA: &str = "\
-[overlay]
-Schema=1
-Title=Test Mod
-Ini=TestMod.ini
-Module=TestMod.asi
-Order=10
+    fn f(key: &str, label: &str, kind: Kind) -> Field {
+        Field {
+            key: key.to_string(),
+            label: label.to_string(),
+            kind,
+            heading: None,
+            same_line: false,
+            help: None,
+        }
+    }
 
-[Enabled]
-Kind=bool
-Label=Enabled
-Default=1
-
-[Interval]
-Kind=int
-Label=Interval (ms)
-Default=500
-Min=100
-Max=60000
-Step=50
-
-[Foraging]
-Kind=int
-Widget=slider
-Label=Foraging
-Default=1
-Min=1
-Max=100
-
-[ScanRange]
-Kind=float
-Label=Scan range
-Default=40
-Min=1
-Max=200
-
-[Theme]
-Kind=choice
-Label=Theme
-Default=banner
-Options=classic;parchment;banner
-
-[KeyToggle]
-Kind=key
-Label=Toggle
-Default=F10
-
-[preset:Everything]
-Hint=All of it.
-Set=Enabled=1;Foraging=100
-
-[preset:Off]
-Set=Enabled=0
-";
+    /// A section with one field of every kind and two presets - the shapes the
+    /// menu has to draw. Built here exactly as a subsystem's `config.rs`
+    /// builds its own: there is no schema file format any more.
+    fn section() -> Section {
+        Section {
+            title: "Test Mod".to_string(),
+            ini: "DesertTooling.ini".to_string(),
+            ini_section: "TestMod".to_string(),
+            module: Some("TestMod.asi".to_string()),
+            order: 10,
+            notice: None,
+            presets_label: None,
+            presets: vec![
+                Preset {
+                    label: "Everything".to_string(),
+                    hint: Some("All of it.".to_string()),
+                    set: vec![
+                        ("Enabled".to_string(), "1".to_string()),
+                        ("Foraging".to_string(), "100".to_string()),
+                    ],
+                },
+                Preset {
+                    label: "Off".to_string(),
+                    hint: None,
+                    set: vec![("Enabled".to_string(), "0".to_string())],
+                },
+            ],
+            fields: vec![
+                f("Enabled", "Enabled", Kind::Bool { default: true }),
+                f(
+                    "Interval",
+                    "Interval (ms)",
+                    Kind::Int {
+                        default: 500,
+                        min: 100,
+                        max: 60000,
+                        step: 50,
+                        slider: false,
+                        format: None,
+                    },
+                ),
+                f(
+                    "Foraging",
+                    "Foraging",
+                    Kind::Int { default: 1, min: 1, max: 100, step: 1, slider: true, format: None },
+                ),
+                f(
+                    "ScanRange",
+                    "Scan range",
+                    Kind::Float { default: 40.0, min: 1.0, max: 200.0, format: None },
+                ),
+                f(
+                    "Theme",
+                    "Theme",
+                    Kind::Choice {
+                        default: "banner".to_string(),
+                        options: vec![
+                            "classic".to_string(),
+                            "parchment".to_string(),
+                            "banner".to_string(),
+                        ],
+                    },
+                ),
+                f("KeyToggle", "Toggle", Kind::Key { default: "F10".to_string() }),
+            ],
+        }
+    }
 
     fn model() -> DynModel {
-        let (section, warnings) = schema::parse(SCHEMA).unwrap();
-        assert!(warnings.is_empty(), "{warnings:?}");
-        DynModel::new(section)
+        DynModel::new(section())
+    }
+
+    /// Ini text under this model's own header, which is the only place
+    /// `parse_ini` reads.
+    fn under(body: &str) -> String {
+        format!("[TestMod]\n{body}")
     }
 
     #[test]
@@ -320,28 +435,57 @@ Set=Enabled=0
                 "F10".to_string(),
             ]
         );
-        assert_eq!(m.file_name(), "TestMod.ini");
+        assert_eq!(m.file_name(), "DesertTooling.ini");
+        assert_eq!(m.ini_section(), "TestMod");
     }
 
     #[test]
-    fn parse_ini_takes_the_keys_the_schema_names_and_ignores_the_rest() {
+    fn parse_ini_takes_the_keys_the_section_names_and_ignores_the_rest() {
         let mut m = model();
-        m.parse_ini(
-            "; a comment\n[TestMod]\nEnabled=0\nInterval=250\nScanRange=25.5\n\
-             Debug=1\nSomethingElse=hello\n",
-        );
+        m.parse_ini(&under(
+            "Enabled=0\nInterval=250\nScanRange=25.5\nDebug=1\nSomethingElse=hello\n",
+        ));
         assert_eq!(m.get("Enabled"), Some("0"));
         assert_eq!(m.get("Interval"), Some("250"));
         assert_eq!(m.get("ScanRange"), Some("25.5"));
         assert_eq!(m.get("Foraging"), Some("1"), "a key the file omits keeps its default");
-        assert_eq!(m.get("Debug"), None, "a key the schema does not name is not modelled");
+        assert_eq!(m.get("Debug"), None, "a key the section does not name is not modelled");
+    }
+
+    #[test]
+    fn only_the_models_own_section_is_read() {
+        // The whole reason `parse_ini` is section-scoped: `Enabled` exists
+        // under every header of the shared ini.
+        let mut m = model();
+        m.parse_ini(
+            "Enabled=0\nInterval=100\n\n[Other]\nEnabled=0\nInterval=200\n\n\
+             [TestMod]\nEnabled=1\nInterval=300\n\n[Later]\nInterval=400\n",
+        );
+        assert_eq!(m.get("Enabled"), Some("1"));
+        assert_eq!(m.get("Interval"), Some("300"), "not 100, 200 or 400");
+    }
+
+    #[test]
+    fn a_file_without_our_header_leaves_every_default_in_place() {
+        let mut m = model();
+        m.parse_ini("[Other]\nEnabled=0\nInterval=250\n");
+        assert_eq!(m, model());
+    }
+
+    #[test]
+    fn the_header_is_matched_case_insensitively() {
+        let mut m = model();
+        m.parse_ini("[testmod]\nEnabled=0\n");
+        assert_eq!(m.get("Enabled"), Some("0"));
     }
 
     #[test]
     fn an_unacceptable_value_keeps_the_default() {
         let mut m = model();
         // Out of range, not a number, not an option, not a key name.
-        m.parse_ini("Interval=5\nForaging=101\nScanRange=oops\nTheme=neon\nKeyToggle=F99\n");
+        m.parse_ini(&under(
+            "Interval=5\nForaging=101\nScanRange=oops\nTheme=neon\nKeyToggle=F99\n",
+        ));
         assert_eq!(m.get("Interval"), Some("500"));
         assert_eq!(m.get("Foraging"), Some("1"));
         assert_eq!(m.get("ScanRange"), Some("40"));
@@ -350,23 +494,23 @@ Set=Enabled=0
     }
 
     #[test]
-    fn a_choice_matches_case_insensitively_and_keeps_the_schemas_spelling() {
+    fn a_choice_matches_case_insensitively_and_keeps_the_sections_spelling() {
         let mut m = model();
-        m.parse_ini("Theme=PARCHMENT\n");
+        m.parse_ini(&under("Theme=PARCHMENT\n"));
         assert_eq!(m.get("Theme"), Some("parchment"));
     }
 
     #[test]
     fn a_key_name_is_stored_canonically() {
         let mut m = model();
-        m.parse_ini("KeyToggle=pageup\n");
+        m.parse_ini(&under("KeyToggle=pageup\n"));
         assert_eq!(m.get("KeyToggle"), Some("PAGEUP"));
     }
 
     #[test]
     fn keys_are_matched_case_insensitively() {
         let mut m = model();
-        m.parse_ini("enabled=0\nINTERVAL=1000\n");
+        m.parse_ini(&under("enabled=0\nINTERVAL=1000\n"));
         assert_eq!(m.get("Enabled"), Some("0"));
         assert_eq!(m.get("Interval"), Some("1000"));
     }
@@ -374,16 +518,16 @@ Set=Enabled=0
     #[test]
     fn a_float_is_written_without_a_pointless_decimal() {
         let mut m = model();
-        m.parse_ini("ScanRange=40.0\n");
+        m.parse_ini(&under("ScanRange=40.0\n"));
         assert_eq!(m.get("ScanRange"), Some("40"));
-        m.parse_ini("ScanRange=6.50\n");
+        m.parse_ini(&under("ScanRange=6.50\n"));
         assert_eq!(m.get("ScanRange"), Some("6.5"));
     }
 
     #[test]
     fn pairs_are_in_field_order_and_carry_the_current_values() {
         let mut m = model();
-        m.parse_ini("Enabled=0\nTheme=classic\n");
+        m.parse_ini(&under("Enabled=0\nTheme=classic\n"));
         let keys: Vec<&str> = m.pairs().iter().map(|(k, _)| *k).collect();
         let fields: Vec<&str> = m.section.fields.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(keys, fields);
@@ -396,17 +540,19 @@ Set=Enabled=0
     #[test]
     fn pairs_round_trip_through_parse_ini() {
         let mut m = model();
-        m.parse_ini("Enabled=0\nInterval=250\nForaging=7\nScanRange=12.5\nTheme=classic\nKeyToggle=END\n");
+        m.parse_ini(&under(
+            "Enabled=0\nInterval=250\nForaging=7\nScanRange=12.5\nTheme=classic\nKeyToggle=END\n",
+        ));
         let text: String = m.pairs().iter().map(|(k, v)| format!("{k}={v}\n")).collect();
         let mut back = DynModel::new(m.section.clone());
-        back.parse_ini(&text);
+        back.parse_ini(&under(&text));
         assert_eq!(back, m);
     }
 
     #[test]
     fn a_preset_sets_its_keys_and_nothing_else() {
         let mut m = model();
-        m.parse_ini("Enabled=0\nInterval=250\nTheme=classic\n");
+        m.parse_ini(&under("Enabled=0\nInterval=250\nTheme=classic\n"));
         let preset = m.section.presets.first().cloned().unwrap();
         assert_eq!(preset.label, "Everything");
         assert!(m.apply_preset(&preset));
@@ -430,7 +576,9 @@ Set=Enabled=0
     #[test]
     fn the_widget_readers_answer_with_the_current_value() {
         let mut m = model();
-        m.parse_ini("Enabled=0\nInterval=250\nScanRange=12.5\nTheme=classic\nKeyToggle=END\n");
+        m.parse_ini(&under(
+            "Enabled=0\nInterval=250\nScanRange=12.5\nTheme=classic\nKeyToggle=END\n",
+        ));
         let by = |key: &str| {
             let i = m.section.fields.iter().position(|f| f.key == key).unwrap();
             (m.section.fields.get(i).unwrap().kind.clone(), m.value(i).to_string())
@@ -463,5 +611,43 @@ Set=Enabled=0
         assert_eq!(i32_of(42), 42);
         assert_eq!(i32_of(i64::MAX), i32::MAX);
         assert_eq!(i32_of(i64::MIN), i32::MIN);
+    }
+
+    #[test]
+    fn entries_are_built_in_order_and_each_reads_its_own_section() {
+        let dir = std::env::temp_dir().join(format!("desert-overlay-entries-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("DesertTooling.ini"),
+            "[TestMod]\nEnabled=0\n\n[Bb]\nEnabled=1\n",
+        )
+        .unwrap();
+
+        let mut first = section();
+        first.title = "Bb".to_string();
+        first.ini_section = "Bb".to_string();
+        first.order = 20;
+        let mut third = section();
+        third.title = "Aa".to_string();
+        third.ini_section = "Aa".to_string();
+        third.order = 10;
+
+        let built = entries(&dir, vec![first, section(), third], std::time::Instant::now());
+        let titles: Vec<&str> = built.iter().map(SectionEntry::title).collect();
+        assert_eq!(titles, vec!["Aa", "Test Mod", "Bb"], "order, then title");
+        assert_eq!(built.first().unwrap().store.file_name(), "DesertTooling.ini");
+        // Each store read the file, and each read only its own header.
+        let by = |name: &str| {
+            built
+                .iter()
+                .find(|e| e.ini_section() == name)
+                .map(|e| e.store.model.get("Enabled").unwrap_or("").to_string())
+        };
+        assert_eq!(by("TestMod").as_deref(), Some("0"));
+        assert_eq!(by("Bb").as_deref(), Some("1"));
+        assert_eq!(by("Aa").as_deref(), Some("1"), "no header of its own: the default");
+        assert!(built.iter().all(|e| !e.loaded), "every fixture names a module");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

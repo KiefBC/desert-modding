@@ -7,12 +7,17 @@
 # `just check-imports` calls this with the `allowed_imports` list from the
 # justfile, which is where the allowlist and the reason for every entry live.
 #
-# Why this exists: desert-overlay links imgui, which is C++. By default the
-# `cc` crate links the target's C++ standard library, and for our mingw target
-# that is libstdc++-6.dll - a DLL the game's bin64 does not have. The .asi then
-# fails to load, and the ASI loader says nothing useful about why. The [env]
-# block in .cargo/config.toml is what keeps that dependency out; this script is
-# what proves it stayed out, on every `just ci`.
+# Why this exists: desert-overlay links imgui, which is C++, and everything is
+# linked into the one shipped plugin, so that is DesertTooling.asi's import
+# table. By default the `cc` crate links the target's C++ standard library, and
+# for our mingw target that is libstdc++-6.dll - a DLL the game's bin64 does not
+# have. The .asi then fails to load, and the ASI loader says nothing useful about
+# why. The [env] block in .cargo/config.toml is what keeps that dependency out;
+# this script is what proves it stayed out, on every `just ci`.
+#
+# Every .dll and .asi in the release directory is checked, not just the one that
+# ships: a stale artefact from an older layout showing up here is worth knowing
+# about, and the check costs nothing.
 #
 # Names are compared lowercased and without the `.dll` suffix, because the
 # import table's capitalisation is not stable (KERNEL32.dll and kernel32.dll

@@ -22,10 +22,12 @@
 //! replace. After a successful write the watermark is set from the file the
 //! write produced, so the overlay never reloads its own change either.
 //!
-//! The store knows nothing about any particular ini. It is handed a model -
-//! in the shipped overlay always a [`crate::dynmodel::DynModel`] built from a
-//! plugin's schema file - and asks it for the file's name, how to read it, and
-//! what to write.
+//! The store knows nothing about any particular subsystem. It is handed a
+//! model - in the shipped overlay always a [`crate::dynmodel::DynModel`] built
+//! from that subsystem's [`desert_core::schema::Section`] - and asks it for the
+//! file's name, the `[Section]` it owns inside that file, how to read it, and
+//! what to write. There is one ini and three models over it, so the section is
+//! what keeps one subsystem's `Enabled` out of another's.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
@@ -52,8 +54,14 @@ pub const RETRY_INTERVAL: Duration = Duration::from_secs(2);
 /// the schema work - file watching, debouncing and failure reporting, with no
 /// opinion about the contents of any ini.
 pub trait IniModel {
-    /// The file's name beside the game exe.
+    /// The file's name beside the game exe. All three models name the same
+    /// one.
     fn file_name(&self) -> &str;
+
+    /// The `[Section]` header this model owns inside that file. Every read and
+    /// every write is scoped to it: `Enabled` means something different under
+    /// each header.
+    fn ini_section(&self) -> &str;
 
     /// The text used as the starting point when the overlay has to CREATE the
     /// file, because the user deleted it or never unzipped it: a short comment
@@ -213,10 +221,16 @@ impl<M: IniModel> Store<M> {
         self.last_flush = now;
 
         let (text, outcome) = match std::fs::read_to_string(&self.path) {
-            Ok(existing) => (rewrite::rewrite(&existing, &self.model.pairs()), Flushed::Wrote),
+            Ok(existing) => (
+                rewrite::rewrite(&existing, self.model.ini_section(), &self.model.pairs()),
+                Flushed::Wrote,
+            ),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 let header = self.model.created_header();
-                (rewrite::rewrite(&header, &self.model.pairs()), Flushed::Created)
+                (
+                    rewrite::rewrite(&header, self.model.ini_section(), &self.model.pairs()),
+                    Flushed::Created,
+                )
             }
             Err(e) => {
                 // Leave it dirty: the next flush tries again, no sooner than
@@ -254,40 +268,53 @@ fn file_mtime(path: &Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use crate::dynmodel::DynModel;
+    use desert_core::schema::{Field, Kind, Section};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static N: AtomicU32 = AtomicU32::new(0);
 
-    /// A schema of the same shape the plugins write, small enough to read.
-    const SCHEMA: &str = "\
-[overlay]
-Schema=1
-Title=Test Mod
-Ini=TestMod.ini
+    /// The one shipped ini, which every model in the process sits on.
+    const INI: &str = "DesertTooling.ini";
 
-[Enabled]
-Kind=bool
-Label=Enabled
-Default=1
+    fn f(key: &str, kind: Kind) -> Field {
+        Field {
+            key: key.to_string(),
+            label: key.to_string(),
+            kind,
+            heading: None,
+            same_line: false,
+            help: None,
+        }
+    }
 
-[Foraging]
-Kind=int
-Label=Foraging
-Default=1
-Min=1
-Max=100
-
-[Ore]
-Kind=int
-Label=Ore
-Default=1
-Min=1
-Max=100
-";
+    /// A section of the shape a subsystem's `config.rs` builds, small enough
+    /// to read. `header` is the `[Section]` it owns inside the shared file.
+    fn section(title: &str, header: &str) -> Section {
+        Section {
+            title: title.to_string(),
+            ini: INI.to_string(),
+            ini_section: header.to_string(),
+            module: None,
+            order: 10,
+            notice: None,
+            presets_label: None,
+            presets: Vec::new(),
+            fields: vec![
+                f("Enabled", Kind::Bool { default: true }),
+                f(
+                    "Foraging",
+                    Kind::Int { default: 1, min: 1, max: 100, step: 1, slider: false, format: None },
+                ),
+                f(
+                    "Ore",
+                    Kind::Int { default: 1, min: 1, max: 100, step: 1, slider: false, format: None },
+                ),
+            ],
+        }
+    }
 
     fn model() -> DynModel {
-        let (section, _) = desert_core::schema::parse(SCHEMA).unwrap();
-        DynModel::new(section)
+        DynModel::new(section("Test Mod", "TestMod"))
     }
 
     /// Set one key, the way a widget would.
@@ -317,7 +344,7 @@ Max=100
         let d = tmpdir();
         let s = Store::new(&d, model(), Instant::now());
         assert_eq!(s.model, model());
-        assert_eq!(s.file_name(), "TestMod.ini");
+        assert_eq!(s.file_name(), INI);
         assert!(s.status.is_none(), "a missing ini is normal, not an error");
         std::fs::remove_dir_all(&d).ok();
     }
@@ -325,7 +352,7 @@ Max=100
     #[test]
     fn new_reads_the_file() {
         let d = tmpdir();
-        std::fs::write(d.join("TestMod.ini"), "Foraging=7\n").unwrap();
+        std::fs::write(d.join(INI), "[TestMod]\nForaging=7\n").unwrap();
         let s = Store::new(&d, model(), Instant::now());
         assert_eq!(get(&s.model, "Foraging"), "7");
         std::fs::remove_dir_all(&d).ok();
@@ -339,13 +366,13 @@ Max=100
         set(&mut s.model, "Ore", "5");
         s.touch();
         assert_eq!(s.flush(now, true), Some(Flushed::Created));
-        let text = std::fs::read_to_string(d.join("TestMod.ini")).unwrap();
+        let text = std::fs::read_to_string(d.join(INI)).unwrap();
         assert!(
-            text.starts_with("; TestMod.ini was missing, so Desert Overlay created it."),
-            "the header comes from the schema: {text}"
+            text.starts_with("; DesertTooling.ini was missing, so Desert Overlay created it."),
+            "the header comes from the section: {text}"
         );
-        assert!(text.contains("[TestMod]"));
-        assert!(text.contains("Ore=5"));
+        assert!(text.contains("[TestMod]"), "{text}");
+        assert!(text.contains("Ore=5"), "{text}");
         let mut back = model();
         back.parse_ini(&text);
         assert_eq!(back, s.model);
@@ -356,7 +383,7 @@ Max=100
     #[test]
     fn flush_rewrites_in_place_and_keeps_the_comments() {
         let d = tmpdir();
-        let path = d.join("TestMod.ini");
+        let path = d.join(INI);
         std::fs::write(&path, "; keep me\n[TestMod]\nForaging=2\nDebug=1\n").unwrap();
         let now = Instant::now();
         let mut s = Store::new(&d, model(), now);
@@ -365,8 +392,47 @@ Max=100
         s.touch();
         assert_eq!(s.flush(now, true), Some(Flushed::Wrote));
         let text = std::fs::read_to_string(&path).unwrap();
-        assert!(text.starts_with("; keep me\n[TestMod]\nForaging=9\n"));
+        assert!(text.starts_with("; keep me\n[TestMod]\n"), "{text}");
+        assert!(text.contains("Foraging=9"), "{text}");
         assert!(text.contains("Debug=1"), "a key the overlay does not own survives");
+        std::fs::remove_dir_all(&d).ok();
+    }
+
+    #[test]
+    fn two_stores_share_one_file_without_treading_on_each_other() {
+        // The shape of the shipped ini: three subsystems, one file, `Enabled`
+        // under every header. Each store writes only its own section.
+        let d = tmpdir();
+        let path = d.join(INI);
+        std::fs::write(&path, "[TestMod]\nEnabled=1\nOre=1\n\n[Other]\nEnabled=1\nOre=1\n").unwrap();
+        let now = Instant::now();
+        let mut mine = Store::new(&d, model(), now);
+        let mut theirs = Store::new(&d, DynModel::new(section("Other Mod", "Other")), now);
+
+        set(&mut mine.model, "Enabled", "0");
+        mine.touch();
+        assert_eq!(mine.flush(now, true), Some(Flushed::Wrote));
+        set(&mut theirs.model, "Ore", "4");
+        theirs.touch();
+        assert_eq!(theirs.flush(now, true), Some(Flushed::Wrote));
+
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert_eq!(
+            text,
+            // Each write changed only its own section, and the one key the
+            // file was missing was inserted under the header that wanted it -
+            // twice, because both models own a `Foraging`.
+            "[TestMod]\nEnabled=0\nOre=1\nForaging=1\n\n[Other]\nEnabled=1\nOre=4\nForaging=1\n",
+            "each write landed under its own header only"
+        );
+        // And each store still reads back exactly what it wrote.
+        let mut mine_back = model();
+        mine_back.parse_ini(&text);
+        assert_eq!(get(&mine_back, "Enabled"), "0");
+        let mut theirs_back = DynModel::new(section("Other Mod", "Other"));
+        theirs_back.parse_ini(&text);
+        assert_eq!(get(&theirs_back, "Enabled"), "1");
+        assert_eq!(get(&theirs_back, "Ore"), "4");
         std::fs::remove_dir_all(&d).ok();
     }
 
@@ -391,7 +457,7 @@ Max=100
     fn a_failed_write_backs_off_instead_of_retrying_every_frame() {
         // The target is a directory, so every write fails no matter what.
         let d = tmpdir();
-        std::fs::create_dir_all(d.join("TestMod.ini")).unwrap();
+        std::fs::create_dir_all(d.join(INI)).unwrap();
         let t0 = Instant::now();
         let mut s = Store::new(&d, model(), t0);
         assert!(s.status.is_some(), "the failed read is reported");
@@ -414,15 +480,15 @@ Max=100
         let now = Instant::now();
         let mut s = Store::new(&d, model(), now);
         assert_eq!(s.flush(now, true), None);
-        assert!(!d.join("TestMod.ini").exists());
+        assert!(!d.join(INI).exists());
         std::fs::remove_dir_all(&d).ok();
     }
 
     #[test]
     fn poll_picks_up_an_outside_edit() {
         let d = tmpdir();
-        let path = d.join("TestMod.ini");
-        std::fs::write(&path, "Foraging=2\n").unwrap();
+        let path = d.join(INI);
+        std::fs::write(&path, "[TestMod]\nForaging=2\n").unwrap();
         let t0 = Instant::now();
         let mut s = Store::new(&d, model(), t0);
         assert_eq!(get(&s.model, "Foraging"), "2");
@@ -430,7 +496,7 @@ Max=100
         assert!(!s.poll(t0), "no stat before the poll interval is up");
         // A filesystem whose mtime has one-second resolution needs the stamp
         // to actually differ, so set it explicitly rather than racing it.
-        std::fs::write(&path, "Foraging=8\n").unwrap();
+        std::fs::write(&path, "[TestMod]\nForaging=8\n").unwrap();
         bump_mtime(&path);
         assert!(s.poll(t0 + POLL_INTERVAL));
         assert_eq!(get(&s.model, "Foraging"), "8");
@@ -440,13 +506,13 @@ Max=100
     #[test]
     fn poll_does_not_clobber_a_pending_edit() {
         let d = tmpdir();
-        let path = d.join("TestMod.ini");
-        std::fs::write(&path, "Foraging=2\n").unwrap();
+        let path = d.join(INI);
+        std::fs::write(&path, "[TestMod]\nForaging=2\n").unwrap();
         let t0 = Instant::now();
         let mut s = Store::new(&d, model(), t0);
         set(&mut s.model, "Foraging", "5");
         s.touch();
-        std::fs::write(&path, "Foraging=8\n").unwrap();
+        std::fs::write(&path, "[TestMod]\nForaging=8\n").unwrap();
         bump_mtime(&path);
         assert!(!s.poll(t0 + POLL_INTERVAL), "a dirty model is not overwritten from disk");
         assert_eq!(get(&s.model, "Foraging"), "5");

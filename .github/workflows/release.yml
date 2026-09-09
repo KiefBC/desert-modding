@@ -1,16 +1,17 @@
 # Publishes a GitHub release when a version tag is pushed.
 #
-# One tag, one package, one release. `git push origin desert-looter-v0.1.2`
+# One tag, one package, one release. `git push origin desert-tooling-v0.3.0`
 # builds THAT package from the tagged commit and publishes its zip plus
 # SHA256SUMS under a release named for the tag. The notes are the package's
 # CHANGELOG entry for the version, then the checksums (tools/release-notes.py).
 #
-# Only the tagged package, deliberately. The three are versioned separately, so
-# a release that rebuilt all of them would sooner or later attach an untagged
-# package's OLD version number to NEW bytes - any change to desert-core between
-# two releases does it - and two release pages would then disagree about what
-# one version contains. The other packages have their own tags and their own
-# releases; nothing is lost by leaving them out of this one.
+# Two packages ship: DesertTooling.asi (the one plugin, from desert-tooling) and
+# the DMM offset-patch pack. Only the tagged one is built, deliberately. They are
+# versioned separately - the plugin off its Cargo.toml, the pack off
+# dmm_pack.json - so a release that rebuilt both would sooner or later attach an
+# untagged package's OLD version number to NEW bytes, and two release pages would
+# then disagree about what one version contains. The other package has its own
+# tag and its own releases; nothing is lost by leaving it out of this one.
 #
 # Nothing is published until every gate below has passed, in this order:
 #   * the tagged commit is on main, the release branch
@@ -21,11 +22,11 @@
 #   * SHA256SUMS verifies against the zips just built
 #
 # Then, in a second job, that zip goes to Nexus Mods as a new version of the file
-# already there. All four packages share one mod page (crimsondesert/mods/3369)
-# as three separate files, so which file a tag updates is what
+# already there. Both packages share one mod page (crimsondesert/mods/3369) as
+# two separate files, so which file a tag updates is what
 # tools/nexus-targets.json says. That job reads the release it just made rather
 # than rebuilding, so Nexus gets the bytes GitHub is serving, and it skips any
-# package with no entry in that file.
+# package whose entry in that file has no file_id yet.
 #
 # What is NOT here: running the plugin in the game. VERSIONING.md step 5 is
 # still a person with the game installed, before the tag is pushed.
@@ -34,9 +35,7 @@ name: release
 on:
   push:
     tags:
-      - "desert-looter-v*"
-      - "desert-gatherer-v*"
-      - "desert-overlay-v*"
+      - "desert-tooling-v*"
       - "desert-gatherer-dmm-v*"
 
 # Creating the release and uploading its assets needs write, and nothing else does.
@@ -92,7 +91,7 @@ jobs:
       - name: Tests (native)
         run: nix develop --command just test-native
 
-      # Just this tag's package. dist.sh with no argument still builds all four,
+      # Just this tag's package. dist.sh with no argument still builds both,
       # which is what `just dist` and a local build want.
       - name: Build the package
         run: nix develop --command tools/dist.sh "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --package)"
@@ -119,9 +118,10 @@ jobs:
             dist/*.zip dist/SHA256SUMS
 
   # Publishes the tagged package to the mod page, as a new version of the file
-  # that is already there. One page, four files: the gatherer ASI and the DMM
-  # pack under Main, the looter and the overlay under Optional (the overlay's
-  # target is skipped until its file_id is filled in).
+  # that is already there. One page, two files, both under Main: the DesertTooling
+  # ASI and the DMM pack. desert-tooling's target is skipped until its file_id is
+  # filled in - its file has to be created by hand on the page once, because the
+  # three .asi files it replaces are not it.
   #
   # A separate job, and deliberately so: it runs only after `release` has cut the
   # GitHub release, it re-downloads the assets from that release rather than
@@ -145,7 +145,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Which of the four zips this tag is for, and which Nexus file it updates.
+      # Which of the two zips this tag is for, and which Nexus file it updates.
       # Also validates the version and display name against what the API accepts,
       # so a bad name is caught here and not after the bytes are uploaded.
       - name: Which Nexus file this tag publishes to
@@ -184,8 +184,8 @@ jobs:
 
       # The changelog entry only. The release notes' file list and checksum table
       # are GitHub's; the Files tab already lists what is on the page. The page's
-      # changelog is keyed by version string and appends, so all four files can
-      # write to it without overwriting each other.
+      # changelog is keyed by version string and appends, so both files can write
+      # to it without overwriting each other.
       - name: Changelog for the Nexus page
         id: changelog
         if: steps.target.outputs.publish == 'true' && steps.target.outputs.changelog == 'true'
@@ -210,7 +210,7 @@ jobs:
           # these names are what the page's descriptions refer to.
           display_name: ${{ steps.target.outputs.display_name }}
           category: ${{ steps.target.outputs.category }}
-          # Three files on one page, so at most one of them may own the page's
+          # Two files on one page, so at most one of them may own the page's
           # version field; nexus-target.py refuses a config where two do.
           update_mod_version: ${{ steps.target.outputs.update_mod_version }}
           # The version this replaces goes to the archive rather than sitting

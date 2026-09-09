@@ -2,11 +2,11 @@
 //! lists, yield multiplication, and finding the game's record loader and the
 //! global slots its data-table managers live in.
 //!
-//! `DesertGatherer.asi` hooks the loader and rewrites the raw table bytes in
-//! memory just before the game parses each record, which is what makes it a
-//! drop-in replacement for the `desert-gatherer-dmm/` offset patches: same
-//! edits, but computed from the bytes instead of from a build-specific offset
-//! list.
+//! The gatherer subsystem of `DesertTooling.asi` hooks the loader and rewrites
+//! the raw table bytes in memory just before the game parses each record, which
+//! is what makes it a drop-in replacement for the `desert-gatherer-dmm/` offset
+//! patches: same edits, but computed from the bytes instead of from a
+//! build-specific offset list.
 //!
 //! Everything here is a pure function over a byte slice, so it compiles and is
 //! unit tested natively on Linux (see the cfg-gating note in README.md). It must

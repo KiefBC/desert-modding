@@ -7,9 +7,9 @@
 //! lock a render thread could block on.
 //!
 //! Nothing below names a mod, a key or a range. The sections, their widgets
-//! and their presets all come from the schema files [`crate::sections`] found
-//! beside the game exe: this module is a renderer for
-//! [`desert_core::schema::Field`] and nothing more.
+//! and their presets all arrive in [`crate::start`], one
+//! [`desert_core::schema::Section`] per subsystem: this module is a renderer
+//! for [`desert_core::schema::Field`] and nothing more.
 //!
 //! Three things about running inside somebody else's frame:
 //!
@@ -44,9 +44,8 @@ use desert_core::ini;
 use desert_core::schema::{Kind, Section};
 
 use crate::config::{ColorSpace, Config, FontChoice};
-use crate::dynmodel::{self, DynModel};
+use crate::dynmodel::{self, DynModel, SectionEntry};
 use crate::logo;
-use crate::sections::{SectionEntry, Sections};
 use crate::store::Flushed;
 use crate::theme::{Role, Theme};
 use crate::themes;
@@ -54,9 +53,10 @@ use crate::themes;
 /// How often each section's plugin DLL is looked up in the process.
 const PLUGIN_POLL: std::time::Duration = std::time::Duration::from_secs(1);
 
-/// What the window says when no mod beside the game exe describes an ini.
-const NO_SECTIONS: &str = "No mod settings found: nothing beside the game exe describes an ini \
-                           file (Desert Looter and Desert Gatherer write one at startup).";
+/// What the window says when it was handed no sections at all, which can only
+/// happen to a build that forgot to pass them.
+const NO_SECTIONS: &str = "No settings to show: this build of Desert Tooling handed the menu no \
+                           sections at all.";
 
 /// The label above a section's preset buttons when its schema does not give
 /// one of its own.
@@ -95,13 +95,16 @@ const LOGO_RATIO: f32 = 2.2;
 
 pub struct Overlay {
     cfg: Config,
-    /// One section per schema file beside the game exe, rescanned once a
-    /// second. Each owns the store on the ini its schema describes.
-    sections: Sections,
+    /// One section per subsystem, in display order, fixed for the life of the
+    /// process. Each owns a store on the one shared ini, scoped to its own
+    /// `[Header]`.
+    sections: Vec<SectionEntry>,
     /// When each section's `Module` was last looked up in the process. A
-    /// section whose plugin is absent is drawn greyed out with a "not
-    /// installed" note: its ini would still be written, but nothing would read
-    /// it.
+    /// section that names one and whose module is absent is drawn greyed out
+    /// with a "not installed" note: its settings would still be written, but
+    /// nothing would read them. Every subsystem ships in one `.asi` now, so
+    /// none of them names a module and the poll is a no-op - the mechanism is
+    /// kept for a section that comes from somewhere else.
     last_plugin_poll: Option<Instant>,
     /// UI scale applied once in [`ImguiRenderLoop::initialize`]: fonts, style
     /// paddings and the window's own geometry. From `Scale` in the ini, or the
@@ -157,20 +160,24 @@ pub struct Overlay {
 }
 
 impl Overlay {
-    /// Reads the schema files, the ini files they name and the menu font once.
-    /// Called from the plugin's own thread, never from `DllMain` and never
-    /// from a render thread.
-    pub fn new(cfg: Config) -> Self {
+    /// Builds one store per section, reads the ini they share and the menu
+    /// font once. Called from `desert-tooling`'s own thread, never from
+    /// `DllMain` and never from a render thread.
+    pub fn new(cfg: Config, sections: Vec<Section>) -> Self {
         let dir = desert_core::log::exe_dir();
         let now = Instant::now();
-        let mut sections = Sections::new(&dir);
-        for line in sections.scan(now) {
-            desert_core::log::write(&line);
+        let sections = crate::dynmodel::entries(&dir, sections, now);
+        for entry in &sections {
+            crate::log!(
+                "[schema] [{}] {}, {} fields, {} presets",
+                entry.ini_section(),
+                entry.title(),
+                entry.section().fields.len(),
+                entry.section().presets.len()
+            );
         }
         if sections.is_empty() {
-            desert_core::log::write(
-                "[schema] no *.overlay.ini beside the game exe; the menu has nothing to show",
-            );
+            crate::log!("[schema] no sections were handed to the menu; it is empty");
         }
         let visible = cfg.show_on_start;
         // The cursor hooks are installed later, on the plugin thread, but the
@@ -241,10 +248,10 @@ impl Overlay {
             FontChoice::Path { path, face } => (PathBuf::from(path), Self::font_label(path, *face)),
             FontChoice::Name { file, face } => {
                 let Some(dir) = Self::windows_fonts_dir() else {
-                    desert_core::log::write(&format!(
-                        "[menu] WARN font {file}: the Windows Fonts directory could not be found; \
-                         using the {BUILT_IN_FONT} font"
-                    ));
+                    crate::log!(
+                        "[menu] WARN font {file}: the Windows Fonts directory could not be \
+                         found; using the {BUILT_IN_FONT} font"
+                    );
                     return (None, BUILT_IN_FONT.to_string());
                 };
                 (dir.join(file), Self::font_label(file, *face))
@@ -253,10 +260,10 @@ impl Overlay {
         match Self::read_font_file(&path) {
             Ok(bytes) => (Some(bytes), shown),
             Err(why) => {
-                desert_core::log::write(&format!(
+                crate::log!(
                     "[menu] WARN font {}: {why}; using the {BUILT_IN_FONT} font",
                     path.display()
-                ));
+                );
                 (None, BUILT_IN_FONT.to_string())
             }
         }
@@ -490,10 +497,7 @@ impl Overlay {
             Self::unclip_cursor();
         }
         if self.cfg.debug {
-            desert_core::log::write(&format!(
-                "[menu] {}",
-                if self.visible { "shown" } else { "hidden" }
-            ));
+            crate::log!("[menu] {}", if self.visible { "shown" } else { "hidden" });
         }
     }
 
@@ -517,34 +521,30 @@ impl Overlay {
             return;
         }
         self.last_plugin_poll = Some(now);
-        for entry in self.sections.entries_mut() {
+        for entry in &mut self.sections {
             // Cloned rather than borrowed so the flag beside it can be written
             // in the same breath; it is one small string a second.
             let Some(module) = entry.store.model.section.module.clone() else { continue };
             let loaded = Self::module_loaded(&module);
             if loaded != entry.loaded {
-                desert_core::log::write(&format!(
-                    "[menu] {module} is {}",
-                    if loaded { "loaded" } else { "not loaded" }
-                ));
+                crate::log!("[menu] {module} is {}", if loaded { "loaded" } else { "not loaded" });
             }
             entry.loaded = loaded;
         }
     }
 
-    /// One frame's worth of watching: the schema files beside the exe, then
-    /// each section's ini.
+    /// One frame's worth of watching: the shared ini, once per section. Each
+    /// store stats the same file and re-reads only its own `[Header]` out of
+    /// it, which is a stat per section per second and nothing next to a frame.
     fn poll_files(&mut self, now: Instant) {
-        for line in self.sections.scan(now) {
-            desert_core::log::write(&line);
-        }
         let debug = self.cfg.debug;
-        for entry in self.sections.entries_mut() {
+        for entry in &mut self.sections {
             if entry.store.poll(now) && debug {
-                desert_core::log::write(&format!(
-                    "[ini] {} changed on disk, menu refreshed",
-                    entry.store.file_name()
-                ));
+                crate::log!(
+                    "[ini] {} changed on disk, [{}] refreshed",
+                    entry.store.file_name(),
+                    entry.ini_section()
+                );
             }
         }
     }
@@ -552,21 +552,24 @@ impl Overlay {
     /// End of frame: write back whatever the widgets changed.
     fn flush_files(&mut self, now: Instant, released: bool) {
         let debug = self.cfg.debug;
-        for entry in self.sections.entries_mut() {
+        for entry in &mut self.sections {
             let outcome = entry.store.flush(now, released);
             let name = entry.store.file_name();
             match outcome {
                 Some(Flushed::Wrote) if debug => {
-                    desert_core::log::write(&format!("[ini] wrote {name}"));
+                    crate::log!(
+                        "[ini] wrote [{}] into {name}",
+                        entry.store.model.section.ini_section
+                    );
                 }
                 Some(Flushed::Created) => {
-                    desert_core::log::write(&format!("[ini] {name} was missing; created it"));
+                    crate::log!("[ini] {name} was missing; created it");
                 }
                 Some(Flushed::Failed) => {
                     // The store already put the reason in its status line; log
                     // it once here so a bug report carries it too.
                     let status = entry.store.status.as_deref().unwrap_or(name);
-                    desert_core::log::write(&format!("[ini] {status}"));
+                    crate::log!("[ini] {status}");
                 }
                 _ => {}
             }
@@ -655,18 +658,18 @@ impl ImguiRenderLoop for Overlay {
         // which is what made it blown out and oversaturated.
         hudhook::output::set_paper_white_nits(self.cfg.hdr_brightness);
         hudhook::output::set_color_space_override(Self::color_space_override(self.cfg.color_space));
-        desert_core::log::write(&format!(
-            "[menu] imgui context initialised, scale {:.2}, HDR paper white {:.0} nits, colour \
-             space {}, theme {}",
+        crate::log!(
+            "[menu] imgui context initialised, scale {:.2}, HDR paper white {:.0} nits, \
+             colour space {}, theme {}",
             self.scale,
             self.cfg.hdr_brightness,
             self.cfg.color_space.as_str(),
             self.theme.name
-        ));
-        desert_core::log::write(&format!(
+        );
+        crate::log!(
             "[menu] font: {} {:.0} px (FontSize {} x scale {:.2})",
             self.font_label, px, self.font_size, self.scale
-        ));
+        );
         // Re-uploaded every time, never carried over: after a swapchain reset
         // this runs again against a brand new engine whose texture heap has
         // never heard of the previous id.
@@ -675,10 +678,10 @@ impl ImguiRenderLoop for Overlay {
             // A menu with no picture in the corner is a cosmetic loss and
             // nothing more, so this is a warning and the frame goes on.
             Err(e) => {
-                desert_core::log::write(&format!(
-                    "[menu] WARN the logo texture could not be uploaded: {e:?}; the header shows \
-                     its title only"
-                ));
+                crate::log!(
+                    "[menu] WARN the logo texture could not be uploaded: {e:?}; the header \
+                     shows its title only"
+                );
                 None
             }
         };
@@ -691,7 +694,10 @@ impl ImguiRenderLoop for Overlay {
         if let Some(theme) = self.pending_theme.take() {
             self.theme = theme;
             Self::apply_theme(ctx.style_mut(), theme, self.scale);
-            desert_core::log::write(&format!("[menu] theme: {} (Theme={} in DesertOverlay.ini keeps it)", theme.title, theme.name));
+            crate::log!(
+                "[menu] theme: {} (Theme={} under [Overlay] in the ini keeps it)",
+                theme.title, theme.name
+            );
         }
         // While the menu is up imgui draws a cursor only if Windows is not
         // already showing one: the game hides the hardware cursor in the open
@@ -730,12 +736,11 @@ impl ImguiRenderLoop for Overlay {
                 ui.separator();
                 self.pending_theme = theme_picker(ui, t);
                 ui.separator();
-                ui.text_colored(t.dim, "Changes are saved to the ini files as you make them.");
+                ui.text_colored(t.dim, "Changes are saved to the ini as you make them.");
                 ui.separator();
 
-                // One collapsible section per schema file found beside the
-                // exe, in the order they sorted into. Nothing in here knows
-                // which mod it is drawing.
+                // One collapsible section per subsystem, in the order they
+                // sorted into. Nothing in here knows which mod it is drawing.
                 if self.sections.is_empty() {
                     // Wrapped, not `text_colored`: it is the longest line in
                     // the window and would otherwise put a horizontal
@@ -743,7 +748,7 @@ impl ImguiRenderLoop for Overlay {
                     let _dim = ui.push_style_color(StyleColor::Text, t.dim);
                     ui.text_wrapped(NO_SECTIONS);
                 }
-                for entry in self.sections.entries_mut() {
+                for entry in &mut self.sections {
                     draw_section(ui, t, entry);
                 }
                 window_size = ui.window_size();
@@ -770,16 +775,17 @@ impl ImguiRenderLoop for Overlay {
     }
 }
 
-/// Header text for a section. The `##` suffix is the schema's ini file name,
-/// which keeps imgui's widget id stable when the visible text changes, so the
-/// section does not collapse or re-open the moment a plugin appears or
-/// disappears - and two mods that happen to share a title still get one id
-/// each.
-fn section_title(title: &str, ini: &str, loaded: bool) -> String {
+/// Header text for a section. The `##` suffix is the section's own ini
+/// `[Header]`, which keeps imgui's widget id stable when the visible text
+/// changes, so the section does not collapse or re-open the moment a module
+/// appears or disappears - and two subsystems that happen to share a title
+/// still get one id each. It has to be the header and not the file name: every
+/// section names the same file now.
+fn section_title(title: &str, ini_section: &str, loaded: bool) -> String {
     if loaded {
-        format!("{title}##{ini}")
+        format!("{title}##{ini_section}")
     } else {
-        format!("{title} (not installed)##{ini}")
+        format!("{title} (not installed)##{ini_section}")
     }
 }
 
@@ -799,14 +805,14 @@ impl Overlay {
         if self.window_resized_at.is_some_and(|at| now.duration_since(at) >= RESIZE_SETTLE) {
             self.window_resized_at = None;
             let scale = if self.scale > 0.0 { self.scale } else { 1.0 };
-            desert_core::log::write(&format!(
+            crate::log!(
                 "[menu] window size {:.0}x{:.0} px = {:.0}x{:.0} at scale 1.0 (scale {:.2})",
                 size[0],
                 size[1],
                 size[0] / scale,
                 size[1] / scale,
                 self.scale
-            ));
+            );
         }
     }
 }
@@ -816,11 +822,6 @@ impl Overlay {
 fn theme_picker(ui: &Ui, current: &Theme) -> Option<&'static Theme> {
     let mut index = current.index();
     let changed = ui.combo("Theme", &mut index, themes::ALL, |t| Cow::Borrowed(t.title));
-    // The blurb only shows as a tooltip: a line of prose under the picker
-    // was clutter once a theme had been chosen.
-    if ui.is_item_hovered() {
-        ui.tooltip_text(current.blurb);
-    }
     if !changed {
         return None;
     }
@@ -849,7 +850,7 @@ fn not_installed_line(ui: &Ui, t: &Theme, module: Option<&str>, loaded: bool) {
 /// section with a reason under it is a better answer than an empty window.
 fn draw_section(ui: &Ui, t: &Theme, entry: &mut SectionEntry) {
     let loaded = entry.loaded;
-    let title = section_title(entry.title(), entry.store.file_name(), loaded);
+    let title = section_title(entry.title(), entry.ini_section(), loaded);
     if !ui.collapsing_header(&title, TreeNodeFlags::DEFAULT_OPEN) {
         return;
     }
@@ -885,9 +886,9 @@ fn presets_row(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> 
         if i % 2 == 1 {
             ui.same_line();
         }
-        // The id carries the ini and the preset's position, so two mods may
-        // both have an "Everything" button.
-        if ui.button(format!("{}##{}.preset{i}", preset.label, section.ini)) {
+        // The id carries the section's header and the preset's position, so
+        // two subsystems may both have an "Everything" button.
+        if ui.button(format!("{}##{}.preset{i}", preset.label, section.ini_section)) {
             changed |= dynmodel::apply_preset(section, values, preset);
         }
         if let Some(hint) = &preset.hint {
@@ -910,9 +911,10 @@ fn fields(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> bool 
         if field.same_line {
             ui.same_line();
         }
-        // `##<ini>.<key>` so two sections can show the same label, and so a
-        // relabelled field keeps its widget state.
-        let label = format!("{}##{}.{}", field.label, section.ini, field.key);
+        // `##<header>.<key>` so two sections can show the same label - which
+        // `Enabled` and `Debug` do - and so a relabelled field keeps its widget
+        // state. The file name would not do it: all three share one file.
+        let label = format!("{}##{}.{}", field.label, section.ini_section, field.key);
         changed |= widget(ui, &label, &field.kind, slot);
         if let Some(help) = &field.help {
             if ui.is_item_hovered() {

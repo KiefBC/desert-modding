@@ -1,19 +1,24 @@
-# Crimson Desert mods - one workspace, one shared core, one crate per mod.
+# Crimson Desert mods - one workspace, one shared core, one shipped plugin.
 #
 #   desert-core     rlib, ships nothing: hooks, guarded reads, logger, PE/RTTI,
-#                   byte patterns, ini parsing, the gather-record table.
-#   desert-looter   cdylib -> DesertLooter.asi
-#   desert-gatherer cdylib -> DesertGatherer.asi
-#   desert-overlay  cdylib -> DesertOverlay.asi, the in-game settings menu.
+#                   byte patterns, ini parsing, schema, the gather-record table.
+#   desert-looter   rlib, the auto-loot subsystem       -> [Looter]   [looter]
+#   desert-gatherer rlib, the gathering yield multiplier -> [Gatherer] [gatherer]
+#   desert-overlay  rlib, the in-game settings menu      -> [Overlay]  [overlay]
 #                   Its hudhook/imgui dependencies are declared in its own
 #                   manifest, not here: one crate uses them, and they only
 #                   build for the Windows target.
+#   desert-tooling  cdylib -> DesertTooling.asi. The workspace's ONLY cdylib
+#                   and only DllMain: it links the three subsystems, gates on
+#                   the host exe, opens the one DesertTooling.log, seeds the one
+#                   DesertTooling.ini from all three schemas, and starts one
+#                   thread per subsystem.
 #
 # desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
 
 [workspace]
 resolver = "2"
-members = ["desert-core", "desert-looter", "desert-gatherer", "desert-overlay"]
+members = ["desert-core", "desert-looter", "desert-gatherer", "desert-overlay", "desert-tooling"]
 
 [workspace.package]
 edition = "2021"

@@ -1,11 +1,11 @@
 # The Desert Gatherer
 
-> **Superseded.** This pack is superseded by **DesertGatherer.asi** (see
-> [`../desert-gatherer`](../desert-gatherer)), which does the same thing in memory as the game loads
-> its data, so no game file is modified and no rebase is needed after a game update. The pack is
-> kept here for people who use DMM without an ASI loader. **Do not mount it together with the
-> `.asi`**: both edit the same minimum/maximum quantities, and the two multiply on top of each
-> other.
+> **Superseded.** This pack is superseded by the gathering-yield subsystem of
+> **DesertTooling.asi** (see [`../desert-tooling`](../desert-tooling)), which does the same thing in
+> memory as the game loads its data, so no game file is modified and no rebase is needed after a
+> game update. The pack is kept here for people who use DMM without an ASI loader. **Do not mount
+> it together with the `.asi`**: both edit the same minimum/maximum quantities, and the two
+> multiply on top of each other.
 
 A DMM module pack for choosing independent 2x, 5x, or 10x gathering yields.
 

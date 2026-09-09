@@ -1,11 +1,22 @@
-//! `DesertLooter.ini` beside the game exe. Missing file or key => defaults.
+//! The `[Looter]` section of `DesertTooling.ini` beside the game exe. Missing
+//! file, missing section or missing key => defaults.
 //!
-//! Only Desert Looter's own keys live here; the ini tokeniser, the truthy
-//! spellings and the virtual-key name table are shared in `desert_core::ini`.
+//! All three subsystems now share one ini, and `Enabled`/`Debug` collide across
+//! them, so every read here is scoped to [`INI_SECTION`] through
+//! `ini::lines_in_section`. Only Desert Looter's own keys live in that section;
+//! the ini tokeniser, the truthy spellings and the virtual-key name table are
+//! shared in `desert_core::ini`.
 
 use desert_core::collect::Family;
 use desert_core::ini::{self, Line};
 use desert_core::schema::{Field, Kind, Preset, Section};
+
+/// The shared ini every subsystem reads and the overlay writes.
+pub const INI_FILE: &str = "DesertTooling.ini";
+
+/// The `[Header]` inside [`INI_FILE`] that belongs to this subsystem. One
+/// constant for both ends: [`schema`] declares it, [`parse`] scopes to it.
+pub const INI_SECTION: &str = "Looter";
 
 /// The two millisecond keys' accepted range, in one place: `parse` refuses a
 /// value outside it and [`schema`] hands the same bounds to the menu, so the
@@ -131,8 +142,10 @@ impl Config {
 // The menu schema
 // ---------------------------------------------------------------------------
 
-/// The `.asi` the overlay looks for before it lets this section be edited.
-const MODULE: &str = "DesertLooter.asi";
+// No `module` gate on this section any more: the overlay's check was "is this
+// plugin's own .asi actually loaded?", and there is now exactly one .asi
+// carrying all three subsystems, so the question answers itself. `None` is the
+// schema's "always available".
 
 /// One field with no heading, on its own row. The three decorations the
 /// builders below add are the exceptions, so the common case stays one line.
@@ -177,10 +190,10 @@ fn preset(label: &str, hint: &str, families: (bool, bool, bool, bool)) -> Preset
     }
 }
 
-/// What Desert Overlay draws for `DesertLooter.ini`: the keys, in menu order,
-/// with the labels, ranges and help the menu shows. Written to
-/// `DesertLooter.overlay.ini` at every launch (see `lib.rs`); the overlay reads
-/// that file and needs no knowledge of this plugin at all.
+/// What Desert Overlay draws for the `[Looter]` section of `DesertTooling.ini`:
+/// the keys, in menu order, with the labels, ranges and help the menu shows.
+/// `desert-tooling` hands this straight to the overlay at startup, and uses it
+/// to seed the ini when the file is missing.
 ///
 /// `Debug`, `LogReceived` and `BagTab` are here too, grouped at the bottom
 /// under `Diagnostics:`. They used to be left out as "diagnostics and a
@@ -197,8 +210,9 @@ pub fn schema() -> Section {
     let d = Config::default();
     Section {
         title: "Desert Looter".to_string(),
-        ini: crate::INI_NAME.to_string(),
-        module: Some(MODULE.to_string()),
+        ini: INI_FILE.to_string(),
+        ini_section: INI_SECTION.to_string(),
+        module: None,
         // Before Desert Gatherer's 20: the looter is the mod most people came
         // for, and its section is the one that should be at the top.
         order: 10,
@@ -409,11 +423,14 @@ fn key(key_name: &str, label: &str, vk: u16, help: &str) -> Field {
     f(key_name, label, Kind::Key { default }, help)
 }
 
-/// Parse ini text. Unknown keys are reported back so they can be logged.
+/// Parse the `[Looter]` section of the shared ini. Lines outside that section
+/// belong to another subsystem and are not this parser's business, so they are
+/// neither applied nor warned about. Unknown keys *inside* the section are
+/// reported back so they can be logged.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    for line in ini::lines(text) {
+    for line in ini::lines_in_section(text, INI_SECTION) {
         let (k, v) = match line {
             Line::Pair(k, v) => (k, v),
             Line::Bad(w) => {
@@ -483,9 +500,15 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
 mod tests {
     use super::*;
 
+    /// The parser only ever sees the shared ini, so every test feeds it a
+    /// `[Looter]` section. This is the one place the header is spelled.
+    fn sectioned(body: &str) -> String {
+        format!("[{INI_SECTION}]\n{body}")
+    }
+
     #[test]
     fn parses_and_warns() {
-        let (c, w) = parse("; c\n[DesertLooter]\nEnabled=0\nDebug=1\nLogReceived=1\nScanRange=25.5\nGatherRange=4\nAutoGather=1\nGatherInterval=250\nNodeCooldown=5\nKeyToggle=F5\nKeyScan=nope\nKeyGather=F8\nJunk=1\n");
+        let (c, w) = parse("; c\n[Looter]\nEnabled=0\nDebug=1\nLogReceived=1\nScanRange=25.5\nGatherRange=4\nAutoGather=1\nGatherInterval=250\nNodeCooldown=5\nKeyToggle=F5\nKeyScan=nope\nKeyGather=F8\nJunk=1\n");
         assert!(!c.enabled);
         assert!(c.debug);
         assert!(c.log_received);
@@ -508,7 +531,7 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert!(d.allows_family(f), "{f:?} should be on by default");
         }
-        let (c, w) = parse("GatherForaging=1\nGatherLogging=0\nGatherMining=no\nGatherOre=on\n");
+        let (c, w) = parse(&sectioned("GatherForaging=1\nGatherLogging=0\nGatherMining=no\nGatherOre=on\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.allows_family(Family::Foraging));
         assert!(!c.allows_family(Family::Logging));
@@ -525,10 +548,10 @@ mod tests {
     #[test]
     fn gather_bugs_defaults_on_and_parses_like_the_family_switches() {
         assert!(Config::default().gather_bugs);
-        let (c, w) = parse("GatherBugs=0\n");
+        let (c, w) = parse(&sectioned("GatherBugs=0\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_bugs);
-        let (c, w) = parse("GatherBugs=on\n");
+        let (c, w) = parse(&sectioned("GatherBugs=on\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.gather_bugs);
         assert!(schema().field("GatherBugs").is_some(), "the menu must offer GatherBugs");
@@ -544,10 +567,10 @@ mod tests {
     #[test]
     fn gather_fish_defaults_on_and_parses_like_gather_bugs() {
         assert!(Config::default().gather_fish);
-        let (c, w) = parse("GatherFish=0\n");
+        let (c, w) = parse(&sectioned("GatherFish=0\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_fish);
-        let (c, w) = parse("GatherFish=on\n");
+        let (c, w) = parse(&sectioned("GatherFish=on\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.gather_fish);
         assert!(schema().field("GatherFish").is_some(), "the menu must offer GatherFish");
@@ -556,7 +579,7 @@ mod tests {
         }
         // The two switches are independent: turning insects off must not take
         // fish with it, and vice versa.
-        let (c, w) = parse("GatherBugs=0\nGatherFish=1\n");
+        let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=1\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_bugs && c.gather_fish);
     }
@@ -582,18 +605,9 @@ mod tests {
     }
 
     #[test]
-    fn schema_survives_a_render_and_parse_round_trip() {
-        let want = schema();
-        let text = sch::render(&want, "written by the test");
-        let (got, w) = sch::parse(&text).expect("the rendered schema must parse");
-        assert!(w.is_empty(), "{w:?}\n{text}");
-        assert_eq!(got, want, "{text}");
-    }
-
-    #[test]
     fn parse_accepts_every_key_the_schema_names() {
         for field in &schema().fields {
-            let text = format!("{}={}\n", field.key, field.kind.default_text());
+            let text = sectioned(&format!("{}={}\n", field.key, field.kind.default_text()));
             let (_, w) = parse(&text);
             assert!(w.is_empty(), "{}: {w:?}", field.key);
         }
@@ -613,9 +627,9 @@ mod tests {
                     p.label
                 );
             }
-            let (cfg, w) = parse(
+            let (cfg, w) = parse(&sectioned(
                 &p.set.iter().map(|(k, v)| format!("{k}={v}\n")).collect::<String>(),
-            );
+            ));
             assert!(w.is_empty(), "{}: {w:?}", p.label);
             assert!(cfg.gather_items, "{}: every preset turns GatherItems on", p.label);
         }
@@ -631,7 +645,7 @@ mod tests {
             ("Rock and ore only", (false, false, true, true)),
         ] {
             let p = s.presets.iter().find(|p| p.label == label).unwrap_or_else(|| panic!("{label}"));
-            let text: String = p.set.iter().map(|(k, v)| format!("{k}={v}\n")).collect();
+            let text = sectioned(&p.set.iter().map(|(k, v)| format!("{k}={v}\n")).collect::<String>());
             let (c, _) = parse(&text);
             assert_eq!(
                 (c.gather_foraging, c.gather_logging, c.gather_mining, c.gather_ore),
@@ -642,11 +656,49 @@ mod tests {
     }
 
     #[test]
-    fn the_schema_names_the_files_this_crate_ships() {
+    fn the_schema_names_the_shared_ini_and_this_subsystems_section() {
         let s = schema();
-        assert_eq!(s.ini, crate::INI_NAME);
-        assert_eq!(s.module.as_deref(), Some("DesertLooter.asi"));
-        assert_eq!(s.schema_file_name(), "DesertLooter.overlay.ini");
+        assert_eq!(s.ini, INI_FILE);
+        assert_eq!(s.ini, "DesertTooling.ini");
+        assert_eq!(s.ini_section, INI_SECTION);
+        assert_eq!(s.ini_section, "Looter");
+        // One .asi carries every subsystem now, so there is nothing left for
+        // the overlay's "is it loaded?" gate to ask about.
+        assert_eq!(s.module, None);
+    }
+
+    /// The whole point of the section scoping: another subsystem's `Enabled`
+    /// is not this one's, and a key that only exists elsewhere is not an
+    /// unknown key here - it is simply none of this parser's business.
+    #[test]
+    fn only_the_looter_section_is_read() {
+        let text = "\
+[Gatherer]
+Enabled=0
+Multiplier=4
+
+[Looter]
+Enabled=1
+GatherLogging=0
+
+[Overlay]
+Enabled=0
+Scale=1.5
+";
+        let (c, w) = parse(text);
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.enabled, "the [Gatherer] and [Overlay] Enabled=0 must not reach us");
+        assert!(!c.gather_logging);
+
+        // A file with no [Looter] section at all is every default, silently.
+        let (c, w) = parse("[Gatherer]\nEnabled=0\nMultiplier=4\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c, Config::default());
+
+        // The header match is ASCII case-insensitive, like desert-core's.
+        let (c, w) = parse("[looter]\nEnabled=0\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.enabled);
     }
 
     #[test]
@@ -678,12 +730,12 @@ mod tests {
 
         // A value at either end of every int range is one `parse` keeps, and
         // one past it is one it refuses: the menu's stops are the real stops.
-        let (c, w) = parse("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\n");
+        let (c, w) = parse(&sectioned("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\n"));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(c.gather_interval_ms, MS_RANGE.0);
         assert_eq!(c.node_cooldown_ms, MS_RANGE.1);
         assert_eq!(c.stack_limit, STACK_LIMIT_RANGE.1);
-        let (c, w) = parse("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\n");
+        let (c, w) = parse(&sectioned("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\n"));
         assert_eq!(w.len(), 4, "{w:?}");
         assert_eq!(c, Config::default());
     }
@@ -725,24 +777,24 @@ mod tests {
         assert_eq!(field.kind.default_text(), "1");
         let auto = field.kind.normalize("-1").unwrap_or_else(|| panic!("-1 is out of range"));
         assert_eq!(auto, "-1");
-        let (c, w) = parse(&format!("BagTab={auto}\n"));
+        let (c, w) = parse(&sectioned(&format!("BagTab={auto}\n")));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(c.bag_tab, None);
         // One past the auto end is not something the menu can write.
         assert_eq!(field.kind.normalize("-2"), None);
         assert_eq!(field.kind.normalize(&(BAG_TAB_MENU_MAX + 1).to_string()), None);
 
-        let (c, w) = parse("Debug=1\nLogReceived=1\nBagTab=0\n");
+        let (c, w) = parse(&sectioned("Debug=1\nLogReceived=1\nBagTab=0\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug && c.log_received);
         assert_eq!(c.bag_tab, Some(0));
     }
 
-    /// Prints the rendered schema. `cargo test -- --ignored --nocapture
-    /// show_schema` is how the file's exact text gets read by a human.
+    /// Prints this section as the seeded ini would carry it. `cargo test --
+    /// --ignored --nocapture show_schema` is how a human reads the exact text.
     #[test]
     #[ignore]
     fn show_schema() {
-        println!("{}", sch::render(&schema(), ""));
+        println!("{}", sch::render_ini_defaults(&schema(), ""));
     }
 }

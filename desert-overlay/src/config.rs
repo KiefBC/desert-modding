@@ -1,16 +1,29 @@
-//! `DesertOverlay.ini` beside the game exe. Missing file or key => defaults.
+//! The `[Overlay]` section of `DesertTooling.ini`. Missing file, missing
+//! section or missing key => defaults.
 //!
 //! Same shape as `desert_looter::config` and `desert_gatherer::config`:
-//! `parse` returns the config plus ready-to-log warnings, a bad value never
-//! replaces the default, and the tokeniser and the virtual-key name table come
-//! from `desert_core::ini`.
+//! [`parse`] returns the config plus ready-to-log warnings, a bad value never
+//! replaces the default, the tokeniser and the virtual-key name table come from
+//! `desert_core::ini`, and [`schema`] declares the same keys for the menu -
+//! which is how the overlay's own settings get a section of the menu beside the
+//! two subsystems it draws.
 //!
-//! This file is the overlay's own settings only. The two files the menu edits
-//! are described by [`crate::model`]; the overlay never rereads its own ini
-//! while the game runs, because changing the menu key or the master switch
-//! from inside the menu it draws makes no sense.
+//! Every subsystem shares one file, and `Enabled` and `Debug` exist under all
+//! of their headers, so reading is scoped to [`INI_SECTION`] through
+//! [`ini::lines_in_section`].
+//!
+//! These settings are read **once**, at startup: changing the menu key, the
+//! font or the master switch from inside the menu it draws makes no sense, and
+//! the graphics hook is installed long before a later edit could be noticed.
 
 use desert_core::ini::{self, Line};
+use desert_core::schema::{Field, Kind, Section};
+
+/// The one ini every subsystem shares, beside the game exe.
+pub const INI_NAME: &str = "DesertTooling.ini";
+
+/// The `[Header]` inside it that these settings live under.
+pub const INI_SECTION: &str = "Overlay";
 
 /// `Insert`. The default has to be a key the game does not use and that a
 /// laptop keyboard actually has, which rules out most of F1..F12 (Desert
@@ -232,7 +245,9 @@ fn default_theme() -> &'static crate::theme::Theme {
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    for line in ini::lines(text) {
+    // Only this subsystem's own section: `Enabled` under `[Looter]` is not
+    // ours, and a key we do not know about there is not our unknown key either.
+    for line in ini::lines_in_section(text, INI_SECTION) {
         let (k, v) = match line {
             Line::Pair(k, v) => (k, v),
             Line::Bad(w) => {
@@ -296,9 +311,198 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
     (cfg, warnings)
 }
 
+
+// ---------------------------------------------------------------------------
+// The menu's description of these same keys
+// ---------------------------------------------------------------------------
+
+/// One field, with its help text; nothing here has a heading or shares a row.
+fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
+    Field {
+        key: key.to_string(),
+        label: label.to_string(),
+        kind,
+        heading: None,
+        same_line: false,
+        help: Some(help.to_string()),
+    }
+}
+
+/// The same field, drawn on the row above's line.
+fn beside(mut field: Field) -> Field {
+    field.same_line = true;
+    field
+}
+
+/// The same field, under a dim heading.
+fn under(heading: &str, mut field: Field) -> Field {
+    field.heading = Some(heading.to_string());
+    field
+}
+
+/// The overlay's own settings, for the overlay's own menu section.
+///
+/// `desert-tooling` collects this alongside the looter's and the gatherer's and
+/// hands all three to [`crate::start`], so the menu that edits the other two
+/// subsystems edits itself as well. Every key here is read **once**, at
+/// startup, so a change made in the menu is on disk immediately and on screen
+/// at the next launch - which the section's `notice` says out loud.
+///
+/// `Font` is deliberately **not** here. Its value is a file name, an absolute
+/// path or an empty string, optionally suffixed `:N` for a `.ttc` face, and
+/// [`Kind`] has no way to say that; a combo of guessed file names would show
+/// the wrong value for a hand-written path and overwrite it on the next edit.
+/// It stays a hand-edited key that [`parse`] still reads and that the overlay's
+/// rewriter leaves alone.
+pub fn schema() -> Section {
+    let d = Config::default();
+    Section {
+        title: "Desert Overlay".to_string(),
+        ini: INI_NAME.to_string(),
+        ini_section: INI_SECTION.to_string(),
+        // One .asi holds every subsystem now, so there is no module whose
+        // absence could grey this section out.
+        module: None,
+        // Last: this is the menu's own settings, below the two mods the menu
+        // exists to configure.
+        order: 30,
+        notice: Some(
+            "These are read once, at startup: a change here is saved now and takes effect at the \
+             next launch."
+                .to_string(),
+        ),
+        presets_label: None,
+        presets: Vec::new(),
+        fields: vec![
+            f(
+                "Enabled",
+                "Enabled",
+                Kind::Bool { default: d.enabled },
+                "Master switch. 0 = the overlay installs no graphics hook at all and the game \
+                 renders exactly as it would without it. Use this rather than deleting anything \
+                 while chasing a crash.",
+            ),
+            beside(f(
+                "ShowOnStart",
+                "Open at startup",
+                Kind::Bool { default: d.show_on_start },
+                "1 = the menu is already open at the first frame instead of waiting for the key.",
+            )),
+            f(
+                "KeyMenu",
+                "Menu key",
+                Kind::Key { default: key_name(d.key_menu) },
+                "Shows and hides the menu. Avoid keys the game uses, and the ones Desert Looter \
+                 already has.",
+            ),
+            under(
+                "Size and font:",
+                f(
+                    "Scale",
+                    "Scale",
+                    Kind::Float {
+                        default: d.scale,
+                        // 0 is "follow the Windows display scaling", so the
+                        // slider has to reach it. Between 0 and SCALE_MIN the
+                        // value is not accepted and automatic is what you get,
+                        // which is what the help text says.
+                        min: 0.0,
+                        max: SCALE_MAX,
+                        format: Some("%.2f".to_string()),
+                    },
+                    "Size of the menu: fonts, spacing and the window. 0 follows the Windows \
+                     display scaling (125% gives 1.25); anything below 0.5 is treated as 0.",
+                ),
+            ),
+            f(
+                "FontSize",
+                "Font size (px)",
+                Kind::Float {
+                    default: d.font_size,
+                    min: FONT_SIZE_MIN,
+                    max: FONT_SIZE_MAX,
+                    format: Some("%.0f px".to_string()),
+                },
+                "Height of the menu's text in pixels before Scale is applied. The font is \
+                 rasterised at that size rather than blown up, so raising this makes the text \
+                 sharper, not blockier.",
+            ),
+            under(
+                "Colour:",
+                f(
+                    "Theme",
+                    "Theme",
+                    Kind::Choice { default: d.theme.name.to_string(), options: theme_names() },
+                    "The menu's colour theme. The picker at the top of the window changes it \
+                     live; this key is what makes the choice stick.",
+                ),
+            ),
+            f(
+                "ColorSpace",
+                "Colour space",
+                Kind::Choice {
+                    default: d.color_space.as_str().to_string(),
+                    options: COLOR_SPACES.iter().map(|s| (*s).to_string()).collect(),
+                },
+                "What the menu's pixels are encoded for. Leave it on auto; the forced values are \
+                 for when the swapchain's own answer is wrong and the menu comes out washed out \
+                 or oversaturated.",
+            ),
+            f(
+                "HdrBrightness",
+                "HDR paper white (nits)",
+                Kind::Float {
+                    default: d.hdr_brightness,
+                    min: HDR_MIN,
+                    max: HDR_MAX,
+                    format: Some("%.0f nits".to_string()),
+                },
+                "How bright the menu's white is on an HDR display. 203 is the broadcast \
+                 reference. Ignored entirely on an SDR display.",
+            ),
+            under(
+                "Diagnostics:",
+                f(
+                    "Debug",
+                    "Debug",
+                    Kind::Bool { default: d.debug },
+                    "Verbose log: every ini write and reload, plus hudhook's own per-frame debug \
+                     and trace lines. That is a lot of writing, and it is what a \"the game will \
+                     not start\" or \"the menu never appears\" report needs.",
+                ),
+            ),
+        ],
+    }
+}
+
+/// The `ColorSpace` spellings, in the order the combo lists them. The same
+/// four [`ColorSpace::parse`] accepts.
+const COLOR_SPACES: [&str; 4] = ["auto", "sdr", "hdr10", "scrgb"];
+
+/// Every theme's ini name, for the picker.
+fn theme_names() -> Vec<String> {
+    crate::themes::ALL.iter().map(|t| t.name.to_string()).collect()
+}
+
+/// The key name a virtual-key code is written as, which is what the schema's
+/// default has to be. A code with no name cannot happen for a compiled-in
+/// default, and `INSERT` is a safe answer if it ever did.
+fn key_name(vk: u16) -> String {
+    ini::key_names()
+        .iter()
+        .find(|n| ini::vk_from_name(n) == Some(vk))
+        .map_or_else(|| "INSERT".to_string(), |n| (*n).to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Parse `body` as the `[Overlay]` section of the shared ini, which is the
+    /// only place `parse` reads.
+    fn in_section(body: &str) -> (Config, Vec<String>) {
+        parse(&format!("[Overlay]\n{body}"))
+    }
 
     #[test]
     fn defaults() {
@@ -319,7 +523,7 @@ mod tests {
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
-            "; c\n[DesertOverlay]\nEnabled=0\nDebug=1\nKeyMenu=F4\nShowOnStart=yes\nScale=1.5\n\
+            "; c\n[Overlay]\nEnabled=0\nDebug=1\nKeyMenu=F4\nShowOnStart=yes\nScale=1.5\n\
              FontSize=28\nFont=georgia.ttf\nHdrBrightness=400\nColorSpace=hdr10\n",
         );
         assert!(!c.enabled);
@@ -337,13 +541,13 @@ mod tests {
     #[test]
     fn font_size_out_of_range_is_refused_with_a_warning() {
         for bad in ["0", "7.9", "73", "-20", "nope", ""] {
-            let (c, w) = parse(&format!("FontSize={bad}\n"));
+            let (c, w) = in_section(&format!("FontSize={bad}\n"));
             assert_eq!(c.font_size, DEFAULT_FONT_SIZE, "{bad}");
             assert_eq!(w.len(), 1, "{bad}: {w:?}");
             assert!(w[0].starts_with("FontSize: bad value"), "{w:?}");
         }
         for good in ["8", "20", "72", " 24.5 "] {
-            let (_, w) = parse(&format!("FontSize={good}\n"));
+            let (_, w) = in_section(&format!("FontSize={good}\n"));
             assert!(w.is_empty(), "{good}: {w:?}");
         }
     }
@@ -361,7 +565,7 @@ mod tests {
             ),
             ("/usr/share/fonts/x.ttf", FontChoice::Path { path: "/usr/share/fonts/x.ttf".into(), face: 0 }),
         ] {
-            let (c, w) = parse(&format!("Font={text}\n"));
+            let (c, w) = in_section(&format!("Font={text}\n"));
             assert_eq!(c.font_choice(), want, "{text:?}");
             assert!(w.is_empty(), "{text:?}: {w:?}");
         }
@@ -403,13 +607,13 @@ mod tests {
     #[test]
     fn hdr_brightness_out_of_range_is_refused_with_a_warning() {
         for bad in ["0", "79", "1001", "nope", ""] {
-            let (c, w) = parse(&format!("HdrBrightness={bad}\n"));
+            let (c, w) = in_section(&format!("HdrBrightness={bad}\n"));
             assert_eq!(c.hdr_brightness, DEFAULT_HDR_BRIGHTNESS, "{bad}");
             assert_eq!(w.len(), 1, "{bad}: {w:?}");
             assert!(w[0].starts_with("HdrBrightness: bad value"), "{w:?}");
         }
         for good in ["80", "203", "1000", " 250 "] {
-            let (_, w) = parse(&format!("HdrBrightness={good}\n"));
+            let (_, w) = in_section(&format!("HdrBrightness={good}\n"));
             assert!(w.is_empty(), "{good}: {w:?}");
         }
     }
@@ -422,7 +626,7 @@ mod tests {
             ("Hdr10", ColorSpace::Hdr10),
             (" scrgb ", ColorSpace::ScRgb),
         ] {
-            let (c, w) = parse(&format!("ColorSpace={text}\n"));
+            let (c, w) = in_section(&format!("ColorSpace={text}\n"));
             assert_eq!(c.color_space, want, "{text}");
             assert!(w.is_empty(), "{text}: {w:?}");
             assert_eq!(ColorSpace::parse(want.as_str()), Some(want));
@@ -431,7 +635,7 @@ mod tests {
 
     #[test]
     fn an_unknown_color_space_is_auto_with_a_warning() {
-        let (c, w) = parse("ColorSpace=hdr\n");
+        let (c, w) = in_section("ColorSpace=hdr\n");
         assert_eq!(c.color_space, ColorSpace::Auto);
         assert_eq!(w.len(), 1, "{w:?}");
         assert!(w[0].starts_with("ColorSpace: unknown value"), "{w:?}");
@@ -439,17 +643,17 @@ mod tests {
 
     #[test]
     fn scale_out_of_range_is_refused_with_a_warning() {
-        let (c, w) = parse("Scale=9\n");
+        let (c, w) = in_section("Scale=9\n");
         assert_eq!(c.scale, 0.0);
         assert_eq!(w.len(), 1, "{w:?}");
-        let (c, w) = parse("Scale=0\n");
+        let (c, w) = in_section("Scale=0\n");
         assert_eq!(c.scale, 0.0);
         assert!(w.is_empty(), "{w:?}");
     }
 
     #[test]
     fn case_insensitive_keys() {
-        let (c, w) = parse("ENABLED=0\nkeymenu=home\n");
+        let (c, w) = in_section("ENABLED=0\nkeymenu=home\n");
         assert!(!c.enabled);
         assert_eq!(c.key_menu, 0x24);
         assert!(w.is_empty(), "{w:?}");
@@ -457,7 +661,7 @@ mod tests {
 
     #[test]
     fn bad_values_keep_the_default_and_warn() {
-        let (c, w) = parse("KeyMenu=nope\nJunk=1\nnoequals\n");
+        let (c, w) = in_section("KeyMenu=nope\nJunk=1\nnoequals\n");
         assert_eq!(c.key_menu, DEFAULT_KEY_MENU);
         assert_eq!(w.len(), 3, "{w:?}");
         assert!(w[0].starts_with("KeyMenu: unknown key name"), "{w:?}");
@@ -471,9 +675,66 @@ mod tests {
     }
 
     #[test]
-    fn the_shipped_template_parses_clean_and_is_the_default() {
-        let (c, w) = parse(include_str!("../DesertOverlay.ini"));
-        assert!(w.is_empty(), "the shipped DesertOverlay.ini has a bad line: {w:?}");
-        assert_eq!(c, Config::default(), "the shipped ini must state the defaults");
+    fn only_this_subsystems_section_is_read() {
+        // The hazard the section scoping exists for: `Enabled` and `Debug`
+        // live under all three headers of the one file.
+        let (c, w) = parse(
+            "Enabled=0\nDebug=1\n\n[Looter]\nEnabled=0\nDebug=1\nBagTab=1\n\n\
+             [Gatherer]\nEnabled=0\nDebug=1\n\n[Overlay]\nEnabled=1\nDebug=0\nFontSize=28\n",
+        );
+        assert!(c.enabled, "the looter's Enabled=0 is not ours");
+        assert!(!c.debug, "nor its Debug=1");
+        assert_eq!(c.font_size, 28.0);
+        assert!(w.is_empty(), "another section's keys are not our unknown keys: {w:?}");
+    }
+
+    #[test]
+    fn a_file_without_our_section_is_the_default() {
+        let (c, w) = parse("[Looter]\nEnabled=0\nScanRange=40\n");
+        assert_eq!(c, Config::default());
+        assert!(w.is_empty(), "{w:?}");
+    }
+
+    // -- the schema the menu draws these same keys from -------------------
+
+    #[test]
+    fn the_schema_names_the_shared_ini_and_this_sections_header() {
+        let s = schema();
+        assert_eq!(s.ini, "DesertTooling.ini");
+        assert_eq!(s.ini_section, "Overlay");
+        assert_eq!(s.module, None, "one .asi: there is no module to be missing");
+        assert!(s.field("Font").is_none(), "Font is free text; no Kind can express it");
+    }
+
+    #[test]
+    fn every_schema_field_is_a_key_this_parser_knows() {
+        for field in &schema().fields {
+            let (_, w) = in_section(&format!("{}={}\n", field.key, field.kind.default_text()));
+            assert!(w.is_empty(), "{}: {w:?}", field.key);
+        }
+    }
+
+    #[test]
+    fn the_defaults_the_schema_seeds_are_the_defaults_this_parser_reads() {
+        // The one agreement that matters: what `desert-tooling` writes into a
+        // missing ini has to parse back to exactly `Config::default()`.
+        let text = desert_core::schema::render_ini_defaults(&schema(), "Desert Tooling");
+        assert!(text.contains("[Overlay]"), "{text}");
+        let (c, w) = parse(&text);
+        assert!(w.is_empty(), "the seeded ini has a line this parser rejects: {w:?}");
+        assert_eq!(c, Config::default(), "the seeded ini must state the defaults");
+    }
+
+    #[test]
+    fn every_schema_default_is_a_value_its_own_field_accepts() {
+        for field in &schema().fields {
+            let text = field.kind.default_text();
+            assert_eq!(
+                field.kind.normalize(&text).as_deref(),
+                Some(text.as_str()),
+                "{} default {text:?}",
+                field.key
+            );
+        }
     }
 }

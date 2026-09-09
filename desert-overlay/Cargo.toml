@@ -1,7 +1,7 @@
 [package]
 name = "desert-overlay"
 version = "0.2.0"
-description = "Desert Overlay - in-game settings menu for the Crimson Desert mods (ASI plugin)"
+description = "Desert Overlay - the in-game settings menu subsystem of Desert Tooling"
 edition.workspace = true
 license.workspace = true
 
@@ -10,9 +10,10 @@ workspace = true
 
 [lib]
 name = "desert_overlay"
-# Same split as the other plugins: cdylib for the .asi, rlib so `cargo test`
-# links the platform-independent parts natively on Linux.
-crate-type = ["cdylib", "rlib"]
+# A library, not a plugin: `desert-tooling` is the only cdylib in the
+# workspace and the only DllMain. This crate is linked into it and exposes
+# `start(hmodule, sections)`.
+crate-type = ["rlib"]
 
 [dependencies]
 desert-core.workspace = true

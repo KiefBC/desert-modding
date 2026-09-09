@@ -79,7 +79,6 @@ name = "desert-gatherer"
 version = "0.2.0"
 dependencies = [
  "desert-core",
- "windows-sys",
 ]
 
 [[package]]
@@ -97,6 +96,17 @@ dependencies = [
  "desert-core",
  "hudhook",
  "imgui",
+ "windows-sys",
+]
+
+[[package]]
+name = "desert-tooling"
+version = "0.3.0"
+dependencies = [
+ "desert-core",
+ "desert-gatherer",
+ "desert-looter",
+ "desert-overlay",
  "windows-sys",
 ]
 

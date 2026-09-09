@@ -1,9 +1,11 @@
 //! The ini dialect every plugin reads: `Key=Value`, one per line, `;` or `#`
-//! comments, `[Section]` headers. A plugin has one file, so its parser ignores
-//! sections and reads the file through [`lines`]; the schema files
-//! ([`crate::schema`]) are several sections in one file and read it through
-//! [`entries`]. Values are interpreted by the caller, which owns its own key
-//! list; this module only tokenises and supplies the shared vocabulary.
+//! comments, `[Section]` headers. Three readers over the same tokeniser:
+//! [`entries`] yields headers and pairs alike, [`lines`] drops the headers and
+//! reads the whole file flat, and [`lines_in_section`] reads one `[Section]` of
+//! it. Every subsystem now shares one ini, and `Enabled`/`Debug`/`DryRun`
+//! collide across them, so a subsystem reads its own settings through
+//! [`lines_in_section`]. Values are interpreted by the caller, which owns its
+//! own key list; this module only tokenises and supplies the shared vocabulary.
 
 /// One meaningful line of an ini file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +59,31 @@ pub fn lines(text: &str) -> impl Iterator<Item = Line<'_>> {
         Entry::Section(_) => None,
         Entry::Pair(k, v) => Some(Line::Pair(k, v)),
         Entry::Bad(w) => Some(Line::Bad(w)),
+    })
+}
+
+/// Walk one `[section]` of the file: the [`Line`]s that follow that header,
+/// stopping at the next one. The header is matched ASCII case-insensitively
+/// and after trimming, as [`entries`] reports it.
+///
+/// Pairs before any header belong to no section and are skipped, and so is a
+/// bad line outside the section: a subsystem reading `[Gatherer]` should not
+/// warn about junk that belongs to somebody else. A header that repeats
+/// **continues** the same section rather than starting a second one, so a
+/// player who pastes a `[Looter]` block at the end of the file still gets the
+/// keys they wrote.
+pub fn lines_in_section<'a>(text: &'a str, section: &str) -> impl Iterator<Item = Line<'a>> + 'a {
+    // Owned, so the returned iterator borrows only `text`: the caller's section
+    // name may be a temporary.
+    let want = section.trim().to_string();
+    let mut inside = false;
+    entries(text).filter_map(move |e| match e {
+        Entry::Section(name) => {
+            inside = name.eq_ignore_ascii_case(&want);
+            None
+        }
+        Entry::Pair(k, v) => inside.then_some(Line::Pair(k, v)),
+        Entry::Bad(why) => inside.then_some(Line::Bad(why)),
     })
 }
 
@@ -223,6 +250,68 @@ mod tests {
             })
             .collect();
         assert_eq!(lines(text).collect::<Vec<_>>(), from_entries);
+    }
+
+    #[test]
+    fn reads_only_the_named_section() {
+        let text = "\
+Stray=1
+[Looter]
+Enabled=1
+[Gatherer]
+Enabled=0
+Multiplier=2
+[Overlay]
+Enabled=1
+";
+        let got: Vec<_> = lines_in_section(text, "Gatherer").collect();
+        assert_eq!(got, vec![Line::Pair("Enabled", "0"), Line::Pair("Multiplier", "2")]);
+        assert_eq!(
+            lines_in_section(text, "Looter").collect::<Vec<_>>(),
+            vec![Line::Pair("Enabled", "1")],
+            "a key that appears in two sections reads its own section's value"
+        );
+        assert!(
+            lines_in_section(text, "Nope").next().is_none(),
+            "a section the file does not have is empty, not an error"
+        );
+        assert!(
+            lines_in_section(text, "").next().is_none(),
+            "a pair before any header belongs to no section"
+        );
+    }
+
+    #[test]
+    fn section_headers_match_case_insensitively() {
+        let text = "[ looter ]\nEnabled=1\n";
+        for name in ["Looter", "looter", "LOOTER", " Looter "] {
+            assert_eq!(
+                lines_in_section(text, name).collect::<Vec<_>>(),
+                vec![Line::Pair("Enabled", "1")],
+                "{name:?}"
+            );
+        }
+    }
+
+    /// A player who pastes a second `[Looter]` block at the end of the file
+    /// gets both halves; the later header continues the same section.
+    #[test]
+    fn a_repeated_header_continues_the_section() {
+        let text = "[Looter]\nA=1\n[Gatherer]\nB=2\n[looter]\nC=3\n";
+        assert_eq!(
+            lines_in_section(text, "Looter").collect::<Vec<_>>(),
+            vec![Line::Pair("A", "1"), Line::Pair("C", "3")]
+        );
+    }
+
+    /// Bad lines are reported inside the section and ignored outside it: a
+    /// subsystem should not warn about junk that belongs to somebody else.
+    #[test]
+    fn bad_lines_are_reported_only_inside_the_section() {
+        let text = "junk before\n[Looter]\nmine\n[Gatherer]\ntheirs\n";
+        let got: Vec<_> = lines_in_section(text, "Looter").collect();
+        assert_eq!(got.len(), 1, "{got:?}");
+        assert!(matches!(&got[0], Line::Bad(w) if w.starts_with("line 3: no '='")), "{got:?}");
     }
 
     #[test]

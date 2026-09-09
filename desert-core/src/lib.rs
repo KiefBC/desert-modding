@@ -11,6 +11,14 @@
 //! are `#[cfg(windows)]`, everything else compiles (and is unit tested)
 //! natively on Linux, so `cargo test --target x86_64-unknown-linux-gnu` works.
 
+/// The tag `log!` puts on a line written from inside this crate.
+///
+/// Every crate that invokes [`log!`] needs one at its root: the macro expands
+/// to `crate::LOG_TAG`, which resolves in the *invoking* crate. `desert-core`
+/// is no exception - its own tests invoke the macro, and a shared library that
+/// ever logs should say so rather than borrow a plugin's name.
+pub const LOG_TAG: &str = "core";
+
 pub mod collect;
 pub mod creature;
 pub mod gimmick;

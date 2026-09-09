@@ -1,9 +1,14 @@
-//! `DesertGatherer.ini` beside the game exe. Missing file or key => defaults.
+//! The `[Gatherer]` section of `DesertTooling.ini`, beside the game exe.
+//! Missing file, missing section or missing key => defaults.
 //!
-//! Only Desert Gatherer's own keys live here; the ini tokeniser and the truthy
-//! spellings are shared in `desert_core::ini`. Same shape as
-//! `desert_looter::config`: `parse` returns the config plus ready-to-log
-//! warnings, and a bad value never replaces the default.
+//! Every subsystem reads the same file now, and `Enabled`, `DryRun` and `Debug`
+//! mean something different in each of them, so `parse` walks only this
+//! subsystem's own section through [`ini::lines_in_section`]; anything under
+//! another header is not this crate's business and is not even warned about.
+//! The ini tokeniser and the truthy spellings are still shared in
+//! `desert_core::ini`. Same shape as `desert_looter::config`: `parse` returns
+//! the config plus ready-to-log warnings, and a bad value never replaces the
+//! default.
 //!
 //! The four family multiplier keys are the four independent gather families
 //! of `desert_core::collect::Family`, and they carry the vocabulary the DMM
@@ -110,9 +115,10 @@ impl Config {
 
 /// Lock-free mirror of [`Config`] the hook reads on every record load.
 ///
-/// The overlay plugin edits `DesertGatherer.ini` beside the game exe while it
-/// runs; the plugin's main thread notices (see `lib.rs`'s reload loop),
-/// re-parses with [`parse`] and calls [`LiveConfig::publish`]. The hook itself
+/// The overlay subsystem edits the `[Gatherer]` section of `DesertTooling.ini`
+/// beside the game exe while it runs; this subsystem's own thread notices (see
+/// `entry.rs`'s reload loop), re-parses with [`parse`] and calls
+/// [`LiveConfig::publish`]. The hook itself
 /// never touches a `Mutex` or does file I/O - it only ever loads these
 /// atomics, so a config change is visible to the very next record the loader
 /// hands us, with no allocation and nothing that can block a game thread.
@@ -234,8 +240,15 @@ pub static LIVE: LiveConfig = LiveConfig::new();
 // The menu schema
 // ---------------------------------------------------------------------------
 
-/// The `.asi` the overlay looks for before it lets this section be edited.
-const MODULE: &str = "DesertGatherer.asi";
+/// The `[Header]` this subsystem owns inside the shared ini. Named once here
+/// and used by [`schema`], by [`parse`] and by `entry::start`'s log line, so
+/// there is nothing to keep in step.
+pub const INI_SECTION: &str = "Gatherer";
+
+/// The one ini every subsystem shares. Only [`schema`] names it; `entry` takes
+/// the path from `Section::ini` so the file the menu writes and the file the
+/// reload loop watches cannot drift apart.
+const INI_FILE: &str = "DesertTooling.ini";
 
 /// One field with no heading, on its own row.
 fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
@@ -267,15 +280,16 @@ fn mult(key: &str, help: &str) -> Field {
     )
 }
 
-/// What Desert Overlay draws for `DesertGatherer.ini`: the keys, in menu
-/// order, with the labels, ranges and help the menu shows. Written to
-/// `DesertGatherer.overlay.ini` at every launch (see `lib.rs`); the overlay
-/// reads that file and needs no knowledge of this plugin at all.
+/// What Desert Overlay draws for the `[Gatherer]` section of
+/// `DesertTooling.ini`: the keys, in menu order, with the labels, ranges and
+/// help the menu shows. Handed to the overlay at startup by `desert-tooling`,
+/// which also seeds the ini from it; the overlay needs no other knowledge of
+/// this subsystem at all.
 ///
 /// `Debug` is here too, at the bottom under `Diagnostics:`. It used to be left
 /// out as a diagnostic that costs 400 log lines, which stopped being tenable
-/// once this schema became what the plugin writes its own ini from
-/// (`schema::create_ini_if_missing`): a key that is not named here is missing
+/// once this schema became what the shared ini is seeded from
+/// (`schema::create_ini_if_missing_all`): a key that is not named here is missing
 /// from the generated file as well as from the menu, and a player working from
 /// that file would never find out it existed. `DryRun` stays where it is, near
 /// the top: it is the one diagnostic a player genuinely reaches for.
@@ -288,8 +302,11 @@ pub fn schema() -> Section {
     let d = Config::default();
     Section {
         title: "Desert Gatherer".to_string(),
-        ini: crate::INI_NAME.to_string(),
-        module: Some(MODULE.to_string()),
+        ini: INI_FILE.to_string(),
+        ini_section: INI_SECTION.to_string(),
+        // One .asi now, always loaded: there is no separate module whose
+        // presence could gate this section.
+        module: None,
         // After Desert Looter's 10.
         order: 20,
         notice: Some(
@@ -347,12 +364,17 @@ pub fn schema() -> Section {
     }
 }
 
-/// Parse ini text. Unknown keys and bad values are reported back so they can
-/// be logged; the config always comes back usable.
+/// Parse the `[Gatherer]` section of the shared ini. Unknown keys and bad
+/// values *inside that section* are reported back so they can be logged; the
+/// config always comes back usable.
+///
+/// Keys under another subsystem's header, and keys before any header at all,
+/// are skipped without a warning: they are not this subsystem's to complain
+/// about, and `Enabled` under `[Looter]` is a different setting entirely.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    for line in ini::lines(text) {
+    for line in ini::lines_in_section(text, INI_SECTION) {
         let (k, v) = match line {
             Line::Pair(k, v) => (k, v),
             Line::Bad(w) => {
@@ -408,7 +430,7 @@ mod tests {
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
-            "; comment\n[DesertGatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
+            "; comment\n[Gatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
              Foraging=10\nLogging=2\nMining=5\nOre=100\nBugs=3\nFish=7\n",
         );
         assert!(c.enabled);
@@ -429,24 +451,24 @@ mod tests {
         let d = Config::default();
         // Same case-insensitivity, same range, same "keep the default and
         // warn" on a bad value as Foraging..Ore.
-        let (c, w) = parse("BUGS=2\nfIsH=100\n");
+        let (c, w) = parse("[Gatherer]\nBUGS=2\nfIsH=100\n");
         assert!(w.is_empty(), "{w:?}");
         assert_eq!((c.bugs, c.fish), (2, MULT_MAX));
 
-        let (c, w) = parse("Bugs=0\nFish=101\n");
+        let (c, w) = parse("[Gatherer]\nBugs=0\nFish=101\n");
         assert_eq!(w.len(), 2, "{w:?}");
         assert_eq!((c.bugs, c.fish), (d.bugs, d.fish));
 
         // They are not gather families, so they never make `all_vanilla`
         // false: the record-loader hook has nothing to do for them.
-        let (c, w) = parse("Bugs=10\nFish=10\n");
+        let (c, w) = parse("[Gatherer]\nBugs=10\nFish=10\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
     }
 
     #[test]
     fn case_insensitive_keys() {
-        let (c, w) = parse("ENABLED=0\nforaging=3\nOrE=4\n");
+        let (c, w) = parse("[gAtHeReR]\nENABLED=0\nforaging=3\nOrE=4\n");
         assert!(!c.enabled);
         assert_eq!(c.foraging, 3);
         assert_eq!(c.ore, 4);
@@ -456,7 +478,8 @@ mod tests {
     #[test]
     fn bad_values_keep_the_default_and_warn() {
         let d = Config::default();
-        let (c, w) = parse("Foraging=0\nLogging=101\nMining=abc\nOre=-2\nJunk=1\nnoequals\n");
+        let (c, w) =
+            parse("[Gatherer]\nForaging=0\nLogging=101\nMining=abc\nOre=-2\nJunk=1\nnoequals\n");
         assert_eq!(c.foraging, d.foraging);
         assert_eq!(c.logging, d.logging);
         assert_eq!(c.mining, d.mining);
@@ -469,7 +492,7 @@ mod tests {
 
     #[test]
     fn range_edges() {
-        let (c, w) = parse("Foraging=1\nLogging=100\n");
+        let (c, w) = parse("[Gatherer]\nForaging=1\nLogging=100\n");
         assert_eq!(c.foraging, MULT_MIN);
         assert_eq!(c.logging, MULT_MAX);
         assert!(w.is_empty(), "{w:?}");
@@ -501,8 +524,8 @@ mod tests {
     fn live_config_publish_round_trips() {
         let live = LiveConfig::new();
         let (cfg, w) = parse(
-            "Enabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\nOre=100\n\
-             Bugs=4\nFish=9\n",
+            "[Gatherer]\nEnabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\n\
+             Ore=100\nBugs=4\nFish=9\n",
         );
         assert!(w.is_empty(), "{w:?}");
         live.publish(&cfg);
@@ -535,49 +558,75 @@ mod tests {
     // -----------------------------------------------------------------------
     // The menu schema
     //
-    // The schema is read by a different program (Desert Overlay) that writes
-    // this plugin's ini back. These tests are the contract: every key the
-    // schema names is one `parse` accepts, every default it declares is the
-    // one `parse` would have produced anyway, and the multiplier range it
-    // hands the menu is the range `parse` enforces.
+    // The schema is read by a different subsystem (Desert Overlay) that writes
+    // this section of the shared ini back, and by `desert-tooling`, which seeds
+    // that ini from it. These tests are the contract: every key the schema
+    // names is one `parse` accepts, every default it declares is the one
+    // `parse` would have produced anyway, and the multiplier range it hands the
+    // menu is the range `parse` enforces. Nothing on the overlay side checks
+    // any of this - it never sees `Config` at all - so this is the only thing
+    // keeping the two halves in step.
     // -----------------------------------------------------------------------
 
     use desert_core::schema as sch;
 
+    /// The seeded file's own text, parsed back. `render_ini_defaults` emits
+    /// `[Gatherer]` as the header (it renders `Section::ini_section`), which is
+    /// exactly the header `parse` scopes itself to, so the round trip covers
+    /// the section wiring as well as the defaults.
     #[test]
     fn schema_defaults_parse_back_to_the_default_config() {
-        let (cfg, w) = parse(&sch::render_ini_defaults(&schema(), ""));
+        let text = sch::render_ini_defaults(&schema(), "");
+        assert!(text.starts_with("[Gatherer]\n"), "{text}");
+        let (cfg, w) = parse(&text);
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(cfg, Config::default());
         assert!(cfg.all_vanilla(), "the menu opens at vanilla yields; raising one is the player's call");
     }
 
     #[test]
-    fn schema_survives_a_render_and_parse_round_trip() {
-        let want = schema();
-        let text = sch::render(&want, "written by the test");
-        let (got, w) = sch::parse(&text).expect("the rendered schema must parse");
-        assert!(w.is_empty(), "{w:?}\n{text}");
-        assert_eq!(got, want, "{text}");
-    }
-
-    #[test]
     fn parse_accepts_every_key_the_schema_names() {
         for field in &schema().fields {
-            let text = format!("{}={}\n", field.key, field.kind.default_text());
+            let text = format!("[{INI_SECTION}]\n{}={}\n", field.key, field.kind.default_text());
             let (_, w) = parse(&text);
             assert!(w.is_empty(), "{}: {w:?}", field.key);
         }
     }
 
     #[test]
-    fn the_schema_names_the_files_this_crate_ships() {
+    fn the_schema_names_the_one_shared_ini_and_this_subsystems_section() {
         let s = schema();
-        assert_eq!(s.ini, crate::INI_NAME);
-        assert_eq!(s.module.as_deref(), Some("DesertGatherer.asi"));
-        assert_eq!(s.schema_file_name(), "DesertGatherer.overlay.ini");
+        assert_eq!(s.ini, "DesertTooling.ini");
+        assert_eq!(s.ini_section, INI_SECTION);
+        assert_eq!(s.ini_section, "Gatherer");
+        // One .asi, always loaded: there is no module whose absence could
+        // grey this section out any more.
+        assert_eq!(s.module, None);
         assert!(s.presets.is_empty(), "there is nothing to preset: four independent numbers");
         assert!(s.notice.is_some(), "the section says when a change takes effect");
+    }
+
+    /// The whole point of the section scoping: `Enabled` means something
+    /// different in every subsystem, and this one must only ever see its own.
+    #[test]
+    fn keys_under_another_subsystems_header_are_ignored_silently() {
+        let (c, w) = parse(
+            "[Looter]\nEnabled=0\nForaging=50\nKeyToggle=F7\n\
+             [Gatherer]\nForaging=3\n\
+             [Overlay]\nEnabled=0\nScale=2.0\n",
+        );
+        assert!(w.is_empty(), "another section's keys are not ours to warn about: {w:?}");
+        assert_eq!(c.foraging, 3, "only the [Gatherer] Foraging counts");
+        assert!(c.enabled, "[Looter] Enabled=0 must not disable the gatherer");
+    }
+
+    /// Pairs before any header belong to nobody, and a file with no
+    /// `[Gatherer]` section at all is simply the defaults.
+    #[test]
+    fn a_file_without_our_section_is_the_default() {
+        let (c, w) = parse("Foraging=9\n[Looter]\nEnabled=0\n");
+        assert_eq!(c, Config::default());
+        assert!(w.is_empty(), "{w:?}");
     }
 
     #[test]
@@ -596,10 +645,10 @@ mod tests {
         }
         // Both ends survive `parse`, one past either end does not: the
         // slider's stops are the real stops.
-        let (c, w) = parse("Foraging=1\nLogging=100\n");
+        let (c, w) = parse("[Gatherer]\nForaging=1\nLogging=100\n");
         assert!(w.is_empty(), "{w:?}");
         assert_eq!((c.foraging, c.logging), (MULT_MIN, MULT_MAX));
-        let (c, w) = parse("Foraging=0\nLogging=101\n");
+        let (c, w) = parse("[Gatherer]\nForaging=0\nLogging=101\n");
         assert_eq!(w.len(), 2, "{w:?}");
         assert_eq!(c, Config::default());
     }
@@ -620,7 +669,7 @@ mod tests {
         assert_eq!(dry.heading, None);
         assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
 
-        let (c, w) = parse("Debug=1\n");
+        let (c, w) = parse("[Gatherer]\nDebug=1\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug);
     }
@@ -650,11 +699,12 @@ mod tests {
         assert!(notice.contains("next catch"), "{notice}");
     }
 
-    /// Prints the rendered schema. `cargo test -- --ignored --nocapture
-    /// show_schema` is how the file's exact text gets read by a human.
+    /// Prints this section as it is seeded into `DesertTooling.ini`.
+    /// `cargo test -- --ignored --nocapture show_schema` is how the exact text
+    /// gets read by a human.
     #[test]
     #[ignore]
     fn show_schema() {
-        println!("{}", sch::render(&schema(), ""));
+        println!("{}", sch::render_ini_defaults(&schema(), ""));
     }
 }

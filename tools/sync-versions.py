@@ -13,9 +13,15 @@ Three things get rewritten. In every file listed in DOCS:
      version number is set to that crate's version
   2. any `<crate>-v<version>` string anywhere -> the crate's version
 
-and in each shipping crate's own README.md, additionally:
+and in the shipping crate's own README.md, additionally:
 
   3. the `**Version <version>**` line near the top -> that crate's version
+
+Only one crate ships now: desert-tooling, which builds DesertTooling.asi.
+desert-looter, desert-gatherer and desert-overlay are internal libraries linked
+into it - versioned for their own sake, never tagged, no README of their own -
+so they are in CRATES (their numbers still appear in the docs' tables) but not
+in SHIPPING.
 
 The DMM pack is not a crate and has its own source of truth, dmm_pack.json,
 which tools/release-notes.py reads for the `desert-gatherer-dmm-v<x.y>` tag.
@@ -25,7 +31,7 @@ Its twelve module files each repeat that version twice, so:
      manifest itself -> the manifest's version
 
 Finally, one thing is checked but never written, because only a human can
-write it: each shipping crate's CHANGELOG.md must carry a `## [<version>]`
+write it: the shipping crate's CHANGELOG.md must carry a `## [<version>]`
 heading for the version in its Cargo.toml. VERSIONING.md step 3 and CLAUDE.md
 both say the entry lands in the same commit as the bump; without this check
 nothing notices a missing entry until the release workflow builds the notes,
@@ -40,10 +46,16 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CRATES = ("desert-looter", "desert-gatherer", "desert-overlay", "desert-core")
+CRATES = (
+    "desert-tooling",
+    "desert-looter",
+    "desert-gatherer",
+    "desert-overlay",
+    "desert-core",
+)
 DOCS = ("README.md", "VERSIONING.md")
 # Crates that ship a plugin and carry a `**Version x.y.z**` line in their README.
-SHIPPING = ("desert-looter", "desert-gatherer", "desert-overlay")
+SHIPPING = ("desert-tooling",)
 
 # The DMM pack: a directory of JSON, versioned x.y, not a crate.
 PACK_DIR = ROOT / "desert-gatherer-dmm"

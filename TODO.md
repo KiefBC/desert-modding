@@ -1,13 +1,17 @@
 # TODO
 
 Open design questions, with enough context to pick them up cold. Not a task list:
-each entry is a decision that has been discussed but not made.
+each entry is a decision that has been discussed. An entry that has since been decided
+keeps its argument and gains a **Resolution** at the bottom, so the reasoning survives
+without reading as a live question - check an entry's **Status** line before acting on it.
 
 ## One ASI per mod instead of a separate overlay DLL
 
-**Raised** 2026-09-08. **Status:** parked, current shipping shape stands.
+**Raised** 2026-09-08. **Status: DECIDED and shipped, 2026-09-08.** Everything from here to
+"Recommendation" is the argument as it stood *before* the decision and is kept as the record
+of it; it describes a three-plugin world that no longer exists. The outcome is at the bottom.
 
-### Where things stand
+### Where things stood when this was raised (historical)
 
 Three plugins: `DesertLooter.asi`, `DesertGatherer.asi` and `DesertOverlay.asi`. The
 overlay is an in-game menu (hudhook DX12 + imgui) that edits the two mods' ini files
@@ -59,9 +63,35 @@ the file list looks on the Nexus page.
 Keep the overlay as its own DLL bundled in every zip. If the two-file look is the
 concern, fix it in the page description ("includes the in-game menu").
 
-### Third option, not planned
+### Third option, not planned at the time
 
-One combined `DesertMods.asi` with everything inside and features switched per ini.
-No election problem, one file, but it merges two separately versioned products into
-one (separate Nexus files, separate tags, separate changelogs). That is a product
-decision, not an overlay tweak; plan it properly if it is wanted.
+One combined `.asi` with everything inside and features switched per ini. No election
+problem, one file, but it merges two separately versioned products into one (separate
+Nexus files, separate tags, separate changelogs). That is a product decision, not an
+overlay tweak; plan it properly if it is wanted.
+
+### Resolution (2026-09-08)
+
+The third option is what shipped, planned properly as its own piece of work: one
+`DesertTooling.asi` (`desert-tooling` 0.3.0), one `DesertTooling.ini` with a `[Looter]`,
+`[Gatherer]` and `[Overlay]` section, one tagged `DesertTooling.log`. The three plugin
+crates became untagged internal rlibs exposing `start()`; `desert-tooling` owns the only
+`DllMain`. The product question the entry flagged was answered by folding the three
+products into one: one Nexus file, one tag, one changelog (`VERSIONING.md` and
+`tools/nexus-targets.json` carry the new shape).
+
+What the objections above cost, and what was done about them:
+
+- **DirectX and imgui in every mod DLL.** Moot: there is one DLL, and `just check-imports`
+  holds it to the allowlist that used to be the overlay's.
+- **The election problem.** Never arose: one process, one copy of hudhook, no shared-memory
+  handshake. Instead there is a stale-`.asi` guard - `desert-tooling` asks the loader for
+  `DesertLooter.asi`, `DesertGatherer.asi` and `DesertOverlay.asi` and refuses to install
+  anything if one of them answers, because two trampolines over one prologue is a crash.
+- **"Does it crash without the overlay?" becomes an ini edit.** It does, and that is what
+  `Enabled=0` under `[Overlay]` is for: no graphics hook is installed at all and the other
+  two subsystems are untouched.
+- **Every overlay fix forces a release of both mods.** True and accepted; there is one
+  release now, so there is nothing to drift apart.
+
+Do not reopen this by re-reading the argument above without the resolution.

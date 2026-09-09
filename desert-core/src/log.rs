@@ -1,4 +1,5 @@
-//! Append-only text log beside the game exe: `[+seconds] [tid] message`.
+//! Append-only text log beside the game exe:
+//! `[+seconds] [tid] [tag] message`.
 //!
 //! Rules that keep the game launching no matter what state the file is in:
 //! - never panic: a log that cannot be opened is silently dropped;
@@ -6,9 +7,14 @@
 //!   while Defender, an editor or a crash handler has the file;
 //! - nothing here is called from DllMain (loader lock) or from helper processes.
 //!
-//! Shared by every plugin, so the file name is chosen by the caller:
-//! `log::init("DesertLooter.log")` before the first `log!`. A `log!` that
+//! One process writes one file, so the name is chosen once by the caller:
+//! `log::init("DesertTooling.log")` before the first `log!`. A `log!` that
 //! somehow beats `init` lands in `DEFAULT_LOG_NAME` rather than panicking.
+//!
+//! Every subsystem shares that one file, so every line carries the tag of the
+//! crate that wrote it (`looter`, `gatherer`, `overlay`, `tooling`). The
+//! [`log!`](crate::log!) macro takes it from the calling crate's own `LOG_TAG`;
+//! see the macro for why that costs no call-site changes.
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -78,7 +84,21 @@ fn open_for_append(path: &std::path::Path) -> Option<std::fs::File> {
     o.open(path).ok()
 }
 
-pub fn write(msg: &str) {
+/// One formatted line, without the trailing newline. Split out so the exact
+/// shape of a line is unit-testable without touching the file system: `write`
+/// emits the untagged form the logger has always written, `write_tagged` puts
+/// the subsystem's own tag between the thread id and the message.
+fn line(secs: f64, tid: u32, tag: Option<&str>, msg: &str) -> String {
+    match tag {
+        Some(tag) => format!("[{secs:9.3}] [tid {tid:5}] [{tag}] {msg}"),
+        None => format!("[{secs:9.3}] [tid {tid:5}] {msg}"),
+    }
+}
+
+/// The one place that touches the file. Never panics: a log that cannot be
+/// opened is silently dropped, and a poisoned lock is taken anyway (the only
+/// thing it guards is the ordering of writes).
+fn emit(tag: Option<&str>, msg: &str) {
     if DISABLED.load(Ordering::Relaxed) {
         return;
     }
@@ -86,13 +106,74 @@ pub fn write(msg: &str) {
     let (Some(start), Some(path)) = (START.get(), PATH.get()) else { return };
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(mut f) = open_for_append(path) {
-        let t = start.elapsed().as_secs_f64();
-        let _ = writeln!(f, "[{t:9.3}] [tid {:5}] {msg}", tid());
+        let _ = writeln!(f, "{}", line(start.elapsed().as_secs_f64(), tid(), tag, msg));
         // dropped here: handle closed immediately
     }
 }
 
+/// `[+seconds] [tid] message`.
+pub fn write(msg: &str) {
+    emit(None, msg);
+}
+
+/// `[+seconds] [tid] [tag] message`, the form every subsystem writes now that
+/// they share one file. Same guarantees as [`write()`]: never panics,
+/// open-append-close, silent when [`disable`] has been called.
+pub fn write_tagged(tag: &str, msg: &str) {
+    emit(Some(tag), msg);
+}
+
+/// Write one line to the shared log, tagged with the **calling crate's**
+/// `LOG_TAG`.
+///
+/// `crate::` inside a `macro_rules!` body is resolved where the macro is
+/// *invoked*, not where it is defined, so this expands to the invoking crate's
+/// own `LOG_TAG` constant - which every crate that logs must declare at its
+/// root (`pub const LOG_TAG: &str = "looter";`). That is deliberate: it tags
+/// every line by subsystem without touching a single one of the hundreds of
+/// existing `crate::log!` call sites. A crate that forgets the constant does
+/// not log untagged lines, it fails to compile.
+// `clippy::crate_in_macro_def` warns about exactly the `crate::` below, on the
+// assumption that it is a typo for `$crate::`. Here it is the point: `$crate`
+// would resolve to `desert-core` and tag every line `core`, while `crate`
+// resolves in the crate that invoked the macro and tags each line with the
+// subsystem that wrote it. `tests/props.rs` is a separate crate and asserts
+// which of the two this is.
+#[allow(clippy::crate_in_macro_def)]
 #[macro_export]
 macro_rules! log {
-    ($($arg:tt)*) => { $crate::log::write(&format!($($arg)*)) };
+    ($($arg:tt)*) => { $crate::log::write_tagged(crate::LOG_TAG, &format!($($arg)*)) };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `desert-core` invokes the macro too, so `crate::LOG_TAG` has to resolve
+    /// here as well - this test is what makes the crate root's constant load
+    /// bearing rather than decorative. It disables writing first (a one-way
+    /// switch for the whole test binary, which is fine: nothing else in this
+    /// crate logs), so it touches no file.
+    #[test]
+    fn the_macro_resolves_this_crates_tag() {
+        disable();
+        crate::log!("tagged {}", crate::LOG_TAG);
+    }
+
+    #[test]
+    fn line_shapes() {
+        assert_eq!(line(1.5, 42, None, "hello"), "[    1.500] [tid    42] hello");
+        assert_eq!(
+            line(1.5, 42, Some("looter"), "hello"),
+            "[    1.500] [tid    42] [looter] hello",
+            "the tag sits between the thread id and the message"
+        );
+        // the two columns are the widths the log has always used, so a tagged
+        // and an untagged line still line up
+        assert_eq!(
+            line(1234.5678, 123_456, Some("g"), ""),
+            "[ 1234.568] [tid 123456] [g] ",
+            "an over-wide field grows rather than being cut"
+        );
+    }
 }

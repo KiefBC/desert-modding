@@ -1,4 +1,4 @@
-//! Forward hudhook's `tracing` output into `DesertOverlay.log`.
+//! Forward hudhook's `tracing` output into `DesertTooling.log`.
 //!
 //! hudhook reports everything through `tracing` - which swapchain it found,
 //! which vtable index it hooked, and, crucially, *why* it gave up. With no
@@ -8,14 +8,14 @@
 //! keeps no spans and does nothing but format an event's fields into one line
 //! and hand it to `desert_core::log`.
 //!
-//! WARN and ERROR always; `Debug=1` in `DesertOverlay.ini` forwards *every*
-//! level, INFO, DEBUG and TRACE included. hudhook's DEBUG and TRACE records are
-//! the only place the order of the hook calls shows up - which swapchain each
-//! Present ran on, when a pipeline was reset, which trampoline was entered -
-//! and that sequence is what a launch failure has to be read from. It is a
-//! firehose: hudhook traces at least once per presented frame, and the log is
-//! an open-append-close file per write, so [`MAX_LINES`] caps how much of it
-//! can ever reach the disk.
+//! WARN and ERROR always; `Debug=1` under `[Overlay]` in `DesertTooling.ini`
+//! forwards *every* level, INFO, DEBUG and TRACE included. hudhook's DEBUG and
+//! TRACE records are the only place the order of the hook calls shows up -
+//! which swapchain each Present ran on, when a pipeline was reset, which
+//! trampoline was entered - and that sequence is what a launch failure has to
+//! be read from. It is a firehose: hudhook traces at least once per presented
+//! frame, and the log is an open-append-close file per write, so [`MAX_LINES`]
+//! caps how much of it can ever reach the disk.
 //!
 //! `tracing` is not a dependency of this crate: hudhook re-exports it
 //! (`pub use tracing;`), so the version is the one hudhook itself uses and
@@ -27,8 +27,6 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use hudhook::tracing::field::{Field, Visit};
 use hudhook::tracing::{span, Event, Level, Metadata, Subscriber};
 
-use desert_core::log;
-
 /// How many lines the bridge will ever forward in one game session.
 ///
 /// At `Debug=1` hudhook writes several TRACE records per frame, so an hour of
@@ -38,8 +36,8 @@ use desert_core::log;
 /// is what resets it; the counter is per process, like the log itself.
 const MAX_LINES: usize = 20_000;
 
-/// Lines handed to [`log::write`] so far, including the ones dropped after the
-/// cap (the count only ever grows, and one `usize` cannot wrap in a session).
+/// Lines handed to the log so far, including the ones dropped after the cap
+/// (the count only ever grows, and one `usize` cannot wrap in a session).
 static FORWARDED: AtomicUsize = AtomicUsize::new(0);
 
 struct HudhookLog {
@@ -82,13 +80,13 @@ impl Subscriber for HudhookLog {
 
         let mut fields = Fields(String::new());
         event.record(&mut fields);
-        log::write(&format!("[hudhook] {} {}: {}", meta.level(), meta.target(), fields.0));
+        crate::log!("[hudhook] {} {}: {}", meta.level(), meta.target(), fields.0);
 
         if capped && forwarded + 1 == MAX_LINES {
-            log::write(&format!(
+            crate::log!(
                 "[hudhook] {MAX_LINES} lines forwarded; only warnings and errors from hudhook \
                  will be logged from here on"
-            ));
+            );
         }
     }
 

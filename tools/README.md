@@ -30,14 +30,16 @@ silently refuses to load, so this check is the early warning. Needs the mingw
 Builds the release zips into `dist/`, one per package, plus `SHA256SUMS`.
 Archives are reproducible: fixed file order, `zip -X`, and a pinned
 `DIST_EPOCH` rather than `SOURCE_DATE_EPOCH` (which the dev shell sets to a
-1980 value that underflows the DOS timestamp west of UTC). The looter and
-gatherer zips also bundle the overlay's `.asi` and `.ini`.
+1980 value that underflows the DOS timestamp west of UTC). There are only two
+packages now: `DesertTooling-{version}.zip` (the one `.asi`, its `.ini`,
+README, CHANGELOG and LICENSE) and the DMM pack; nothing bundles anything else
+any more.
 
 **It starts by deleting `dist/`.** Do not run it expecting the previous build
 to survive.
 
 ### `release-notes.py` (release workflow only)
-Turns a tag such as `desert-looter-v0.1.1` into the release title, the package
+Turns a tag such as `desert-tooling-v0.3.0` into the release title, the package
 name, and the release body pulled from that package's `CHANGELOG.md`. It exits
 non-zero if the tag's version does not match the version in `Cargo.toml`, or if
 the changelog has no matching `## [x.y.z]` heading. That second check is why a

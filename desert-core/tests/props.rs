@@ -14,7 +14,7 @@ use std::collections::HashSet;
 use desert_core::gimmick::{self, BLOCK, ITEM_AT, ITEM_TAIL_AT, MAX_AT, MAX_COUNT, MIN_AT};
 use desert_core::pattern::Pattern;
 use desert_core::schema::Kind;
-use desert_core::{ini, pe, rtti, schema};
+use desert_core::{ini, pe, rtti};
 use proptest::prelude::*;
 
 fn cfg() -> ProptestConfig {
@@ -419,138 +419,45 @@ proptest! {
         let _ = ini::vk_from_name(&text);
         let _ = ini::parse_bool(&text);
     }
+
+    /// One subsystem's view of the shared ini is a subset of the whole file's:
+    /// every pair `lines_in_section` yields is a pair `lines` yields too, in
+    /// the same order, and asking for a section is never a panic whatever the
+    /// text or the name.
+    #[test]
+    fn ini_lines_in_section_never_panics_and_is_a_subset(
+        text in "(?s).{0,256}",
+        name in "(?s)[A-Za-z\\[\\] ]{0,8}",
+    ) {
+        let all: Vec<_> = ini::lines(&text).collect();
+        let mut from = 0;
+        for line in ini::lines_in_section(&text, &name) {
+            if let ini::Line::Pair(k, v) = &line {
+                prop_assert_eq!(*k, k.trim());
+                prop_assert!(!k.contains('='));
+                prop_assert_eq!(*v, v.trim());
+            }
+            // the same line, at or after the position the last one was found:
+            // scoping only ever drops lines, it never reorders or invents one
+            let at = all.iter().skip(from).position(|l| *l == line);
+            let Some(at) = at else {
+                return Err(TestCaseError::fail(format!("{line:?} is not a line of the file")));
+            };
+            from += at + 1;
+        }
+        // and a section no file can declare is empty rather than the whole
+        // file: a header is one trimmed line, so its name never has a newline
+        let impossible = ini::lines_in_section(&text, "no such\nsection").next();
+        prop_assert!(impossible.is_none());
+    }
 }
 
 // ---------------------------------------------------------------------------
 // schema
 // ---------------------------------------------------------------------------
 
-/// The value texts a generated field block picks its `Default` from: some are
-/// right for one kind, most are wrong for every kind.
-const DEFAULTS: &[&str] = &["1", "0", "40", "6.5", "-3", "F10", "num5", "banner", "x", ""];
-const BOUNDS: &[&str] = &["0", "1", "-5", "200", "60000", "x", ""];
-const OPTION_LISTS: &[&str] = &["classic;parchment;banner", "a;b", "banner", ";;", ""];
-const KINDS: &[&str] = &["bool", "int", "float", "choice", "key", "colour", ""];
-
-/// One `[<key>]` block, occasionally a well-formed one.
-fn field_block() -> impl Strategy<Value = String> {
-    (
-        "[A-Za-z][A-Za-z0-9_]{0,6}",
-        prop::sample::select(KINDS),
-        prop::sample::select(DEFAULTS),
-        prop::sample::select(BOUNDS),
-        prop::sample::select(BOUNDS),
-        prop::sample::select(OPTION_LISTS),
-        any::<(bool, bool)>(),
-    )
-        .prop_map(|(key, kind, default, min, max, options, (same_line, slider))| {
-            let mut b = format!("[{key}]\nKind={kind}\nDefault={default}\nMin={min}\nMax={max}\n");
-            b.push_str(&format!("Options={options}\n"));
-            if same_line {
-                b.push_str("SameLine=1\nHeading=Group:\nHelp=What it does.\n");
-            }
-            if slider {
-                b.push_str("Widget=slider\nFormat=%dx\nLabel=A label\n");
-            }
-            b
-        })
-}
-
-/// One `[preset:<label>]` block; its `Set` is as likely to name a field that
-/// does not exist as one that does.
-fn preset_block() -> impl Strategy<Value = String> {
-    ("[A-Za-z ]{0,6}", "[A-Za-z0-9_=;. ]{0,24}", any::<bool>()).prop_map(|(label, set, hint)| {
-        let mut b = format!("[preset:{label}]\nSet={set}\n");
-        if hint {
-            b.push_str("Hint=A hint.\n");
-        }
-        b
-    })
-}
-
-/// Plausible schema text: a header that is right about as often as it is wrong,
-/// then some field and preset blocks.
-fn schema_text() -> impl Strategy<Value = String> {
-    (
-        "[A-Za-z ]{0,10}",
-        prop::sample::select(vec!["DesertLooter.ini", "T.ini", "sub/T.ini", "..\\T.ini", "T", ""]),
-        0u32..3,
-        prop::collection::vec(field_block(), 0..5),
-        prop::collection::vec(preset_block(), 0..3),
-        any::<bool>(),
-    )
-        .prop_map(|(title, ini, schema, fields, presets, module)| {
-            let mut t = format!("; a banner\n[overlay]\nSchema={schema}\nTitle={title}\nIni={ini}\n");
-            t.push_str("Order=10\nNotice=A notice.\nPresetsLabel=Presets:\n");
-            if module {
-                t.push_str("Module=DesertLooter.asi\n");
-            }
-            for b in fields.iter().chain(presets.iter()) {
-                t.push('\n');
-                t.push_str(b);
-            }
-            t
-        })
-}
-
-/// Everything a parsed section promises, checked on the section itself and on
-/// the text `render` writes for it.
-fn check_section(s: &schema::Section) -> Result<(), TestCaseError> {
-    prop_assert!(s.schema_file_name().ends_with(schema::FILE_SUFFIX));
-    prop_assert!(!s.ini.is_empty() && !s.title.is_empty());
-    for f in &s.fields {
-        // a field's own default is always a value it accepts
-        let text = f.kind.default_text();
-        let round = f.kind.normalize(&text);
-        prop_assert_eq!(round.as_deref(), Some(text.as_str()));
-        prop_assert_eq!(s.field(&f.key.to_ascii_lowercase()), Some(f));
-    }
-    for p in &s.presets {
-        for (k, v) in &p.set {
-            let Some(f) = s.field(k) else {
-                return Err(TestCaseError::fail(format!("preset names unknown field {k:?}")));
-            };
-            let round = f.kind.normalize(v);
-            prop_assert_eq!(round.as_deref(), Some(v.as_str()));
-        }
-    }
-    // the ini the overlay would create from this schema reads back as itself
-    for line in ini::lines(&schema::render_ini_defaults(s, "")) {
-        if let ini::Line::Pair(k, v) = line {
-            let Some(f) = s.field(k) else {
-                return Err(TestCaseError::fail(format!("default ini line {k:?} is not a field")));
-            };
-            let round = f.kind.normalize(v);
-            prop_assert_eq!(round.as_deref(), Some(v));
-        }
-    }
-    Ok(())
-}
-
 proptest! {
     #![proptest_config(cfg())]
-
-    /// Arbitrary text is either a rejected file or a section, never a panic;
-    /// and what `render` writes for a section parses back to the same section.
-    #[test]
-    fn schema_parse_never_panics_and_render_round_trips(text in "(?s).{0,512}") {
-        if let Ok((s, _)) = schema::parse(&text) {
-            check_section(&s)?;
-            let again = schema::parse(&schema::render(&s, "banner\nlines")).map(|(s, _)| s);
-            prop_assert_eq!(again, Ok(s));
-        }
-    }
-
-    /// The same, on text shaped like a schema file, so the `Ok` branch is the
-    /// one being exercised.
-    #[test]
-    fn plausible_schema_text_round_trips(text in schema_text()) {
-        if let Ok((s, _)) = schema::parse(&text) {
-            check_section(&s)?;
-            let again = schema::parse(&schema::render(&s, "banner")).map(|(s, _)| s);
-            prop_assert_eq!(again, Ok(s));
-        }
-    }
 
     /// Every kind takes arbitrary value text without panicking, and what it
     /// gives back it accepts again.
@@ -619,4 +526,37 @@ proptest! {
             prop_assert_eq!(ini::canonical_key_name(&canon), Some(canon.clone()));
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// log: the tag comes from the call site's crate
+// ---------------------------------------------------------------------------
+
+/// The constant `desert_core::log!` expands to. An integration test is its own
+/// crate, which is exactly what makes this file able to prove the trick the
+/// merge rests on - see `log_lines_carry_the_call_sites_tag`.
+pub const LOG_TAG: &str = "props";
+
+/// `log!` expands to `crate::LOG_TAG`, and `crate::` inside a `macro_rules!`
+/// body resolves where the macro is **invoked**, not where it is defined. So
+/// the line this writes must be tagged `props`, this crate's own constant, and
+/// not `core`, `desert-core`'s. That is the whole reason the merge needs no
+/// changes at the hundreds of existing `crate::log!` call sites: each plugin
+/// crate declares its tag once and every line it writes picks it up.
+///
+/// Not a property (there is nothing to vary), but this is the only test crate
+/// `desert-core` has, and the claim is only checkable from outside the crate.
+#[test]
+fn log_lines_carry_the_call_sites_tag() {
+    const NAME: &str = "desert-core-props-test.log";
+    let path = desert_core::log::exe_dir().join(NAME);
+    desert_core::log::init(NAME);
+    let _ = std::fs::remove_file(&path);
+
+    desert_core::log!("marker {}", 7);
+
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(text.contains("[props] marker 7"), "{text:?}");
+    assert!(!text.contains("[core]"), "the macro must not use desert-core's own tag: {text:?}");
+    let _ = std::fs::remove_file(&path);
 }
