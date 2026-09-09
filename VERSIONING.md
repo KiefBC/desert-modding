@@ -192,9 +192,10 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    tag only ever touches its own file. The mod page's version follows the file and the previous
    version is archived. Which file each tag goes to is `tools/nexus-targets.json`; a package with no
    `file_id` there is skipped, and its GitHub release still happens. The API can only add a version
-   to a file that already exists, so the mod page and its first file are created by hand on the site,
-   once — which is why `desert-tooling`'s `file_id` is empty until someone uploads its first zip
-   through the Files tab. The job needs the `NEXUS_API_KEY` repository secret (a personal API key
+   to a file that already exists, so a mod page and its first file are created by hand on the site,
+   once; `desert-tooling`'s was, on 2026-09-09, and both packages now have a `file_id`. A brand new
+   package needs that manual step before its first tag will publish. The job needs the
+   `NEXUS_API_KEY` repository secret (a personal API key
    from <https://www.nexusmods.com/settings/api-keys>).
 
 ## A note on the library crates
