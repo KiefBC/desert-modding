@@ -28,6 +28,7 @@ pub mod pattern;
 pub mod pe;
 pub mod rtti;
 pub mod schema;
+pub mod telemetry;
 pub mod trampoline;
 
 #[cfg(windows)]
