@@ -1,0 +1,24 @@
+[package]
+name = "desert-tooling"
+version = "0.3.0"
+description = "Desert Tooling - Crimson Desert auto-loot, gathering yields and in-game menu (ASI plugin)"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "desert_tooling"
+# The workspace's only cdylib, and the only thing with a DllMain: this is what
+# ships, as DesertTooling.asi. The three subsystems are rlibs linked in here.
+crate-type = ["cdylib"]
+
+[dependencies]
+desert-core.workspace = true
+desert-gatherer = { path = "../desert-gatherer" }
+desert-looter = { path = "../desert-looter" }
+desert-overlay = { path = "../desert-overlay" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

@@ -1,5 +1,5 @@
 {
-  description = "Crimson Desert mods - desert-core + the Desert Looter / Desert Gatherer ASI plugins (Rust, cross-compiled to Windows x64)";
+  description = "Crimson Desert mods - desert-core + Desert Tooling, the single ASI plugin merging the looter, gatherer and overlay subsystems (Rust, cross-compiled to Windows x64)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -71,9 +71,9 @@
           shellHook = ''
             echo "Crimson Desert mods workspace ready (run just from the repo root)."
             echo "  just            list the recipes"
-            echo "  just build      release build of both plugins"
+            echo "  just build      release build of the plugin"
             echo "  just ci         clippy (no warnings) + tests on both targets + cargo audit"
-            echo "  just install    copy the .asi files into the game's bin64"
+            echo "  just install    copy the .asi file into the game's bin64"
           '';
         };
       });

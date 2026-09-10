@@ -1,16 +1,15 @@
 #!/usr/bin/env python3
 """Turn a release tag into a release title and release notes.
 
-    tools/release-notes.py desert-looter-v0.1.1              notes, as markdown, on stdout
-    tools/release-notes.py desert-looter-v0.1.1 --title      just the title
+    tools/release-notes.py desert-tooling-v0.3.0              notes, as markdown, on stdout
+    tools/release-notes.py desert-tooling-v0.3.0 --title      just the title
     tools/release-notes.py TAG --sums dist/SHA256SUMS        notes plus a table of the attached files
-    tools/release-notes.py desert-looter-v0.1.1 --changelog  just the changelog entry
-    tools/release-notes.py desert-looter-v0.1.1 --package    just the package name
+    tools/release-notes.py desert-tooling-v0.3.0 --changelog  just the changelog entry
+    tools/release-notes.py desert-tooling-v0.3.0 --package    just the package name
 
 The tag names one package and its version (VERSIONING.md step 6):
 
-    desert-looter-v<semver>        Desert Looter        version from desert-looter/Cargo.toml
-    desert-gatherer-v<semver>      Desert Gatherer      version from desert-gatherer/Cargo.toml
+    desert-tooling-v<semver>       Desert Tooling       version from desert-tooling/Cargo.toml
     desert-gatherer-dmm-v<x.y>     Desert Gatherer DMM  version from desert-gatherer-dmm/dmm_pack.json
 
 The version in the tag must equal the one in that source of truth, or this
@@ -61,18 +60,11 @@ def pack_version() -> str:
 
 # tag prefix -> (display name, version pattern, source of truth, history file, heading for a version)
 PACKAGES = {
-    "desert-looter": (
-        "Desert Looter",
+    "desert-tooling": (
+        "Desert Tooling",
         SEMVER,
-        lambda: cargo_version("desert-looter"),
-        "desert-looter/CHANGELOG.md",
-        lambda v: rf"## \[{re.escape(v)}\]",
-    ),
-    "desert-gatherer": (
-        "Desert Gatherer",
-        SEMVER,
-        lambda: cargo_version("desert-gatherer"),
-        "desert-gatherer/CHANGELOG.md",
+        lambda: cargo_version("desert-tooling"),
+        "desert-tooling/CHANGELOG.md",
         lambda v: rf"## \[{re.escape(v)}\]",
     ),
     "desert-gatherer-dmm": (

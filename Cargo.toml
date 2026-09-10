@@ -1,15 +1,24 @@
-# Crimson Desert mods - one workspace, one shared core, one crate per mod.
+# Crimson Desert mods - one workspace, one shared core, one shipped plugin.
 #
 #   desert-core     rlib, ships nothing: hooks, guarded reads, logger, PE/RTTI,
-#                   byte patterns, ini parsing, the gather-record table.
-#   desert-looter   cdylib -> DesertLooter.asi
-#   desert-gatherer cdylib -> DesertGatherer.asi
+#                   byte patterns, ini parsing, schema, the gather-record table.
+#   desert-looter   rlib, the auto-loot subsystem       -> [Looter]   [looter]
+#   desert-gatherer rlib, the gathering yield multiplier -> [Gatherer] [gatherer]
+#   desert-overlay  rlib, the in-game settings menu      -> [Overlay]  [overlay]
+#                   Its hudhook/imgui dependencies are declared in its own
+#                   manifest, not here: one crate uses them, and they only
+#                   build for the Windows target.
+#   desert-tooling  cdylib -> DesertTooling.asi. The workspace's ONLY cdylib
+#                   and only DllMain: it links the three subsystems, gates on
+#                   the host exe, opens the one DesertTooling.log, seeds the one
+#                   DesertTooling.ini from all three schemas, and starts one
+#                   thread per subsystem.
 #
 # desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
 
 [workspace]
 resolver = "2"
-members = ["desert-core", "desert-looter", "desert-gatherer"]
+members = ["desert-core", "desert-looter", "desert-gatherer", "desert-overlay", "desert-tooling"]
 
 [workspace.package]
 edition = "2021"
@@ -25,9 +34,29 @@ windows-sys = { version = "0.59", features = [
     "Win32_System_Threading",
     "Win32_Security",                  # SECURITY_ATTRIBUTES gates CreateThread
     "Win32_System_Diagnostics_Debug",  # MessageBeep lives here in windows-sys
+    "Win32_System_SystemInformation",  # GetWindowsDirectoryW, for %WINDIR%\Fonts
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_HiDpi",                  # GetDpiForSystem, the overlay's default UI scale
 ] }
+
+# hudhook is built from vendor/hudhook, not from crates.io. Upstream 0.9.2 keeps
+# a strong IDXGISwapChain3 reference in its DX12 initialization state (and its
+# whole pipeline) across IDXGISwapChain::ResizeBuffers and across the game
+# creating a replacement swap chain, and it only notices the change *after* the
+# DXGI call it hooked has already returned. Crimson Desert resizes and then
+# recreates its swap chain a few seconds into the load, so with the released
+# crate ResizeBuffers fails with E_INVALIDARG, the retried
+# CreateSwapChainForHwnd fails with E_ACCESSDENIED (DXGI will not give a window
+# a second swap chain while one is still alive - ours was the reference keeping
+# it alive), and the game exits before the main menu. The vendored copy drops
+# every reference before calling those trampolines and rebuilds on the next
+# Present. vendor/hudhook/DESERT-CHANGES.md lists the changes line by line.
+#
+# It is a `[patch]`, not a path dependency, so the version stays 0.9.2
+# everywhere and going back to the published crate is one deleted section.
+[patch.crates-io]
+hudhook = { path = "vendor/hudhook" }
 
 # The never-panic rule, enforced by the compiler instead of by review. Every
 # crate opts in with `[lints] workspace = true`. A panic in the game process is

@@ -9,7 +9,7 @@ Prints `key=value` lines for `$GITHUB_OUTPUT`; the `nexus` job in
     publish         "true" or "false" - false means this package has no Nexus
                     target configured, and the job skips the rest of its steps
     version         0.1.2, from the tag
-    zip             DesertGatherer-0.1.2.zip, the release's one package zip
+    zip             DesertLooter-0.1.2.zip, the release's one package zip
     display_name    what the file is called on the Nexus page
     category        main / optional / miscellaneous, where the file sits
     update_mod_version  whether this file's version becomes the page's version
@@ -67,7 +67,7 @@ def main() -> int:
     prefix, version = parse_tag(args.tag, list(targets))
     target = targets[prefix]
 
-    # One mod page holds all three files, so exactly one of them may own the
+    # One mod page holds all four files, so exactly one of them may own the
     # page's version field. Catch a second claimant here rather than watching
     # two releases overwrite each other on the site.
     owners = [name for name, t in targets.items() if t.get("update_mod_version")]

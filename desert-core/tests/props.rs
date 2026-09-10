@@ -11,8 +11,9 @@
 
 use std::collections::HashSet;
 
-use desert_core::gimmick::{self, BLOCK, MAX_AT, MAX_COUNT, MIN_AT};
+use desert_core::gimmick::{self, BLOCK, ITEM_AT, ITEM_TAIL_AT, MAX_AT, MAX_COUNT, MIN_AT};
 use desert_core::pattern::Pattern;
+use desert_core::schema::Kind;
 use desert_core::{ini, pe, rtti};
 use proptest::prelude::*;
 
@@ -147,6 +148,24 @@ proptest! {
         }
     }
 
+    /// The two content resolvers survive arbitrary bytes and an arbitrary
+    /// table name: never a panic, and anything they do return points inside
+    /// the image they were given.
+    #[test]
+    fn manager_slot_resolver_never_panics_and_stays_inside(
+        bytes in prop::collection::vec(any::<u8>(), 0..8192),
+        name in prop::collection::vec(any::<u8>(), 0..24),
+    ) {
+        if let Ok(rva) = gimmick::resolve_manager_slot(&bytes, &name) {
+            prop_assert!(rva < bytes.len(), "slot rva 0x{:X} outside a {}-byte image", rva, bytes.len());
+        }
+        const BASE: usize = 0x1_4000_0000;
+        if let Ok(va) = gimmick::resolve_record_loader(&bytes, BASE) {
+            prop_assert!(va >= BASE);
+            prop_assert!(va - BASE < bytes.len());
+        }
+    }
+
     /// Every list the scanner reports has a plausible count and fits whole.
     #[test]
     fn output_lists_fit_and_are_bounded(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
@@ -220,6 +239,47 @@ proptest! {
                 prop_assert_eq!(got, want.saturating_mul(u64::from(mult)));
                 prop_assert_eq!(got, want * u64::from(mult));
             }
+        }
+    }
+
+    /// `output_blocks` is the read-only view of exactly the blocks `multiply`
+    /// edits: same blocks, same order, and the pair of edits for block `n` is
+    /// its two scalars at their two offsets, carrying its two vanilla values.
+    /// That correspondence is what the live re-apply path stands on - it
+    /// rebuilds the edit from a remembered block long after the bytes are gone.
+    #[test]
+    fn output_blocks_are_the_blocks_multiply_edits(
+        bytes in prop::collection::vec(any::<u8>(), 0..4096),
+        mult in 2u32..=16,
+    ) {
+        let blocks = gimmick::output_blocks(&bytes);
+        let edits = gimmick::multiply(&bytes, mult);
+        prop_assert_eq!(edits.len(), blocks.len() * 2);
+
+        let mut prev_end = 0usize;
+        for (n, b) in blocks.iter().enumerate() {
+            // Inside the buffer, whole, and never overlapping the block before.
+            prop_assert!(b.offset >= prev_end);
+            prop_assert!(b.offset + BLOCK <= bytes.len());
+            prev_end = b.offset + BLOCK;
+
+            // The signature keeps both copies of the item id in step, so the
+            // one at ITEM_TAIL_AT is the one at ITEM_AT.
+            let tail = u32::from_le_bytes(
+                bytes[b.offset + ITEM_TAIL_AT..b.offset + ITEM_TAIL_AT + 4].try_into().unwrap());
+            let head = u32::from_le_bytes(
+                bytes[b.offset + ITEM_AT..b.offset + ITEM_AT + 4].try_into().unwrap());
+            prop_assert_eq!(b.item, tail);
+            prop_assert_eq!(b.item, head);
+            prop_assert!(1 <= b.min && b.min <= b.max && b.max <= gimmick::MAX_QTY);
+
+            let (lo, hi) = (&edits[n * 2], &edits[n * 2 + 1]);
+            prop_assert_eq!(lo.offset, b.offset + MIN_AT);
+            prop_assert_eq!(hi.offset, b.offset + MAX_AT);
+            prop_assert_eq!(lo.old, b.min);
+            prop_assert_eq!(hi.old, b.max);
+            prop_assert_eq!(lo.new, b.min.saturating_mul(u64::from(mult)));
+            prop_assert_eq!(hi.new, b.max.saturating_mul(u64::from(mult)));
         }
     }
 }
@@ -359,4 +419,144 @@ proptest! {
         let _ = ini::vk_from_name(&text);
         let _ = ini::parse_bool(&text);
     }
+
+    /// One subsystem's view of the shared ini is a subset of the whole file's:
+    /// every pair `lines_in_section` yields is a pair `lines` yields too, in
+    /// the same order, and asking for a section is never a panic whatever the
+    /// text or the name.
+    #[test]
+    fn ini_lines_in_section_never_panics_and_is_a_subset(
+        text in "(?s).{0,256}",
+        name in "(?s)[A-Za-z\\[\\] ]{0,8}",
+    ) {
+        let all: Vec<_> = ini::lines(&text).collect();
+        let mut from = 0;
+        for line in ini::lines_in_section(&text, &name) {
+            if let ini::Line::Pair(k, v) = &line {
+                prop_assert_eq!(*k, k.trim());
+                prop_assert!(!k.contains('='));
+                prop_assert_eq!(*v, v.trim());
+            }
+            // the same line, at or after the position the last one was found:
+            // scoping only ever drops lines, it never reorders or invents one
+            let at = all.iter().skip(from).position(|l| *l == line);
+            let Some(at) = at else {
+                return Err(TestCaseError::fail(format!("{line:?} is not a line of the file")));
+            };
+            from += at + 1;
+        }
+        // and a section no file can declare is empty rather than the whole
+        // file: a header is one trimmed line, so its name never has a newline
+        let impossible = ini::lines_in_section(&text, "no such\nsection").next();
+        prop_assert!(impossible.is_none());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// schema
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// Every kind takes arbitrary value text without panicking, and what it
+    /// gives back it accepts again.
+    #[test]
+    fn kind_normalize_never_panics(
+        text in "(?s).{0,64}",
+        (default, min, max) in (any::<i64>(), any::<i64>(), any::<i64>()),
+        (fdefault, fmin, fmax) in (any::<f32>(), any::<f32>(), any::<f32>()),
+    ) {
+        let kinds = [
+            Kind::Bool { default: default > 0 },
+            Kind::Int { default, min, max, step: 1, slider: false, format: None },
+            Kind::Float { default: fdefault, min: fmin, max: fmax, format: None },
+            Kind::Choice { default: text.clone(), options: vec![text.clone(), "a".to_string()] },
+            Kind::Key { default: "F10".to_string() },
+        ];
+        for kind in &kinds {
+            let _ = kind.default_text();
+            if let Some(once) = kind.normalize(&text) {
+                prop_assert_eq!(kind.normalize(&once), Some(once.clone()));
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ini::entries
+// ---------------------------------------------------------------------------
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// `entries` is `lines` plus the section headers: every entry that is not a
+    /// header is the line `lines` reports at that position, in the same order.
+    #[test]
+    fn ini_entries_agree_with_lines(text in "(?s).{0,256}") {
+        let mut want = ini::lines(&text);
+        let mut sections = 0;
+        for entry in ini::entries(&text) {
+            match entry {
+                ini::Entry::Section(name) => {
+                    prop_assert_eq!(name, name.trim());
+                    prop_assert!(!name.contains('\n'));
+                    sections += 1;
+                }
+                ini::Entry::Pair(k, v) => {
+                    prop_assert_eq!(k, k.trim());
+                    prop_assert!(!k.contains('='));
+                    prop_assert_eq!(want.next(), Some(ini::Line::Pair(k, v)));
+                }
+                ini::Entry::Bad(why) => prop_assert_eq!(want.next(), Some(ini::Line::Bad(why))),
+            }
+        }
+        prop_assert_eq!(want.next(), None);
+        prop_assert_eq!(ini::entries(&text).count(), ini::lines(&text).count() + sections);
+    }
+
+    /// Every name the picker lists resolves, and canonicalising is idempotent.
+    #[test]
+    fn key_names_resolve_and_canonicalise(text in "(?s).{0,32}") {
+        for name in ini::key_names() {
+            prop_assert!(ini::vk_from_name(name).is_some());
+        }
+        if let Some(canon) = ini::canonical_key_name(&text) {
+            prop_assert!(ini::key_names().contains(&canon.as_str()));
+            prop_assert_eq!(ini::canonical_key_name(&canon), Some(canon.clone()));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// log: the tag comes from the call site's crate
+// ---------------------------------------------------------------------------
+
+/// The constant `desert_core::log!` expands to. An integration test is its own
+/// crate, which is exactly what makes this file able to prove the trick the
+/// merge rests on - see `log_lines_carry_the_call_sites_tag`.
+pub const LOG_TAG: &str = "props";
+
+/// `log!` expands to `crate::LOG_TAG`, and `crate::` inside a `macro_rules!`
+/// body resolves where the macro is **invoked**, not where it is defined. So
+/// the line this writes must be tagged `props`, this crate's own constant, and
+/// not `core`, `desert-core`'s. That is the whole reason the merge needs no
+/// changes at the hundreds of existing `crate::log!` call sites: each plugin
+/// crate declares its tag once and every line it writes picks it up.
+///
+/// Not a property (there is nothing to vary), but this is the only test crate
+/// `desert-core` has, and the claim is only checkable from outside the crate.
+#[test]
+fn log_lines_carry_the_call_sites_tag() {
+    const NAME: &str = "desert-core-props-test.log";
+    let path = desert_core::log::exe_dir().join(NAME);
+    desert_core::log::init(NAME);
+    let _ = std::fs::remove_file(&path);
+
+    desert_core::log!("marker {}", 7);
+
+    let text = std::fs::read_to_string(&path).unwrap_or_default();
+    assert!(text.contains("[props] marker 7"), "{text:?}");
+    assert!(!text.contains("[core]"), "the macro must not use desert-core's own tag: {text:?}");
+    let _ = std::fs::remove_file(&path);
 }

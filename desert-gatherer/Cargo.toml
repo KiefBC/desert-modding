@@ -1,7 +1,7 @@
 [package]
 name = "desert-gatherer"
-version = "0.1.1"
-description = "Desert Gatherer - Crimson Desert gathering yield multiplier (ASI plugin)"
+version = "0.2.0"
+description = "Desert Gatherer - Crimson Desert gathering yield multiplier subsystem"
 edition.workspace = true
 license.workspace = true
 
@@ -10,12 +10,11 @@ workspace = true
 
 [lib]
 name = "desert_gatherer"
-# Same split as desert-looter: cdylib for the .asi, rlib so `cargo test` links
-# the platform-independent parts natively on Linux.
-crate-type = ["cdylib", "rlib"]
+# An internal library, not a shipped artifact: desert-tooling is the only
+# cdylib in the workspace and the only thing with a DllMain. rlib alone still
+# lets `cargo test --target x86_64-unknown-linux-gnu` link and run the
+# platform-independent unit tests natively on Linux.
+crate-type = ["rlib"]
 
 [dependencies]
 desert-core.workspace = true
-
-[target.'cfg(windows)'.dependencies]
-windows-sys.workspace = true

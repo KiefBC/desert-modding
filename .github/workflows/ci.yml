@@ -4,7 +4,8 @@
 # through WSL interop, and `just test-game` / `just sigscan` read the real
 # CrimsonDesert.exe. Neither exists on a CI runner, so the Windows side is
 # covered by compiling the tests (`--no-run`) instead of running them. Run
-# `just test-win` and `just test-game` locally before a release.
+# `just test-win` and `just test-game` locally before a release, and actually
+# launch the game with the built DesertTooling.asi (VERSIONING.md step 5).
 name: ci
 
 on:
@@ -56,6 +57,14 @@ jobs:
       # stopped compiling, without needing Windows to execute it.
       - name: Tests compile for Windows
         run: nix develop --command cargo test --no-run
+
+      # The only check that libstdc++-6.dll stayed out of DesertTooling.asi.
+      # It is the CXXSTDLIB="" / -fno-threadsafe-statics pair in
+      # .cargo/config.toml that keeps it out, and nothing else would notice if
+      # that regressed: the symptom is an .asi the game silently refuses to
+      # load. Builds the release DLL, so it comes last.
+      - name: Imports are system DLLs only
+        run: nix develop --command just check-imports
 
   # Separate job, deliberately: an advisory published against a dependency has
   # nothing to do with the PR under review, and shouldn't redden it. Weekly, so

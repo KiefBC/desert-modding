@@ -1,11 +1,12 @@
 //! Pure byte logic for the `gimmickinfo` table: record headers, resource-output
-//! lists, yield multiplication, and finding the game's record loader.
+//! lists, yield multiplication, and finding the game's record loader and the
+//! global slots its data-table managers live in.
 //!
-//! `DesertGatherer.asi` hooks the loader and rewrites the raw table bytes in
-//! memory just before the game parses each record, which is what makes it a
-//! drop-in replacement for the `desert-gatherer-dmm/` offset patches: same
-//! edits, but computed from the bytes instead of from a build-specific offset
-//! list.
+//! The gatherer subsystem of `DesertTooling.asi` hooks the loader and rewrites
+//! the raw table bytes in memory just before the game parses each record, which
+//! is what makes it a drop-in replacement for the `desert-gatherer-dmm/` offset
+//! patches: same edits, but computed from the bytes instead of from a
+//! build-specific offset list.
 //!
 //! Everything here is a pure function over a byte slice, so it compiles and is
 //! unit tested natively on Linux (see the cfg-gating note in README.md). It must
@@ -62,6 +63,30 @@
 //! 140382312: 48 8B CB              mov    rcx,rbx
 //! 140382315: E8 96 33 00 00        call   FUN_1403856b0    ; the loader
 //! ```
+//!
+//! # The manager slot
+//!
+//! Every copy of that same template loads its table's manager object into `rbx`
+//! from a **global pointer slot**, by a RIP-relative `mov rbx,[rip+disp32]`
+//! (`48 8B 1D ...`) a short way *before* the pattern-A hit, immediately followed
+//! by `cmp edi,[rbx+0x8]` (`3B 7B 08`) — the bounds check against the `u32`
+//! record count at `manager+8`:
+//!
+//! ```text
+//! 140382255: 48 8B 1D 1C 7E 8A 06  mov    rbx,[0x146c2a078] ; the slot
+//! 14038225c: 3B 7B 08              cmp    edi,[rbx+0x8]     ; count check
+//! 14038225f: 0F 83 ...             jae    ...
+//! ...
+//! 14038228f: 45 33 C9              xor    r9d,r9d           <- pattern A hit
+//! ```
+//!
+//! Surveyed over all 98 copies there is exactly one such `mov` in the
+//! [`SLOT_WINDOW`] bytes before each pattern-A hit; it sits 0x3A before the hit
+//! in 95 of them and 0x3D in the 3 whose prologue also pushes `r15`.
+//! [`resolve_manager_slot`] returns the **RVA** of that slot for a named table,
+//! so Desert Looter no longer carries the two addresses as constants: on build
+//! 25116796 it answers `0x6C2A058` for [`ITEM_TABLE`] and `0x6C2A078` for
+//! [`GIMMICK_TABLE`].
 
 use crate::pattern::Pattern;
 
@@ -71,6 +96,14 @@ pub const BLOCK: usize = 68;
 pub const MIN_AT: usize = 42;
 /// Offset of the `u64` maximum inside a block.
 pub const MAX_AT: usize = 50;
+/// Offset of the `u32` item id inside a block.
+pub const ITEM_AT: usize = 5;
+/// Offset of the block's second copy of the item id, the last four bytes of
+/// the block. The signature demands the two copies agree, which is what makes
+/// either of them usable as an identity check against a parsed block object
+/// later (`docs/reference-internals.md` section 16: the parsed entry carries
+/// this one at `entry+0x08` and the item id at `block+0x6c`).
+pub const ITEM_TAIL_AT: usize = 64;
 
 /// Largest plausible block count in one output list. Vanilla lists are far
 /// smaller; the bound is what keeps the scanner from walking off a random `u32`.
@@ -101,9 +134,24 @@ const A_RIP_AT: usize = 10;
 const PAT_B: &str = "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8";
 const B_WINDOW: usize = 0x100;
 
-/// The name the accessor for our table passes: the record loader we want is the
-/// one reached through this string.
-const TABLE_NAME: &[u8] = b"gimmickinfo";
+/// `mov rbx,[rip+disp32]` — the load of a table's manager object out of its
+/// global pointer slot. Seven bytes: opcode at +0, disp32 at [`SLOT_DISP_AT`],
+/// RIP (the next instruction) at [`SLOT_RIP_AT`].
+const PAT_SLOT: &str = "48 8B 1D ?? ?? ?? ??";
+const SLOT_DISP_AT: usize = 3;
+const SLOT_RIP_AT: usize = 7;
+/// `cmp edi,[rbx+0x8]` — the record-count bounds check that follows the real
+/// slot load. Used only to break a tie between several `mov rbx,[rip+...]`.
+const SLOT_CMP: [u8; 3] = [0x3B, 0x7B, 0x08];
+/// How far back from a pattern-A hit the slot load is looked for. The real
+/// distance is 0x3A (0x3D in three copies); the window is generous.
+pub const SLOT_WINDOW: usize = 0x60;
+
+/// The name the `gimmickinfo` accessor passes: the record loader Desert
+/// Gatherer hooks is the one reached through this string.
+pub const GIMMICK_TABLE: &[u8] = b"gimmickinfo";
+/// The name the `iteminfo` accessor passes.
+pub const ITEM_TABLE: &[u8] = b"iteminfo";
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
     b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
@@ -219,6 +267,52 @@ pub fn output_lists(rec: &[u8]) -> Vec<(usize, u32)> {
     out
 }
 
+/// One resource-output block, read out rather than rewritten.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OutputBlock {
+    /// Offset of the block's first byte inside the record slice this was read
+    /// from, so `offset + MIN_AT` / `offset + MAX_AT` are the two scalars
+    /// [`multiply`] would edit.
+    pub offset: usize,
+    /// The block's item id, taken from [`ITEM_TAIL_AT`].
+    pub item: u32,
+    /// The vanilla minimum, exactly as the table holds it.
+    pub min: u64,
+    /// The vanilla maximum.
+    pub max: u64,
+}
+
+/// Every block of every output list [`output_lists`] finds, in list order and
+/// then block order.
+///
+/// This is the read-only twin of [`multiply`]: same blocks, same order, but it
+/// reports what is there instead of what to write. Desert Gatherer uses it to
+/// remember a record's vanilla yields at load time, because once the game has
+/// parsed a multiplied record the original numbers are gone — the parsed
+/// object holds the product, and dividing it back out is not the same thing
+/// (`multiply` saturates, and a later multiplier must scale the vanilla value,
+/// not the current one).
+pub fn output_blocks(rec: &[u8]) -> Vec<OutputBlock> {
+    let mut out = Vec::new();
+    for (at, count) in output_lists(rec) {
+        for n in 0..count as usize {
+            let offset = at + 4 + n * BLOCK;
+            // `output_lists` only reports a list whose every block fits and
+            // passes the signature, so these three reads always succeed; the
+            // `else` is what keeps that from being an assumption.
+            let (Some(item), Some(min), Some(max)) = (
+                u32_at(rec, offset + ITEM_TAIL_AT),
+                u64_at(rec, offset + MIN_AT),
+                u64_at(rec, offset + MAX_AT),
+            ) else {
+                continue;
+            };
+            out.push(OutputBlock { offset, item, min, max });
+        }
+    }
+    out
+}
+
 /// One `u64` to rewrite.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Edit {
@@ -296,6 +390,107 @@ fn disp32_at(img: &[u8], o: usize) -> Option<i32> {
     u32_at(img, o).map(|v| v as i32)
 }
 
+/// Offset of the pattern-A site in the one copy of the accessor template whose
+/// `lea r8,[rip+disp]` names `table`.
+///
+/// Every table-specific resolver in this module starts here: the accessor is
+/// what ties a table's name to its code and its data.
+fn named_accessor(img: &[u8], table: &[u8]) -> Result<usize, String> {
+    let pat_a = Pattern::parse(PAT_A).ok_or("pattern A is malformed")?;
+
+    // Of the ~98 copies of the accessor template, keep the ones whose
+    // `lea r8,[rip+disp]` points at `table`.
+    let mut named: Vec<usize> = Vec::new();
+    for a in pat_a.find_all(img, 4096) {
+        let disp = match disp32_at(img, a + A_DISP_AT) {
+            Some(d) => d,
+            None => continue,
+        };
+        let Some(target) = rip_target(a + A_RIP_AT, disp) else { continue };
+        if c_str_is(img, target, table) {
+            named.push(a);
+        }
+    }
+    match named.as_slice() {
+        [one] => Ok(*one),
+        [] => Err(format!(
+            "no accessor (pattern A) whose lea names \"{}\" — {} template copies scanned",
+            String::from_utf8_lossy(table),
+            pat_a.find_all(img, 4096).len()
+        )),
+        many => Err(format!(
+            "{} accessors name \"{}\", expected exactly one: {:x?}",
+            many.len(),
+            String::from_utf8_lossy(table),
+            many
+        )),
+    }
+}
+
+/// Resolve the **RVA** of the global pointer slot holding the manager object
+/// for the table named `table` (e.g. [`ITEM_TABLE`], [`GIMMICK_TABLE`]).
+///
+/// `img` is the image laid out by RVA — `MainModule::bytes()` in the game, or
+/// [`crate::pe::file_to_image`] on the exe file. The result is an RVA, not a
+/// virtual address: callers add the module base themselves. On build 25116796
+/// this answers `0x6C2A058` for `iteminfo` and `0x6C2A078` for `gimmickinfo`.
+///
+/// See the module docs for the `mov rbx,[rip+disp32]; cmp edi,[rbx+0x8]` shape
+/// this looks for in the [`SLOT_WINDOW`] bytes before the named accessor.
+pub fn resolve_manager_slot(img: &[u8], table: &[u8]) -> Result<usize, String> {
+    let pat_slot = Pattern::parse(PAT_SLOT).ok_or("the slot pattern is malformed")?;
+    let a = named_accessor(img, table)?;
+
+    // Only the run-up to the accessor's pattern-A site is searched: the `mov`
+    // is a few dozen bytes above it and the opcode is common exe-wide.
+    let win_start = a.saturating_sub(SLOT_WINDOW);
+    let window = img
+        .get(win_start..a)
+        .ok_or_else(|| format!("accessor at +0x{a:X} is past the image"))?;
+    let hits: Vec<usize> = pat_slot.find_all(window, 64).iter().map(|h| win_start + h).collect();
+
+    let hit = match hits.as_slice() {
+        [one] => *one,
+        [] => {
+            return Err(format!(
+                "no mov rbx,[rip+disp] within 0x{SLOT_WINDOW:X} bytes before the accessor at \
+                 +0x{a:X}"
+            ))
+        }
+        many => {
+            // More than one candidate: the real slot load is the one the count
+            // bounds check follows.
+            let checked: Vec<usize> = many
+                .iter()
+                .copied()
+                .filter(|h| {
+                    h.checked_add(SLOT_RIP_AT)
+                        .and_then(|e| img.get(e..e.checked_add(SLOT_CMP.len())?))
+                        == Some(&SLOT_CMP[..])
+                })
+                .collect();
+            match checked.as_slice() {
+                [one] => *one,
+                _ => {
+                    return Err(format!(
+                        "{} mov rbx,[rip+disp] within 0x{SLOT_WINDOW:X} bytes before the accessor \
+                         at +0x{a:X}, {} of them followed by cmp edi,[rbx+8]: {:x?}",
+                        many.len(),
+                        checked.len(),
+                        many
+                    ))
+                }
+            }
+        }
+    };
+
+    let disp = disp32_at(img, hit + SLOT_DISP_AT)
+        .ok_or_else(|| format!("slot load at +0x{hit:X} has no disp32 inside the image"))?;
+    rip_target(hit + SLOT_RIP_AT, disp)
+        .filter(|&t| t < img.len())
+        .ok_or_else(|| format!("slot load at +0x{hit:X} targets +0x{disp:X} outside the image"))
+}
+
 /// Resolve the `gimmickinfo` record loader in a mapped image.
 ///
 /// `img` is the image laid out by RVA — `MainModule::bytes()` in the game, or
@@ -306,40 +501,8 @@ fn disp32_at(img: &[u8], o: usize) -> Option<i32> {
 /// See the module docs for why this goes through the accessor instead of
 /// signature-scanning the loader directly.
 pub fn resolve_record_loader(img: &[u8], image_base: usize) -> Result<usize, String> {
-    let pat_a = Pattern::parse(PAT_A).ok_or("pattern A is malformed")?;
     let pat_b = Pattern::parse(PAT_B).ok_or("pattern B is malformed")?;
-
-    // Of the ~98 copies of the accessor template, keep the ones whose
-    // `lea r8,[rip+disp]` points at "gimmickinfo".
-    let mut named: Vec<usize> = Vec::new();
-    for a in pat_a.find_all(img, 4096) {
-        let disp = match disp32_at(img, a + A_DISP_AT) {
-            Some(d) => d,
-            None => continue,
-        };
-        let Some(target) = rip_target(a + A_RIP_AT, disp) else { continue };
-        if c_str_is(img, target, TABLE_NAME) {
-            named.push(a);
-        }
-    }
-    let a = match named.as_slice() {
-        [one] => *one,
-        [] => {
-            return Err(format!(
-                "no accessor (pattern A) whose lea names \"{}\" — {} template copies scanned",
-                String::from_utf8_lossy(TABLE_NAME),
-                pat_a.find_all(img, 4096).len()
-            ))
-        }
-        many => {
-            return Err(format!(
-                "{} accessors name \"{}\", expected exactly one: {:x?}",
-                many.len(),
-                String::from_utf8_lossy(TABLE_NAME),
-                many
-            ))
-        }
-    };
+    let a = named_accessor(img, GIMMICK_TABLE)?;
 
     // The call to the loader is the pattern-B site inside this accessor.
     let win_end = a.saturating_add(B_WINDOW).min(img.len());
@@ -460,6 +623,41 @@ mod tests {
     fn finds_both_lists() {
         let (r, l1, l2) = record();
         assert_eq!(output_lists(&r), vec![(l1, 2), (l2, 1)]);
+    }
+
+    #[test]
+    fn reads_every_block_of_every_list() {
+        let (r, l1, l2) = record();
+        assert_eq!(
+            output_blocks(&r),
+            vec![
+                OutputBlock { offset: l1 + 4, item: 101, min: 1, max: 3 },
+                OutputBlock { offset: l1 + 4 + BLOCK, item: 102, min: 2, max: 8 },
+                OutputBlock { offset: l2 + 4, item: 103, min: 5, max: 5 },
+            ]
+        );
+        assert!(output_blocks(&[]).is_empty());
+        assert!(output_blocks(&[0xAB; 200]).is_empty());
+    }
+
+    /// The blocks and the edits are two views of the same thing, which is what
+    /// lets the live path re-derive an edit from a remembered block.
+    #[test]
+    fn blocks_line_up_with_the_edits() {
+        let (r, _, _) = record();
+        let blocks = output_blocks(&r);
+        let edits = multiply(&r, 7);
+        assert_eq!(edits.len(), blocks.len() * 2);
+        for (n, b) in blocks.iter().enumerate() {
+            let (Some(lo), Some(hi)) = (edits.get(n * 2), edits.get(n * 2 + 1)) else {
+                panic!("edit pair {n} missing")
+            };
+            assert_eq!((lo.offset, lo.old), (b.offset + MIN_AT, b.min));
+            assert_eq!((hi.offset, hi.old), (b.offset + MAX_AT, b.max));
+            assert_eq!((lo.new, hi.new), (b.min * 7, b.max * 7));
+            // Both copies of the item id agree, so either identifies the block.
+            assert_eq!(u32_at(&r, b.offset + ITEM_AT), Some(b.item));
+        }
     }
 
     #[test]
@@ -599,6 +797,7 @@ mod tests {
             }
             let _ = parse_header(&buf);
             let _ = output_lists(&buf);
+            let _ = output_blocks(&buf);
             let e = multiply(&buf, round.wrapping_add(2));
             let mut copy = buf.clone();
             let _ = apply(&mut copy, &e);
@@ -608,9 +807,11 @@ mod tests {
         for n in 0..rec.len() {
             let _ = parse_header(&rec[..n]);
             let _ = output_lists(&rec[..n]);
+            let _ = output_blocks(&rec[..n]);
             let _ = multiply(&rec[..n], 2);
             let _ = parse_header(&rec[n..]);
             let _ = output_lists(&rec[n..]);
+            let _ = output_blocks(&rec[n..]);
             let _ = multiply(&rec[n..], 2);
         }
         // And every single-byte corruption of one, at the head.
@@ -624,9 +825,27 @@ mod tests {
 
     const SYN_BASE: usize = 0x1_4000_0000;
     const SYN_LOADER: usize = 0x2000;
+    /// Distance from the slot load to the pattern-A hit, as in 94 of the 98
+    /// real copies.
+    const SYN_SLOT_BACK: usize = 0x3A;
+    const SYN_GIMMICK_SLOT: usize = 0x3800;
+    const SYN_ITEM_SLOT: usize = 0x3820;
+
+    /// `mov rbx,[rip+disp32]` at `at` targeting `slot_rva`, optionally followed
+    /// by the `cmp edi,[rbx+0x8]` bounds check.
+    fn put_slot_load(img: &mut [u8], at: usize, slot_rva: usize, with_cmp: bool) {
+        let mut b = vec![0x48, 0x8B, 0x1D];
+        let disp = (slot_rva as i64 - (at + SLOT_RIP_AT) as i64) as i32;
+        b.extend_from_slice(&disp.to_le_bytes());
+        if with_cmp {
+            b.extend_from_slice(&SLOT_CMP);
+        }
+        img[at..at + b.len()].copy_from_slice(&b);
+    }
 
     /// An image with two copies of the accessor template — one naming
-    /// "gimmickinfo", one naming "iteminfo" — and a pattern-B call in each.
+    /// "gimmickinfo", one naming "iteminfo" — a pattern-B call in each, and the
+    /// manager-slot load 0x3A before each pattern-A site.
     fn synthetic_image() -> Vec<u8> {
         let mut img = vec![0u8; 0x4000];
         let put = |img: &mut Vec<u8>, at: usize, b: &[u8]| {
@@ -635,9 +854,10 @@ mod tests {
         put(&mut img, 0x3000, b"gimmickinfo\0");
         put(&mut img, 0x3100, b"iteminfo\0");
 
-        // site: pattern A at `a` pointing at `name_rva`, pattern B at a+0x40
-        // calling `callee`.
-        let site = |img: &mut Vec<u8>, a: usize, name_rva: usize, callee: usize| {
+        // site: pattern A at `a` pointing at `name_rva`, the slot load for
+        // `slot_rva` at a-0x3A, pattern B at a+0x40 calling `callee`.
+        let site = |img: &mut Vec<u8>, a: usize, name_rva: usize, slot_rva: usize, callee: usize| {
+            put_slot_load(img, a - SYN_SLOT_BACK, slot_rva, true);
             let mut pa = vec![0x45, 0x33, 0xC9, 0x4C, 0x8D, 0x05];
             let disp = (name_rva as i64 - (a + A_RIP_AT) as i64) as i32;
             pa.extend_from_slice(&disp.to_le_bytes());
@@ -654,8 +874,8 @@ mod tests {
             pb.extend_from_slice(&rel.to_le_bytes());
             put(img, b, &pb);
         };
-        site(&mut img, 0x1000, 0x3000, SYN_LOADER);
-        site(&mut img, 0x1800, 0x3100, 0x2800);
+        site(&mut img, 0x1000, 0x3000, SYN_GIMMICK_SLOT, SYN_LOADER);
+        site(&mut img, 0x1800, 0x3100, SYN_ITEM_SLOT, 0x2800);
         // Something that looks like the loader prologue at the target.
         put(&mut img, SYN_LOADER, &LOADER_PROLOGUE);
         img
@@ -702,5 +922,74 @@ mod tests {
         // Empty and tiny images are errors, not panics.
         assert!(resolve_record_loader(&[], SYN_BASE).is_err());
         assert!(resolve_record_loader(&[0x45, 0x33, 0xC9], SYN_BASE).is_err());
+    }
+
+    /// Where the slot load sits in `synthetic_image` for each accessor.
+    const SYN_GIMMICK_LOAD: usize = 0x1000 - SYN_SLOT_BACK;
+    const SYN_ITEM_LOAD: usize = 0x1800 - SYN_SLOT_BACK;
+
+    #[test]
+    fn resolves_the_manager_slot_for_each_table() {
+        let img = synthetic_image();
+        assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(SYN_GIMMICK_SLOT));
+        assert_eq!(resolve_manager_slot(&img, ITEM_TABLE), Ok(SYN_ITEM_SLOT));
+
+        // One table's load going missing does not affect the other.
+        let mut img = synthetic_image();
+        img[SYN_ITEM_LOAD] = 0x00;
+        assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(SYN_GIMMICK_SLOT));
+        assert!(resolve_manager_slot(&img, ITEM_TABLE).is_err());
+    }
+
+    #[test]
+    fn manager_slot_picks_the_load_the_count_check_follows() {
+        // A second `mov rbx,[rip+...]` in the window, pointing somewhere else
+        // and *not* followed by `cmp edi,[rbx+8]`: the checked one still wins.
+        let mut img = synthetic_image();
+        put_slot_load(&mut img, SYN_GIMMICK_LOAD - 0x16, 0x3840, false);
+        assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(SYN_GIMMICK_SLOT));
+    }
+
+    #[test]
+    fn manager_slot_reports_what_failed() {
+        // No accessor names the table at all.
+        let mut img = synthetic_image();
+        img[0x3000..0x3000 + 12].copy_from_slice(b"gimmickinfX\0");
+        let e = resolve_manager_slot(&img, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("no accessor"), "{e}");
+
+        // Two accessors name it.
+        let mut img = synthetic_image();
+        img[0x3100..0x3100 + 12].copy_from_slice(b"gimmickinfo\0");
+        let e = resolve_manager_slot(&img, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("2 accessors"), "{e}");
+
+        // The accessor is there but nothing loads rbx before it.
+        let mut img = synthetic_image();
+        img[SYN_GIMMICK_LOAD] = 0x00;
+        let e = resolve_manager_slot(&img, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("no mov rbx"), "{e}");
+        assert!(e.contains(&format!("0x{SLOT_WINDOW:X}")), "{e}");
+
+        // Two loads in the window and the count check follows neither.
+        let mut img = synthetic_image();
+        let cmp_at = SYN_GIMMICK_LOAD + SLOT_RIP_AT;
+        img[cmp_at..cmp_at + SLOT_CMP.len()].fill(0x90);
+        put_slot_load(&mut img, SYN_GIMMICK_LOAD - 0x16, 0x3840, false);
+        let e = resolve_manager_slot(&img, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains('2'), "{e}");
+        assert!(e.contains("0 of them"), "{e}");
+
+        // The slot is outside the image.
+        let mut img = synthetic_image();
+        let disp_at = SYN_GIMMICK_LOAD + SLOT_DISP_AT;
+        img[disp_at..disp_at + 4].copy_from_slice(&0x7000_0000i32.to_le_bytes());
+        let e = resolve_manager_slot(&img, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("outside the image"), "{e}");
+
+        // Empty and tiny images are errors, not panics.
+        assert!(resolve_manager_slot(&[], GIMMICK_TABLE).is_err());
+        assert!(resolve_manager_slot(&[0x45, 0x33, 0xC9], GIMMICK_TABLE).is_err());
+        assert!(resolve_manager_slot(&[0x48, 0x8B, 0x1D], ITEM_TABLE).is_err());
     }
 }

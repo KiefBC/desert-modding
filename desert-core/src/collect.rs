@@ -1,6 +1,12 @@
 //! Gather-node records of Crimson Desert build 25116796, generated from the
 //! Desert Gatherer DMM pack (gimmickinfo records patched by that pack).
 //! `(record key, record name, family)`. Regenerate with tools/gen-collect-names.py.
+//!
+//! WARNING: that generator rewrites this whole file. It emits the record table
+//! and nothing else, so the hand-written parts below do not survive a plain
+//! regenerate: the "Tried and rejected" note on `family_by_name`, and the
+//! `non_gather_records_stay_out` test. Both record findings the table cannot.
+//! Regenerate to a scratch copy and diff it in, never straight over this file.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Family {

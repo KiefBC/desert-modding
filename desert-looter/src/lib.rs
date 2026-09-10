@@ -1,16 +1,21 @@
-//! Desert Looter - gathering auto-loot for Crimson Desert, as an ASI plugin.
+//! Desert Looter - gathering auto-loot for Crimson Desert.
 //!
-//! Current stage: **first write**. On load it resolves the game-side anchors
-//! (byte signatures, RTTI), hooks the per-frame sweep function to get a
-//! callback on the game thread, and resolves the PickUpItem event descriptor.
-//! The gather hotkey forges one PickUpItem event for the nearest gather node
-//! and enqueues it from inside the sweep hook.
+//! This is a **subsystem library**, not a plugin of its own any more:
+//! `desert-tooling` owns the single `DllMain`, the host-exe gate, the log file
+//! and the shared `DesertTooling.ini`, and calls [`start`] on a thread of its
+//! own. Everything below that entry point is what it always was.
+//!
+//! [`start`] resolves the game-side anchors (byte signatures, RTTI), hooks the
+//! per-frame sweep function to get a callback on the game thread, and resolves
+//! the PickUpItem event descriptor. The gather hotkey forges one PickUpItem
+//! event for the nearest gather node and enqueues it from inside the sweep
+//! hook.
 
 // The shared plumbing lives in desert-core. Re-exported under the names this
 // crate has always used, so `crate::log!`, `crate::safe::read`, `crate::pe`,
 // ... keep resolving inside every module here. `log` names both a module and
 // the exported macro; one `use` brings in both.
-pub use desert_core::{collect, ini, log, pattern, pe, rtti, trampoline};
+pub use desert_core::{collect, ini, log, pattern, pe, rtti, schema, trampoline};
 #[cfg(windows)]
 pub use desert_core::{hook, hotkey, module, safe};
 
@@ -32,25 +37,21 @@ pub mod gatherer;
 pub mod tables;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
-pub const INI_NAME: &str = "DesertLooter.ini";
-/// Written beside the game exe. Named here, not in desert-core, so each
-/// plugin gets its own file.
-pub const LOG_NAME: &str = "DesertLooter.log";
 
-/// Only this process is the game. The ASI loader (winmm.dll) also gets pulled
-/// into helper processes started from bin64 (crashpad_handler.exe), and each
-/// of those would otherwise run its own copy of us.
-pub const GAME_EXE: &str = "CrimsonDesert.exe";
+/// The tag every line this crate logs carries. `desert_core`'s `log!` macro
+/// expands to `write_tagged(crate::LOG_TAG, ...)`, and `crate::` inside a
+/// `macro_rules!` body resolves at the call site, so this one constant is what
+/// makes every `crate::log!` in this crate compile and say `[looter]`.
+pub const LOG_TAG: &str = "looter";
+
+/// The auto-loot subsystem's entry point. Never returns; `desert-tooling`
+/// calls it on a thread of its own.
+#[cfg(windows)]
+pub use entry::start;
 
 #[cfg(windows)]
 mod entry {
-    use std::ffi::c_void;
-
-    use windows_sys::Win32::Foundation::{BOOL, HMODULE, TRUE};
     use windows_sys::Win32::System::Diagnostics::Debug::MessageBeep;
-    use windows_sys::Win32::System::LibraryLoader::DisableThreadLibraryCalls;
-    use windows_sys::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
-    use windows_sys::Win32::System::Threading::{CreateThread, GetCurrentProcessId};
     use windows_sys::Win32::UI::WindowsAndMessaging::MB_OK;
 
     use crate::config::{self, Config};
@@ -160,7 +161,7 @@ mod entry {
                 if api.steal_check != 0 && api.steal_ctx != 0 {
                     crate::log!("[event] steal_check=+0x{:X} ctx=+0x{:X}", module.rva(api.steal_check), module.rva(api.steal_ctx));
                 } else {
-                    crate::log!("[event] steal check NOT resolved: ground items will all be treated as owned");
+                    crate::log!("[event] steal check NOT resolved: every pickup (gather nodes and ground items) will be treated as owned and skipped");
                 }
                 events::set_api(api);
                 true
@@ -194,6 +195,25 @@ mod entry {
                     }
                     Err(e) => crate::log!("[event] {}: {e}; yields will not be learned", events::HANDLE_GAME_EVENT),
                 }
+                // The catch event is optional: without it insects are simply
+                // not caught, and gathering carries on exactly as before.
+                match events::find_descriptor(module, api, events::CATCH_DESCRIPTOR) {
+                    Ok(c) => {
+                        let note = if c.id == events::CATCH_ID_EXPECTED
+                            && c.payload_size as usize == events::CATCH_PAYLOAD_SIZE
+                        {
+                            "as expected"
+                        } else {
+                            "DIFFERS from the recorded 2048/8"
+                        };
+                        crate::log!(
+                            "[event] {} id={} payload={} dispatch={} ({note})",
+                            c.name, c.id, c.payload_size, c.dispatch
+                        );
+                        events::set_catch_descriptor(c);
+                    }
+                    Err(e) => crate::log!("[event] {}: {e}; bugs will not be caught", events::CATCH_DESCRIPTOR),
+                }
                 true
             }
             Err(e) => {
@@ -203,9 +223,13 @@ mod entry {
         }
     }
 
-    /// `DesertLooter.yields` beside the log: one `record=item` pair per line.
+    /// `DesertTooling.yields` beside the log: one `record=item` pair per line.
+    ///
+    /// Renamed with the merge into one .asi. A `DesertLooter.yields` left over
+    /// from the separate plugin is simply not read: the cache is rebuilt by
+    /// playing, which is the same trade the rest of the merge makes.
     fn yields_path() -> std::path::PathBuf {
-        log::exe_dir().join("DesertLooter.yields")
+        log::exe_dir().join("DesertTooling.yields")
     }
 
     /// Files without this header come from a build that also learned from
@@ -215,7 +239,7 @@ mod entry {
     fn load_yields() {
         let Ok(text) = std::fs::read_to_string(yields_path()) else { return };
         if text.lines().next().map(str::trim) != Some(YIELDS_HEADER) {
-            crate::log!("[yield] ignoring an old-format DesertLooter.yields; it will be rewritten");
+            crate::log!("[yield] ignoring an old-format DesertTooling.yields; it will be rewritten");
             return;
         }
         let pairs: Vec<(u16, u32, u32)> = text
@@ -252,53 +276,90 @@ mod entry {
         unsafe { MessageBeep(MB_OK) };
     }
 
-    fn host_exe_name() -> String {
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
-            .unwrap_or_default()
+    /// How often this thread stats `DesertTooling.ini` for a modified time
+    /// change. The overlay's edit is expected to be picked up within about a
+    /// second, and this is the whole budget for that: the stat is cheap and no
+    /// hook and no game thread ever waits on it.
+    const RELOAD_POLL_SECS: u64 = 1;
+
+    /// The ini's last-modified time, or `None` if it cannot be stat'd
+    /// (missing, permissions, mid-write on some filesystems).
+    fn ini_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
     }
 
-    fn load_config() -> Config {
-        let path = log::exe_dir().join(crate::INI_NAME);
-        match std::fs::read_to_string(&path) {
-            Ok(text) => {
-                let (cfg, warnings) = config::parse(&text);
+    /// Read and parse the ini, with the modification time the parsed text
+    /// belongs to. `None` means "do not act on this": missing, unreadable,
+    /// empty, or written while it was being read - the modified time is taken
+    /// before and after the read and has to agree, so an overlay rewriting the
+    /// file in place is not caught half way. The caller keeps the config it
+    /// already has and tries the same file again on the next poll.
+    fn read_config(path: &std::path::Path) -> Option<(std::time::SystemTime, Config, Vec<String>)> {
+        let before = ini_mtime(path)?;
+        let text = std::fs::read_to_string(path).ok()?;
+        if text.trim().is_empty() || ini_mtime(path)? != before {
+            return None;
+        }
+        let (cfg, warnings) = config::parse(&text);
+        Some((before, cfg, warnings))
+    }
+
+    /// Startup read: every failure is defaults, with the reason logged.
+    fn load_config(path: &std::path::Path) -> (Option<std::time::SystemTime>, Config) {
+        match read_config(path) {
+            Some((mtime, cfg, warnings)) => {
                 for w in warnings {
                     crate::log!("[ini] {w}");
                 }
-                cfg
+                (Some(mtime), cfg)
             }
-            Err(_) => {
-                crate::log!("[ini] {} not found, using defaults", path.display());
-                Config::default()
+            None => {
+                crate::log!("[ini] {} missing, empty or unreadable, using defaults", path.display());
+                (None, Config::default())
             }
         }
     }
 
-    /// Runs on its own thread for the life of the process.
-    unsafe extern "system" fn main_thread(_param: *mut c_void) -> u32 {
-        log::init(crate::LOG_NAME);
-        // SAFETY: `GetCurrentProcessId` takes no arguments and only reads this
-        // process's own PEB; it is sound to call from any thread.
-        let pid = unsafe { GetCurrentProcessId() };
-        crate::log!("Desert Looter {} loaded, pid {}", crate::VERSION, pid);
-        let cfg = load_config();
-        crate::log!(
-            "[ini] Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+    /// `[ini] Enabled=1 Debug=0 ...`, shared between the startup summary and
+    /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
+    fn ini_summary(cfg: &Config) -> String {
+        format!(
+            "Enabled={} Debug={} LogReceived={} ScanRange={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherBugs={} GatherFish={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms, cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
-        );
-        events::set_log_received(cfg.log_received);
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8,
+            cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
+            cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
+        )
+    }
+
+    /// The auto-loot subsystem. Runs on its own thread for the life of the
+    /// process and never returns; the early-out paths return instead.
+    ///
+    /// `desert-tooling` has already done `log::init`, the host-exe gate and the
+    /// seeding of `DesertTooling.ini` by the time this is called, so the body
+    /// below starts exactly where the old `main_thread` did after `log::init`.
+    pub fn start() {
+        crate::log!("Desert Looter {} starting", crate::VERSION);
+        // The one ini this subsystem reads, named by its own schema so the
+        // menu, the seeded file and this poll can never disagree about it.
+        let ini_path = log::exe_dir().join(config::schema().ini);
+        let (mut ini_seen, mut cfg) = load_config(&ini_path);
+        crate::log!("[ini] {}", ini_summary(&cfg));
+        events::set_log_received(cfg.enabled && cfg.log_received);
         if !cfg.enabled {
-            crate::log!("Enabled=0, staying idle");
-            return 0;
+            // This no longer returns: the two prologues can only be patched
+            // here, while the game is still loading and no thread is executing
+            // them, so the hooks go in regardless and `Enabled` gates every
+            // action in the loop below instead. That is what lets the ini turn
+            // the plugin back on without a restart. Nothing is sent, nothing
+            // is scanned and nothing is logged until it says 1.
+            crate::log!("Enabled=0: the hooks are installed but the plugin stays idle until the ini says otherwise");
         }
 
         let Some(module) = MainModule::locate() else {
             crate::log!("could not locate the main module; giving up");
-            return 0;
+            return;
         };
         crate::log!("[module] base=0x{:X} size=0x{:X}", module.base, module.size);
         let t0 = std::time::Instant::now();
@@ -314,7 +375,11 @@ mod entry {
         if let Some(m2) = MainModule::locate() {
             events::set_module(m2);
         }
-        beep();
+        if cfg.enabled {
+            // The "hooks are in" acknowledgement. Not sounded when the ini
+            // says the plugin is off; nothing will happen until it says 1.
+            beep();
+        }
 
         let mut gatherer = Gatherer::new(&cfg);
         load_yields();
@@ -329,7 +394,74 @@ mod entry {
         let mut k_record = Hotkey::new(cfg.key_record);
         let mut descriptor_ok = false;
         let mut hook_reported = false;
+        let ini_poll = std::time::Duration::from_secs(RELOAD_POLL_SECS);
+        let mut next_ini_poll = std::time::Instant::now() + ini_poll;
         loop {
+            // The ini is watched here and nowhere else: this is the plugin
+            // thread, never a hook and never the game thread. A stat a second,
+            // and a read only when the file has moved.
+            if std::time::Instant::now() >= next_ini_poll {
+                next_ini_poll = std::time::Instant::now() + ini_poll;
+                if ini_mtime(&ini_path).is_some_and(|t| Some(t) != ini_seen) {
+                    // A failed read leaves `ini_seen` alone, so the next poll
+                    // tries the same file again.
+                    if let Some((mtime, new_cfg, warnings)) = read_config(&ini_path) {
+                        ini_seen = Some(mtime);
+                        // The watermark moves either way, but the work below
+                        // only runs when **this section** changed. One ini
+                        // carries all three subsystems now, so the overlay's
+                        // write of a [Gatherer] or [Overlay] key moves the
+                        // modified time of the file this thread watches;
+                        // before the merge nothing outside this plugin could
+                        // touch it, and reporting a reload that changed
+                        // nothing here would be a line a second in the shared
+                        // log while somebody drags a slider in another
+                        // section. Identical text also means identical
+                        // warnings, already logged.
+                        //
+                        // Not a `continue`: the hotkey poll below this block
+                        // has to run on every tick whatever the ini did.
+                        if new_cfg != cfg {
+                            let old = std::mem::replace(&mut cfg, new_cfg);
+                            for w in warnings {
+                                crate::log!("[ini] {w}");
+                            }
+                            crate::log!("[ini] reloaded: {}", ini_summary(&cfg));
+                            events::set_log_received(cfg.enabled && cfg.log_received);
+                            gatherer.apply(&cfg);
+                            // Rebuilt only when the binding actually moved: a new
+                            // poller starts with "not held", which would fire once
+                            // for a key that happens to be down right now.
+                            if old.key_toggle != cfg.key_toggle {
+                                k_toggle = Hotkey::new(cfg.key_toggle);
+                            }
+                            if old.key_scan != cfg.key_scan {
+                                k_scan = Hotkey::new(cfg.key_scan);
+                            }
+                            if old.key_gather != cfg.key_gather {
+                                k_gather = Hotkey::new(cfg.key_gather);
+                            }
+                            if old.key_record != cfg.key_record {
+                                k_record = Hotkey::new(cfg.key_record);
+                            }
+                            if old.enabled != cfg.enabled {
+                                crate::log!(
+                                    "[ini] Enabled={}: automatic gathering and the hotkeys are {} (the hooks stay where they are)",
+                                    cfg.enabled as u8, if cfg.enabled { "back on" } else { "off" }
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            // Polled even while disabled, so a press made with Enabled=0 is
+            // consumed rather than fired the moment it goes back to 1.
+            let (press_toggle, press_record, press_gather, press_scan) =
+                (k_toggle.pressed(), k_record.pressed(), k_gather.pressed(), k_scan.pressed());
+            if !cfg.enabled {
+                std::thread::sleep(std::time::Duration::from_millis(30));
+                continue;
+            }
             if world.is_none() && std::time::Instant::now() >= next_world_try {
                 world = game::find_world(&module, &anchors);
                 if world.is_none() {
@@ -351,12 +483,12 @@ mod entry {
                 hook_reported = true;
                 crate::log!("[hook] game thread id {} (main thread here is {})", events::game_thread_id(), tid_now());
             }
-            if k_toggle.pressed() {
+            if press_toggle {
                 let on = gatherer.toggle();
                 crate::log!("[key] auto-gather {}", if on { "ON" } else { "OFF" });
                 beep();
             }
-            if k_record.pressed() {
+            if press_record {
                 beep();
                 if !recorder {
                     crate::log!("[record] enqueue hook not installed");
@@ -364,7 +496,7 @@ mod entry {
                     crate::log!("[record] ON: logging every event the game queues (cap {})", events::RECORD_CAP);
                 }
             }
-            if k_gather.pressed() {
+            if press_gather {
                 beep();
                 if !hooked {
                     crate::log!("[gather] no sweep hook; cannot send on the game thread");
@@ -383,7 +515,7 @@ mod entry {
             if events::take_yield_dirty() {
                 save_yields();
             }
-            if k_scan.pressed() {
+            if press_scan {
                 beep();
                 match &world {
                     Some(w) => {
@@ -401,43 +533,5 @@ mod entry {
             }
             std::thread::sleep(std::time::Duration::from_millis(30));
         }
-    }
-
-    #[no_mangle]
-    pub extern "system" fn DllMain(hinst: HMODULE, reason: u32, _reserved: *mut c_void) -> BOOL {
-        if reason == DLL_PROCESS_ATTACH {
-            // SAFETY: `hinst` is the handle the loader passed for this very
-            // module, so it is a live HMODULE; the call only clears this
-            // module's thread-attach notifications and is the documented thing
-            // to do first under the loader lock.
-            unsafe {
-                DisableThreadLibraryCalls(hinst);
-            }
-            // No file I/O inside DllMain (loader lock), and none at all in
-            // helper processes such as crashpad_handler.exe.
-            let host = host_exe_name();
-            if !host.eq_ignore_ascii_case(crate::GAME_EXE) {
-                log::disable();
-                return TRUE;
-            }
-            // SAFETY: every pointer argument is null except the entry point,
-            // which is a `'static` function in this module; `main_thread`
-            // ignores its parameter, so passing null is correct. An .asi is
-            // never unloaded, so the thread cannot outlive its own code, and
-            // creating a thread is one of the few things permitted while the
-            // loader lock is held - it does not run until DllMain returns.
-            unsafe {
-                // Never do real work inside DllMain itself; hand off to a thread.
-                CreateThread(
-                    core::ptr::null(),
-                    0,
-                    Some(main_thread),
-                    core::ptr::null(),
-                    0,
-                    core::ptr::null_mut(),
-                );
-            }
-        }
-        TRUE
     }
 }

@@ -1,11 +1,11 @@
 # The Desert Gatherer
 
-> **Superseded.** This pack is superseded by **DesertGatherer.asi** (see
-> [`../desert-gatherer`](../desert-gatherer)), which does the same thing in memory as the game loads
-> its data, so no game file is modified and no rebase is needed after a game update. The pack is
-> kept here for people who use DMM without an ASI loader. **Do not mount it together with the
-> `.asi`**: both edit the same minimum/maximum quantities, and the two multiply on top of each
-> other.
+> **Superseded.** This pack is superseded by the gathering-yield subsystem of
+> **DesertTooling.asi** (see [`../desert-tooling`](../desert-tooling)), which does the same thing in
+> memory as the game loads its data, so no game file is modified and no rebase is needed after a
+> game update. The pack is kept here for people who use DMM without an ASI loader. **Do not mount
+> it together with the `.asi`**: both edit the same minimum/maximum quantities, and the two
+> multiply on top of each other.
 
 A DMM module pack for choosing independent 2x, 5x, or 10x gathering yields.
 
@@ -65,7 +65,7 @@ Record positions move whenever the game updates, and DMM's automatic offset relo
    (`desert-core/tests/gimmick_real.rs`). It resolves the record loader in the new `CrimsonDesert.exe` the same way the ASI hook does, then runs the actual `gimmick::multiply` signature logic (the code the ASI ships) against the freshly extracted clean table and asserts it reproduces every edit in the current `desert-gatherer-dmm/*2X.json` files byte-for-byte (exact offsets, exact old/new values, exact record/block/patch counts). This is a stronger check than reading a decompile: it is the real signature code running against the real new data, not a human judgment call.
    - The test has build-pinned constants (`LOADER_RVA`, the clean-table byte length) left over from build 25116796; on a new build it will fail those specific asserts first, but the `println!`s above them print the real resolved RVA and table length before failing. Update the constants to match and re-run.
    - If it then passes cleanly (counts still 275 records / 587 blocks / 1174 offsets, no missing/extra offsets, no out-of-range values), the byte-signature assumptions rebase.py depends on (`BLOCK=68`, `MIN_AT=42`, `MAX_AT=50`) are confirmed good for this build. Proceed to rebase.
-   - If it fails on the pack cross-check itself (not just the pinned constants), the block format likely changed. Only then is it worth decompiling the loader in Ghidra (`analysis/gimmick-loader.c` / `gimmick-record.c` are the archived baseline for build 25116796) to see what moved. Compare control flow and struct offsets by eye or ask Claude to judge equivalence, never a literal text-diff, since Ghidra renames local variables between decompile runs even when a function hasn't changed.
+   - If it fails on the pack cross-check itself (not just the pinned constants), the block format likely changed. Only then is it worth decompiling the loader in Ghidra to see what moved. Compare control flow and struct offsets by eye or ask Claude to judge equivalence, never a literal text-diff, since Ghidra renames local variables between decompile runs even when a function hasn't changed.
 4. Run `python rebase.py <path to gimmickinfo_pabgb_clean.bin> <build id>`.
 
 The script re-locates every record by key and name, finds each resource-output list by its byte signature, verifies the vanilla values still match, rewrites all module JSONs, and regenerates `VERIFICATION.txt`. It refuses to write anything if a single patch cannot be resolved unambiguously. If it exits on one specific record rather than most/all of them after step 3 passed, that usually means the record moved further than `SEARCH` (1024 bytes) from its last known position; try widening `SEARCH` before suspecting the format itself.

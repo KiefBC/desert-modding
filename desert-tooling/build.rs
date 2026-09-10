@@ -5,13 +5,13 @@
 // check passes and DMM's UI can show the mod's name and version. Windows
 // itself shows the same fields under Properties -> Details.
 //
-// This file is BYTE-FOR-BYTE IDENTICAL in desert-looter/ and desert-gatherer/.
-// Everything that differs between the two mods is derived from the crate's own
-// Cargo metadata (name, version, description), so keep the copies in sync by
-// copying, not by editing one of them. It is duplicated rather than shared
-// because desert-core is an rlib linked *into* the plugins - a build script
-// there would not run for them - and a whole extra workspace crate to hold
-// forty lines of string formatting is not worth the moving part.
+// This used to exist three times over, once per shipped plugin, kept in sync by
+// copying. There is one plugin now, so this is the only copy: desert-tooling is
+// the workspace's single cdylib, and a build script in the rlibs it links
+// (desert-core, desert-looter, desert-gatherer, desert-overlay) would embed a
+// resource into nothing. Everything mod-specific below is derived from this
+// crate's own Cargo metadata - name, version, description - so a version bump
+// or a renamed package carries into the resource with nothing to edit here.
 //
 // Nothing happens off Windows: the native `x86_64-unknown-linux-gnu` build,
 // which is what `cargo test --target x86_64-unknown-linux-gnu` uses, gets no
@@ -40,7 +40,7 @@ fn main() {
 
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
 
-    // "desert-looter" -> product "Desert Looter", file base "DesertLooter".
+    // "desert-tooling" -> product "Desert Tooling", file base "DesertTooling".
     let pkg = env::var("CARGO_PKG_NAME").expect("CARGO_PKG_NAME");
     let words: Vec<String> = pkg
         .split(['-', '_'])

@@ -23,11 +23,32 @@ appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
 
+# Every DLL DesertTooling.asi is allowed to import. All of these ship WITH
+# Windows, so an .asi that imports only these loads in bin64 with nothing
+# installed beside it. The list exists because desert-overlay links imgui,
+# which is C++: by default the mingw `cc` crate links libstdc++-6.dll, which
+# bin64 does not have, and the plugin would fail to load with an unhelpful
+# error. Everything is linked into the one plugin now, so every entry below is
+# an import of DesertTooling.asi. See the [env] block in .cargo/config.toml for
+# how libstdc++ is avoided; `just check-imports` is what proves it stayed
+# avoided.
+#
+#   kernel32 msvcrt ntdll bcryptprimitives userenv ws2_32
+#                                  Rust's own std
+#   api-ms-win-core-synch-l1-2-0   std's futex/condvar shims
+#   user32                         GetAsyncKeyState, the window procedure
+#   advapi32                       std's fallback entropy source on old builds
+#   d3d12 dxgi d3dcompiler_47      hudhook's DX12 renderer, from the overlay
+#   oleaut32 combase rpcrt4 api-ms-win-core-winrt-error-l1-1-0
+#                                  COM, reached through the `windows` crate
+#                                  that hudhook uses
+allowed_imports := "advapi32 api-ms-win-core-synch-l1-2-0 api-ms-win-core-winrt-error-l1-1-0 bcryptprimitives combase d3d12 d3dcompiler_47 dxgi kernel32 msvcrt ntdll oleaut32 rpcrt4 user32 userenv ws2_32"
+
 # List the recipes.
 default:
     @just --list --unsorted
 
-# Release build of both plugins (Windows x64). `just build desert-looter` for one.
+# Release build of the plugin (Windows x64). `just build desert-looter` for one crate.
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
 
@@ -56,8 +77,12 @@ clippy:
 audit:
     {{nix}} cargo audit
 
-# Everything a commit should pass: clippy, tests, audit, doc versions.
-ci: clippy test audit check-versions
+# Everything a commit should pass: clippy, tests, audit, doc versions, imports.
+ci: clippy test audit check-versions check-imports
+
+# Fail if a built plugin imports a DLL that is not part of Windows. Part of `just ci`.
+check-imports: build
+    {{nix}} tools/check-imports.sh {{allowed_imports}}
 
 # Rewrite the version tables in README.md / VERSIONING.md from the Cargo.toml versions.
 sync-versions:
@@ -67,35 +92,45 @@ sync-versions:
 check-versions:
     {{nix}} python3 tools/sync-versions.py --check
 
+# Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
+logo:
+    {{nix}} python3 tools/logo-to-rgba.py
+
 # Re-check every byte signature against the game exe (each must hit once).
 sigscan:
     {{nix}} python3 tools/sigscan.py
 
-# Build the release zips into dist/ (both plugins, the DMM pack, SHA256SUMS).
-# `just dist desert-looter` builds only that package, as a release tag does.
+# Build the release zips into dist/ (the plugin, the DMM pack, SHA256SUMS).
+# `just dist desert-tooling` builds only that package, as a release tag does.
 dist *packages:
     {{nix}} tools/dist.sh {{packages}}
 
-# Copy the built plugins into the game's bin64 as .asi. Refuses while the game runs.
+# Copy the built plugin into the game's bin64 as DesertTooling.asi. Refuses while the game runs.
 install: build
     @if command -v tasklist.exe >/dev/null && tasklist.exe /FI "IMAGENAME eq CrimsonDesert.exe" 2>/dev/null | grep -q CrimsonDesert.exe; then \
         echo "install: CrimsonDesert.exe is running; close the game first" >&2; exit 1; fi
     @test -d "{{bin64}}" || { echo "install: {{bin64}} not found (set CD_BIN64)" >&2; exit 1; }
-    cp "{{built}}/desert_looter.dll"   "{{bin64}}/DesertLooter.asi"
-    cp "{{built}}/desert_gatherer.dll" "{{bin64}}/DesertGatherer.asi"
+    cp "{{built}}/desert_tooling.dll" "{{bin64}}/DesertTooling.asi"
     @echo "installed into {{bin64}}"
+    @for stale in DesertLooter DesertGatherer DesertOverlay; do \
+        test -e "{{bin64}}/$stale.asi" || continue; \
+        echo "install: WARNING {{bin64}}/$stale.asi is still there; delete it (two copies of a hook is a crash)" >&2; \
+     done
 
-# Follow the looter's log from the game folder.
+# One plugin means one log: the old `glog` and `olog` recipes are gone, and every
+# line carries its subsystem's tag, so `just log | grep '\[gatherer\]'` is what
+# they were for.
+
+# Follow DesertTooling.log from the game folder.
 log:
-    tail -n 40 -F "{{bin64}}/DesertLooter.log"
+    tail -n 40 -F "{{bin64}}/DesertTooling.log"
 
-# Follow the gatherer's log from the game folder.
-glog:
-    tail -n 40 -F "{{bin64}}/DesertGatherer.log"
-
-# Show the learned yields cache.
+# Show the learned yields cache (the looter's node -> item table, written beside the log).
 yields:
-    cat "{{bin64}}/DesertLooter.yields"
+    @shopt -s nullglob; \
+     files=("{{bin64}}"/Desert*.yields); \
+     test "${#files[@]}" -gt 0 || { echo "yields: no Desert*.yields in {{bin64}} yet" >&2; exit 1; }; \
+     for f in "${files[@]}"; do echo "== $(basename "$f")"; cat "$f"; done
 
 # Remove build output and dist/.
 clean:

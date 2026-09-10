@@ -3,13 +3,50 @@
 //! global slot, so `*slot` is the manager object):
 //!   manager+8 = u32 count (< 0x40000); manager+0x58 = record**;
 //!   record+8 -> ptr -> ptr -> NUL-terminated name (3+ printable chars).
+//!
+//! The two global pointer slots this file needs — `iteminfo` and `gimmickinfo`
+//! — are not constants here. [`resolve_slots`] asks
+//! [`desert_core::gimmick::resolve_manager_slot`] for each of them once at
+//! startup, which finds the `mov rbx,[rip+disp]` in front of the accessor copy
+//! that names the table, so nothing in this file is a build-specific address.
+
+use std::sync::OnceLock;
 
 use crate::module::MainModule;
 use crate::safe;
 
-/// Global pointer slots (RVA) in build 25116796, from the census.
-pub const ITEM_INFO_SLOT: usize = 0x6C2A058;
-pub const GIMMICK_INFO_SLOT: usize = 0x6C2A078;
+/// RVAs of the two manager slots, filled in once by [`resolve_slots`]. Empty
+/// means the scan failed for that table and every lookup through it declines.
+static ITEM_INFO_SLOT: OnceLock<usize> = OnceLock::new();
+static GIMMICK_INFO_SLOT: OnceLock<usize> = OnceLock::new();
+
+fn item_slot() -> Option<usize> {
+    ITEM_INFO_SLOT.get().copied()
+}
+
+fn gimmick_slot() -> Option<usize> {
+    GIMMICK_INFO_SLOT.get().copied()
+}
+
+/// Resolve both slots by content and log one line each, in the style of
+/// `game::resolve`'s `[sig]` lines. Called once at startup; a failure for one
+/// table leaves the other working.
+pub fn resolve_slots(m: &MainModule) {
+    for (name, table, cell) in [
+        ("iteminfo", desert_core::gimmick::ITEM_TABLE, &ITEM_INFO_SLOT),
+        ("gimmickinfo", desert_core::gimmick::GIMMICK_TABLE, &GIMMICK_INFO_SLOT),
+    ] {
+        match desert_core::gimmick::resolve_manager_slot(m.bytes(), table) {
+            Ok(rva) => {
+                crate::log!("[slot] {name:<22} = +0x{rva:X}");
+                // Runs once, so a second `set` cannot happen; ignoring it is
+                // still the only sane answer if it ever did.
+                let _ = cell.set(rva);
+            }
+            Err(e) => crate::log!("[slot] {name:<22} NOT FOUND: {e}"),
+        }
+    }
+}
 
 pub fn manager_at(m: &MainModule, slot_rva: usize) -> Option<usize> {
     safe::read_ptr(m.base + slot_rva)
@@ -185,7 +222,7 @@ pub fn key_index_multi(
 /// Gimmick record by index (the u16 the game stores on the component).
 /// Records are lazily loaded by the game; a null slot means "not loaded yet".
 pub fn gimmick_record(m: &MainModule, index: u16) -> Option<usize> {
-    let mgr = manager_at(m, GIMMICK_INFO_SLOT)?;
+    let mgr = manager_at(m, gimmick_slot()?)?;
     let count: u32 = safe::read(mgr + 8)?;
     if index as u32 >= count {
         return None;
@@ -207,7 +244,7 @@ pub fn gimmick_record_name(rec: usize) -> Option<String> {
 
 /// Item record by index (the u16 an inventory slot stores at +0x08).
 pub fn item_record(m: &MainModule, index: u16) -> Option<usize> {
-    let mgr = manager_at(m, ITEM_INFO_SLOT)?;
+    let mgr = manager_at(m, item_slot()?)?;
     let count: u32 = safe::read(mgr + 8)?;
     if index as u32 >= count {
         return None;
@@ -238,7 +275,7 @@ pub fn item_record_tab(rec: usize) -> Option<i16> {
 /// Item record index for a key, by scanning the table (a few thousand reads;
 /// call rarely and cache).
 pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
-    let mgr = manager_at(m, ITEM_INFO_SLOT)?;
+    let mgr = manager_at(m, item_slot()?)?;
     let count: u32 = safe::read(mgr + 8)?;
     if count == 0 || count >= 0x40000 {
         return None;

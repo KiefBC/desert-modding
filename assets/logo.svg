@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 64 64" shape-rendering="crispEdges" role="img" aria-labelledby="title desc">
+  <title id="title">Pixel goblin carrying a brown sack</title>
+  <desc id="desc">A mischievous green goblin with pointed ears, amber eyes and little tusks carries a large brown sack behind his head over his right shoulder. Transparent background.</desc>
+  <!-- Sack behind the head and shoulder -->
+  <path fill="#29251f" d="M43 8h11v3h5v5h3v17h-3v5h-7v3H40v-5h-4V19h3v-7h4z"/>
+  <path fill="#80502d" d="M44 11h9v3h5v5h1v13h-3v3h-7v3h-8v-5h-2V20h3v-6h2z"/>
+  <path fill="#aa7540" d="M45 12h7v3h4v6h-4v-3h-7v4h-4v-5h4z"/>
+  <path fill="#633c27" d="M55 23h4v9h-3v3h-7v3h-8v-5h8v-3h6z"/>
+  <path fill="#c18a4b" d="M44 16h3v9h-3z"/>
+  <!-- Sack neck and rope -->
+  <path fill="#29251f" d="M42 30h9v4h-3v5h-8v-5h2z"/>
+  <path fill="#aa7540" d="M44 32h5v2h-3v5h-4v-4h2z"/>
+  <path fill="#ddbb77" d="M41 34h8v2h-8z"/>
+  <!-- Boots, legs, and tunic outline -->
+  <path fill="#232a23" d="M20 37h20v3h5v10h-5v6h3v5H30v-8h-4v8H13v-5h4V45h3z"/>
+  <path fill="#578238" d="M20 49h6v7h-6zm12 0h6v7h-6z"/>
+  <path fill="#6b4530" d="M17 56h9v3H16v-2h1zm15 0h7v1h2v2h-9z"/>
+  <path fill="#805331" d="M22 37h15v4h5v7h-4v3H20V41h2z"/>
+  <path fill="#ac7841" d="M23 39h6v7h-8v-4h2z"/>
+  <path fill="#573b2b" d="M33 40h5v8h-5z"/>
+  <!-- Belt -->
+  <path fill="#332c24" d="M20 46h20v3H20z"/>
+  <path fill="#d6aa50" d="M28 45h6v5h-6z"/>
+  <path fill="#624329" d="M30 47h2v1h-2z"/>
+  <!-- Relaxed left arm -->
+  <path fill="#232a23" d="M16 39h6v8h-2v7h-7v-3h-2v-7h3v-3h2z"/>
+  <path fill="#78a844" d="M16 42h4v4h-3v6h-2v-3h-2v-3h3z"/>
+  <path fill="#a0c75b" d="M16 43h2v4h-2z"/>
+  <!-- Raised hand gripping the sack -->
+  <path fill="#232a23" d="M40 35h3v-5h6v2h3v8h-3v4h-8v-3h-3v-4h2z"/>
+  <path fill="#78a844" d="M43 36h2v-4h2v4h3v3h-3v3h-4v-3h-3v-2h3z"/>
+  <path fill="#b0d36a" d="M45 33h2v5h-2z"/>
+  <!-- Ears and head silhouette -->
+  <path fill="#232a23" d="M19 10h16v3h5v5h6v-3h6v6h-3v5h-5v3h-4v6h-4v4H21v-3h-5v-7h-5v-3H7v-5H4v-7h6v3h7v-4h2z"/>
+  <path fill="#78a844" d="M7 17h3v3h8v7h-6v-3H9v-3H7zm32 4h7v-3h3v3h-3v3h-4v3h-3z"/>
+  <path fill="#50723b" d="M10 21h6v4h-3v-2h-3zm32 1h4v2h-4z"/>
+  <path fill="#78a844" d="M21 13h13v3h5v14h-3v5h-3v2H23v-3h-5V18h3z"/>
+  <path fill="#a0c75b" d="M22 14h10v3H22zm-3 5h5v6h-5zm3 8h9v3h-9z"/>
+  <path fill="#507a39" d="M35 18h4v12h-3v5h-3v2H23v-3h10v-4h2z"/>
+  <!-- Angular brows and amber eyes -->
+  <path fill="#293222" d="M19 20h5v2h3v3h-7v-2h-1zm11 2h3v-2h5v3h-1v2h-7z"/>
+  <path fill="#e8c65d" d="M21 23h4v2h-4zm10 0h4v2h-4z"/>
+  <path fill="#20291f" d="M23 23h2v2h-2zm8 0h2v2h-2z"/>
+  <!-- Nose, grin and tusks -->
+  <path fill="#91b94e" d="M27 23h3v3h3v3h-7v-3h1z"/>
+  <path fill="#496e34" d="M26 28h7v2h-7z"/>
+  <path fill="#293222" d="M22 30h3v1h10v-1h2v3h-3v2h-9v-2h-3z"/>
+  <path fill="#f0e3b6" d="M23 29h2v4h-2zm10 0h2v4h-2z"/>
+  <path fill="#aac860" d="M26 35h6v1h-6z"/>
+</svg>

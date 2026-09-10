@@ -1,18 +1,35 @@
-//! `DesertGatherer.ini` beside the game exe. Missing file or key => defaults.
+//! The `[Gatherer]` section of `DesertTooling.ini`, beside the game exe.
+//! Missing file, missing section or missing key => defaults.
 //!
-//! Only Desert Gatherer's own keys live here; the ini tokeniser and the truthy
-//! spellings are shared in `desert_core::ini`. Same shape as
-//! `desert_looter::config`: `parse` returns the config plus ready-to-log
-//! warnings, and a bad value never replaces the default.
+//! Every subsystem reads the same file now, and `Enabled`, `DryRun` and `Debug`
+//! mean something different in each of them, so `parse` walks only this
+//! subsystem's own section through [`ini::lines_in_section`]; anything under
+//! another header is not this crate's business and is not even warned about.
+//! The ini tokeniser and the truthy spellings are still shared in
+//! `desert_core::ini`. Same shape as `desert_looter::config`: `parse` returns
+//! the config plus ready-to-log warnings, and a bad value never replaces the
+//! default.
 //!
-//! The four multiplier keys are the four independent gather families of
-//! `desert_core::collect::Family`, and they carry the vocabulary the DMM pack
-//! used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and Ore
-//! Nodes are separate internal families, and setting one does not touch the
-//! others.
+//! The four family multiplier keys are the four independent gather families
+//! of `desert_core::collect::Family`, and they carry the vocabulary the DMM
+//! pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and
+//! Ore Nodes are separate internal families, and setting one does not touch
+//! the others.
+//!
+//! `Bugs` and `Fish` are a different lever entirely. Creatures caught by hand
+//! are not gimmick records, so there is nothing in a table to multiply; the
+//! count is an immediate in the game's code (`docs/reference-internals.md`
+//! section 17) and the plugin patches it. They share the multiplier range and
+//! the parsing of the family keys, and nothing else - hence
+//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than a
+//! fifth and sixth `Family`.
+
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use desert_core::collect::Family;
+use desert_core::creature::CatchClass;
 use desert_core::ini::{self, Line};
+use desert_core::schema::{Field, Kind, Section};
 
 /// Multipliers below this are meaningless (0 would zero out every yield) and
 /// above it are almost certainly a typo, so both are refused.
@@ -21,7 +38,9 @@ pub const MULT_MAX: u32 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
-    /// Master switch. 0 = load, log, and install no hook at all.
+    /// Master switch. 0 = the hook is still installed and still reads every
+    /// record, but writes nothing; anything already multiplied is put back to
+    /// vanilla on the next re-apply pass.
     pub enabled: bool,
     /// 1 = the hook logs the edits it would make and writes nothing.
     pub dry_run: bool,
@@ -38,6 +57,13 @@ pub struct Config {
     /// Yield multiplier for `Family::Ore` (`collect_ore`: `ore_*` deposits,
     /// sulfur stone, collectible stalactites). Separate from Mining.
     pub ore: u32,
+    /// Count multiplier for insects caught by hand
+    /// (`desert_core::creature::CatchClass::Bug`). A code patch, not a table
+    /// edit: see the module docs.
+    pub bugs: u32,
+    /// Count multiplier for fish caught by hand
+    /// (`desert_core::creature::CatchClass::Fish`). Same patch as `bugs`.
+    pub fish: u32,
 }
 
 impl Default for Config {
@@ -50,6 +76,8 @@ impl Default for Config {
             logging: 1,
             mining: 1,
             ore: 1,
+            bugs: 1,
+            fish: 1,
         }
     }
 }
@@ -66,18 +94,287 @@ impl Config {
         }
     }
 
-    /// True if no family is multiplied, i.e. the hook would never write.
+    /// The configured multiplier for a creature caught by hand. Deliberately
+    /// separate from [`Config::multiplier`]: bugs and fish are not gather
+    /// families, they are not in `desert_core::collect`, and they are applied
+    /// by a code patch on the catch count rather than by editing a record.
+    pub fn catch_multiplier(&self, class: CatchClass) -> u32 {
+        match class {
+            CatchClass::Bug => self.bugs,
+            CatchClass::Fish => self.fish,
+        }
+    }
+
+    /// True if no gather family is multiplied, i.e. the record-loader hook
+    /// would never write. Says nothing about `Bugs`/`Fish`, which are not
+    /// families and never touch a record.
     pub fn all_vanilla(&self) -> bool {
         self.foraging <= 1 && self.logging <= 1 && self.mining <= 1 && self.ore <= 1
     }
 }
 
-/// Parse ini text. Unknown keys and bad values are reported back so they can
-/// be logged; the config always comes back usable.
+/// Lock-free mirror of [`Config`] the hook reads on every record load.
+///
+/// The overlay subsystem edits the `[Gatherer]` section of `DesertTooling.ini`
+/// beside the game exe while it runs; this subsystem's own thread notices (see
+/// `entry.rs`'s reload loop), re-parses with [`parse`] and calls
+/// [`LiveConfig::publish`]. The hook itself
+/// never touches a `Mutex` or does file I/O - it only ever loads these
+/// atomics, so a config change is visible to the very next record the loader
+/// hands us, with no allocation and nothing that can block a game thread.
+///
+/// `Ordering::Relaxed` throughout: nothing here synchronises with any other
+/// memory access, so there is no ordering to preserve, only the eventual
+/// visibility of a new value. A reader that sees, say, a new multiplier
+/// alongside a still-old `Enabled` for one call is at most one record behind;
+/// it settles on the next.
+pub struct LiveConfig {
+    enabled: AtomicBool,
+    dry_run: AtomicBool,
+    debug: AtomicBool,
+    foraging: AtomicU32,
+    logging: AtomicU32,
+    mining: AtomicU32,
+    ore: AtomicU32,
+    bugs: AtomicU32,
+    fish: AtomicU32,
+}
+
+impl LiveConfig {
+    /// Starts equal to `Config::default()` so a hook installed before the
+    /// first `publish` behaves exactly like the pre-live-reload plugin.
+    pub const fn new() -> Self {
+        LiveConfig {
+            enabled: AtomicBool::new(true),
+            dry_run: AtomicBool::new(false),
+            debug: AtomicBool::new(false),
+            foraging: AtomicU32::new(1),
+            logging: AtomicU32::new(1),
+            mining: AtomicU32::new(1),
+            ore: AtomicU32::new(1),
+            bugs: AtomicU32::new(1),
+            fish: AtomicU32::new(1),
+        }
+    }
+
+    /// Publish a freshly parsed config for the hook to pick up. Called from
+    /// the plugin's main thread only (startup, and once per detected ini
+    /// change); the hook only ever reads.
+    pub fn publish(&self, cfg: &Config) {
+        self.enabled.store(cfg.enabled, Ordering::Relaxed);
+        self.dry_run.store(cfg.dry_run, Ordering::Relaxed);
+        self.debug.store(cfg.debug, Ordering::Relaxed);
+        self.foraging.store(cfg.foraging, Ordering::Relaxed);
+        self.logging.store(cfg.logging, Ordering::Relaxed);
+        self.mining.store(cfg.mining, Ordering::Relaxed);
+        self.ore.store(cfg.ore, Ordering::Relaxed);
+        self.bugs.store(cfg.bugs, Ordering::Relaxed);
+        self.fish.store(cfg.fish, Ordering::Relaxed);
+    }
+
+    /// Snapshot the live values as a plain `Config`, e.g. for a log line.
+    pub fn load(&self) -> Config {
+        Config {
+            enabled: self.enabled.load(Ordering::Relaxed),
+            dry_run: self.dry_run.load(Ordering::Relaxed),
+            debug: self.debug.load(Ordering::Relaxed),
+            foraging: self.foraging.load(Ordering::Relaxed),
+            logging: self.logging.load(Ordering::Relaxed),
+            mining: self.mining.load(Ordering::Relaxed),
+            ore: self.ore.load(Ordering::Relaxed),
+            bugs: self.bugs.load(Ordering::Relaxed),
+            fish: self.fish.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Master switch. `false` means the hook reads as usual and writes
+    /// nothing, and `hook::reapply` puts the loaded records back to vanilla.
+    pub fn enabled(&self) -> bool {
+        self.enabled.load(Ordering::Relaxed)
+    }
+
+    /// `true` = the hook logs the edits it would make and writes nothing.
+    pub fn dry_run(&self) -> bool {
+        self.dry_run.load(Ordering::Relaxed)
+    }
+
+    /// `true` = also log non-gather records, capped by the hook.
+    pub fn debug(&self) -> bool {
+        self.debug.load(Ordering::Relaxed)
+    }
+
+    /// The live multiplier for a gather family. Safe to call from the hook on
+    /// every record: one atomic load, no allocation, no lock.
+    pub fn multiplier(&self, family: Family) -> u32 {
+        match family {
+            Family::Foraging => self.foraging.load(Ordering::Relaxed),
+            Family::Logging => self.logging.load(Ordering::Relaxed),
+            Family::Mining => self.mining.load(Ordering::Relaxed),
+            Family::Ore => self.ore.load(Ordering::Relaxed),
+        }
+    }
+
+    /// The live multiplier for a creature caught by hand. Read from the catch
+    /// hook on the game thread, once per catch: one atomic load, no
+    /// allocation, no lock, so an ini change lands on the very next catch
+    /// with no re-apply pass of any kind.
+    pub fn catch_multiplier(&self, class: CatchClass) -> u32 {
+        match class {
+            CatchClass::Bug => self.bugs.load(Ordering::Relaxed),
+            CatchClass::Fish => self.fish.load(Ordering::Relaxed),
+        }
+    }
+}
+
+impl Default for LiveConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The live, hot-reloadable config the hook reads. Published by the plugin's
+/// main thread (startup, and its ~1s ini-reload loop); read only by the hook.
+pub static LIVE: LiveConfig = LiveConfig::new();
+
+// ---------------------------------------------------------------------------
+// The menu schema
+// ---------------------------------------------------------------------------
+
+/// The `[Header]` this subsystem owns inside the shared ini. Named once here
+/// and used by [`schema`], by [`parse`] and by `entry::start`'s log line, so
+/// there is nothing to keep in step.
+pub const INI_SECTION: &str = "Gatherer";
+
+/// The one ini every subsystem shares. Only [`schema`] names it; `entry` takes
+/// the path from `Section::ini` so the file the menu writes and the file the
+/// reload loop watches cannot drift apart.
+const INI_FILE: &str = "DesertTooling.ini";
+
+/// One field with no heading, on its own row.
+fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
+    Field {
+        key: key.to_string(),
+        label: label.to_string(),
+        kind,
+        heading: None,
+        same_line: false,
+        help: Some(help.to_string()),
+    }
+}
+
+/// One of the four family multipliers: an identical `1..=100` slider, so the
+/// four differ only in their key, label and help.
+fn mult(key: &str, help: &str) -> Field {
+    f(
+        key,
+        key,
+        Kind::Int {
+            default: i64::from(MULT_MIN),
+            min: i64::from(MULT_MIN),
+            max: i64::from(MULT_MAX),
+            step: 1,
+            slider: true,
+            format: Some("%dx".to_string()),
+        },
+        help,
+    )
+}
+
+/// What Desert Overlay draws for the `[Gatherer]` section of
+/// `DesertTooling.ini`: the keys, in menu order, with the labels, ranges and
+/// help the menu shows. Handed to the overlay at startup by `desert-tooling`,
+/// which also seeds the ini from it; the overlay needs no other knowledge of
+/// this subsystem at all.
+///
+/// `Debug` is here too, at the bottom under `Diagnostics:`. It used to be left
+/// out as a diagnostic that costs 400 log lines, which stopped being tenable
+/// once this schema became what the shared ini is seeded from
+/// (`schema::create_ini_if_missing_all`): a key that is not named here is missing
+/// from the generated file as well as from the menu, and a player working from
+/// that file would never find out it existed. `DryRun` stays where it is, near
+/// the top: it is the one diagnostic a player genuinely reaches for.
+///
+/// Every default is `Config::default()` (vanilla yields, which the shipped
+/// template now matches) and the multiplier range is
+/// [`MULT_MIN`]..=[`MULT_MAX`], the same consts `parse` enforces. Both facts
+/// are tested below.
+pub fn schema() -> Section {
+    let d = Config::default();
+    Section {
+        title: "Desert Gatherer".to_string(),
+        ini: INI_FILE.to_string(),
+        ini_section: INI_SECTION.to_string(),
+        // One .asi now, always loaded: there is no separate module whose
+        // presence could gate this section.
+        module: None,
+        // After Desert Looter's 10.
+        order: 20,
+        notice: Some(
+            "Applied to the gather records the game has already loaded, so a change here takes \
+             effect on the next gather. Bugs and Fish are read as the creature is caught, so \
+             they take effect on the next catch."
+                .to_string(),
+        ),
+        presets_label: None,
+        presets: Vec::new(),
+        fields: vec![
+            f(
+                "Enabled",
+                "Enabled",
+                Kind::Bool { default: d.enabled },
+                "Master switch. 0 = vanilla yields: the hook still reads each gather record, but writes nothing and puts back anything it already multiplied.",
+            ),
+            Field {
+                same_line: true,
+                ..f(
+                    "DryRun",
+                    "Dry run",
+                    Kind::Bool { default: d.dry_run },
+                    "Log what would change and write nothing to the game.",
+                )
+            },
+            Field {
+                heading: Some("Yield multipliers:".to_string()),
+                ..mult("Foraging", "Plants, fruit, berries, mushrooms, crops. 82 records.")
+            },
+            mult("Logging", "Firewood cut from felled trees (firewood_*). 141 records."),
+            mult(
+                "Mining",
+                "The collect_mine family: mine_* rocks and veins, breakable stalactites. 36 records.",
+            ),
+            mult(
+                "Ore",
+                "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining. 16 records.",
+            ),
+            mult(
+                "Bugs",
+                "Insects caught by hand. One code patch on the catch count, not a table edit.",
+            ),
+            mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
+            Field {
+                heading: Some("Diagnostics:".to_string()),
+                ..f(
+                    "Debug",
+                    "Debug",
+                    Kind::Bool { default: d.debug },
+                    "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
+                )
+            },
+        ],
+    }
+}
+
+/// Parse the `[Gatherer]` section of the shared ini. Unknown keys and bad
+/// values *inside that section* are reported back so they can be logged; the
+/// config always comes back usable.
+///
+/// Keys under another subsystem's header, and keys before any header at all,
+/// are skipped without a warning: they are not this subsystem's to complain
+/// about, and `Enabled` under `[Looter]` is a different setting entirely.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    for line in ini::lines(text) {
+    for line in ini::lines_in_section(text, INI_SECTION) {
         let (k, v) = match line {
             Line::Pair(k, v) => (k, v),
             Line::Bad(w) => {
@@ -89,11 +386,13 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "enabled" => cfg.enabled = ini::parse_bool(v),
             "dryrun" => cfg.dry_run = ini::parse_bool(v),
             "debug" => cfg.debug = ini::parse_bool(v),
-            "foraging" | "logging" | "mining" | "ore" => {
+            "foraging" | "logging" | "mining" | "ore" | "bugs" | "fish" => {
                 let slot: &mut u32 = match k.to_ascii_lowercase().as_str() {
                     "foraging" => &mut cfg.foraging,
                     "logging" => &mut cfg.logging,
                     "mining" => &mut cfg.mining,
+                    "bugs" => &mut cfg.bugs,
+                    "fish" => &mut cfg.fish,
                     _ => &mut cfg.ore,
                 };
                 match v.parse::<u32>() {
@@ -123,13 +422,16 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert_eq!(c.multiplier(f), 1);
         }
+        for k in [CatchClass::Bug, CatchClass::Fish] {
+            assert_eq!(c.catch_multiplier(k), 1);
+        }
     }
 
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
-            "; comment\n[DesertGatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
-             Foraging=10\nLogging=2\nMining=5\nOre=100\n",
+            "; comment\n[Gatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
+             Foraging=10\nLogging=2\nMining=5\nOre=100\nBugs=3\nFish=7\n",
         );
         assert!(c.enabled);
         assert!(c.dry_run);
@@ -138,13 +440,35 @@ mod tests {
         assert_eq!(c.multiplier(Family::Logging), 2);
         assert_eq!(c.multiplier(Family::Mining), 5);
         assert_eq!(c.multiplier(Family::Ore), 100);
+        assert_eq!(c.catch_multiplier(CatchClass::Bug), 3);
+        assert_eq!(c.catch_multiplier(CatchClass::Fish), 7);
         assert!(!c.all_vanilla());
         assert!(w.is_empty(), "{w:?}");
     }
 
     #[test]
+    fn bugs_and_fish_parse_like_the_family_keys() {
+        let d = Config::default();
+        // Same case-insensitivity, same range, same "keep the default and
+        // warn" on a bad value as Foraging..Ore.
+        let (c, w) = parse("[Gatherer]\nBUGS=2\nfIsH=100\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((c.bugs, c.fish), (2, MULT_MAX));
+
+        let (c, w) = parse("[Gatherer]\nBugs=0\nFish=101\n");
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert_eq!((c.bugs, c.fish), (d.bugs, d.fish));
+
+        // They are not gather families, so they never make `all_vanilla`
+        // false: the record-loader hook has nothing to do for them.
+        let (c, w) = parse("[Gatherer]\nBugs=10\nFish=10\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
+    }
+
+    #[test]
     fn case_insensitive_keys() {
-        let (c, w) = parse("ENABLED=0\nforaging=3\nOrE=4\n");
+        let (c, w) = parse("[gAtHeReR]\nENABLED=0\nforaging=3\nOrE=4\n");
         assert!(!c.enabled);
         assert_eq!(c.foraging, 3);
         assert_eq!(c.ore, 4);
@@ -154,7 +478,8 @@ mod tests {
     #[test]
     fn bad_values_keep_the_default_and_warn() {
         let d = Config::default();
-        let (c, w) = parse("Foraging=0\nLogging=101\nMining=abc\nOre=-2\nJunk=1\nnoequals\n");
+        let (c, w) =
+            parse("[Gatherer]\nForaging=0\nLogging=101\nMining=abc\nOre=-2\nJunk=1\nnoequals\n");
         assert_eq!(c.foraging, d.foraging);
         assert_eq!(c.logging, d.logging);
         assert_eq!(c.mining, d.mining);
@@ -167,7 +492,7 @@ mod tests {
 
     #[test]
     fn range_edges() {
-        let (c, w) = parse("Foraging=1\nLogging=100\n");
+        let (c, w) = parse("[Gatherer]\nForaging=1\nLogging=100\n");
         assert_eq!(c.foraging, MULT_MIN);
         assert_eq!(c.logging, MULT_MAX);
         assert!(w.is_empty(), "{w:?}");
@@ -178,5 +503,208 @@ mod tests {
         let (c, w) = parse("");
         assert_eq!(c, Config::default());
         assert!(w.is_empty());
+    }
+
+    #[test]
+    fn live_config_starts_equal_to_default() {
+        let live = LiveConfig::new();
+        assert_eq!(live.load(), Config::default());
+        assert!(live.enabled());
+        assert!(!live.dry_run());
+        assert!(!live.debug());
+        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
+            assert_eq!(live.multiplier(f), 1);
+        }
+        for k in [CatchClass::Bug, CatchClass::Fish] {
+            assert_eq!(live.catch_multiplier(k), 1);
+        }
+    }
+
+    #[test]
+    fn live_config_publish_round_trips() {
+        let live = LiveConfig::new();
+        let (cfg, w) = parse(
+            "[Gatherer]\nEnabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\n\
+             Ore=100\nBugs=4\nFish=9\n",
+        );
+        assert!(w.is_empty(), "{w:?}");
+        live.publish(&cfg);
+        assert_eq!(live.load(), cfg);
+        assert!(!live.enabled());
+        assert!(live.dry_run());
+        assert!(live.debug());
+        assert_eq!(live.multiplier(Family::Foraging), 10);
+        assert_eq!(live.multiplier(Family::Logging), 2);
+        assert_eq!(live.multiplier(Family::Mining), 5);
+        assert_eq!(live.multiplier(Family::Ore), 100);
+        assert_eq!(live.catch_multiplier(CatchClass::Bug), 4);
+        assert_eq!(live.catch_multiplier(CatchClass::Fish), 9);
+    }
+
+    #[test]
+    fn live_config_publish_overwrites_previous_values() {
+        let live = LiveConfig::new();
+        live.publish(&Config { enabled: false, dry_run: true, debug: true, foraging: 50, ..Config::default() });
+        assert!(!live.enabled());
+        assert_eq!(live.multiplier(Family::Foraging), 50);
+
+        // A later publish fully replaces the previous snapshot, which is what
+        // the reload loop relies on: every field in the new ini wins, not
+        // just the ones that changed.
+        live.publish(&Config::default());
+        assert_eq!(live.load(), Config::default());
+    }
+
+    // -----------------------------------------------------------------------
+    // The menu schema
+    //
+    // The schema is read by a different subsystem (Desert Overlay) that writes
+    // this section of the shared ini back, and by `desert-tooling`, which seeds
+    // that ini from it. These tests are the contract: every key the schema
+    // names is one `parse` accepts, every default it declares is the one
+    // `parse` would have produced anyway, and the multiplier range it hands the
+    // menu is the range `parse` enforces. Nothing on the overlay side checks
+    // any of this - it never sees `Config` at all - so this is the only thing
+    // keeping the two halves in step.
+    // -----------------------------------------------------------------------
+
+    use desert_core::schema as sch;
+
+    /// The seeded file's own text, parsed back. `render_ini_defaults` emits
+    /// `[Gatherer]` as the header (it renders `Section::ini_section`), which is
+    /// exactly the header `parse` scopes itself to, so the round trip covers
+    /// the section wiring as well as the defaults.
+    #[test]
+    fn schema_defaults_parse_back_to_the_default_config() {
+        let text = sch::render_ini_defaults(&schema(), "");
+        assert!(text.starts_with("[Gatherer]\n"), "{text}");
+        let (cfg, w) = parse(&text);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(cfg, Config::default());
+        assert!(cfg.all_vanilla(), "the menu opens at vanilla yields; raising one is the player's call");
+    }
+
+    #[test]
+    fn parse_accepts_every_key_the_schema_names() {
+        for field in &schema().fields {
+            let text = format!("[{INI_SECTION}]\n{}={}\n", field.key, field.kind.default_text());
+            let (_, w) = parse(&text);
+            assert!(w.is_empty(), "{}: {w:?}", field.key);
+        }
+    }
+
+    #[test]
+    fn the_schema_names_the_one_shared_ini_and_this_subsystems_section() {
+        let s = schema();
+        assert_eq!(s.ini, "DesertTooling.ini");
+        assert_eq!(s.ini_section, INI_SECTION);
+        assert_eq!(s.ini_section, "Gatherer");
+        // One .asi, always loaded: there is no module whose absence could
+        // grey this section out any more.
+        assert_eq!(s.module, None);
+        assert!(s.presets.is_empty(), "there is nothing to preset: four independent numbers");
+        assert!(s.notice.is_some(), "the section says when a change takes effect");
+    }
+
+    /// The whole point of the section scoping: `Enabled` means something
+    /// different in every subsystem, and this one must only ever see its own.
+    #[test]
+    fn keys_under_another_subsystems_header_are_ignored_silently() {
+        let (c, w) = parse(
+            "[Looter]\nEnabled=0\nForaging=50\nKeyToggle=F7\n\
+             [Gatherer]\nForaging=3\n\
+             [Overlay]\nEnabled=0\nScale=2.0\n",
+        );
+        assert!(w.is_empty(), "another section's keys are not ours to warn about: {w:?}");
+        assert_eq!(c.foraging, 3, "only the [Gatherer] Foraging counts");
+        assert!(c.enabled, "[Looter] Enabled=0 must not disable the gatherer");
+    }
+
+    /// Pairs before any header belong to nobody, and a file with no
+    /// `[Gatherer]` section at all is simply the defaults.
+    #[test]
+    fn a_file_without_our_section_is_the_default() {
+        let (c, w) = parse("Foraging=9\n[Looter]\nEnabled=0\n");
+        assert_eq!(c, Config::default());
+        assert!(w.is_empty(), "{w:?}");
+    }
+
+    #[test]
+    fn schema_ranges_are_the_ones_parse_enforces() {
+        let s = schema();
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish"] {
+            match s.field(key).map(|f| f.kind.clone()) {
+                Some(Kind::Int { min, max, default, slider, .. }) => {
+                    assert_eq!(min, i64::from(MULT_MIN), "{key}");
+                    assert_eq!(max, i64::from(MULT_MAX), "{key}");
+                    assert_eq!(default, i64::from(MULT_MIN), "{key}");
+                    assert!(slider, "{key} is drawn as a slider");
+                }
+                other => panic!("{key} is not an int field: {other:?}"),
+            }
+        }
+        // Both ends survive `parse`, one past either end does not: the
+        // slider's stops are the real stops.
+        let (c, w) = parse("[Gatherer]\nForaging=1\nLogging=100\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((c.foraging, c.logging), (MULT_MIN, MULT_MAX));
+        let (c, w) = parse("[Gatherer]\nForaging=0\nLogging=101\n");
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert_eq!(c, Config::default());
+    }
+
+    #[test]
+    fn debug_is_in_the_schema_under_diagnostics_and_dry_run_is_not() {
+        let s = schema();
+        let debug = s.field("Debug").unwrap_or_else(|| panic!("the menu must offer Debug"));
+        assert_eq!(debug.heading.as_deref(), Some("Diagnostics:"));
+        assert_eq!(debug.kind, Kind::Bool { default: false });
+        assert_eq!(debug.kind.default_text(), "0");
+        // Last in the section: the heading groups the diagnostics at the end.
+        assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("Debug"));
+
+        // `DryRun` stays where it was, near the top and un-headed: it is the
+        // diagnostic a player reaches for after a game update.
+        let dry = s.field("DryRun").unwrap_or_else(|| panic!("no DryRun"));
+        assert_eq!(dry.heading, None);
+        assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
+
+        let (c, w) = parse("[Gatherer]\nDebug=1\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.debug);
+    }
+
+    #[test]
+    fn bugs_and_fish_are_the_last_two_yield_multipliers() {
+        let s = schema();
+        let keys: Vec<&str> = s.fields.iter().map(|f| f.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            vec!["Enabled", "DryRun", "Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish", "Debug"]
+        );
+        // Under the same heading as the four families: the menu shows one
+        // list of multipliers, not two.
+        for key in ["Bugs", "Fish"] {
+            let f = s.field(key).unwrap_or_else(|| panic!("the menu must offer {key}"));
+            assert_eq!(f.heading, None, "{key} continues the Yield multipliers: group");
+            assert!(!f.same_line, "{key}");
+        }
+        assert_eq!(
+            s.field("Foraging").and_then(|f| f.heading.clone()).as_deref(),
+            Some("Yield multipliers:")
+        );
+        // The notice has to say when a catch multiplier lands, because it is
+        // not the "next gather" the rest of the section talks about.
+        let notice = s.notice.clone().unwrap_or_default();
+        assert!(notice.contains("next catch"), "{notice}");
+    }
+
+    /// Prints this section as it is seeded into `DesertTooling.ini`.
+    /// `cargo test -- --ignored --nocapture show_schema` is how the exact text
+    /// gets read by a human.
+    #[test]
+    #[ignore]
+    fn show_schema() {
+        println!("{}", sch::render_ini_defaults(&schema(), ""));
     }
 }
