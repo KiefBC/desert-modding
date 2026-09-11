@@ -640,6 +640,12 @@ impl Overlay {
 
 impl ImguiRenderLoop for Overlay {
     fn initialize(&mut self, ctx: &mut Context, rc: &mut dyn hudhook::RenderContext) {
+        // Entry, before any imgui work: this runs on the game's render thread
+        // inside hudhook's Present hook, and the "initialised" line further
+        // down only ever proves the whole body ran. Without this one a capture
+        // that shows neither cannot say whether the render thread never
+        // arrived or arrived and stalled in here. One `log!` and nothing else.
+        crate::log!("[menu] first frame: entering imgui init on the render thread");
         // imgui otherwise writes an `imgui.ini` of window positions into the
         // process's working directory - which for a Steam game is somebody
         // else's folder - on every window move. The overlay has exactly one

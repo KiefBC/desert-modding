@@ -21,10 +21,20 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// Used only if a plugin logs before calling [`init`].
 pub const DEFAULT_LOG_NAME: &str = "DesertMods.log";
+
+/// A line whose writer waited at least this long on [`WRITE_LOCK`] carries the
+/// wait in its own text. Two milliseconds is below anything a healthy write
+/// costs (open-append-close on a local file) and far below anything a human
+/// would call a stall, so in normal running the suffix never appears; when the
+/// game hangs, the first thread to be held up says so on the line it was
+/// already writing. It is deliberately not a second log line: [`WRITE_LOCK`] is
+/// a plain non-reentrant `Mutex` and reporting the wait through `emit` again
+/// would deadlock the very thread the report is about.
+const WAIT_REPORT: Duration = Duration::from_millis(2);
 
 static START: OnceLock<Instant> = OnceLock::new();
 static NAME: OnceLock<String> = OnceLock::new();
@@ -104,9 +114,25 @@ fn emit(tag: Option<&str>, msg: &str) {
     }
     ensure();
     let (Some(start), Some(path)) = (START.get(), PATH.get()) else { return };
+    // The clock and the thread id are read here, *before* the lock is taken, so
+    // that a line's timestamp is the moment its caller asked to log rather than
+    // the moment it finally won the mutex. Sampling them inside the critical
+    // section - which is what this did - gave a thread that had queued for a
+    // quarter of a second a perfectly on-time stamp, which made the log
+    // structurally incapable of recording a stall: the one thing a hang capture
+    // has to show was the one thing it hid.
+    let called = start.elapsed();
+    let tid = tid();
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // Whatever the clock moved on by while we were queuing is the wait.
+    let waited = start.elapsed().saturating_sub(called);
     if let Some(mut f) = open_for_append(path) {
-        let _ = writeln!(f, "{}", line(start.elapsed().as_secs_f64(), tid(), tag, msg));
+        let l = line(called.as_secs_f64(), tid, tag, msg);
+        if waited >= WAIT_REPORT {
+            let _ = writeln!(f, "{l} [log-lock wait {:.0} ms]", waited.as_secs_f64() * 1000.0);
+        } else {
+            let _ = writeln!(f, "{l}");
+        }
         // dropped here: handle closed immediately
     }
 }
@@ -174,6 +200,27 @@ mod tests {
             line(1234.5678, 123_456, Some("g"), ""),
             "[ 1234.568] [tid 123456] [g] ",
             "an over-wide field grows rather than being cut"
+        );
+    }
+
+    /// The lock-wait note is appended by `emit`, never by `line`: the line
+    /// shape above is what `tests/props.rs` also pins down, and a diagnostic
+    /// suffix must not move it. This holds both halves honest without touching
+    /// the file system - the threshold the suffix triggers at, and the exact
+    /// text it adds to a line that is otherwise unchanged.
+    #[test]
+    fn the_lock_wait_note_is_appended_after_the_line() {
+        assert_eq!(WAIT_REPORT, Duration::from_millis(2));
+        let l = line(1.5, 42, Some("core"), "hello");
+        assert!(
+            !l.contains("log-lock wait"),
+            "a line carries no wait of its own"
+        );
+        let waited = Duration::from_millis(250);
+        assert_eq!(
+            format!("{l} [log-lock wait {:.0} ms]", waited.as_secs_f64() * 1000.0),
+            "[    1.500] [tid    42] [core] hello [log-lock wait 250 ms]",
+            "whole milliseconds, appended to the line the caller would have got"
         );
     }
 }

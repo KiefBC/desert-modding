@@ -1,16 +1,17 @@
 # Desert Tooling
 
-**Version 0.3.0**, for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.4.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
-One `.asi` plugin with three subsystems: **auto-loot**, **gathering yield
-multipliers** and an **in-game settings menu**. Written in Rust, installed by
-dropping two files into `bin64`.
+One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
+multipliers**, **dispatch missions** and an **in-game settings menu**. Written in
+Rust, installed by dropping two files into `bin64`.
 
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
 | Looter | gathers plants, ore, stone, wood, insects and fish around you | `[Looter]` | `[looter]` |
 | Gatherer | multiplies what a gathering node or a caught creature gives | `[Gatherer]` | `[gatherer]` |
+| Dispatch | shorter dispatch missions, bigger mission rewards, no skill or headcount gate | `[Dispatch]` | `[dispatch]` |
 | Overlay | the settings menu, `Insert` | `[Overlay]` | `[overlay]` |
 
 ## Upgrading from Desert Looter, Desert Gatherer and Desert Overlay
@@ -251,9 +252,9 @@ this plugin is its replacement, not its companion.
 
 ## Settings (`DesertTooling.ini`)
 
-One file, three sections. A key belongs to the `[Section]` header above it:
-`Enabled` and `Debug` exist under all three and mean different things in each,
-and `DryRun` exists under `[Gatherer]` only.
+One file, four sections. A key belongs to the `[Section]` header above it:
+`Enabled` and `Debug` exist under all four and mean different things in each,
+and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 
 ### `[Looter]`
 
@@ -323,6 +324,81 @@ out blown out and oversaturated. `auto` reads the colour space off the swapchain
 and is right unless the detection is wrong, which is what the three forced
 values are for. `HdrBrightness` is the only one worth touching in normal use:
 raise it if the menu looks dull next to the game, lower it if it glares.
+
+### `[Dispatch]`
+
+Dispatch missions ("faction operations") are the jobs you send workers away on
+from the faction map. This section makes them finish sooner, pay more, and stop
+turning you away.
+
+| key | default | meaning |
+|---|---|---|
+| `Enabled` | `1` | Turned off **while the game runs**, every mission and reward it changed goes back to vanilla. Turned off **before you launch**, the pass never runs and nothing in the game is read at all — and it stays that way for the session: turning it back on, here or in the menu, does nothing until the next launch |
+| `Speed` | `1` | divide every mission's duration by this, 1..100. Vanilla runs 2h to 96h; `4` turns a 16h mission into a 4h one. Nothing ever goes below 6 minutes. Reaches missions already under way |
+| `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
+| `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243 — the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
+| `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |
+| `LogRecords` | `1` | `1` = one line per mission in the log |
+| `MaxLines` | `4000` | ceiling on the lines one pass writes, 0..20000. The summaries are never capped, and hitting it never stops a change being made |
+| `DryRun` | `0` | `1` = log every change that would be made and write nothing |
+| `Debug` | `0` | `1` = also log the nodes with no missions, every change one line at a time, and why anything was stepped over |
+| `DumpRaw` | `0` | `1` = log each mission's raw bytes as hex, for chasing an offset after a game update |
+| `DumpRewards` | `1` | `1` = also dump the reward rows the missions name. A diagnostic only: `Rewards` reads and edits those rows either way |
+
+A change takes effect within about a second. Only the 219 reward rows dispatch
+missions actually name are touched — never the game's wider drop table — so this
+does not become a loot multiplier for chests and carcasses. No game code is
+patched and no hook is installed: the plugin edits five fields of the tables the
+game has already read (four settings, five fields — `Rewards` writes both ends of
+a min/max pair), on its own thread, and remembers what each one said first so it
+can put it back.
+
+**Two of the settings reach missions that are already out, and two do not.**
+`Speed` shortens a mission already under way — the game checks a mission's
+progress against the duration in the table every time it ticks — and `Rewards`
+reaches rewards already waiting to be paid, because the game reads the amounts at
+the moment the items land. `NoSkillRequirement` and `AnyOperatorCount` are
+checked when a mission *starts*, so a mission already out keeps running under the
+rules it started with. A **repeating** mission is the exception to that: it
+re-checks on every restart, which is why a repeating mission that needed a skill
+or a full crew stops with an error message at its next restart once the plugin is
+gone.
+
+**Nothing here is saved into your game.** The mission and reward tables are read
+from the game's own files every launch, so setting these back to `1` and `0` puts
+every mission back, and deleting the plugin leaves nothing to undo. `Rewards`
+banks nothing either: a reward still waiting on you is worked out from the table
+at the moment it lands, so set it back to `1`, or remove the plugin, and what is
+waiting pays vanilla.
+
+**Nor, on this game build, does anything else.** The game has code to bank a
+single percentage figure for a finished mission in your save, and part of that
+figure is a bonus for sending more workers than the mission needed — which is the
+one thing `AnyOperatorCount` could have inflated, since it tells the game every
+mission needs only one worker. Both of the switches that code sits behind are
+turned **off** on build 25246367, as they were on 25116796 before it: no mission
+defers a payout, and the figure ignores the worker count entirely. The plugin
+reads both at startup and says so in `DesertTooling.log`, on the `[banking]`
+line:
+
+```text
+[banking] deferred-reward gate (0x6BC6AA8) = 0 - no mission defers its payout, so nothing is
+stored in the save; surplus-worker gate (0x6BA07C8) = 0 - the stored percent ignores the worker
+count, so entry+0xC4 never enters it; on this launch nothing is ever banked: no completed mission
+defers a reward, so AnyOperatorCount cannot outlive the plugin.
+```
+
+**Check that line after a game update**, because these are the kind of switch an
+update can flip, and it is the only thing that would tell you.
+
+So nothing here reaches your save today. This section exists because the mechanism
+exists: if a future build turned those switches on, finishing a mission with
+`AnyOperatorCount=1` would bank a bigger figure than you earned, on the 142 of the
+game's 936 missions that can repeat, and it would pay out later even with the
+plugin gone. It would be bounded to the missions you finished with the setting on,
+it would clear itself as those rewards landed, and it would not be a corrupted
+save. `Speed` and `NoSkillRequirement` are nowhere in that figure and leave
+nothing behind at all.
 
 ### Key names
 

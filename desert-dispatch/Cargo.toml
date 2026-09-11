@@ -1,0 +1,20 @@
+[package]
+name = "desert-dispatch"
+version = "0.2.0"
+description = "Desert Dispatch - Crimson Desert dispatch-mission levers: faster missions, bigger rewards, no skill or headcount gate"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "desert_dispatch"
+# An internal library, not a shipped artifact: desert-tooling is the only
+# cdylib in the workspace and the only thing with a DllMain. rlib alone still
+# lets `cargo test --target x86_64-unknown-linux-gnu` link and run the
+# platform-independent unit tests natively on Linux.
+crate-type = ["rlib"]
+
+[dependencies]
+desert-core.workspace = true

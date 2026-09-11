@@ -286,8 +286,9 @@ pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
     }).map(|i| i as u16)
 }
 
-/// Resource outputs of a constructed gimmick record (build 25116796, from the
-/// record deserializer `FUN_141472070` -> `FUN_1414a7cc0`): one vector at
+/// Resource outputs of a constructed gimmick record, from the record
+/// deserializer - `FUN_141472070` on build 25116796, `FUN_1414711e0` on
+/// 25246367, and every offset below survived that move untouched: one vector at
 /// `record+0x278` — `{ptr data @0, u32 size @8, u32 cap @0xC}`, elements of 16
 /// bytes `{Block* @0, u32 item id @8}`; the block (112 bytes) has `u64 min @0x20`,
 /// `u64 max @0x28` and the item id again as the high dword of `u64 @0x68`.

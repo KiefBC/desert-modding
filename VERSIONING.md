@@ -6,10 +6,11 @@ for the workspace's benefit and are never tagged or released.
 
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
-| `desert-tooling` | 0.3.0 | `DesertTooling.asi` | `desert-tooling-v0.3.0` |
+| `desert-tooling` | 0.4.0 | `DesertTooling.asi` | `desert-tooling-v0.4.0` |
 | `desert-looter` | 0.2.0 | nothing, linked in | never |
 | `desert-gatherer` | 0.2.0 | nothing, linked in | never |
 | `desert-overlay` | 0.2.0 | nothing, linked in | never |
+| `desert-dispatch` | 0.2.0 | nothing, linked in | never |
 | `desert-core` | 0.5.0 | nothing, linked in | never |
 
 The DMM offset-patch pack in `desert-gatherer-dmm/` is versioned separately off its own
@@ -20,10 +21,10 @@ about crates applies to it.
 
 The version is about what a *player* sees, not what the source looks like. So the interface is:
 
-- **The ini file**: `DesertTooling.ini` — its `[Looter]`, `[Gatherer]` and `[Overlay]` sections,
+- **The ini file**: `DesertTooling.ini` — its `[Looter]`, `[Gatherer]`, `[Overlay]` and `[Dispatch]` sections,
   every key in them, its default, the values it takes. This is the big one; most bumps live here.
 - **The log prefixes people grep for**: the subsystem tag every line carries (`[looter]`,
-  `[gatherer]`, `[overlay]`, `[tooling]`) and the prefix after it (`[gimmick]`, `[recv]`, `[stat]`,
+  `[gatherer]`, `[overlay]`, `[dispatch]`, `[tooling]`) and the prefix after it (`[gimmick]`, `[recv]`, `[stat]`,
   `[dry]`, `[gather]`, `[sig]`, `[hook]`, `[ini]`, `[survey]`). The tag, the prefix and the fields on
   the line count; the prose after them doesn't.
 - **The shipped file names**: `DesertTooling.asi`, `DesertTooling.ini`, `DesertTooling.log`, and the
@@ -65,17 +66,23 @@ upgrading.
 
 ## The milestone ladder
 
-Below 1.0 a MINOR level isn't handed out for a pile of work. It gets *earned*, and each level has
-exactly one thing to show for it. A release sits at the highest level it's genuinely met, and stays
-put until the next one is real.
+The ladder describes **how far this is from 1.0**. It does not license a MINOR — "What bumps what"
+above does that, on its own, and the ladder never overrules it. What the ladder still refuses is
+1.0: that one gets *earned*, and each rung below it has exactly one thing to show for it. The
+project sits at the highest rung it's genuinely met, and says so in the README; the version number
+follows what changed for the player, which is a different question.
 
-| Minor | Earned when |
+| Rung | Reached when |
 | --- | --- |
 | 0.1 | it works in game for its core purpose, on one build |
 | 0.2 | no hard-coded addresses left: everything it needs, it finds by content |
 | 0.3 | the feature set is decided and complete |
 | 0.4+ | stabilising: no known bugs, docs done, only fixes landing |
 | 1.0 | the interface is settled and worth defending, known-issues list empty |
+
+The rung names are stage labels, not a reading of the current version: a release can sit at 0.4.0
+while the project is still at the 0.3 rung, and that is not a contradiction — one says what changed
+for the player, the other says how finished the thing is.
 
 Every rung is something this project can go and do. That is deliberate, and it is a change: the
 ladder used to gate 0.2 on *surviving a game update*, and 1.0 on surviving two.
@@ -98,9 +105,38 @@ can know about an ASI mod. It just isn't a version digit. It goes in the mod's R
 Nexus page as a plain statement of fact: which build it is verified on, and whether it has yet come
 through an update. That says more than a `0.2` ever did, and it stays true whatever the version is.
 
+### Why the ladder stopped gating every MINOR
+
+The same fault as the game-update rung, found the same way: two rules, one number, opposite answers.
+
+"What bumps what" says a new feature with new ini keys, defaulted so nothing an upgrader had
+changes, is a MINOR. The `[Dispatch]` subsystem is exactly that. The ladder said `0.4+` is for
+*stabilising — no known bugs, docs done, only fixes landing*, which a brand-new fourth subsystem
+plainly is not. One rule said 0.4.0, the other said stay at 0.3.x and call a whole new feature a
+PATCH. And a rung below, `0.3` had been earned by "the feature set is decided and complete" — which
+`[Dispatch]` falsified outright.
+
+Following the ladder would have meant understating a new feature to players to protect a maturity
+claim, and it would have meant the old backwards incentive again: the more the mod grew, the less
+the number could move.
+
+So the ladder stops licensing MINORs and keeps the thing it is actually good at — refusing 1.0 to a
+pile of work. Maturity and change are two different questions and now get two different answers: the
+rung below, the version above. That also frees the rung to be honest. A project that reopens its
+feature set can say so without anyone having to choose between a truthful version and a truthful
+rung.
+
 ### Where it sits
 
-**0.3**, as of 2026-09-08.
+**0.2**, as of 2026-09-10 — down from 0.3, and the version went *up* in the same breath. That is
+the decoupling working, not a contradiction.
+
+`0.3` asks for a feature set that is decided and complete. It was claimed on 2026-09-08 on the
+strength of the merge, and `[Dispatch]` falsified it two days later: dispatch missions were a fourth
+subsystem nobody had counted, and the reward and requirement levers inside it are not finished
+either. The rung goes back to `0.2` — cleared and still true, nothing in the workspace is found by a
+bare address — and it stays there until the feature set is actually settled rather than asserted.
+The shipped version is 0.4.0 regardless, because a player gained a feature and lost nothing.
 
 There used to be three ladders here, one per shipped `.asi`, and all three cleared **0.2** on
 2026-09-08. Desert Gatherer always did — it reaches the record loader through the accessor that
@@ -131,7 +167,8 @@ key, hotkey, log prefix and behaviour survives, moved into a `[Section]` and giv
 a MINOR is 0.3.0.
 
 The `desert-looter`, `desert-gatherer` and `desert-overlay` crates keep their 0.2.0 and stop moving
-as player-facing numbers. They are internal libraries now, like `desert-core`: they ship nothing,
+as player-facing numbers, and `desert-dispatch` starts at 0.1.0 for the same reason - none of them
+is a number a player ever reads. They are internal libraries now, like `desert-core`: they ship nothing,
 are never tagged, and their versions are bookkeeping between crates.
 
 ## The version isn't the game build
@@ -172,8 +209,8 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
    `<package>-v<version>` and push the tag:
    ```bash
-   git tag desert-tooling-v0.3.0
-   git push origin desert-tooling-v0.3.0
+   git tag desert-tooling-v0.4.0
+   git push origin desert-tooling-v0.4.0
    ```
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks
@@ -200,7 +237,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 
 ## A note on the library crates
 
-`desert-core`, `desert-looter`, `desert-gatherer` and `desert-overlay` follow semver for their own
+`desert-core`, `desert-looter`, `desert-gatherer`, `desert-overlay` and `desert-dispatch` follow semver for their own
 Rust APIs (a removed or changed public function is a MAJOR, a new module or function is a MINOR)
 purely so the crates can reason about each other. They ship nothing, are never tagged, are never
 released on their own, and never show up in a log line or an ini file — the tag on a log line names

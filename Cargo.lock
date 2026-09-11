@@ -75,6 +75,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "desert-dispatch"
+version = "0.2.0"
+dependencies = [
+ "desert-core",
+]
+
+[[package]]
 name = "desert-gatherer"
 version = "0.2.0"
 dependencies = [
@@ -101,9 +108,10 @@ dependencies = [
 
 [[package]]
 name = "desert-tooling"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "desert-core",
+ "desert-dispatch",
  "desert-gatherer",
  "desert-looter",
  "desert-overlay",

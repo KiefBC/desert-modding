@@ -16,7 +16,11 @@
 //! plugin's main thread. That rules out a `Mutex` (a game thread must never
 //! block on us) and a `HashMap` (no allocation on a game thread), so it is a
 //! fixed open-addressed table of atomics, probed linearly from `key %
-//! MAX_RECORDS` exactly like `hook::first_warning_for`. A slot is claimed with
+//! MAX_RECORDS` exactly like `hook::first_warning_for`. `desert_dispatch`'s two
+//! tables are the same shape and are **deliberately not shared with this one**:
+//! the probe is ~25 lines, and the key packing, the field sets and the atomic
+//! types all differ, so a generic table would need a trait over atomic storage
+//! to save about four lines in each of the three. A slot is claimed with
 //! one `compare_exchange` on its key; the fields are filled in afterwards and
 //! `ready` is stored last, with `Release`, so a reader that sees `ready` with
 //! `Acquire` sees the whole slot. Nothing is ever freed: the table lives as

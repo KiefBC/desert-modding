@@ -13,7 +13,8 @@
 //! never panic on arbitrary input — the game calls it with whatever the loader
 //! hands us.
 //!
-//! # Format (verified in Ghidra against Steam build 25116796)
+//! # Format (verified in Ghidra against Steam build 25116796, and unchanged
+//! through 25246367)
 //!
 //! The table body is a flat sequence of records with no header at all. Each
 //! record starts `u32 key`, `u32 name_len`, `name_len` ASCII bytes, `0x00`,
@@ -42,51 +43,104 @@
 //!
 //! # The loader
 //!
-//! The record loader is `FUN_1403856b0` (RVA `0x3856b0`). Its own prologue bytes
-//! occur twice in the exe — there is a sibling template for another table — so
-//! it cannot be signature-scanned directly. [`resolve_record_loader`] instead
-//! goes through its caller, the accessor `FUN_140382240`, which is itself one of
-//! 98 copies of a template; the copy for `gimmickinfo` is the one whose
-//! `lea r8,[rip+disp]` points at the C string `"gimmickinfo\0"` (that string
-//! occurs exactly once in the exe).
+//! The record loader is `FUN_140385cd0` (RVA `0x385cd0`). Its own prologue bytes
+//! occur 263 times in the exe — every static-info table has a loader built from
+//! the same template — so it cannot be signature-scanned directly.
+//! [`resolve_record_loader_for`] instead goes through its caller, the accessor
+//! `FUN_140382860`, which is itself one of 149 copies of another template; the
+//! copy for `gimmickinfo` is the one whose `lea r8,[rip+disp]` points at the C
+//! string `"gimmickinfo\0"` (that string occurs exactly once in the exe).
+//!
+//! Every address quoted in this module is build 25246367's, and is here to be
+//! read beside a disassembly rather than relied on: all of them moved when the
+//! game updated, and nothing in this file resolves anything by address.
 //!
 //! ```text
-//! 14038228f: 45 33 C9              xor    r9d,r9d          <- pattern A starts
-//! 140382292: 4C 8D 05 9F 64 33 05  lea    r8,[0x1456b8738] ; -> "gimmickinfo"
-//! 140382299: 48 8B 53 10           mov    rdx,[rbx+0x10]
-//! 14038229d: 48 8D 4C 24 70        lea    rcx,[rsp+0x70]
-//! 1403822a2: E8 ...                call   FUN_142508710    ; loads the file
+//! 1403828af: 45 33 C9              xor    r9d,r9d          <- the accessor site
+//! 1403828b2: 4C 8D 05 4F 95 33 05  lea    r8,[0x1456bbe08] ; -> "gimmickinfo"
+//! 1403828b9: 48 8B 53 10           mov    rdx,[rbx+0x10]
+//! 1403828bd: 48 8D 4C 24 70        lea    rcx,[rsp+0x70]
+//! 1403828c2: E8 ...                call   FUN_142509cb0    ; loads the file
 //! ...
-//! 140382304: 4C 8D 4C 24 30        lea    r9,[rsp+0x30]    <- pattern B starts
-//! 140382309: 44 0F B7 C7           movzx  r8d,di
-//! 14038230d: 48 8D 54 24 70        lea    rdx,[rsp+0x70]
-//! 140382312: 48 8B CB              mov    rcx,rbx
-//! 140382315: E8 96 33 00 00        call   FUN_1403856b0    ; the loader
+//! 140382924: 4C 8D 4C 24 30        lea    r9,[rsp+0x30]    <- pattern B starts
+//! 140382929: 44 0F B7 C7           movzx  r8d,di
+//! 14038292d: 48 8D 54 24 70        lea    rdx,[rsp+0x70]
+//! 140382932: 48 8B CB              mov    rcx,rbx
+//! 140382935: E8 96 33 00 00        call   FUN_140385cd0    ; the loader
 //! ```
+//!
+//! # The four encodings of the accessor
+//!
+//! The accessor above is not one template but the **same** template in four
+//! encodings, and until 2026-09-10 this module scanned for only the first of
+//! them. Census over the whole exe (`ACCESSORS`), first taken on build
+//! 25116796 and re-run unchanged on 25246367 — every count below, and the 149
+//! they sum to, survived the game update:
+//!
+//! ```text
+//!   xor r9d,r9d   the table name into r8              copies
+//!   45 33 C9      4C 8D 05   lea r8,[rip+name]            98
+//!   45 33 C9      4C 8B 05   mov r8,[rip+cell]            13
+//!   45 31 C9      4C 8D 05   lea r8,[rip+name]            31
+//!   45 31 C9      4C 8B 05   mov r8,[rip+cell]             7
+//!                                                    --------
+//!                                                        149
+//! ```
+//!
+//! Two axes, independent of each other:
+//!
+//! * `45 33 C9` and `45 31 C9` are the very same instruction. `31 /r` is
+//!   `xor r/m32,r32` and `33 /r` is `xor r32,r/m32`; with `r9d` on both sides
+//!   they encode the identical operation, and the compiler emitted both.
+//!   Nothing else about the accessor differs.
+//! * `lea` names the string directly, `mov` loads a pointer **cell** whose `u64`
+//!   is the string's **virtual address**. That indirection is the only reason
+//!   [`resolve_manager_slot_based`] needs an `image_base` at all, and the only
+//!   reason [`resolve_manager_slot`], which has none, cannot see all 149.
+//!
+//! 149 is **exactly** the number of static-info types
+//! `docs/reference-internals.md` section 19.2 enumerates, which is what makes
+//! this census provably complete: one accessor per type, no fifth encoding left
+//! to find. The old `45 33 C9`-only scan reached 111 of the 149 and left 38
+//! tables invisible — [`DROPSET_TABLE`], the dispatch-mission reward table,
+//! among them (a `45 31 C9` + `lea` copy).
+//!
+//! `PAT_B`, the call to the loader, has a gap of the same shape and is handled
+//! the same way: `mov rcx,rbx` is `48 8B CB` at 90 sites and `48 89 D9` at 28,
+//! and `dropsetinfo` is one of the 28. The loader prologue, `PAT_SLOT` and the
+//! manager layout are identical across every encoding.
 //!
 //! # The manager slot
 //!
-//! Every copy of that same template loads its table's manager object into `rbx`
+//! Every copy of the template loads its table's manager object into `rbx`
 //! from a **global pointer slot**, by a RIP-relative `mov rbx,[rip+disp32]`
-//! (`48 8B 1D ...`) a short way *before* the pattern-A hit, immediately followed
+//! (`48 8B 1D ...`) a short way *before* the accessor site, immediately followed
 //! by `cmp edi,[rbx+0x8]` (`3B 7B 08`) — the bounds check against the `u32`
 //! record count at `manager+8`:
 //!
 //! ```text
-//! 140382255: 48 8B 1D 1C 7E 8A 06  mov    rbx,[0x146c2a078] ; the slot
-//! 14038225c: 3B 7B 08              cmp    edi,[rbx+0x8]     ; count check
-//! 14038225f: 0F 83 ...             jae    ...
+//! 140382875: 48 8B 1D 8C BA 8A 06  mov    rbx,[0x146c2e308] ; the slot
+//! 14038287c: 3B 7B 08              cmp    edi,[rbx+0x8]     ; count check
+//! 14038287f: 0F 83 ...             jae    ...
 //! ...
-//! 14038228f: 45 33 C9              xor    r9d,r9d           <- pattern A hit
+//! 1403828af: 45 33 C9              xor    r9d,r9d           <- accessor site
 //! ```
 //!
-//! Surveyed over all 98 copies there is exactly one such `mov` in the
-//! [`SLOT_WINDOW`] bytes before each pattern-A hit; it sits 0x3A before the hit
-//! in 95 of them and 0x3D in the 3 whose prologue also pushes `r15`.
-//! [`resolve_manager_slot`] returns the **RVA** of that slot for a named table,
-//! so Desert Looter no longer carries the two addresses as constants: on build
-//! 25116796 it answers `0x6C2A058` for [`ITEM_TABLE`] and `0x6C2A078` for
+//! Surveyed over the 98 copies of the first encoding there is exactly one such
+//! `mov` in the [`SLOT_WINDOW`] bytes before each accessor site; it sits 0x3A
+//! before the hit in 95 of them and 0x3D in the 3 whose prologue also pushes
+//! `r15`. [`resolve_manager_slot`] returns the **RVA** of that slot for a named
+//! table, so Desert Looter no longer carries the two addresses as constants: on
+//! build 25246367 it answers `0x6C2E2E8` for [`ITEM_TABLE`] and `0x6C2E308` for
 //! [`GIMMICK_TABLE`].
+//!
+//! [`resolve_manager_slot_based`] is handed an image base and so reaches **any**
+//! of the 149: `0x6C30308` for [`FACTION_NODE_TABLE`], `0x6C2E330` for `Skill`,
+//! `0x6C328A8` for [`DROPSET_TABLE`], and the same `0x6C2E308` for
+//! [`GIMMICK_TABLE`]. [`resolve_manager_slot`] is deliberately left without one
+//! rather than being made a wrapper with an extra argument: Desert Looter calls
+//! it on every startup and has no image base to hand at that point, and the two
+//! tables it asks about are both `lea` copies.
 
 use crate::pattern::Pattern;
 
@@ -120,18 +174,69 @@ pub const LOADER_STOLEN: usize = 12;
 pub const LOADER_PROLOGUE: [u8; LOADER_STOLEN] =
     [0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x56];
 
-/// `xor r9d,r9d; lea r8,[rip+X]; mov rdx,[rbx+0x10]; lea rcx,[rsp+0x70]; call`
-/// — the accessor template. 98 hits in the exe, one per table.
-const PAT_A: &str = "45 33 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8";
-/// Offset of the `lea`'s disp32 within a pattern-A hit, and the length of the
-/// `lea` instruction from the hit (RIP is the address of the *next* instruction).
+/// One encoding of the accessor template: `xor r9d,r9d`, the table name into
+/// `r8`, `mov rdx,[rbx+0x10]`, `lea rcx,[rsp+0x70]`, `call`.
+struct Accessor {
+    /// Short name for the two bytes that vary, used in the error messages.
+    label: &'static str,
+    /// The template bytes, from the `xor` through the `call`'s `E8`.
+    pat: &'static str,
+    /// `true` when the RIP target is a pointer **cell** holding the name's
+    /// virtual address (`mov r8,[rip+cell]`), `false` when the target is the
+    /// name string itself (`lea r8,[rip+name]`).
+    indirect: bool,
+}
+
+/// The accessor template in all four encodings the compiler emitted, with each
+/// one's copy count beside it: counted on build 25116796 and re-counted
+/// unchanged on 25246367. They sum to 149, one per static-info type — see the
+/// module docs for why that total is what proves the census complete.
+///
+/// [`A_DISP_AT`] and [`A_RIP_AT`] hold for all four: the encodings differ only
+/// in which `xor` opcode was used and in the opcode byte that chooses `lea`
+/// over `mov`, and neither moves the disp32.
+const ACCESSORS: [Accessor; 4] = [
+    Accessor {
+        label: "45 33 C9 + lea r8",
+        pat: "45 33 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8",
+        indirect: false,
+    }, // 98 copies
+    Accessor {
+        label: "45 33 C9 + mov r8",
+        pat: "45 33 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8",
+        indirect: true,
+    }, // 13 copies
+    Accessor {
+        label: "45 31 C9 + lea r8",
+        pat: "45 31 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8",
+        indirect: false,
+    }, // 31 copies
+    Accessor {
+        label: "45 31 C9 + mov r8",
+        pat: "45 31 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8",
+        indirect: true,
+    }, // 7 copies
+];
+/// Offset of the disp32 within an accessor hit, and the length of the
+/// name-loading instruction from the hit (RIP is the address of the *next*
+/// instruction).
 const A_DISP_AT: usize = 6;
 const A_RIP_AT: usize = 10;
+/// Cap on the accessor hits collected per encoding. The largest real count is
+/// 98; a scan that hits this cap has stopped being a census and the error
+/// messages say so by printing the counts.
+const MAX_SITES: usize = 4096;
 
 /// `lea r9,[rsp+0x30]; movzx r8d,di; lea rdx,[rsp+0x70]; mov rcx,rbx; call`
-/// — the call to the loader. Many hits exe-wide, so it is only searched inside
-/// [`B_WINDOW`] bytes after the chosen pattern-A hit.
-const PAT_B: &str = "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8";
+/// — the call to the loader, in the two encodings of `mov rcx,rbx`: `48 8B CB`
+/// at 90 sites and `48 89 D9` at 28. Both are 18 bytes and both end in the
+/// `E8`, so the rel32 follows either at the same distance from its own hit.
+/// Many hits exe-wide, so both are only searched inside [`B_WINDOW`] bytes
+/// after the chosen accessor site.
+const PAT_B: [&str; 2] = [
+    "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8",
+    "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 89 D9 E8",
+];
 const B_WINDOW: usize = 0x100;
 
 /// `mov rbx,[rip+disp32]` — the load of a table's manager object out of its
@@ -152,6 +257,16 @@ pub const SLOT_WINDOW: usize = 0x60;
 pub const GIMMICK_TABLE: &[u8] = b"gimmickinfo";
 /// The name the `iteminfo` accessor passes.
 pub const ITEM_TABLE: &[u8] = b"iteminfo";
+/// The name the `FactionNode` accessor passes. Reachable only through the
+/// indirect template variant, so only [`resolve_manager_slot_based`] finds it.
+/// Its records carry the dispatch-mission ("faction operation") sub-records the
+/// diagnostic subsystem in `desert-dispatch` reads.
+pub const FACTION_NODE_TABLE: &[u8] = b"FactionNode";
+/// The name the `dropsetinfo` accessor passes: the dispatch-mission reward
+/// table. Its accessor is a `45 31 C9` + `lea` copy of the template, so it was
+/// invisible to this module until the scan covered all four encodings. On build
+/// 25246367 its manager slot is `0x6C328A8` and its record loader `0x437E70`.
+pub const DROPSET_TABLE: &[u8] = b"dropsetinfo";
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
     b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
@@ -390,36 +505,101 @@ fn disp32_at(img: &[u8], o: usize) -> Option<i32> {
     u32_at(img, o).map(|v| v as i32)
 }
 
-/// Offset of the pattern-A site in the one copy of the accessor template whose
-/// `lea r8,[rip+disp]` names `table`.
+/// The **RVA** of the name string an accessor site names, however it names it.
 ///
-/// Every table-specific resolver in this module starts here: the accessor is
-/// what ties a table's name to its code and its data.
-fn named_accessor(img: &[u8], table: &[u8]) -> Result<usize, String> {
-    let pat_a = Pattern::parse(PAT_A).ok_or("pattern A is malformed")?;
+/// For a `lea` encoding that is the RIP target itself. For a `mov` encoding the
+/// RIP target is a pointer cell: the cell holds a *virtual address* — at runtime
+/// the loader has relocated it against the real module base, and in a
+/// file-backed image it still carries the preferred base — so the name's RVA is
+/// that value minus the base the image is laid out for. `image_base` of `None`
+/// means the caller has no base to hand, and every `mov` encoding is then
+/// unreadable and reports `None`.
+fn accessor_name_rva(
+    img: &[u8],
+    a: usize,
+    t: &Accessor,
+    image_base: Option<usize>,
+) -> Option<usize> {
+    let disp = disp32_at(img, a.checked_add(A_DISP_AT)?)?;
+    let target = rip_target(a.checked_add(A_RIP_AT)?, disp)?;
+    if !t.indirect {
+        return Some(target);
+    }
+    let va = u64_at(img, target)?;
+    let rva = usize::try_from(va).ok()?.checked_sub(image_base?)?;
+    (rva < img.len()).then_some(rva)
+}
 
-    // Of the ~98 copies of the accessor template, keep the ones whose
-    // `lea r8,[rip+disp]` points at `table`.
-    let mut named: Vec<usize> = Vec::new();
-    for a in pat_a.find_all(img, 4096) {
-        let disp = match disp32_at(img, a + A_DISP_AT) {
-            Some(d) => d,
-            None => continue,
-        };
-        let Some(target) = rip_target(a + A_RIP_AT, disp) else { continue };
-        if c_str_is(img, target, table) {
-            named.push(a);
+/// Every accessor site, across every encoding in [`ACCESSORS`], whose name
+/// resolves to the C string `table`, in ascending address order.
+///
+/// With `image_base` of `None` the two indirect encodings are skipped entirely:
+/// their name is only reachable through a VA, and a caller without a base
+/// cannot turn one back into an RVA. Most sites name some other table and are
+/// simply not collected — and so is one whose cell holds something that is not
+/// a VA inside this image at all. Nothing here is an error, because the
+/// caller's "exactly one match" is the real check.
+fn accessors_naming(
+    img: &[u8],
+    image_base: Option<usize>,
+    table: &[u8],
+) -> Result<Vec<usize>, String> {
+    let mut named = Vec::new();
+    for t in ACCESSORS.iter().filter(|t| !t.indirect || image_base.is_some()) {
+        let pat = Pattern::parse(t.pat)
+            .ok_or_else(|| format!("the accessor pattern \"{}\" is malformed", t.label))?;
+        for a in pat.find_all(img, MAX_SITES) {
+            if accessor_name_rva(img, a, t, image_base)
+                .is_some_and(|rva| c_str_is(img, rva, table))
+            {
+                named.push(a);
+            }
         }
     }
+    named.sort_unstable();
+    named.dedup();
+    Ok(named)
+}
+
+/// How many copies of each encoding are in `img`, as
+/// `"45 33 C9 + lea r8=98, ..."`, for the resolvers' error messages. A count
+/// that has drifted from the census in the module docs is the first thing to
+/// look at after a game update.
+fn accessor_census(img: &[u8], image_base: Option<usize>) -> String {
+    ACCESSORS
+        .iter()
+        .filter(|t| !t.indirect || image_base.is_some())
+        .map(|t| {
+            let n = Pattern::parse(t.pat).map_or(0, |p| p.find_all(img, MAX_SITES).len());
+            format!("{}={n}", t.label)
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// Offset of the one accessor site that names `table`.
+///
+/// Every table-specific resolver in this module starts here: the accessor is
+/// what ties a table's name to its code and its data. `image_base` of `None`
+/// restricts the search to the two `lea` encodings — see [`accessors_naming`].
+fn named_accessor(
+    img: &[u8],
+    image_base: Option<usize>,
+    table: &[u8],
+) -> Result<usize, String> {
+    let named = accessors_naming(img, image_base, table)?;
+    // Which half of the census was in scope, so an error says what was and was
+    // not searched rather than only how much of it there was.
+    let scope = if image_base.is_some() { "any encoding" } else { "the lea encodings" };
     match named.as_slice() {
         [one] => Ok(*one),
         [] => Err(format!(
-            "no accessor (pattern A) whose lea names \"{}\" — {} template copies scanned",
+            "no accessor of {scope} names \"{}\" — template copies scanned: {}",
             String::from_utf8_lossy(table),
-            pat_a.find_all(img, 4096).len()
+            accessor_census(img, image_base)
         )),
         many => Err(format!(
-            "{} accessors name \"{}\", expected exactly one: {:x?}",
+            "{} accessors of {scope} name \"{}\", expected exactly one: {:x?}",
             many.len(),
             String::from_utf8_lossy(table),
             many
@@ -432,14 +612,48 @@ fn named_accessor(img: &[u8], table: &[u8]) -> Result<usize, String> {
 ///
 /// `img` is the image laid out by RVA — `MainModule::bytes()` in the game, or
 /// [`crate::pe::file_to_image`] on the exe file. The result is an RVA, not a
-/// virtual address: callers add the module base themselves. On build 25116796
-/// this answers `0x6C2A058` for `iteminfo` and `0x6C2A078` for `gimmickinfo`.
+/// virtual address: callers add the module base themselves. On build 25246367
+/// this answers `0x6C2E2E8` for `iteminfo` and `0x6C2E308` for `gimmickinfo`.
 ///
 /// See the module docs for the `mov rbx,[rip+disp32]; cmp edi,[rbx+0x8]` shape
 /// this looks for in the [`SLOT_WINDOW`] bytes before the named accessor.
 pub fn resolve_manager_slot(img: &[u8], table: &[u8]) -> Result<usize, String> {
+    slot_before_accessor(img, named_accessor(img, None, table)?)
+}
+
+/// The **RVA** of the global pointer slot holding the manager object for the
+/// table named `table`, resolved through **any** of the four accessor
+/// encodings.
+///
+/// Same answer as [`resolve_manager_slot`] for every table a `lea` encoding
+/// names, and the only way to reach the 20 tables named through a pointer cell
+/// — `FactionNode` and `Skill` among them. `image_base` is needed solely
+/// because of that indirection: the cell's `u64` is the name string's **virtual
+/// address**, so the base the image is laid out for is what turns it back into
+/// an RVA. Pass the running module's base in the game (`MainModule::base`) and
+/// `pe::Headers::image_base` for a file-backed image.
+///
+/// On build 25246367 this answers `0x6C30308` for [`FACTION_NODE_TABLE`],
+/// `0x6C2E330` for `Skill`, `0x6C328A8` for [`DROPSET_TABLE`] and `0x6C2E308`
+/// for [`GIMMICK_TABLE`].
+///
+/// [`resolve_manager_slot`] is deliberately left alone rather than being made a
+/// wrapper with an extra argument: Desert Looter calls it on every startup and
+/// has no image base to hand at that point.
+pub fn resolve_manager_slot_based(
+    img: &[u8],
+    image_base: usize,
+    table: &[u8],
+) -> Result<usize, String> {
+    slot_before_accessor(img, named_accessor(img, Some(image_base), table)?)
+}
+
+/// The `mov rbx,[rip+disp32]; cmp edi,[rbx+0x8]` that precedes the accessor
+/// site `a`, as the **RVA** of the slot it loads. Shared by both resolvers:
+/// the two templates differ in how they name the table and in nothing else, so
+/// the slot search is identical once the site is known.
+fn slot_before_accessor(img: &[u8], a: usize) -> Result<usize, String> {
     let pat_slot = Pattern::parse(PAT_SLOT).ok_or("the slot pattern is malformed")?;
-    let a = named_accessor(img, table)?;
 
     // Only the run-up to the accessor's pattern-A site is searched: the `mov`
     // is a few dozen bytes above it and the opcode is common exe-wide.
@@ -496,36 +710,67 @@ pub fn resolve_manager_slot(img: &[u8], table: &[u8]) -> Result<usize, String> {
 /// `img` is the image laid out by RVA — `MainModule::bytes()` in the game, or
 /// [`crate::pe::file_to_image`] on the exe file — and `image_base` is the base
 /// it is (or would be) mapped at. Returns `image_base + rva` of the loader,
-/// which on build 25116796 is `image_base + 0x3856b0`.
+/// which on build 25246367 is `image_base + 0x385cd0`.
+///
+/// This is what Desert Gatherer hooks, and the table it wants is the only one
+/// it ever wants, so the name stays out of its call. [`resolve_record_loader_for`]
+/// is the same thing for any other table.
+pub fn resolve_record_loader(img: &[u8], image_base: usize) -> Result<usize, String> {
+    resolve_record_loader_for(img, image_base, GIMMICK_TABLE)
+}
+
+/// Resolve the record loader for the table named `table`, as `image_base + rva`.
+///
+/// Every static-info table is loaded by its own copy of one loader template,
+/// reached through that table's accessor, so this is [`resolve_record_loader`]
+/// with the name spelled out: `0x385cd0` for [`GIMMICK_TABLE`], `0x437E70` for
+/// [`DROPSET_TABLE`], `0x3C1F30` for [`FACTION_NODE_TABLE`] on build 25246367.
+/// Whichever it is, its first [`LOADER_STOLEN`] bytes are [`LOADER_PROLOGUE`] —
+/// which a caller about to hook it must check for itself before patching.
 ///
 /// See the module docs for why this goes through the accessor instead of
-/// signature-scanning the loader directly.
-pub fn resolve_record_loader(img: &[u8], image_base: usize) -> Result<usize, String> {
-    let pat_b = Pattern::parse(PAT_B).ok_or("pattern B is malformed")?;
-    let a = named_accessor(img, GIMMICK_TABLE)?;
+/// signature-scanning the loader directly: the prologue occurs 263 times.
+pub fn resolve_record_loader_for(
+    img: &[u8],
+    image_base: usize,
+    table: &[u8],
+) -> Result<usize, String> {
+    let a = named_accessor(img, Some(image_base), table)?;
 
-    // The call to the loader is the pattern-B site inside this accessor.
+    // The call to the loader is the pattern-B site inside this accessor, in
+    // whichever of its two encodings this copy was assembled with. Both are
+    // searched: a site that matched one cannot also match the other, so a
+    // second hit is a real ambiguity and not a double count.
     let win_end = a.saturating_add(B_WINDOW).min(img.len());
-    let window = img.get(a..win_end).ok_or_else(|| format!("accessor at +0x{a:X} is past the image"))?;
-    let hits = pat_b.find_all(window, 4);
-    let b = match hits.as_slice() {
-        [one] => a + *one,
+    let window =
+        img.get(a..win_end).ok_or_else(|| format!("accessor at +0x{a:X} is past the image"))?;
+    let mut hits: Vec<(usize, usize)> = Vec::new();
+    for text in PAT_B {
+        let pat = Pattern::parse(text).ok_or("a loader-call pattern is malformed")?;
+        hits.extend(pat.find_all(window, 4).into_iter().map(|h| (a + h, pat.len())));
+    }
+    hits.sort_unstable();
+    let (b, b_len) = match hits.as_slice() {
+        [one] => *one,
         [] => {
             return Err(format!(
-                "no loader call (pattern B) within 0x{B_WINDOW:X} bytes of the accessor at +0x{a:X}"
+                "no loader call (pattern B, either encoding) within 0x{B_WINDOW:X} bytes of the \
+                 accessor at +0x{a:X}"
             ))
         }
         many => {
             return Err(format!(
-                "{} loader calls (pattern B) within 0x{B_WINDOW:X} bytes of the accessor at +0x{a:X}",
-                many.len()
+                "{} loader calls (pattern B) within 0x{B_WINDOW:X} bytes of the accessor at \
+                 +0x{a:X}: {:x?}",
+                many.len(),
+                many.iter().map(|&(h, _)| h).collect::<Vec<_>>()
             ))
         }
     };
 
     // The E8 is the pattern's last byte, so the rel32 follows it and the target
     // is measured from the end of the rel32.
-    let rel_at = b + pat_b.len();
+    let rel_at = b + b_len;
     let rel = disp32_at(img, rel_at)
         .ok_or_else(|| format!("loader call at +0x{b:X} has no rel32 inside the image"))?;
     let end_of_rel32 = rel_at + 4;
@@ -843,9 +1088,45 @@ mod tests {
         img[at..at + b.len()].copy_from_slice(&b);
     }
 
+    /// The six bytes an accessor site opens with, for one of the four
+    /// encodings: `xor r9d,r9d` in either ModRM direction, then the `lea` or
+    /// the `mov` that brings the table name into `r8`.
+    fn accessor_head(xor31: bool, indirect: bool) -> [u8; 6] {
+        let xor = if xor31 { 0x31 } else { 0x33 };
+        let op = if indirect { 0x8B } else { 0x8D };
+        [0x45, xor, 0xC9, 0x4C, op, 0x05]
+    }
+
+    /// A whole accessor site at `a`: the encoding's head, a disp32 reaching
+    /// `rip_rva` (the name for a `lea` encoding, the pointer cell for a `mov`
+    /// one) and the rest of the template through the file-load `call`.
+    fn put_accessor(img: &mut [u8], a: usize, head: [u8; 6], rip_rva: usize) {
+        let mut pa = head.to_vec();
+        let disp = (rip_rva as i64 - (a + A_RIP_AT) as i64) as i32;
+        pa.extend_from_slice(&disp.to_le_bytes());
+        pa.extend_from_slice(&[0x48, 0x8B, 0x53, 0x10, 0x48, 0x8D, 0x4C, 0x24, 0x70, 0xE8]);
+        pa.extend_from_slice(&0x1122_3344u32.to_le_bytes()); // the file-load call
+        img[a..a + pa.len()].copy_from_slice(&pa);
+    }
+
+    /// The call to the record loader at `at`, in encoding `enc` of
+    /// `mov rcx,rbx` (0 = `48 8B CB`, 1 = `48 89 D9`), targeting `callee`.
+    fn put_call_b(img: &mut [u8], at: usize, enc: usize, callee: usize) {
+        let mut pb = vec![
+            0x4C, 0x8D, 0x4C, 0x24, 0x30, 0x44, 0x0F, 0xB7, 0xC7, 0x48, 0x8D, 0x54, 0x24, 0x70,
+        ];
+        let mov = if enc == 0 { [0x48, 0x8B, 0xCB] } else { [0x48, 0x89, 0xD9] };
+        pb.extend_from_slice(&mov);
+        pb.push(0xE8);
+        let rel = (callee as i64 - (at + pb.len() + 4) as i64) as i32;
+        pb.extend_from_slice(&rel.to_le_bytes());
+        img[at..at + pb.len()].copy_from_slice(&pb);
+    }
+
     /// An image with two copies of the accessor template — one naming
     /// "gimmickinfo", one naming "iteminfo" — a pattern-B call in each, and the
-    /// manager-slot load 0x3A before each pattern-A site.
+    /// manager-slot load 0x3A before each accessor site. Both are the
+    /// `45 33 C9` + `lea` encoding, as the real `gimmickinfo` accessor is.
     fn synthetic_image() -> Vec<u8> {
         let mut img = vec![0u8; 0x4000];
         let put = |img: &mut Vec<u8>, at: usize, b: &[u8]| {
@@ -854,25 +1135,12 @@ mod tests {
         put(&mut img, 0x3000, b"gimmickinfo\0");
         put(&mut img, 0x3100, b"iteminfo\0");
 
-        // site: pattern A at `a` pointing at `name_rva`, the slot load for
-        // `slot_rva` at a-0x3A, pattern B at a+0x40 calling `callee`.
+        // site: an accessor at `a` naming `name_rva`, the slot load for
+        // `slot_rva` at a-0x3A, the loader call at a+0x40.
         let site = |img: &mut Vec<u8>, a: usize, name_rva: usize, slot_rva: usize, callee: usize| {
             put_slot_load(img, a - SYN_SLOT_BACK, slot_rva, true);
-            let mut pa = vec![0x45, 0x33, 0xC9, 0x4C, 0x8D, 0x05];
-            let disp = (name_rva as i64 - (a + A_RIP_AT) as i64) as i32;
-            pa.extend_from_slice(&disp.to_le_bytes());
-            pa.extend_from_slice(&[0x48, 0x8B, 0x53, 0x10, 0x48, 0x8D, 0x4C, 0x24, 0x70, 0xE8]);
-            pa.extend_from_slice(&0x1122_3344u32.to_le_bytes()); // the file-load call
-            put(img, a, &pa);
-
-            let b = a + 0x40;
-            let mut pb = vec![
-                0x4C, 0x8D, 0x4C, 0x24, 0x30, 0x44, 0x0F, 0xB7, 0xC7, 0x48, 0x8D, 0x54, 0x24,
-                0x70, 0x48, 0x8B, 0xCB, 0xE8,
-            ];
-            let rel = (callee as i64 - (b + pb.len() + 4) as i64) as i32;
-            pb.extend_from_slice(&rel.to_le_bytes());
-            put(img, b, &pb);
+            put_accessor(img, a, accessor_head(false, false), name_rva);
+            put_call_b(img, a + 0x40, 0, callee);
         };
         site(&mut img, 0x1000, 0x3000, SYN_GIMMICK_SLOT, SYN_LOADER);
         site(&mut img, 0x1800, 0x3100, SYN_ITEM_SLOT, 0x2800);
@@ -950,6 +1218,121 @@ mod tests {
         assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(SYN_GIMMICK_SLOT));
     }
 
+    // -----------------------------------------------------------------------
+    // The indirect accessor template
+    // -----------------------------------------------------------------------
+
+    const SYN_FACTION_SLOT: usize = 0x3860;
+    const SYN_DECOY_SLOT: usize = 0x3880;
+    /// Where the two pointer cells live, and where the indirect sites are.
+    const SYN_FACTION_CELL: usize = 0x3900;
+    const SYN_DECOY_CELL: usize = 0x3908;
+    const SYN_FACTION_A: usize = 0x2000;
+    const SYN_DECOY_A: usize = 0x2400;
+
+    /// `synthetic_image` plus two copies of the **indirect** template: one
+    /// naming "FactionNode" through a pointer cell, and a decoy naming
+    /// "iteminfo" through another. The decoy is the point of the fixture:
+    /// on the real exe 12 of the 13 cells belong to other tables and must
+    /// simply not match.
+    fn synthetic_image_ptr() -> Vec<u8> {
+        let mut img = synthetic_image();
+        img.resize(0x4000, 0);
+        let put = |img: &mut Vec<u8>, at: usize, b: &[u8]| {
+            img[at..at + b.len()].copy_from_slice(b);
+        };
+        put(&mut img, 0x3200, b"FactionNode\0");
+        // The cells hold VAs, not RVAs: base + rva, exactly as the loader
+        // leaves them after relocation.
+        put(&mut img, SYN_FACTION_CELL, &((SYN_BASE + 0x3200) as u64).to_le_bytes());
+        put(&mut img, SYN_DECOY_CELL, &((SYN_BASE + 0x3100) as u64).to_le_bytes());
+
+        let site = |img: &mut Vec<u8>, a: usize, cell_rva: usize, slot_rva: usize| {
+            put_slot_load(img, a - SYN_SLOT_BACK, slot_rva, true);
+            put_accessor(img, a, accessor_head(false, true), cell_rva);
+        };
+        site(&mut img, SYN_FACTION_A, SYN_FACTION_CELL, SYN_FACTION_SLOT);
+        site(&mut img, SYN_DECOY_A, SYN_DECOY_CELL, SYN_DECOY_SLOT);
+        img
+    }
+
+    #[test]
+    fn resolves_a_slot_through_the_indirect_template() {
+        let img = synthetic_image_ptr();
+        assert_eq!(
+            resolve_manager_slot_based(&img, SYN_BASE, FACTION_NODE_TABLE),
+            Ok(SYN_FACTION_SLOT)
+        );
+        // The decoy cell names "iteminfo" — and so does a *direct* accessor
+        // in the same image, so the two must not both count.
+        let e = resolve_manager_slot_based(&img, SYN_BASE, ITEM_TABLE).unwrap_err();
+        assert!(e.contains("2 accessors of any encoding"), "{e}");
+    }
+
+    #[test]
+    fn the_direct_path_is_unaffected_by_the_new_resolver() {
+        // Both fixtures, both functions: the direct template answers exactly
+        // what it always did, through either entry point.
+        for img in [synthetic_image(), synthetic_image_ptr()] {
+            assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(SYN_GIMMICK_SLOT));
+            assert_eq!(
+                resolve_manager_slot_based(&img, SYN_BASE, GIMMICK_TABLE),
+                Ok(SYN_GIMMICK_SLOT)
+            );
+            // The old function cannot see the indirect template at all, which
+            // is why the new one exists.
+            assert!(resolve_manager_slot(&img, FACTION_NODE_TABLE).is_err());
+        }
+    }
+
+    #[test]
+    fn indirect_candidates_that_are_not_the_table_are_skipped_not_errors() {
+        // A cell whose value is below the image base is not a VA in this
+        // image; a cell whose VA lands past the end of it is not either.
+        // Neither may turn into an error for a table that resolves fine.
+        let mut img = synthetic_image_ptr();
+        img[SYN_DECOY_CELL..SYN_DECOY_CELL + 8].copy_from_slice(&7u64.to_le_bytes());
+        assert_eq!(
+            resolve_manager_slot_based(&img, SYN_BASE, FACTION_NODE_TABLE),
+            Ok(SYN_FACTION_SLOT)
+        );
+
+        let mut img = synthetic_image_ptr();
+        img[SYN_DECOY_CELL..SYN_DECOY_CELL + 8]
+            .copy_from_slice(&((SYN_BASE + 0x9000) as u64).to_le_bytes());
+        assert_eq!(
+            resolve_manager_slot_based(&img, SYN_BASE, FACTION_NODE_TABLE),
+            Ok(SYN_FACTION_SLOT)
+        );
+
+        // And a wrong base makes the *name* stop resolving, rather than
+        // reading some other byte range as a string.
+        let img = synthetic_image_ptr();
+        let e = resolve_manager_slot_based(&img, SYN_BASE + 0x10, FACTION_NODE_TABLE).unwrap_err();
+        assert!(e.contains("no accessor of any encoding"), "{e}");
+    }
+
+    #[test]
+    fn based_resolver_reports_every_encodings_count() {
+        let img = synthetic_image_ptr();
+        let e = resolve_manager_slot_based(&img, SYN_BASE, b"NoSuchTable").unwrap_err();
+        // Two `45 33 C9` + lea sites and two `45 33 C9` + mov ones are in this
+        // fixture; the other two encodings are absent and say so.
+        assert!(e.contains("45 33 C9 + lea r8=2"), "{e}");
+        assert!(e.contains("45 33 C9 + mov r8=2"), "{e}");
+        assert!(e.contains("45 31 C9 + lea r8=0"), "{e}");
+        assert!(e.contains("45 31 C9 + mov r8=0"), "{e}");
+        // The base-less resolver reports only what it can actually search.
+        let e = resolve_manager_slot(&img, b"NoSuchTable").unwrap_err();
+        assert!(e.contains("45 33 C9 + lea r8=2"), "{e}");
+        assert!(!e.contains("mov r8"), "{e}");
+
+        // Empty and tiny images are errors, not panics.
+        assert!(resolve_manager_slot_based(&[], SYN_BASE, FACTION_NODE_TABLE).is_err());
+        assert!(resolve_manager_slot_based(&[0x45, 0x33, 0xC9], 0, ITEM_TABLE).is_err());
+        assert!(resolve_manager_slot_based(&[0x4C, 0x8B, 0x05], usize::MAX, ITEM_TABLE).is_err());
+    }
+
     #[test]
     fn manager_slot_reports_what_failed() {
         // No accessor names the table at all.
@@ -991,5 +1374,188 @@ mod tests {
         assert!(resolve_manager_slot(&[], GIMMICK_TABLE).is_err());
         assert!(resolve_manager_slot(&[0x45, 0x33, 0xC9], GIMMICK_TABLE).is_err());
         assert!(resolve_manager_slot(&[0x48, 0x8B, 0x1D], ITEM_TABLE).is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // All four accessor encodings, both loader-call encodings
+    // -----------------------------------------------------------------------
+
+    /// `(table, manager slot, record loader)` for the four sites in
+    /// [`four_encoding_image`], one per accessor encoding in the order of
+    /// `ACCESSORS`: 33+lea, 33+mov, 31+lea, 31+mov.
+    const FOUR: [(&[u8], usize, usize); 4] = [
+        (GIMMICK_TABLE, 0x3800, 0x2800),
+        (ITEM_TABLE, 0x3820, 0x2840),
+        (DROPSET_TABLE, 0x3840, 0x2880),
+        (FACTION_NODE_TABLE, 0x3860, 0x28C0),
+    ];
+    /// Where each of those four accessor sites is.
+    const FOUR_A: [usize; 4] = [0x1000, 0x1200, 0x1400, 0x1600];
+    /// A fifth site, of the `45 31 C9` + `mov` encoding, naming a table nobody
+    /// asks about: on the real exe 148 of the 149 sites are this to any given
+    /// question, and every one of them must be skipped rather than error.
+    const FOUR_DECOY_A: usize = 0x1800;
+    const FOUR_DECOY_SLOT: usize = 0x3880;
+
+    /// One site per accessor encoding, each with its own name, manager slot and
+    /// loader, and the two `mov rcx,rbx` encodings of the loader call split
+    /// across them. The `mov r8` sites name their table through a pointer cell
+    /// holding the name's VA, exactly as the real ones do.
+    fn four_encoding_image() -> Vec<u8> {
+        let mut img = vec![0u8; 0x4000];
+        let put = |img: &mut Vec<u8>, at: usize, b: &[u8]| {
+            img[at..at + b.len()].copy_from_slice(b);
+        };
+        put(&mut img, 0x3000, b"gimmickinfo\0");
+        put(&mut img, 0x3100, b"iteminfo\0");
+        put(&mut img, 0x3200, b"FactionNode\0");
+        put(&mut img, 0x3300, b"dropsetinfo\0");
+        put(&mut img, 0x3400, b"decoytable\0");
+        // The cells the three `mov r8` sites read, holding VAs.
+        for (cell, name_rva) in [(0x3900, 0x3100), (0x3908, 0x3200), (0x3910, 0x3400)] {
+            put(&mut img, cell, &((SYN_BASE + name_rva) as u64).to_le_bytes());
+        }
+
+        // (site, xor31, indirect, rip target, slot, call-b encoding, loader)
+        let sites: [(usize, bool, bool, usize, usize, usize, usize); 5] = [
+            (FOUR_A[0], false, false, 0x3000, FOUR[0].1, 0, FOUR[0].2),
+            (FOUR_A[1], false, true, 0x3900, FOUR[1].1, 1, FOUR[1].2),
+            (FOUR_A[2], true, false, 0x3300, FOUR[2].1, 1, FOUR[2].2),
+            (FOUR_A[3], true, true, 0x3908, FOUR[3].1, 0, FOUR[3].2),
+            (FOUR_DECOY_A, true, true, 0x3910, FOUR_DECOY_SLOT, 0, 0x2900),
+        ];
+        for (a, xor31, indirect, rip, slot, enc, loader) in sites {
+            put_slot_load(&mut img, a - SYN_SLOT_BACK, slot, true);
+            put_accessor(&mut img, a, accessor_head(xor31, indirect), rip);
+            put_call_b(&mut img, a + 0x40, enc, loader);
+            put(&mut img, loader, &LOADER_PROLOGUE);
+        }
+        img
+    }
+
+    /// The fixture really is what it claims to be: four different accessor
+    /// encodings and both encodings of the loader call. Without this the tests
+    /// below could pass on an image that only exercises one of each.
+    #[test]
+    fn the_four_encoding_fixture_uses_all_four() {
+        let img = four_encoding_image();
+        let heads: Vec<[u8; 6]> = FOUR_A
+            .iter()
+            .map(|&a| {
+                let mut h = [0u8; 6];
+                h.copy_from_slice(&img[a..a + 6]);
+                h
+            })
+            .collect();
+        assert_eq!(
+            heads,
+            vec![
+                accessor_head(false, false),
+                accessor_head(false, true),
+                accessor_head(true, false),
+                accessor_head(true, true),
+            ]
+        );
+        // `mov rcx,rbx` sits 14 bytes into the loader call, and the fixture
+        // uses `48 8B CB` for two sites and `48 89 D9` for the other two.
+        let mov = |a: usize| img[a + 0x40 + 14..a + 0x40 + 17].to_vec();
+        assert_eq!(mov(FOUR_A[0]), vec![0x48, 0x8B, 0xCB]);
+        assert_eq!(mov(FOUR_A[1]), vec![0x48, 0x89, 0xD9]);
+        assert_eq!(mov(FOUR_A[2]), vec![0x48, 0x89, 0xD9]);
+        assert_eq!(mov(FOUR_A[3]), vec![0x48, 0x8B, 0xCB]);
+    }
+
+    /// The gap this all exists to close: a table whose accessor is any of the
+    /// four encodings resolves, through either the slot or the loader path.
+    #[test]
+    fn every_accessor_encoding_resolves() {
+        let img = four_encoding_image();
+        for (table, slot, loader) in FOUR {
+            let name = String::from_utf8_lossy(table);
+            assert_eq!(
+                resolve_manager_slot_based(&img, SYN_BASE, table),
+                Ok(slot),
+                "slot for {name}"
+            );
+            assert_eq!(
+                resolve_record_loader_for(&img, SYN_BASE, table),
+                Ok(SYN_BASE + loader),
+                "loader for {name}"
+            );
+            // And what it resolved to really is a loader.
+            assert_eq!(
+                img.get(loader..loader + LOADER_STOLEN),
+                Some(&LOADER_PROLOGUE[..]),
+                "prologue for {name}"
+            );
+        }
+        // The gatherer's table-less entry point still answers for gimmickinfo.
+        assert_eq!(resolve_record_loader(&img, SYN_BASE), Ok(SYN_BASE + FOUR[0].2));
+    }
+
+    /// The decoy is a working site of its own, which is what makes it a decoy
+    /// rather than dead bytes: it resolves when asked for by name and is
+    /// silently passed over otherwise.
+    #[test]
+    fn the_decoy_site_is_skipped_not_an_error() {
+        let img = four_encoding_image();
+        assert_eq!(
+            resolve_manager_slot_based(&img, SYN_BASE, b"decoytable"),
+            Ok(FOUR_DECOY_SLOT)
+        );
+        for (table, slot, _) in FOUR {
+            assert_eq!(resolve_manager_slot_based(&img, SYN_BASE, table), Ok(slot));
+        }
+    }
+
+    /// Without an image base only the two `lea` encodings can be read, which is
+    /// exactly the contract [`resolve_manager_slot`] has with Desert Looter.
+    #[test]
+    fn the_base_less_resolver_sees_the_lea_encodings_only() {
+        let img = four_encoding_image();
+        // 33+lea and 31+lea: both reachable, and the 31 one is what the old
+        // scan missed.
+        assert_eq!(resolve_manager_slot(&img, GIMMICK_TABLE), Ok(FOUR[0].1));
+        assert_eq!(resolve_manager_slot(&img, DROPSET_TABLE), Ok(FOUR[2].1));
+        // 33+mov and 31+mov: not without a base.
+        for table in [ITEM_TABLE, FACTION_NODE_TABLE] {
+            let e = resolve_manager_slot(&img, table).unwrap_err();
+            assert!(e.contains("no accessor of the lea encodings"), "{e}");
+        }
+    }
+
+    /// Two loader calls in one window is an ambiguity even when they are in
+    /// different encodings — the point of scanning both is to find the one
+    /// call, not to prefer an encoding.
+    #[test]
+    fn a_second_loader_call_encoding_in_the_window_is_ambiguous() {
+        let mut img = four_encoding_image();
+        put_call_b(&mut img, FOUR_A[0] + 0x70, 1, 0x2900);
+        let e = resolve_record_loader_for(&img, SYN_BASE, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("2 loader calls"), "{e}");
+        // The other sites are untouched by it.
+        assert_eq!(
+            resolve_record_loader_for(&img, SYN_BASE, DROPSET_TABLE),
+            Ok(SYN_BASE + FOUR[2].2)
+        );
+    }
+
+    /// A named table with no call in its window, and the degenerate images,
+    /// are errors rather than panics on the generalised entry point too.
+    #[test]
+    fn loader_for_reports_what_failed() {
+        let mut img = four_encoding_image();
+        img[FOUR_A[2] + 0x40] = 0x00;
+        let e = resolve_record_loader_for(&img, SYN_BASE, DROPSET_TABLE).unwrap_err();
+        assert!(e.contains("no loader call"), "{e}");
+
+        let img = four_encoding_image();
+        let e = resolve_record_loader_for(&img, SYN_BASE, b"NoSuchTable").unwrap_err();
+        assert!(e.contains("no accessor of any encoding"), "{e}");
+        assert!(e.contains("45 31 C9 + mov r8=2"), "{e}");
+
+        assert!(resolve_record_loader_for(&[], SYN_BASE, DROPSET_TABLE).is_err());
+        assert!(resolve_record_loader_for(&[0x45, 0x31, 0xC9], 0, DROPSET_TABLE).is_err());
+        assert!(resolve_record_loader_for(&[0x4C, 0x8B, 0x05], usize::MAX, ITEM_TABLE).is_err());
     }
 }

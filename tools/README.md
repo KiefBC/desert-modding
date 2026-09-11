@@ -82,6 +82,91 @@ game update. Not in CI, because CI has no copy of the game.
 signature deliberately matches `0xF` bytes into its function rather than at the
 entry point, and the comment says so.
 
+It also checks `static-info-names.txt`, the 216 names of the game's 149
+static-info types (149 class names plus the 67 lowercase table names that
+differ), extracted from `FUN_1424fef70` and recorded in
+`docs/reference-internals.md` section 19. Each must still occur **exactly once**
+as a NUL-delimited literal; output is a single summary line plus any name that
+went missing or gained a second hit. A change there means the game's type
+registry moved, which is a much earlier and louder signal than a byte signature
+going stale - the tables are what the gatherer edits.
+
+That check is NUL-delimited on both sides, unlike the substring match the
+`NAMES` list above it uses, because several of the names contain each other.
+`iteminfo` is the visible example: the substring check reports 2 hits for it
+because it also occurs inside `trademarketiteminfo`, while the NUL-delimited
+check correctly reports 1.
+
+### `evidence.py` (`just evidence`)
+Walks the game's call graph outward from anchor functions and writes one
+Markdown file per function into `evidence/` - signature, callers, direct
+callees, decompilation, disassembly - plus `index.tsv` and `graph.json`. The
+point is to answer "who else touches this" with `grep` instead of a few dozen
+Ghidra MCP round-trips, and to survive the end of a session, which context does
+not.
+
+Unlike `dis.sh` and `xrefs.py` it is **not** offline: it needs the Windows
+Ghidra running with GhidraMCP listening, and talks to that server's HTTP API
+directly rather than through the MCP bridge, so it works whether or not the MCP
+client is connected. The host is probed on `127.0.0.1` then the WSL default
+gateway, the same order `~/.local/bin/ghidra-mcp-bridge-win` uses.
+
+Default anchors are every in-module `FUN_1xxxxxxxx` named in `docs/*.md` or
+appearing as a `// ==== FUN_x ====` header in `analysis/*.c` - about 120
+functions, i.e. everything we have ever written about. Addresses outside
+`[0x140000000, 0x160000000)` are dropped, which is what keeps the dead
+CDLoot.asi names at `0x180000000` from becoming anchors. `--anchor <hex>`
+overrides the set and `--anchors-file <path>` reads a list of them (one hex
+address per line, `#` comments allowed) for when the set will not fit on a
+command line; `--dry-run` prints the resulting anchors without contacting
+Ghidra.
+
+Three things about the walk are deliberate:
+
+* **Hubs are recorded but not expanded.** A function with more than
+  `--max-callers-expand` callers (default 40), or whose caller list came back
+  truncated, contributes no new frontier. Without that, depth 2 finds
+  `operator new` and the walk becomes the whole 250k-function program.
+* **Tail calls are followed; intra-function jumps are not.** An unconditional
+  `JMP` whose target is outside the function's own body is a tail call or a
+  thunk stub and is walked through. This exe needs it: cold-code layout puts
+  5-byte stubs at `0x1417xxxxx` that jump to real bodies at `0x14cxxxxxx`, and
+  a CALL-only walk dead-ends at every one. In the first depth-2 tree, 16% of
+  functions had such a jump and 1254 distinct targets were missing entirely -
+  including 122 of the 149 `initStatic()` bodies in section 19's inventory.
+* **Indirect calls are not followed.** Only `CALL 0x...` targets are callees;
+  `CALL qword ptr [...]` names a slot, not a function.
+* **`--max-functions` is a hard cap** (default 1500) and the run says so when
+  it truncates a level. Depth 1 from the default anchors lands around 1500;
+  depth 2 does not, and is what `--max-functions` is for.
+* **Oversized "functions" are skipped.** Ghidra's auto-analysis glues runs of
+  unanalysed bytes into single entries: one here claims a body of
+  `14798013b - 15491057b`, 222 MB, 34.8 million disassembly lines and 14994
+  callees. Anything whose body spans more than `--max-body-bytes` (default
+  0x100000) gets a one-paragraph stub instead, and contributes no call edges -
+  its callee list is noise, not a call graph. This matters more than it sounds:
+  41 such entries once accounted for **9.9 GB of a 9.4 GB tree**, and their
+  bogus callee lists inflated the walk far more than any real code did.
+  `--max-section-bytes` (default 2 MiB) truncates an over-long decompilation or
+  disassembly as a backstop, saying so in-band.
+
+The tree is a snapshot of **one game build** (the build id is recorded in
+`graph.json` and `evidence/README.md`, read from the Steam appmanifest). It is
+gitignored like `analysis/`, and it is regenerated, never edited. After a game
+update, re-export to a second directory and diff: the functions whose
+decompilation moved are the candidate breakage list, which is a better starting
+point than re-deriving every signature by hand.
+
+Resumable - a function whose file already exists is not re-fetched, and its
+graph edges are read back from the metadata comment on the file's first line.
+`--force` re-fetches. Roughly one second per function at `--jobs 6`.
+
+`index.tsv` and `graph.json` are rebuilt from **every file in the tree**, not
+just the functions the current run walked, so a targeted top-up
+(`--anchor`/`--anchors-file`) does not overwrite them with its handful of rows.
+That also makes `--anchor <anything> --depth 0` a cheap way to regenerate both
+without contacting Ghidra at all.
+
 ### `logo-to-rgba.py` (`just logo`)
 Rasterises `assets/logo.svg` into `desert-overlay/src/logo.rgba`, the raw RGBA
 blob the overlay embeds with `include_bytes!`. Output is deterministic, and the

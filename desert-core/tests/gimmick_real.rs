@@ -16,19 +16,22 @@ const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/Cri
 const TABLE: &str = "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin";
 const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../desert-gatherer-dmm");
 
-/// RVA of `FUN_1403856b0` on Steam build 25116796.
-const LOADER_RVA: usize = 0x3856b0;
+/// RVA of the `gimmickinfo` record loader on Steam build 25246367
+/// (`FUN_1403856b0` on the build before it; the function is the same, the
+/// address is not).
+const LOADER_RVA: usize = 0x385cd0;
 
-/// RVAs of the two `*InfoManager` global pointer slots on Steam build 25116796.
+/// RVAs of the two `*InfoManager` global pointer slots on Steam build 25246367.
 /// These are the oracle for `gimmick::resolve_manager_slot`, and are the values
 /// `desert-looter/src/tables.rs` used to carry as hard-coded constants before
 /// the slots were resolved by content at startup.
-const ITEM_INFO_SLOT_RVA: usize = 0x6C2A058;
-const GIMMICK_INFO_SLOT_RVA: usize = 0x6C2A078;
+const ITEM_INFO_SLOT_RVA: usize = 0x6C2E2E8;
+const GIMMICK_INFO_SLOT_RVA: usize = 0x6C2E308;
 
-/// RVA of the `mov r8d,1` inside `FUN_142a73c20` on Steam build 25116796
-/// (`docs/reference-internals.md` section 17.4).
-const CATCH_RVA: usize = 0x2a74151;
+/// RVA of the `mov r8d,1` inside the catch-count function on Steam build
+/// 25246367 (`FUN_142a73c20` on the build before it;
+/// `docs/reference-internals.md` section 17.4).
+const CATCH_RVA: usize = 0x2a75891;
 
 #[test]
 #[ignore]
@@ -262,4 +265,190 @@ fn multiply_reproduces_the_dmm_pack_edits() {
     assert_eq!(grand_offsets, 1174, "pack should carry 1174 scalar patches");
     assert_eq!(grand_offsets / 2, 587, "587 output blocks");
     assert_eq!(starts.len(), 275, "275 gather records");
+}
+
+// ---------------------------------------------------------------------------
+// The accessor census and the tables resolved through it.
+//
+// These three touch `desert_core::gimmick` and nothing else - two of the
+// tables they name are `desert-dispatch`'s, none of them is the looter's - so
+// they live here rather than in `desert-looter/tests/game_exe.rs`, where they
+// were first written. `just test-game` runs both files.
+// ---------------------------------------------------------------------------
+
+/// The two tables that are reachable only through the **indirect** accessor
+/// template (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
+/// `gimmick::resolve_manager_slot_based`. RVAs from the offline census in
+/// `docs/findings-dispatch-2026-09-10.md`; `FactionNode` is the one
+/// `desert-dispatch` walks.
+const PTR_TEMPLATE_SLOTS: &[(&[u8], usize)] =
+    &[(gimmick::FACTION_NODE_TABLE, 0x6C30308), (b"Skill", 0x6C2E330)];
+
+#[test]
+#[ignore]
+fn indirect_template_tables_resolve_uniquely() {
+    let file = std::fs::read(EXE).expect("game exe present");
+    let h = pe::parse(&file).expect("PE32+ headers");
+    let img = pe::file_to_image(&file).expect("image layout");
+    let base = h.image_base as usize;
+
+    for (table, want) in PTR_TEMPLATE_SLOTS {
+        let name = String::from_utf8_lossy(table);
+        match gimmick::resolve_manager_slot_based(&img, base, table) {
+            Ok(slot) => {
+                println!("{name:<12} manager slot = +0x{slot:X}");
+                assert_eq!(slot, *want, "{name}");
+            }
+            Err(e) => panic!("{name}: {e}"),
+        }
+        // These two are exactly the ones the direct-template resolver cannot
+        // see; if that ever changes, the second template stopped being needed.
+        assert!(
+            gimmick::resolve_manager_slot(&img, table).is_err(),
+            "{name} is reachable through the direct template after all"
+        );
+    }
+
+    // And the new resolver is a superset: every table the old one finds, it
+    // finds too, with the same answer.
+    for table in [gimmick::GIMMICK_TABLE, gimmick::ITEM_TABLE] {
+        assert_eq!(
+            gimmick::resolve_manager_slot_based(&img, base, table),
+            gimmick::resolve_manager_slot(&img, table),
+            "{}",
+            String::from_utf8_lossy(table)
+        );
+    }
+}
+
+/// The accessor template in all four encodings the compiler emitted, with the
+/// copy count each has in build 25246367. `desert_core::gimmick` carries the
+/// same four privately; they are spelled out again here on purpose, so this
+/// test is an oracle for that scan rather than a mirror of it.
+///
+/// `45 33 C9` and `45 31 C9` are the same `xor r9d,r9d`; `lea r8,[rip+name]`
+/// names the table directly and `mov r8,[rip+cell]` through a pointer cell
+/// holding the name's VA.
+const ACCESSOR_ENCODINGS: &[(&str, &str, usize)] = &[
+    ("45 33 C9 + lea r8", "45 33 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8", 98),
+    ("45 33 C9 + mov r8", "45 33 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8", 13),
+    ("45 31 C9 + lea r8", "45 31 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8", 31),
+    ("45 31 C9 + mov r8", "45 31 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10 48 8D 4C 24 70 E8", 7),
+];
+
+/// The number of static-info types `docs/reference-internals.md` section 19.2
+/// enumerates. The four encodings above sum to exactly this, which is what makes
+/// the census provably complete: one accessor per type, no fifth encoding left
+/// to find. Scanning only the first of the four reached 111 of them.
+const STATIC_INFO_TYPES: usize = 149;
+
+/// The call to the record loader, in its two encodings of `mov rcx,rbx`.
+///
+/// Unlike [`ACCESSOR_ENCODINGS`], these two do **not** have to sum to
+/// [`STATIC_INFO_TYPES`] and never did: the template only fixes which arguments
+/// reach the call, not how the compiler schedules the instructions that set
+/// them up, so a copy whose run-up was ordered differently is simply not
+/// matched. 118 of the 149 accessors are covered here on build 25246367 and 120
+/// were on 25116796 — the `48 89 D9` encoding lost two sites, all of its
+/// remaining 28 living in the cold-code region above `+0x8000000`.
+///
+/// **That drop was investigated, not waved through** (2026-09-11, build
+/// 25246367). It is instruction scheduling, not a deleted code path: all 149
+/// accessors still make an `E8` call to a function opening with
+/// [`gimmick::LOADER_PROLOGUE`] within `B_WINDOW` of the accessor site, the 31
+/// uncovered ones included. Nothing here is load-bearing for the gatherer
+/// either — `docs/reference-internals.md` section 19.6 rests the hook's
+/// completeness on the record deserializer having exactly **one** reference in
+/// the whole image, not on how many accessors this byte template happens to
+/// match, and that single reference still holds on this build (one `call` at
+/// `+0x385D9F`, inside the hooked loader), as does the count of nine code
+/// references to the `"gimmickinfo"` string. So this stays what it always was:
+/// a canary that the accessor template still looks the way the resolvers
+/// assume, whose number moves when the compiler reshuffles and means something
+/// only when it moves *a lot*.
+const LOADER_CALL_ENCODINGS: &[(&str, &str, usize)] = &[
+    ("48 8B CB", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8", 90),
+    ("48 89 D9", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 89 D9 E8", 28),
+];
+
+/// `(table, manager slot RVA, record loader RVA)` for every table the workspace
+/// resolves by name, one per accessor encoding and then some. `dropsetinfo` is
+/// the dispatch-mission reward table and a `45 31 C9 + lea` copy — the encoding
+/// the scan was blind to before 2026-09-10.
+const TABLES: &[(&[u8], usize, usize)] = &[
+    (gimmick::GIMMICK_TABLE, 0x6C2E308, 0x385CD0),
+    (gimmick::ITEM_TABLE, 0x6C2E2E8, 0x385100),
+    (gimmick::FACTION_NODE_TABLE, 0x6C30308, 0x3C1F30),
+    (b"Skill", 0x6C2E330, 0x3871C0),
+    (gimmick::DROPSET_TABLE, 0x6C328A8, 0x437E70),
+];
+
+#[test]
+#[ignore]
+fn accessor_census_covers_every_static_info_type() {
+    let file = std::fs::read(EXE).expect("game exe present");
+    let img = pe::file_to_image(&file).expect("image layout");
+
+    let mut total = 0usize;
+    for (label, text, want) in ACCESSOR_ENCODINGS {
+        let p = Pattern::parse(text).expect("accessor pattern");
+        let n = p.find_all(&img, 4096).len();
+        println!("{label:<20} = {n:3} copies");
+        assert_eq!(n, *want, "{label}");
+        total += n;
+    }
+    assert_eq!(total, STATIC_INFO_TYPES, "the census no longer covers every type");
+
+    let mut calls = 0usize;
+    for (label, text, want) in LOADER_CALL_ENCODINGS {
+        let p = Pattern::parse(text).expect("loader-call pattern");
+        let n = p.find_all(&img, 4096).len();
+        println!("loader call {label:<8} = {n:3} sites");
+        assert_eq!(n, *want, "{label}");
+        calls += n;
+    }
+    assert_eq!(calls, 118);
+}
+
+#[test]
+#[ignore]
+fn every_named_table_resolves_to_its_documented_slot_and_loader() {
+    let file = std::fs::read(EXE).expect("game exe present");
+    let h = pe::parse(&file).expect("PE32+ headers");
+    let img = pe::file_to_image(&file).expect("image layout");
+    let base = h.image_base as usize;
+
+    // The name that reaches the reward table occurs once, which is what lets an
+    // accessor be identified by it at all.
+    let once = img.windows(12).filter(|w| *w == b"dropsetinfo\0").count();
+    assert_eq!(once, 1, "\"dropsetinfo\" is no longer a unique string");
+
+    for (table, slot, loader) in TABLES {
+        let name = String::from_utf8_lossy(table);
+        assert_eq!(
+            gimmick::resolve_manager_slot_based(&img, base, table),
+            Ok(*slot),
+            "{name} manager slot"
+        );
+        assert_eq!(
+            gimmick::resolve_record_loader_for(&img, base, table),
+            Ok(base + *loader),
+            "{name} record loader"
+        );
+        // Whatever it resolved to is a loader: same prologue every time, which
+        // is also the check the gatherer makes before patching one.
+        assert_eq!(
+            img.get(*loader..*loader + gimmick::LOADER_STOLEN),
+            Some(&gimmick::LOADER_PROLOGUE[..]),
+            "{name} loader prologue"
+        );
+        println!("{name:<12} slot = +0x{slot:X}  loader = +0x{loader:X}");
+    }
+
+    // The gatherer's table-less entry point is unchanged by the widening.
+    assert_eq!(gimmick::resolve_record_loader(&img, base), Ok(base + 0x385CD0));
+    // And so are the two slots Desert Looter resolves without an image base.
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::GIMMICK_TABLE), Ok(0x6C2E308));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::ITEM_TABLE), Ok(0x6C2E2E8));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x6C328A8));
 }

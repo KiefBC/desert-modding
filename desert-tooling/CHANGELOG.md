@@ -9,6 +9,101 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.4.0] - 2026-09-11
+
+Game build 25116796.
+
+### Added
+
+- **A fourth subsystem, `[Dispatch]`.** It watches the dispatch missions ("faction
+  operations") the game parses, and the reward rows those missions name in the `dropsetinfo`
+  table, logs what is in them tagged `[dispatch]`, and edits five of their fields - four
+  settings over five fields, because the reward multiplier writes both ends of a min/max
+  pair - to whatever the ini asks for. It installs **no hook** and patches **no game code**:
+  everything runs on its own thread over records the game has already parsed.
+
+  It is on by default and costs a pointer read per record every two seconds. Set
+  `[Dispatch] Enabled=0` before launch and nothing in the game is read at all - and that holds
+  for the whole session: turning it back on mid-game, from the ini or from the menu, does nothing
+  until the next launch, because there is no pass left to wake up. (`Enabled=0` *while the game
+  runs* is the revert, and that does work both ways.) `LogRecords`, `MaxLines`, `Debug`,
+  `DumpRaw` and `DumpRewards` are the diagnostic half; `MaxLines` caps every line one pass
+  writes, raw hex dumps included, and a pass logs only the missions and reward rows it has not
+  logged before.
+
+- **Four settings that change dispatch missions**, all shipping at vanilla so a fresh install
+  changes nothing until you ask:
+
+  - `Speed` (1..100) divides every mission's duration. Vanilla runs 2h to 96h; `Speed=4` turns
+    a 16h mission into a 4h one. No mission ever goes below 6 minutes. It reaches missions
+    already under way: the game compares a mission's progress against the duration in the table
+    on every tick, so lowering the duration can finish a mission that is already out.
+  - `Rewards` (1..100) multiplies how much of each item a mission pays. Both ends of every
+    reward range are scaled together, so 2-3 becomes 6-9 at x3, and only the 219 reward rows
+    dispatch missions actually name are touched - never the game's wider drop table. It is not
+    subject to the game's 10x reward clamp, which sits further downstream. It applies to rewards
+    already waiting to be paid, because the game reads the amounts out of the table at the moment
+    the items land.
+  - `NoSkillRequirement` clears the skill a mission demands of an assigned worker, on the 147
+    missions that demand one. The bonus a mission pays for a *skilled* worker is a different
+    field two bytes away and is deliberately left alone.
+  - `AnyOperatorCount` lets every mission start with a single worker. 693 of the game's 936
+    missions already ask for one, so this changes the other 243.
+  - `DryRun` logs every change that would be made and writes nothing, exactly like the
+    `[Gatherer]` key of the same name.
+
+  A change takes effect within about a second. `NoSkillRequirement` and `AnyOperatorCount` are
+  checked when a mission *starts*, so a mission already out keeps running under the rules it
+  started with - except a **repeating** mission, which re-checks on every restart and so stops
+  with an error message at its next restart once the plugin is gone.
+
+  Turning a setting back - or `Enabled=0` while the game runs - puts every mission and reward
+  row back to the value it had before the plugin touched it: each one is remembered the first
+  time the pass sees it and never re-derived, so applying twice is applying once and reverting
+  is exact.
+
+- One line per mission carries its node, key, group, duration in tenths of an hour and in hours,
+  operator counts, combat power, step count, the skill it **requires**, the skill it pays a
+  **bonus** for, the reward rows it names and its condition keys. The pass ends with the counts,
+  a condition-key histogram, a skill census and a verdict saying whether the offsets still look
+  like the right ones at all.
+
+### Fixed
+
+- The static-info accessor scan in `desert-core` saw only one of the four encodings the compiler
+  emitted for the same template, reaching 111 of the game's 149 tables. All four are scanned now,
+  which is what makes `FactionNode` and `dropsetinfo` reachable by content rather than by
+  address.
+
+### Note on saves
+
+- **The `[Dispatch]` settings are not saved into your game.** The mission and reward tables are
+  read from the game's own files every launch, so setting everything back to 1 and 0 restores
+  vanilla, and removing the plugin leaves nothing to undo. `Rewards` banks nothing either: a
+  reward still waiting on you is worked out from the table at the moment it lands, so set it back
+  to 1, or remove the plugin, and what is waiting pays vanilla.
+
+- **Nor, on this game build, does anything else.** The game has code to bank a single percentage
+  figure for a finished mission in the save, and part of that figure is a bonus for sending more
+  workers than the mission needed - which is the one thing `AnyOperatorCount` could have
+  inflated, since it tells the game every mission needs only one worker. **Both of the switches
+  that code sits behind are off on build 25116796**, measured in game: no mission defers a
+  payout, and the figure ignores the worker count entirely. So nothing any `[Dispatch]` setting
+  does reaches your save on this build.
+
+  The plugin reads both switches at startup and prints them on the `[banking]` line of
+  `DesertTooling.log`. **That line is the check after a game update**, because these are the kind
+  of switch an update can flip, and it is the only thing that would tell you.
+
+  The warning is kept rather than dropped because the code path is real. If a future build turned
+  those switches on, finishing a mission with `AnyOperatorCount=1` would bank a bigger figure
+  than you earned, on the 142 of the game's 936 missions that can repeat, and it would pay out
+  later even with the plugin gone - bounded to the missions finished with the setting on,
+  clearing itself as those rewards landed, and not a corrupted save. `Speed` and
+  `NoSkillRequirement` are nowhere in that figure and leave nothing behind either way.
+  `DesertTooling.ini`, both READMEs and the in-game menu all say so, and
+  `docs/reference-internals.md` section 20.18 carries the measurement and its evidence level.
+
 ## [0.3.0] - 2026-09-08
 
 Game build 25116796.

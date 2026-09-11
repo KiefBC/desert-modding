@@ -18,10 +18,10 @@ and in the shipping crate's own README.md, additionally:
   3. the `**Version <version>**` line near the top -> that crate's version
 
 Only one crate ships now: desert-tooling, which builds DesertTooling.asi.
-desert-looter, desert-gatherer and desert-overlay are internal libraries linked
-into it - versioned for their own sake, never tagged, no README of their own -
-so they are in CRATES (their numbers still appear in the docs' tables) but not
-in SHIPPING.
+desert-looter, desert-gatherer, desert-overlay and desert-dispatch are internal
+libraries linked into it - versioned for their own sake, never tagged, no README
+of their own - so they are in CRATES (their numbers still appear in the docs'
+tables) but not in SHIPPING.
 
 The DMM pack is not a crate and has its own source of truth, dmm_pack.json,
 which tools/release-notes.py reads for the `desert-gatherer-dmm-v<x.y>` tag.
@@ -51,6 +51,7 @@ CRATES = (
     "desert-looter",
     "desert-gatherer",
     "desert-overlay",
+    "desert-dispatch",
     "desert-core",
 )
 DOCS = ("README.md", "VERSIONING.md")

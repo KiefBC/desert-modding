@@ -1,18 +1,19 @@
 //! Desert Tooling - the one ASI plugin this workspace ships.
 //!
 //! It holds no mod policy at all. Everything the player sees is in one of the
-//! three subsystem crates, each an rlib linked in here:
+//! four subsystem crates, each an rlib linked in here:
 //!
 //! | subsystem | crate | ini section | log tag |
 //! | --- | --- | --- | --- |
 //! | auto-loot | `desert-looter` | `[Looter]` | `[looter]` |
 //! | gathering yields | `desert-gatherer` | `[Gatherer]` | `[gatherer]` |
 //! | the in-game menu | `desert-overlay` | `[Overlay]` | `[overlay]` |
+//! | dispatch missions | `desert-dispatch` | `[Dispatch]` | `[dispatch]` |
 //!
 //! What is left here is the plumbing that used to exist three times over, once
 //! per shipped `.asi`: the single `DllMain`, the host-exe gate, `log::init` for
 //! the one shared `DesertTooling.log`, seeding the one shared
-//! `DesertTooling.ini` from all three schemas, the guard against a pre-merge
+//! `DesertTooling.ini` from every schema, the guard against a pre-merge
 //! `.asi` still being loaded beside this one, and one thread per subsystem.
 //!
 //! The workspace's rules are hardest here, because this is the file the loader
@@ -42,15 +43,15 @@ pub const INI_NAME: &str = "DesertTooling.ini";
 
 /// Only this process is the game. The ASI loader (`winmm.dll`) is also pulled
 /// into helper processes started from `bin64` - `crashpad_handler.exe` - and
-/// each of those would otherwise run its own copy of all three subsystems.
+/// each of those would otherwise run its own copy of every subsystem.
 pub const GAME_EXE: &str = "CrimsonDesert.exe";
 
 /// Every subsystem's settings, in the order the menu shows them and the order
-/// the seeded ini writes them: Looter, Gatherer, Overlay.
+/// the seeded ini writes them: Looter, Gatherer, Overlay, Dispatch.
 ///
-/// This is the only place the three are named together. Adding a fourth
-/// subsystem means adding its `config::schema()` here and starting its thread
-/// in `entry::main_thread`; nothing in `desert-overlay` changes.
+/// This is the only place they are named together. Adding a subsystem means
+/// adding its `config::schema()` here and starting its thread in
+/// `entry::main_thread`; nothing in `desert-overlay` changes.
 ///
 /// Always compiled, not `#[cfg(windows)]`: it is pure data, and the test at the
 /// bottom of this file reads it on the native target to check the shipped
@@ -60,6 +61,7 @@ pub fn sections() -> Vec<desert_core::schema::Section> {
         desert_looter::config::schema(),
         desert_gatherer::config::schema(),
         desert_overlay::config::schema(),
+        desert_dispatch::config::schema(),
     ]
 }
 
@@ -220,12 +222,13 @@ mod entry {
         // process's own PEB; it is sound to call from any thread.
         let pid = unsafe { GetCurrentProcessId() };
         crate::log!(
-            "Desert Tooling {} loaded, pid {} (looter {}, gatherer {}, overlay {})",
+            "Desert Tooling {} loaded, pid {} (looter {}, gatherer {}, overlay {}, dispatch {})",
             crate::VERSION,
             pid,
             desert_looter::VERSION,
             desert_gatherer::VERSION,
-            desert_overlay::VERSION
+            desert_overlay::VERSION,
+            desert_dispatch::VERSION
         );
 
         // Before anything is installed, and before any subsystem thread exists.
@@ -264,6 +267,13 @@ mod entry {
         // ahead of the gatherer on one shared thread.
         spawn("gatherer", desert_gatherer::start);
         spawn("looter", desert_looter::start);
+        // Hookless: it patches no code and installs no trampoline, so where it
+        // sits in this list cannot matter to anything - it has no prologue to
+        // reach before a game thread does. It waits on the FactionNode table
+        // appearing rather than on the clock, and then watches it for the rest
+        // of the session, editing the parsed mission and reward records to
+        // whatever [Dispatch] asks for as they turn up.
+        spawn("dispatch", desert_dispatch::start);
         let hmodule = ModuleHandle(param);
         spawn("overlay", move || {
             // The overlay is handed every section, its own included, and
@@ -271,8 +281,8 @@ mod entry {
             desert_overlay::start(hmodule.get(), sections);
         });
 
-        // Nothing is joined. The three threads own the rest of the process's
-        // life (two of them never return at all), an `.asi` is never unloaded,
+        // Nothing is joined. The four threads own the rest of the process's
+        // life (three of them never return at all), an `.asi` is never unloaded,
         // so their code cannot go away underneath them, and this thread has
         // nothing left to do.
         0
@@ -345,7 +355,7 @@ mod tests {
     /// it repeatedly caught a default changed in `config.rs` and not in the ini
     /// beside it. There is one shipped file now, so the test belongs to the
     /// crate that ships it - and it is stronger here, because the same text has
-    /// to satisfy three independent parsers at once. An `Enabled` that landed
+    /// to satisfy four independent parsers at once. An `Enabled` that landed
     /// under the wrong `[Section]` fails it twice over.
     #[test]
     fn the_shipped_ini_is_every_subsystem_at_its_defaults() {
@@ -360,6 +370,10 @@ mod tests {
         let (overlay, warnings) = desert_overlay::config::parse(SHIPPED_INI);
         assert!(warnings.is_empty(), "[Overlay] warnings: {warnings:?}");
         assert_eq!(overlay, desert_overlay::config::Config::default());
+
+        let (dispatch, warnings) = desert_dispatch::config::parse(SHIPPED_INI);
+        assert!(warnings.is_empty(), "[Dispatch] warnings: {warnings:?}");
+        assert_eq!(dispatch, desert_dispatch::config::Config::default());
     }
 
     /// The template has to actually carry a header and every key for each
@@ -396,7 +410,7 @@ mod tests {
     #[test]
     fn the_sections_are_in_menu_order() {
         let names: Vec<String> = sections().into_iter().map(|s| s.ini_section).collect();
-        assert_eq!(names, ["Looter", "Gatherer", "Overlay"]);
+        assert_eq!(names, ["Looter", "Gatherer", "Overlay", "Dispatch"]);
         let orders: Vec<i32> = sections().iter().map(|s| s.order).collect();
         assert!(orders.windows(2).all(|w| w[0] < w[1]), "orders: {orders:?}");
     }

@@ -54,9 +54,12 @@ pub fn stub_bytes(target: usize, stolen: &[u8], callback: usize) -> Vec<u8> {
 /// position-independent instructions that followed the replaced one - and
 /// `resume` is the address just past the last of them.
 ///
-/// For Desert Gatherer's catch-count hook on build 25116796 the site is
-/// `0x142a74151` (`docs/reference-internals.md` section 17): 13 stolen bytes,
-/// `mov r8d,1` replaced and `lea rdx,[rbp+0x1d0]` replayed.
+/// For Desert Gatherer's catch-count hook the site is `0x142a75891` on build
+/// 25246367 (`docs/reference-internals.md` section 17): 13 stolen bytes,
+/// `mov r8d,1` replaced and `lea rdx,[rbp+0x1d0]` replayed. The address is
+/// there to be read beside a disassembly - the hook finds the site by its
+/// bytes (`desert_core::creature::CATCH_SITE`), which is why it survived that
+/// address moving 0x1740 in the update from 25116796.
 pub fn count_hook_stub(callback: usize, resume: usize, replay: &[u8]) -> Vec<u8> {
     let mut s = Vec::with_capacity(0x26 + replay.len());
     s.extend_from_slice(&[0x48, 0x83, 0xEC, 0x20]); // sub rsp,0x20

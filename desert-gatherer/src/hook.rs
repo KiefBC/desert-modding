@@ -1,9 +1,9 @@
 //! The gimmickinfo record-loader hook: multiply the yield scalars in the raw
 //! table bytes just before the game parses each record.
 //!
-//! ## The game side (build 25116796, from Ghidra)
+//! ## The game side (build 25246367, from Ghidra)
 //!
-//! `FUN_1403856b0(mgr, status, idx, stream)` — RVA resolved at runtime by
+//! `FUN_140385cd0(mgr, status, idx, stream)` — RVA resolved at runtime by
 //! `desert_core::gimmick::resolve_record_loader`, never hard-coded. Two
 //! callers reach it (the per-record accessor and a load-everything path) and
 //! both only call it when the record is *not* loaded yet
@@ -74,6 +74,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering}
 
 use desert_core::collect::{self, Family};
 use desert_core::gimmick::{self, Edit};
+use desert_core::manager;
 use desert_core::safe;
 
 use crate::config::LIVE;
@@ -187,7 +188,12 @@ fn describe(edits: &[Edit]) -> String {
 /// failed, an index out of range, a record already loaded, or an offsets table
 /// that disagrees with the stream cursor.
 fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>)> {
-    let count = safe::read::<u32>(mgr + 0x08)? as usize;
+    // The offsets are `desert_core::manager`'s, the reads are not: this function
+    // must read the count *before* the first-call diagnostic below and the
+    // records array *after* it, and it wants the `records[idx] == 0` reading
+    // rather than the object, so `manager::view_of` and `manager::slot` would
+    // both change what happens here. Only the two strides are shared.
+    let count = safe::read::<u32>(mgr + manager::MGR_COUNT)? as usize;
     if !FIRST_CALL_LOGGED.swap(true, Ordering::Relaxed) {
         let size = safe::read::<u32>(stream + 0x18).unwrap_or(0);
         let cursor = safe::read::<u32>(stream + 0x1C).unwrap_or(0);
@@ -206,7 +212,7 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     // The two callers only reach the loader when the slot is null. If it is
     // not, the game will not parse anything and a patch would be pointless
     // (and, since the buffer may hold a different record's bytes, wrong).
-    let records = safe::read_ptr(mgr + 0x58)?;
+    let records = safe::read_ptr(mgr + manager::MGR_RECORDS)?;
     if safe::read::<usize>(records + idx * 8)? != 0 {
         return None;
     }
@@ -255,7 +261,7 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     Some((buf + cursor, bytes))
 }
 
-/// Installed on `FUN_1403856b0`. Runs before the deserializer, on a game thread.
+/// Installed on `FUN_140385cd0`. Runs before the deserializer, on a game thread.
 ///
 /// # Safety
 /// Called from the trampoline stub with the hooked function's first four
@@ -381,8 +387,11 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// paths must produce the same yields or a session's numbers would depend on
 /// when the ini was last edited.
 mod parsed {
-    pub const MGR_COUNT: usize = 0x08;
-    pub const MGR_RECORDS: usize = 0x58;
+    // The manager pair itself is not here: `mgr+0x08` and `mgr+0x58` are
+    // `desert_core::manager`'s MGR_COUNT and MGR_RECORDS, which
+    // `desert_dispatch` reads the faction-node and dropset managers through as
+    // well. One definition, so a stride cannot be right in one subsystem and
+    // wrong in the other.
     pub const REC_KEY: usize = 0x08;
     pub const REC_LIST: usize = 0x278;
     pub const REC_COUNT: usize = 0x280;
@@ -524,9 +533,12 @@ impl Outcome {
 /// through this before it is used as a base, so none of the `base + offset`
 /// expressions there can overflow — which `safe::read` would refuse anyway,
 /// but only after the addition had already happened.
-fn plausible(p: usize) -> bool {
-    (0x10000..0x7FFF_FFFF_0000).contains(&p)
-}
+///
+/// `desert_core::manager::plausible` under the name this file has always used.
+/// It was byte-identical to `desert_dispatch`'s copy, and a bound that differed
+/// between two subsystems walking the same managers would be a bug in whichever
+/// one was looser.
+use desert_core::manager::plausible;
 
 /// The multiplier a remembered record should be at right now: its family's
 /// live value, or 1 when `Enabled=0` or the key is not a gather record after
@@ -572,19 +584,17 @@ pub fn reapply() -> Outcome {
     let dry = LIVE.dry_run();
     let debug = LIVE.debug();
 
-    let (Some(count), Some(records)) =
-        (safe::read::<u32>(mgr + MGR_COUNT), safe::read_ptr(mgr + MGR_RECORDS))
-    else {
+    // `manager::view_of` is the same three steps this block used to spell out:
+    // read the `u32` count at MGR_COUNT, read the array pointer at MGR_RECORDS,
+    // and require it to be `plausible` - so `records + idx * 8`, with a `u16`
+    // index adding at most 0x7FFF8, cannot wrap. Every failure lands on the same
+    // `manager_unreadable` flag it did before. The one difference is that a
+    // count that will not read no longer attempts the array read beside it,
+    // which nothing can observe: `safe::read` has no effect but its answer.
+    let Some((count, records)) = manager::view_of(mgr) else {
         out.manager_unreadable = true;
         return out;
     };
-    // A remembered index is a `u16`, so `records + idx * 8` adds at most
-    // 0x7FFF8 to a pointer `plausible` has already capped well below the top
-    // of the address space: the arithmetic below cannot wrap.
-    if !plausible(records) {
-        out.manager_unreadable = true;
-        return out;
-    }
     let count = count as usize;
 
     for rec in remember::snapshot() {
@@ -595,23 +605,25 @@ pub fn reapply() -> Outcome {
             out.skip_index += 1;
             continue;
         }
-        let Some(obj) = safe::read::<usize>(records + idx * 8) else {
-            out.skipped += 1;
-            out.skip_read += 1;
-            continue;
+        // The same three readings this block used to spell out, in the same
+        // order - read, null, `plausible` - and charged to the same two
+        // counters. `manager::slot` is where `desert_dispatch` walks its two
+        // managers through as well.
+        let obj = match manager::slot(records, idx) {
+            manager::Slot::Loaded(p) => p,
+            manager::Slot::Empty => {
+                // The slot was never filled: the lazy loader will fill it
+                // through the hook, which applies the current multiplier itself.
+                out.skipped += 1;
+                out.skip_unloaded += 1;
+                continue;
+            }
+            manager::Slot::Unreadable => {
+                out.skipped += 1;
+                out.skip_read += 1;
+                continue;
+            }
         };
-        if obj == 0 {
-            // The slot was never filled: the lazy loader will fill it through
-            // the hook, which applies the current multiplier itself.
-            out.skipped += 1;
-            out.skip_unloaded += 1;
-            continue;
-        }
-        if !plausible(obj) {
-            out.skipped += 1;
-            out.skip_read += 1;
-            continue;
-        }
         match safe::read::<u32>(obj + REC_KEY) {
             Some(k) if k == rec.key => {}
             Some(_) => {
@@ -703,6 +715,13 @@ pub fn reapply() -> Outcome {
                 // Both writes are attempted: the pair was just read, so a
                 // refusal here means the page went away between the two, and
                 // half a block is still better reported than retried.
+                //
+                // `desert_dispatch::apply` counts its own min/max pair the same
+                // way (`usize::from(write(..)) + ..`, then `ok < 2`) and the
+                // idiom is deliberately not shared: that one is *ordered* by
+                // `node::amount_write_order` and stops on the first refusal,
+                // this one is unordered and attempts both, so a helper would
+                // take the difference as a parameter to save two lines.
                 let ok = usize::from(safe::write(block + BLOCK_MIN, want_min))
                     + usize::from(safe::write(block + BLOCK_MAX, want_max));
                 if ok < 2 {

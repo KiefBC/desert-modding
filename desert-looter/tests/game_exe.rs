@@ -1,5 +1,9 @@
 //! Runs only on request: `cargo test --target x86_64-unknown-linux-gnu -- --ignored`
 //! Needs the Steam install mounted at the path below.
+//!
+//! Only the looter's own signatures live here. The static-info accessor census
+//! and the tables resolved through it moved to `desert-core/tests/gimmick_real.rs`,
+//! which is where the code they test lives; `just test-game` runs both files.
 
 use desert_looter::pattern::{Found, Pattern};
 use desert_looter::{pe, rtti};
