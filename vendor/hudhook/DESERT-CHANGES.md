@@ -89,6 +89,9 @@ an empty `[workspace]` table added so the package stays out of the Crimson Deser
   create-swapchain hooks there is no preceding `wait_idle`, so the drop is where the wait happens;
   it waits on the engine's own fence, signalled by the engine's own command queue, which the
   pending swapchain call does not block.
+  This note is about **deadlock** only - lock contention and fence waits. It is not an argument
+  that the `static mut` cells are safe to `take` from that thread, which is a separate question
+  and is item 10.
 - **WndProc.** `reset_pipeline` moves the render loop out with `Pipeline::take`, which calls
   `Pipeline::cleanup`: `SetWindowLongPtrW(hwnd, GWLP_WNDPROC, shared_state.wnd_proc)` restores the
   window's original procedure and the entry is removed from `PIPELINE_STATES`. `Pipeline` has no
@@ -206,3 +209,85 @@ nobody looks at through a transparency gradient.
 the game resizes and recreates its swapchain once at every launch, so the line appeared in every
 session and read as a problem. It is now `info`; the overlay's log shows warnings only for things
 that need a look.
+
+## 10. `hooks/dx12.rs`: the pipeline reset refuses to run off the present thread
+
+`PIPELINE` and `RENDER_LOOP` are `static mut` `OnceCell`s with no synchronization of their own.
+`reset_pipeline` `take()`s both; `take` needs `&mut` and replaces the whole cell, *including the
+internal state `get_or_try_init` is using*. So a reset arriving while `render` is inside
+`PIPELINE.get_or_try_init(|| init_pipeline())` is a data race on the cell itself - not a lost
+pipeline but undefined behaviour, most likely a thread stuck inside `Present` on an overwritten
+`Once`, or the `Box<dyn ImguiRenderLoop>` dropped out from under the pipeline being built.
+
+The window is real rather than theoretical: `init_pipeline` is slow (`Context::create`,
+`D3D12RenderEngine::new`, `Pipeline::new`), it is reached whenever `INIT_STATE` holds a swapchain
+and `PIPELINE` does not, and `holds_swap_chain_references` returns true in exactly that state - so
+the reset path is armed for the whole of it. With ReShade in the chain the game recreates its
+swapchain **once every launch** (item 9), so this path runs every session.
+
+Thirteen of the `reset_pipeline` call sites are inside `render` itself and cannot race it: same
+thread, sequentially. The five that can all funnel through `release_swap_chain_references` -
+`ResizeBuffers`, `ResizeBuffers1`, `SetSourceSize`, `CreateSwapChain`, `CreateSwapChainForHwnd` -
+so one guard covers them. `render` records its thread in `PRESENT_TID` on every frame, and
+`release_swap_chain_references` returns without resetting when it is called from another one,
+naming both thread ids at `error`.
+
+Why a refusal and not a lock: when the same-thread assumption holds the branch never fires and
+behaviour is byte-identical, so this costs nothing to be wrong about in the safe direction. When
+it does not hold, skipping means we still hold a swap-chain reference across the caller's call, so
+`ResizeBuffers` may return `E_INVALIDARG` and the overlay may not return until the next swapchain
+creation - a degraded overlay in a log somebody can read, instead of undefined behaviour. The
+first two of those five are near-universally on the render thread; `CreateSwapChainForHwnd` is the
+doubtful one, because it is a *factory* method and ReShade proxies the factory, so the call
+reaching this hook is ReShade's and is under no obligation to be on the game's present thread.
+
+The guard is checked before `holds_swap_chain_references`, which itself reads `PIPELINE`. It does
+not cover every off-thread access and is not meant to: `wait_for_pipeline_idle` (called from the
+resize hooks *before* this function) and `update_display_size_after_swap_chain_change` (called
+after the trampoline) both `PIPELINE.get()` on the same caller's thread. Those are reads racing a
+`take`, a lesser hazard than a `take` racing an `init`, and they are covered by the same
+assumption - so if the guard never fires, they were never off-thread either. That is the point of
+putting the detector on the one path that mutates.
+
+**Confirmed in game on build 25246367, 2026-09-11.** The guard fired twice in one session:
+
+```
+[ 144.931] [tid 7972] ERROR ResizeBuffers is on thread 7972 but Present is on thread 62096; skipping ...
+[ 163.623] [tid 7972] ERROR ResizeBuffers is on thread 7972 but Present is on thread 21792; skipping ...
+```
+
+So the premise in the **Deadlock** note above - that the thread calling `ResizeBuffers` or
+`CreateSwapChain` is the thread calling `Present` - is **false on this stack**. Every in-game
+resize was calling `PIPELINE.take()` from thread 7972 while another thread was inside `render`
+holding the `Mutex<Pipeline>` it was rendering through. That is a use-after-free of the pipeline,
+not merely a lost overlay, and it was happening on every resolution change.
+
+Two details from that capture are worth keeping:
+
+- **The present thread migrates.** It was 47508 at the first frame, 62096 at the first resize and
+  21792 at the second. `PRESENT_TID` is therefore stored on every frame rather than once; a
+  set-once cell would have compared against a stale thread and let the second reset through.
+- **The boot-time reset is a different case.** Before the first presented frame `PRESENT_TID` is
+  still `0`, the guard passes, and it is right to: `take` cannot race an `init` that has not
+  started. Every reset in the five sessions before this one was of that kind, which is why three
+  quiet launches proved nothing. The `debug!` on the way through distinguishes the two.
+
+**Refusing is sufficient, not just survivable.** After both refusals the log carries no
+`Render error`, no `E_INVALIDARG` and no warning, and the overlay menu opened and closed at
+150.2 s - between the two resizes - so it kept rendering throughout. The reason is structural
+rather than lucky: `validate_active_context` runs at the top of every `render`, on the present
+thread, and calls `reset_pipeline` itself on swap-chain replacement, device replacement, command
+queue mismatch, device removal and format or buffer-count change. Every reset that is actually
+needed still happens, on the thread that can safely perform it. What the off-thread call was doing
+was dropping our references *early*, before DXGI validates them - and per the **Not fixed** note
+above, the references hudhook holds are to the swapchain rather than to its back buffers, which is
+not what `ResizeBuffers` validates.
+
+So this is the fix and not a stopgap. Making `PIPELINE` and `RENDER_LOOP` real `Mutex<Option<_>>`
+cells would let the reset proceed from any thread, but it would have the resize thread block on a
+lock the present thread holds for a whole frame, against the deadlock reasoning in the note above,
+to perform a reset the present thread will perform itself on its next frame if it is warranted.
+The remaining off-thread reads (`wait_for_pipeline_idle` before this function,
+`update_display_size_after_swap_chain_change` after the trampoline) are now known to be genuinely
+off-thread and are the part of this that is still unsound; they race a `take` that, with this
+guard in place, only the present thread performs.
