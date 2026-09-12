@@ -142,7 +142,7 @@
 //! it on every startup and has no image base to hand at that point, and the two
 //! tables it asks about are both `lea` copies.
 
-use crate::pattern::Pattern;
+use crate::pattern::{self, Pattern};
 
 /// Bytes per resource-output block.
 pub const BLOCK: usize = 68;
@@ -530,6 +530,104 @@ fn accessor_name_rva(
     (rva < img.len()).then_some(rva)
 }
 
+/// Every accessor-template site in one image, one list per [`ACCESSORS`]
+/// encoding.
+///
+/// Finding a template copy depends on the pattern and the image and **nothing
+/// else** — the table name is consulted only afterwards, to pick which of the
+/// hits is the one wanted. So the walk that finds the 149 copies is the same
+/// walk whatever table is being resolved, and a caller wanting more than one
+/// has been paying for it more than once: `desert-dispatch` resolves two tables
+/// and so scanned the 363 MB image **eight** times at startup, 0.88 to 1.81 s
+/// of its boot measured over six launches on build 25246367.
+///
+/// Scan once, resolve as often as wanted. The sites are a few hundred `usize`s
+/// — the census is 98 + 13 + 31 + 7 — so keeping them costs nothing beside
+/// finding them again.
+///
+/// The image base is part of the **scan**, not of each lookup, because it
+/// decides how much there is to scan: without one the two indirect encodings
+/// are unreadable — their name is only reachable through a VA — so they are not
+/// searched at all and the walk carries two patterns rather than four. Desert
+/// Looter resolves `iteminfo` and `gimmickinfo` without a base and declines it
+/// for exactly that reason; making the base a per-lookup argument quietly
+/// doubled its startup scan, which is why it lives here.
+pub struct AccessorSites {
+    /// The image these came from, as `(pointer, length)`. Checked on every
+    /// lookup: a site is an offset into one particular image and means nothing
+    /// in another, and answering confidently with the wrong address is the one
+    /// failure this module exists to prevent.
+    origin: (usize, usize),
+    /// The base this was scanned for. `None` means the two indirect encodings
+    /// were never searched, so this cannot answer for a table only they name
+    /// and [`Self::record_loader`] has no base to return an address against.
+    image_base: Option<usize>,
+    /// Hit offsets per entry of [`ACCESSORS`], in that order, ascending. The
+    /// indirect encodings' lists are empty when [`Self::image_base`] is `None`,
+    /// and empty is also what a genuinely absent encoding looks like — which is
+    /// why the census is filtered by the same flag rather than by emptiness.
+    sites: [Vec<usize>; 4],
+}
+
+impl AccessorSites {
+    /// Find every template copy in `img` in **one** walk of it, carrying every
+    /// encoding a caller with this `image_base` could read — four patterns with
+    /// a base, two without.
+    ///
+    /// The only error is a malformed pattern constant, which is a bug in this
+    /// file rather than anything about the image.
+    pub fn scan(img: &[u8], image_base: Option<usize>) -> Result<Self, String> {
+        let mut sites: [Vec<usize>; 4] = Default::default();
+        let mut searched = Vec::new();
+        let mut pats = Vec::new();
+        for (i, t) in ACCESSORS.iter().enumerate() {
+            // Not searched at all without a base: a hit of an indirect encoding
+            // could never be matched to a name, so finding it is pure cost.
+            if t.indirect && image_base.is_none() {
+                continue;
+            }
+            pats.push(
+                Pattern::parse(t.pat)
+                    .ok_or_else(|| format!("the accessor pattern \"{}\" is malformed", t.label))?,
+            );
+            searched.push(i);
+        }
+        // "One pass per encoding" is now one pass for all of them: the walk is
+        // the cost here, not the patterns it carries.
+        for (i, hits) in searched.into_iter().zip(pattern::find_all_multi(&pats, img, MAX_SITES)) {
+            if let Some(out) = sites.get_mut(i) {
+                *out = hits;
+            }
+        }
+        Ok(Self { origin: (img.as_ptr() as usize, img.len()), image_base, sites })
+    }
+
+    /// Refuse to answer about an image these sites were not scanned from.
+    ///
+    /// Cheap, and the alternative is a plausible-looking RVA read out of the
+    /// wrong bytes. Callers hold an `AccessorSites` across several lookups by
+    /// design, so handing one the wrong slice is a mistake worth catching.
+    fn check(&self, img: &[u8]) -> Result<(), String> {
+        if self.origin == (img.as_ptr() as usize, img.len()) {
+            return Ok(());
+        }
+        Err(format!(
+            "these accessor sites were scanned from a different image ({} bytes at 0x{:X}, asked \
+             about {} bytes at 0x{:X})",
+            self.origin.1,
+            self.origin.0,
+            img.len(),
+            img.as_ptr() as usize
+        ))
+    }
+
+    /// [`resolve_manager_slot_based`] against sites already found — and
+    /// [`resolve_manager_slot`] when these were scanned without a base.
+    pub fn manager_slot(&self, img: &[u8], table: &[u8]) -> Result<usize, String> {
+        slot_before_accessor(img, named_accessor(self, img, table)?)
+    }
+}
+
 /// Every accessor site, across every encoding in [`ACCESSORS`], whose name
 /// resolves to the C string `table`, in ascending address order.
 ///
@@ -540,16 +638,15 @@ fn accessor_name_rva(
 /// a VA inside this image at all. Nothing here is an error, because the
 /// caller's "exactly one match" is the real check.
 fn accessors_naming(
+    sites: &AccessorSites,
     img: &[u8],
-    image_base: Option<usize>,
     table: &[u8],
 ) -> Result<Vec<usize>, String> {
+    sites.check(img)?;
     let mut named = Vec::new();
-    for t in ACCESSORS.iter().filter(|t| !t.indirect || image_base.is_some()) {
-        let pat = Pattern::parse(t.pat)
-            .ok_or_else(|| format!("the accessor pattern \"{}\" is malformed", t.label))?;
-        for a in pat.find_all(img, MAX_SITES) {
-            if accessor_name_rva(img, a, t, image_base)
+    for (t, hits) in ACCESSORS.iter().zip(sites.sites.iter()) {
+        for &a in hits {
+            if accessor_name_rva(img, a, t, sites.image_base)
                 .is_some_and(|rva| c_str_is(img, rva, table))
             {
                 named.push(a);
@@ -565,14 +662,12 @@ fn accessors_naming(
 /// `"45 33 C9 + lea r8=98, ..."`, for the resolvers' error messages. A count
 /// that has drifted from the census in the module docs is the first thing to
 /// look at after a game update.
-fn accessor_census(img: &[u8], image_base: Option<usize>) -> String {
+fn accessor_census(sites: &AccessorSites) -> String {
     ACCESSORS
         .iter()
-        .filter(|t| !t.indirect || image_base.is_some())
-        .map(|t| {
-            let n = Pattern::parse(t.pat).map_or(0, |p| p.find_all(img, MAX_SITES).len());
-            format!("{}={n}", t.label)
-        })
+        .zip(sites.sites.iter())
+        .filter(|(t, _)| !t.indirect || sites.image_base.is_some())
+        .map(|(t, hits)| format!("{}={}", t.label, hits.len()))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -583,20 +678,21 @@ fn accessor_census(img: &[u8], image_base: Option<usize>) -> String {
 /// what ties a table's name to its code and its data. `image_base` of `None`
 /// restricts the search to the two `lea` encodings — see [`accessors_naming`].
 fn named_accessor(
+    sites: &AccessorSites,
     img: &[u8],
-    image_base: Option<usize>,
     table: &[u8],
 ) -> Result<usize, String> {
-    let named = accessors_naming(img, image_base, table)?;
+    let named = accessors_naming(sites, img, table)?;
     // Which half of the census was in scope, so an error says what was and was
     // not searched rather than only how much of it there was.
-    let scope = if image_base.is_some() { "any encoding" } else { "the lea encodings" };
+    let scope =
+        if sites.image_base.is_some() { "any encoding" } else { "the lea encodings" };
     match named.as_slice() {
         [one] => Ok(*one),
         [] => Err(format!(
             "no accessor of {scope} names \"{}\" — template copies scanned: {}",
             String::from_utf8_lossy(table),
-            accessor_census(img, image_base)
+            accessor_census(sites)
         )),
         many => Err(format!(
             "{} accessors of {scope} name \"{}\", expected exactly one: {:x?}",
@@ -617,8 +713,12 @@ fn named_accessor(
 ///
 /// See the module docs for the `mov rbx,[rip+disp32]; cmp edi,[rbx+0x8]` shape
 /// this looks for in the [`SLOT_WINDOW`] bytes before the named accessor.
+/// Scans the image on every call. A caller resolving more than one table
+/// should hold an [`AccessorSites`] and call [`AccessorSites::manager_slot`]
+/// instead; this stays because Desert Looter resolves two tables from one
+/// startup and has not been changed over yet.
 pub fn resolve_manager_slot(img: &[u8], table: &[u8]) -> Result<usize, String> {
-    slot_before_accessor(img, named_accessor(img, None, table)?)
+    AccessorSites::scan(img, None)?.manager_slot(img, table)
 }
 
 /// The **RVA** of the global pointer slot holding the manager object for the
@@ -640,12 +740,15 @@ pub fn resolve_manager_slot(img: &[u8], table: &[u8]) -> Result<usize, String> {
 /// [`resolve_manager_slot`] is deliberately left alone rather than being made a
 /// wrapper with an extra argument: Desert Looter calls it on every startup and
 /// has no image base to hand at that point.
+/// Scans the image on every call — four passes, one per encoding. Resolving
+/// several tables this way scans it once per table, which is what
+/// [`AccessorSites`] exists to stop.
 pub fn resolve_manager_slot_based(
     img: &[u8],
     image_base: usize,
     table: &[u8],
 ) -> Result<usize, String> {
-    slot_before_accessor(img, named_accessor(img, Some(image_base), table)?)
+    AccessorSites::scan(img, Some(image_base))?.manager_slot(img, table)
 }
 
 /// The `mov rbx,[rip+disp32]; cmp edi,[rbx+0x8]` that precedes the accessor
@@ -735,52 +838,74 @@ pub fn resolve_record_loader_for(
     image_base: usize,
     table: &[u8],
 ) -> Result<usize, String> {
-    let a = named_accessor(img, Some(image_base), table)?;
+    AccessorSites::scan(img, Some(image_base))?.record_loader(img, image_base, table)
+}
 
-    // The call to the loader is the pattern-B site inside this accessor, in
-    // whichever of its two encodings this copy was assembled with. Both are
-    // searched: a site that matched one cannot also match the other, so a
-    // second hit is a real ambiguity and not a double count.
-    let win_end = a.saturating_add(B_WINDOW).min(img.len());
-    let window =
-        img.get(a..win_end).ok_or_else(|| format!("accessor at +0x{a:X} is past the image"))?;
-    let mut hits: Vec<(usize, usize)> = Vec::new();
-    for text in PAT_B {
-        let pat = Pattern::parse(text).ok_or("a loader-call pattern is malformed")?;
-        hits.extend(pat.find_all(window, 4).into_iter().map(|h| (a + h, pat.len())));
+impl AccessorSites {
+    /// [`resolve_record_loader_for`] against sites already found.
+    /// `image_base` here is the base the returned **address** is built against,
+    /// and is deliberately separate from the one [`Self::scan`] was given.
+    ///
+    /// The two are the same number in practice and not the same job. The scan's
+    /// base decides which encodings can be matched to a name at all; this one
+    /// is only the addend. Keeping them apart is what lets a caller that knows
+    /// its table is named by a `lea` encoding scan two encodings instead of
+    /// four and still be handed an address - which is
+    /// `desert_gatherer`'s whole startup, and it installs its hook against a
+    /// table the game reads during loading.
+    pub fn record_loader(
+        &self,
+        img: &[u8],
+        image_base: usize,
+        table: &[u8],
+    ) -> Result<usize, String> {
+        let a = named_accessor(self, img, table)?;
+
+        // The call to the loader is the pattern-B site inside this accessor, in
+        // whichever of its two encodings this copy was assembled with. Both are
+        // searched: a site that matched one cannot also match the other, so a
+        // second hit is a real ambiguity and not a double count.
+        let win_end = a.saturating_add(B_WINDOW).min(img.len());
+        let window =
+            img.get(a..win_end).ok_or_else(|| format!("accessor at +0x{a:X} is past the image"))?;
+        let mut hits: Vec<(usize, usize)> = Vec::new();
+        for text in PAT_B {
+            let pat = Pattern::parse(text).ok_or("a loader-call pattern is malformed")?;
+            hits.extend(pat.find_all(window, 4).into_iter().map(|h| (a + h, pat.len())));
+        }
+        hits.sort_unstable();
+        let (b, b_len) = match hits.as_slice() {
+            [one] => *one,
+            [] => {
+                return Err(format!(
+                    "no loader call (pattern B, either encoding) within 0x{B_WINDOW:X} bytes of the \
+                     accessor at +0x{a:X}"
+                ))
+            }
+            many => {
+                return Err(format!(
+                    "{} loader calls (pattern B) within 0x{B_WINDOW:X} bytes of the accessor at \
+                     +0x{a:X}: {:x?}",
+                    many.len(),
+                    many.iter().map(|&(h, _)| h).collect::<Vec<_>>()
+                ))
+            }
+        };
+
+        // The E8 is the pattern's last byte, so the rel32 follows it and the target
+        // is measured from the end of the rel32.
+        let rel_at = b + b_len;
+        let rel = disp32_at(img, rel_at)
+            .ok_or_else(|| format!("loader call at +0x{b:X} has no rel32 inside the image"))?;
+        let end_of_rel32 = rel_at + 4;
+        let rva = rip_target(end_of_rel32, rel)
+            .filter(|&t| t < img.len())
+            .ok_or_else(|| format!("loader call at +0x{b:X} targets +0x{rel:X} outside the image"))?;
+
+        image_base
+            .checked_add(rva)
+            .ok_or_else(|| format!("image base 0x{image_base:X} + rva 0x{rva:X} overflows"))
     }
-    hits.sort_unstable();
-    let (b, b_len) = match hits.as_slice() {
-        [one] => *one,
-        [] => {
-            return Err(format!(
-                "no loader call (pattern B, either encoding) within 0x{B_WINDOW:X} bytes of the \
-                 accessor at +0x{a:X}"
-            ))
-        }
-        many => {
-            return Err(format!(
-                "{} loader calls (pattern B) within 0x{B_WINDOW:X} bytes of the accessor at \
-                 +0x{a:X}: {:x?}",
-                many.len(),
-                many.iter().map(|&(h, _)| h).collect::<Vec<_>>()
-            ))
-        }
-    };
-
-    // The E8 is the pattern's last byte, so the rel32 follows it and the target
-    // is measured from the end of the rel32.
-    let rel_at = b + b_len;
-    let rel = disp32_at(img, rel_at)
-        .ok_or_else(|| format!("loader call at +0x{b:X} has no rel32 inside the image"))?;
-    let end_of_rel32 = rel_at + 4;
-    let rva = rip_target(end_of_rel32, rel)
-        .filter(|&t| t < img.len())
-        .ok_or_else(|| format!("loader call at +0x{b:X} targets +0x{rel:X} outside the image"))?;
-
-    image_base
-        .checked_add(rva)
-        .ok_or_else(|| format!("image base 0x{image_base:X} + rva 0x{rva:X} overflows"))
 }
 
 #[cfg(test)]
@@ -1509,6 +1634,107 @@ mod tests {
     }
 
     /// Without an image base only the two `lea` encodings can be read, which is
+    /// One scan answers for every table, and answers what the per-call
+    /// resolvers answer.
+    ///
+    /// This is the whole claim `AccessorSites` makes: `desert-dispatch`
+    /// resolves `FactionNode` and `dropsetinfo` from one scan instead of two,
+    /// and must get the same two addresses it got when each call scanned for
+    /// itself. The decoy site is in this image too, so "same answer" includes
+    /// still skipping it.
+    #[test]
+    fn one_scan_answers_for_every_table() {
+        let img = four_encoding_image();
+        let sites = AccessorSites::scan(&img, Some(SYN_BASE)).expect("the patterns are well formed");
+        for (table, slot, loader) in FOUR {
+            assert_eq!(
+                sites.manager_slot(&img, table),
+                resolve_manager_slot_based(&img, SYN_BASE, table),
+                "manager slot disagrees for {}",
+                String::from_utf8_lossy(table)
+            );
+            assert_eq!(sites.manager_slot(&img, table), Ok(slot));
+            assert_eq!(
+                sites.record_loader(&img, SYN_BASE, table),
+                resolve_record_loader_for(&img, SYN_BASE, table),
+                "record loader disagrees for {}",
+                String::from_utf8_lossy(table)
+            );
+            assert_eq!(sites.record_loader(&img, SYN_BASE, table), Ok(SYN_BASE + loader));
+        }
+        // A base-less scan is the looter's shape: the two indirect encodings are
+        // never searched, so the two tables only they name stay unreachable and
+        // the other two answer exactly what the per-call resolver answers.
+        let lea = AccessorSites::scan(&img, None).expect("the patterns are well formed");
+        assert_eq!(lea.manager_slot(&img, GIMMICK_TABLE), resolve_manager_slot(&img, GIMMICK_TABLE));
+        assert_eq!(lea.manager_slot(&img, GIMMICK_TABLE), Ok(FOUR[0].1));
+        assert_eq!(lea.manager_slot(&img, DROPSET_TABLE), Ok(FOUR[2].1));
+        assert!(lea.manager_slot(&img, ITEM_TABLE).is_err());
+        assert!(lea.manager_slot(&img, FACTION_NODE_TABLE).is_err());
+        // A base-less scan still hands back an address for a `lea`-named table:
+        // the base it lacks is the one that reads a name out of a pointer cell,
+        // not the one an address is built from. This is the shape
+        // `desert_gatherer` uses to halve its hook-install scan.
+        assert_eq!(
+            lea.record_loader(&img, SYN_BASE, GIMMICK_TABLE),
+            Ok(SYN_BASE + FOUR[0].2)
+        );
+        assert!(lea.record_loader(&img, SYN_BASE, FACTION_NODE_TABLE).is_err());
+    }
+
+    /// A base-less scan does not search the indirect encodings at all.
+    ///
+    /// This is a cost guard, not a correctness one, and it is here because the
+    /// cost was got wrong once: with the base as a per-lookup argument the scan
+    /// walked all four encodings whatever the caller could use, which doubled
+    /// Desert Looter's startup scan from two passes per table to four. The
+    /// census is the only outward sign of which encodings were searched.
+    #[test]
+    fn a_base_less_scan_skips_the_indirect_encodings() {
+        let img = four_encoding_image();
+        let lea = AccessorSites::scan(&img, None).expect("the patterns are well formed");
+        let e = lea.manager_slot(&img, b"NoSuchTable").unwrap_err();
+        for t in ACCESSORS.iter().filter(|t| !t.indirect) {
+            assert!(e.contains(t.label), "census is missing {}: {e}", t.label);
+        }
+        for t in ACCESSORS.iter().filter(|t| t.indirect) {
+            assert!(!e.contains(t.label), "census names the unsearched {}: {e}", t.label);
+        }
+        assert!(e.contains("the lea encodings"), "{e}");
+    }
+
+    /// Sites from one image are refused for another rather than answered.
+    ///
+    /// A lookup against the wrong image would read a plausible RVA out of
+    /// unrelated bytes, which is the one thing this module must never do. The
+    /// two images here are the same length, so the pointer is what separates
+    /// them.
+    #[test]
+    fn sites_from_another_image_are_refused() {
+        let img = four_encoding_image();
+        let other = four_encoding_image();
+        let sites = AccessorSites::scan(&img, Some(SYN_BASE)).expect("the patterns are well formed");
+        assert_eq!(sites.manager_slot(&img, GIMMICK_TABLE), Ok(FOUR[0].1));
+        let e = sites.manager_slot(&other, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("different image"), "{e}");
+        let e = sites.record_loader(&other, SYN_BASE, GIMMICK_TABLE).unwrap_err();
+        assert!(e.contains("different image"), "{e}");
+    }
+
+    /// The census in a failure message still counts every encoding, now out of
+    /// the sites already found rather than by scanning the image again.
+    #[test]
+    fn the_census_still_names_every_encoding() {
+        let img = four_encoding_image();
+        let sites = AccessorSites::scan(&img, Some(SYN_BASE)).expect("the patterns are well formed");
+        let e = sites.manager_slot(&img, b"NoSuchTable").unwrap_err();
+        for t in ACCESSORS {
+            assert!(e.contains(t.label), "census is missing {}: {e}", t.label);
+        }
+        // Two sites of `45 31 C9 + mov r8` in this image: FOUR_A[3] and the decoy.
+        assert!(e.contains("45 31 C9 + mov r8=2"), "{e}");
+    }
+
     /// exactly the contract [`resolve_manager_slot`] has with Desert Looter.
     #[test]
     fn the_base_less_resolver_sees_the_lea_encodings_only() {

@@ -5,7 +5,7 @@
 //! and the tables resolved through it moved to `desert-core/tests/gimmick_real.rs`,
 //! which is where the code they test lives; `just test-game` runs both files.
 
-use desert_looter::pattern::{Found, Pattern};
+use desert_looter::pattern::{self, Found, Pattern};
 use desert_looter::{pe, rtti};
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
@@ -37,4 +37,29 @@ fn all_signatures_unique_and_actor_manager_vtable_found() {
     let vt = rtti::vtables_for_class(&img, h.image_base, ".?AVClientActorManager@pa@@");
     println!("ClientActorManager vtables: {vt:x?}");
     assert_eq!(vt.len(), 1);
+}
+
+/// `game::resolve` scans for all eight in one walk of the image rather than one
+/// walk each (1.56 s to 0.22 s measured on build 25246367). One walk is only
+/// worth having if it answers what eight did, and a signature table is exactly
+/// where that could quietly stop being true: the walk anchors each pattern on
+/// its rarest byte, so which byte carries which signature depends on the image.
+/// The test above is the oracle for the addresses; this is the oracle for the
+/// scan that finds them.
+#[test]
+#[ignore]
+fn the_one_pass_scan_agrees_with_one_pattern_at_a_time() {
+    let file = std::fs::read(EXE).expect("game exe present");
+    let img = pe::file_to_image(&file).unwrap();
+    let pats: Vec<Pattern> =
+        SIGNATURES.iter().filter_map(|(_, t)| Pattern::parse(t)).collect();
+    assert_eq!(pats.len(), SIGNATURES.len(), "every signature parses");
+
+    let one_at_a_time: Vec<Found> = pats.iter().map(|p| p.find_unique(&img)).collect();
+    let one_pass = pattern::find_unique_multi(&pats, &img);
+
+    for (i, (name, _)) in SIGNATURES.iter().enumerate() {
+        assert_eq!(one_pass[i], one_at_a_time[i], "{name}");
+        println!("{name:<22} {:?}", one_pass[i]);
+    }
 }

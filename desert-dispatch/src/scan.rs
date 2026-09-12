@@ -868,8 +868,22 @@ pub fn start() {
     // `FactionNode` is reachable only through the indirect accessor template,
     // which is what `resolve_manager_slot_based` adds over the resolver the
     // looter and the gatherer use.
+    //
+    // Both tables are resolved through one scan. Finding the 149 template
+    // copies costs one pass per encoding over the whole 363 MB image, and the
+    // table name is only consulted afterwards - so the two lookups below were
+    // scanning the same image for the same four patterns twice, eight passes
+    // and 0.88 to 1.81 s of startup measured over six launches. `AccessorSites`
+    // is those four passes, kept.
+    let sites = match gimmick::AccessorSites::scan(module.bytes(), Some(module.base)) {
+        Ok(sites) => sites,
+        Err(e) => {
+            crate::log!("the accessor template could not be scanned: {e}; nothing to do");
+            return;
+        }
+    };
     let slot_rva =
-        match gimmick::resolve_manager_slot_based(module.bytes(), module.base, gimmick::FACTION_NODE_TABLE) {
+        match sites.manager_slot(module.bytes(), gimmick::FACTION_NODE_TABLE) {
             Ok(rva) => rva,
             Err(e) => {
                 crate::log!("the FactionNode manager slot was NOT found: {e}; nothing to do");
@@ -886,8 +900,7 @@ pub fn start() {
     // can be turned on mid-session. A failure here costs the reward half and
     // nothing else: the mission walk does not depend on it.
     let dropset_slot =
-        match gimmick::resolve_manager_slot_based(module.bytes(), module.base, gimmick::DROPSET_TABLE)
-        {
+        match sites.manager_slot(module.bytes(), gimmick::DROPSET_TABLE) {
             Ok(rva) => {
                 crate::log!("dropsetinfo manager slot at +0x{rva:X} (0x{:X})", module.base + rva);
                 Some(module.base + rva)

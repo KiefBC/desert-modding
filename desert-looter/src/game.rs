@@ -8,7 +8,7 @@ use desert_core::creature::{self, CatchClass};
 use crate::actors::{self, Catchable, Vec3};
 use crate::config::Config;
 use crate::module::MainModule;
-use crate::pattern::{Found, Pattern};
+use crate::pattern::{self, Found, Pattern};
 use crate::rtti;
 
 /// Signatures lifted from the reference mod. Names are ours; the comment says
@@ -44,25 +44,35 @@ impl Anchors {
 pub fn resolve(m: &MainModule) -> Anchors {
     let img = m.bytes();
     let mut a = Anchors::default();
-    for (name, text) in SIGNATURES {
-        // The signatures above are built in and all parse; a typo in one is a
-        // skipped anchor, never a panic in the game process.
-        let Some(pat) = Pattern::parse(text) else {
-            crate::log!("[sig] {name:<22} UNPARSEABLE");
-            a.missing.push(name);
-            continue;
-        };
-        match pat.find_unique(img) {
-            Found::Unique(off) => {
+    // The signatures above are built in and all parse; a typo in one is a
+    // skipped anchor, never a panic in the game process.
+    let parsed: Vec<Option<Pattern>> = SIGNATURES.iter().map(|(_, t)| Pattern::parse(t)).collect();
+    // One walk of the 363 MB image for all eight, not one each: eight passes
+    // measured 1.49 s in game, some 80% of this subsystem's startup, and the
+    // inline hooks installed right after it can only go in while the game is
+    // still loading.
+    let pats: Vec<Pattern> = parsed.iter().flatten().cloned().collect();
+    let mut scanned = pattern::find_unique_multi(&pats, img).into_iter();
+    // A signature that did not parse took no part in the scan, so it consumes
+    // no result and the rest stay aligned with `SIGNATURES`.
+    let found: Vec<Option<Found>> =
+        parsed.iter().map(|p| p.as_ref().and_then(|_| scanned.next())).collect();
+    for ((name, _), found) in SIGNATURES.iter().zip(found) {
+        match found {
+            Some(Found::Unique(off)) => {
                 crate::log!("[sig] {name:<22} = +0x{off:X}");
                 a.hits.push((name, m.base + off));
             }
-            Found::None => {
+            Some(Found::None) => {
                 crate::log!("[sig] {name:<22} NOT FOUND");
                 a.missing.push(name);
             }
-            Found::Ambiguous(n) => {
+            Some(Found::Ambiguous(n)) => {
                 crate::log!("[sig] {name:<22} AMBIGUOUS ({n}+ hits)");
+                a.missing.push(name);
+            }
+            None => {
+                crate::log!("[sig] {name:<22} UNPARSEABLE");
                 a.missing.push(name);
             }
         }

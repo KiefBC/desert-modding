@@ -79,16 +79,52 @@ fn ini_mtime(path: &std::path::Path) -> Option<std::time::SystemTime> {
     std::fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
+/// Find the record loader, cheapest search first.
+///
+/// `gimmickinfo` is named by one of the two `lea` encodings on every build seen
+/// so far, and those two are half the scan: `AccessorSites::scan(img, None)`
+/// searches them alone, 0.25 s against 0.50 s over build 25246367's 363 MB
+/// image. The base is still passed to [`AccessorSites::record_loader`], which
+/// wants it only as the addend - the base the cheap scan declines is the one
+/// that reads a name out of a pointer cell, and `gimmickinfo`'s name is not in
+/// one.
+///
+/// **This subsystem is the one that cannot afford the other half.** The game
+/// reads the gimmickinfo table during loading, so there is no boot grace here
+/// and the hook has to be installed before that happens; every 0.25 s is margin
+/// on a deadline the other subsystems do not have.
+///
+/// Betting on an encoding is exactly what this project does not do - the old
+/// single-encoding scan reached 111 of the 149 tables and that was a bug worth
+/// fixing - so it is a bet with a fallback. A build that emitted this accessor
+/// as a `mov r8` instead costs one extra scan and one line in the log, not a
+/// vanilla session, and the line is what says the assumption stopped holding.
+fn resolve_loader(module: &MainModule) -> Option<usize> {
+    let img = module.bytes();
+    match gimmick::AccessorSites::scan(img, None)
+        .and_then(|sites| sites.record_loader(img, module.base, gimmick::GIMMICK_TABLE))
+    {
+        Ok(target) => return Some(target),
+        Err(e) => crate::log!(
+            "[gimmick] the record loader is not reachable through the lea encodings ({e}); \
+             searching all four"
+        ),
+    }
+    match gimmick::resolve_record_loader(img, module.base) {
+        Ok(target) => Some(target),
+        Err(e) => {
+            crate::log!("[gimmick] record loader NOT found: {e}; yields stay vanilla");
+            None
+        }
+    }
+}
+
 /// Find the loader, check its prologue really is the 12 bytes we are
 /// about to overwrite, and patch it. A refusal here is a plugin that does
 /// nothing; a wrong patch is a crash, so every doubt means refusing.
 fn install_loader_hook(module: &MainModule) -> bool {
-    let target = match gimmick::resolve_record_loader(module.bytes(), module.base) {
-        Ok(t) => t,
-        Err(e) => {
-            crate::log!("[gimmick] record loader NOT found: {e}; yields stay vanilla");
-            return false;
-        }
+    let Some(target) = resolve_loader(module) else {
+        return false;
     };
     crate::log!("[gimmick] record loader at +0x{:X} (0x{target:X})", module.rva(target));
 

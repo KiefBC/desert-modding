@@ -12,7 +12,7 @@
 use std::collections::HashSet;
 
 use desert_core::gimmick::{self, BLOCK, ITEM_AT, ITEM_TAIL_AT, MAX_AT, MAX_COUNT, MIN_AT};
-use desert_core::pattern::Pattern;
+use desert_core::pattern::{self, Pattern};
 use desert_core::schema::Kind;
 use desert_core::{ini, pe, rtti};
 use proptest::prelude::*;
@@ -396,6 +396,93 @@ proptest! {
             .collect();
         prop_assert_eq!(p.find_all(&hay, usize::MAX), naive.clone());
         prop_assert_eq!(p.find_all(&hay, 3), naive.iter().copied().take(3).collect::<Vec<_>>());
+    }
+
+    /// The whole point of the one-pass scan: a table of patterns walked
+    /// together reports exactly what each of them reports walked alone. The
+    /// bytes are drawn from a tiny alphabet so hits are common and anchors
+    /// collide, which is where a shared-lane mistake would show.
+    #[test]
+    fn pattern_multi_agrees_with_one_pattern_at_a_time(
+        texts in prop::collection::vec(
+            prop::collection::vec(prop::option::of(0u8..4), 1..6),
+            0..6,
+        ),
+        hay in prop::collection::vec(0u8..4, 0..400),
+        limit in 0usize..5,
+    ) {
+        let pats: Vec<Pattern> =
+            texts.iter().filter_map(|t| Pattern::parse(&pattern_text(t))).collect();
+        let all = pattern::find_all_multi(&pats, &hay, limit);
+        let unique = pattern::find_unique_multi(&pats, &hay);
+        prop_assert_eq!(all.len(), pats.len());
+        prop_assert_eq!(unique.len(), pats.len());
+        for (i, p) in pats.iter().enumerate() {
+            prop_assert_eq!(&all[i], &p.find_all(&hay, limit), "pattern {}", i);
+            prop_assert_eq!(&unique[i], &p.find_unique(&hay), "pattern {}", i);
+        }
+    }
+
+    /// The same agreement over a *skewed* alphabet and a haystack long enough
+    /// to be sampled many times, which is what makes the scan's choice of
+    /// anchor — the rarest literal, not the first — a real choice: `48` is the
+    /// filler here the way the REX.W prefix is in the game image, so patterns
+    /// routinely start on the commonest byte and must anchor elsewhere. Under a
+    /// flat alphabet every byte ranks alike and this path is never taken.
+    #[test]
+    fn pattern_multi_agrees_on_a_skewed_alphabet(
+        texts in prop::collection::vec(
+            prop::collection::vec(
+                prop::option::of(prop_oneof![3 => Just(0x48u8), 1 => 0u8..4]),
+                1..7,
+            ),
+            0..6,
+        ),
+        hay in prop::collection::vec(prop_oneof![9 => Just(0x48u8), 1 => 0u8..4], 1000..6000),
+        limit in 0usize..5,
+    ) {
+        let pats: Vec<Pattern> =
+            texts.iter().filter_map(|t| Pattern::parse(&pattern_text(t))).collect();
+        let all = pattern::find_all_multi(&pats, &hay, limit);
+        let unique = pattern::find_unique_multi(&pats, &hay);
+        prop_assert_eq!(all.len(), pats.len());
+        prop_assert_eq!(unique.len(), pats.len());
+        for (i, p) in pats.iter().enumerate() {
+            prop_assert_eq!(&all[i], &p.find_all(&hay, limit), "pattern {}", i);
+            prop_assert_eq!(&unique[i], &p.find_unique(&hay), "pattern {}", i);
+        }
+    }
+
+    /// Arbitrary patterns over arbitrary bytes: never a panic, every reported
+    /// hit is a real match inside the haystack, and no list exceeds the limit.
+    #[test]
+    fn pattern_multi_never_panics_and_hits_match(
+        texts in prop::collection::vec(
+            prop::collection::vec(prop::option::of(any::<u8>()), 1..12),
+            0..80,
+        ),
+        hay in prop::collection::vec(any::<u8>(), 0..512),
+        limit in 0usize..4,
+    ) {
+        let kept: Vec<(Vec<Option<u8>>, Pattern)> = texts
+            .into_iter()
+            .filter_map(|t| Pattern::parse(&pattern_text(&t)).map(|p| (t, p)))
+            .collect();
+        let pats: Vec<Pattern> = kept.iter().map(|(_, p)| p.clone()).collect();
+        let all = pattern::find_all_multi(&pats, &hay, limit);
+        prop_assert_eq!(all.len(), kept.len());
+        for (hits, (toks, p)) in all.iter().zip(&kept) {
+            prop_assert!(hits.len() <= limit);
+            prop_assert!(hits.windows(2).all(|w| w[0] < w[1]));
+            for &o in hits {
+                prop_assert!(o + p.len() <= hay.len());
+                for (i, t) in toks.iter().enumerate() {
+                    if let Some(want) = t {
+                        prop_assert_eq!(hay[o + i], *want, "hit {} differs at +{}", o, i);
+                    }
+                }
+            }
+        }
     }
 }
 
