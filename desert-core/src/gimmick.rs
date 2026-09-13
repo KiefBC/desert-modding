@@ -28,12 +28,26 @@
 //!
 //! ```text
 //! +0    u8   flag       always 1
-//! +5    u32  item       item id
+//! +1    u32  item       item id
+//! +5    u32  0          padding, zero on all 896 blocks
 //! +42   u64  min        \ vanilla 1..=8
 //! +50   u64  max        /
 //! +58   u16  0xFFFF     literal FF FF
-//! +64   u32  item       the same item id again
+//! +60   u32  item       the same item id again
+//! +64   u32  0          padding, zero on all 896 blocks
 //! ```
+//!
+//! **Corrected 2026-09-12.** This diagram, [`ITEM_AT`] and [`ITEM_TAIL_AT`] all
+//! had the item id 4 bytes too high — at `+5` and `+64`, which are the two zero
+//! pads — and so did the block builders in this file's own tests and in
+//! `desert-core/tests/props.rs`, which is why nothing caught it. Confirmed over
+//! **all 896** output blocks of `gimmickinfo_pabgb_clean.bin`: `u32@+1 != 0`
+//! 896/896, `u32@+1 == u32@+60` 896/896, `u32@+5 == 0` 896/896, `u32@+64 == 0`
+//! 896/896. [`MIN_AT`], [`MAX_AT`], [`BLOCK`] and the `FF FF` are unaffected, so
+//! [`multiply`] — which writes only the two scalars — was never wrong; what was
+//! wrong is [`OutputBlock::item`], always read as 0, and so every item id
+//! `desert-gatherer`'s `remember` stored and `hook::reapply` cross-checks
+//! against. See `docs/findings-water-wells-2026-09-12.md` section 5.
 //!
 //! That signature (count 1..=64, every block valid, `1 <= min <= max <=`
 //! [`MAX_QTY`]) was cross-checked offline against the whole 22 MB table: inside
@@ -150,14 +164,26 @@ pub const BLOCK: usize = 68;
 pub const MIN_AT: usize = 42;
 /// Offset of the `u64` maximum inside a block.
 pub const MAX_AT: usize = 50;
-/// Offset of the `u32` item id inside a block.
-pub const ITEM_AT: usize = 5;
-/// Offset of the block's second copy of the item id, the last four bytes of
-/// the block. The signature demands the two copies agree, which is what makes
+/// Offset of the `u32` item id inside a block. Immediately after the flag byte,
+/// and followed by four bytes of zero padding at [`PAD_AT`] — which is where
+/// this constant wrongly pointed until 2026-09-12 (see the module docs).
+pub const ITEM_AT: usize = 1;
+/// Offset of the block's second copy of the item id, four bytes after the
+/// `FF FF`. The signature demands the two copies agree, which is what makes
 /// either of them usable as an identity check against a parsed block object
-/// later (`docs/reference-internals.md` section 16: the parsed entry carries
-/// this one at `entry+0x08` and the item id at `block+0x6c`).
-pub const ITEM_TAIL_AT: usize = 64;
+/// later (`docs/reference-internals.md` sections 16 and 16.1: the parsed block
+/// carries the item id at `block+0x68`, and the parsed list entry's
+/// `entry+0x08` is *not* a second copy of it — that field is the raw block's
+/// [`PAD_TAIL_AT`], `DropInfoData._dropTagNameHash`, which reads zero on every
+/// gather block and nonzero on the 16 lists `block_ok` excludes).
+pub const ITEM_TAIL_AT: usize = 60;
+/// The two four-byte zero pads, one after each copy of the item id. Both read
+/// `0` on all 896 blocks of the clean body and the signature only requires them
+/// to *agree*, not to be zero — `block_ok`'s own comment records the 16 lists
+/// that requirement is what excludes.
+pub const PAD_AT: usize = ITEM_AT + 4;
+/// The second of the two pads. See [`PAD_AT`].
+pub const PAD_TAIL_AT: usize = ITEM_TAIL_AT + 4;
 
 /// Largest plausible block count in one output list. Vanilla lists are far
 /// smaller; the bound is what keeps the scanner from walking off a random `u32`.
@@ -330,7 +356,41 @@ fn block_ok(rec: &[u8], at: usize) -> bool {
     if b[0] != 1 || b[58] != 0xFF || b[59] != 0xFF {
         return false;
     }
-    if b[5..9] != b[64..68] {
+    // The two copies of the item id must agree. Until 2026-09-12 this compared
+    // `PAD_AT` against `PAD_TAIL_AT` instead, believing them to be the item id,
+    // so what it really tested was that two runs of zeroes matched.
+    if b[ITEM_AT..ITEM_AT + 4] != b[ITEM_TAIL_AT..ITEM_TAIL_AT + 4] {
+        return false;
+    }
+    // And the two pads must agree, which the old check is kept as. It is not
+    // redundant and not cosmetic: measured over the whole 22 MB clean body,
+    // dropping it grows the detector's population from 573 lists / 896 blocks to
+    // 589 / 1038. The 16 extra lists are byte-for-byte the same shape — flag 1,
+    // `FF FF`, plausible item ids agreeing across `+1` and `+60`, 68-byte stride
+    // — and differ only in that every one of their blocks carries a **nonzero**
+    // `u32` at `PAD_TAIL_AT` while `PAD_AT` is zero. That field is *not* the
+    // high half of a wide item id — that reading was checked and ruled out on
+    // 2026-09-12 — it is the list entry's own key, `_dropTagNameHash`, which
+    // the parsed loop reads into `entry+0x08` (section 16.1), and records that
+    // share a value share a drop group. Reading it as a pad is right for every
+    // record the plugin edits and wrong in general. None of
+    // them is one of the 275 gather records the DMM pack edits; they are chests,
+    // dig sites and dungeon loot — `Temple_Chest_01` (key 16060036),
+    // `dff_chest_24` (16060043), `gimmick_item_dropset_treasurebox_01`
+    // (1005213), `clawmachine_capsule_01` (1007407), `Action_dig_01`
+    // (120040092), `gimmick_Dig_land_0001` (1005245), the
+    // `gimmick_abyssone_bridge_gate_*` set and `gimmick_marni_teleportation_*`.
+    // (An earlier revision of this comment named `player` and
+    // `UnnamedTrigger_0` here. Both are false headers — a backwards scan for a
+    // record start finds them because nested string fields use the same
+    // `u32 len, bytes, NUL` shape as a record name. `player` is preceded by the
+    // `u32` 1 and `UnnamedTrigger_0` by 0x01000000, neither a record key. See
+    // `docs/findings-water-wells-2026-09-12.md` section 7.)
+    // Whether they are gatherable outputs this mod
+    // ought to multiply is an open question and deliberately not answered here:
+    // this clause is what keeps the population exactly what it has always been,
+    // so the item-offset correction changes no yield anywhere.
+    if b[PAD_AT..PAD_AT + 4] != b[PAD_TAIL_AT..PAD_TAIL_AT + 4] {
         return false;
     }
     let (min, max) = match (u64_at(b, MIN_AT), u64_at(b, MAX_AT)) {
@@ -389,7 +449,10 @@ pub struct OutputBlock {
     /// from, so `offset + MIN_AT` / `offset + MAX_AT` are the two scalars
     /// [`multiply`] would edit.
     pub offset: usize,
-    /// The block's item id, taken from [`ITEM_TAIL_AT`].
+    /// The block's item id, taken from [`ITEM_TAIL_AT`] — the copy the parsed
+    /// entry keeps at `entry+0x08`, which is what `desert_gatherer`'s live
+    /// re-apply cross-checks against. The signature has already proved it equal
+    /// to the copy at [`ITEM_AT`].
     pub item: u32,
     /// The vanilla minimum, exactly as the table holds it.
     pub min: u64,
@@ -913,15 +976,21 @@ mod tests {
     use super::*;
 
     /// A block whose fields all check out.
+    ///
+    /// Until 2026-09-12 this wrote the item id at `+5` and `+64`, the two zero
+    /// pads, exactly as the constants then said — so every test below agreed
+    /// with the code about a layout neither of them shared with the game. That
+    /// is why `reads_the_item_id_at_the_offset_the_table_uses` spells the
+    /// offsets out as literals rather than reusing the constants.
     fn block(item: u32, min: u64, max: u64) -> Vec<u8> {
         let mut b = vec![0u8; BLOCK];
         b[0] = 1;
-        b[5..9].copy_from_slice(&item.to_le_bytes());
+        b[ITEM_AT..ITEM_AT + 4].copy_from_slice(&item.to_le_bytes());
         b[MIN_AT..MIN_AT + 8].copy_from_slice(&min.to_le_bytes());
         b[MAX_AT..MAX_AT + 8].copy_from_slice(&max.to_le_bytes());
         b[58] = 0xFF;
         b[59] = 0xFF;
-        b[64..68].copy_from_slice(&item.to_le_bytes());
+        b[ITEM_TAIL_AT..ITEM_TAIL_AT + 4].copy_from_slice(&item.to_le_bytes());
         b
     }
 
@@ -1008,6 +1077,56 @@ mod tests {
         );
         assert!(output_blocks(&[]).is_empty());
         assert!(output_blocks(&[0xAB; 200]).is_empty());
+    }
+
+    /// Where the item id actually lives, pinned as literals.
+    ///
+    /// Every other test here builds its blocks with `block`, so before
+    /// 2026-09-12 they all agreed with `ITEM_AT`/`ITEM_TAIL_AT` about a layout
+    /// four bytes off from the game's and none of them could have caught it.
+    /// This one writes the bytes by hand at the offsets measured over all 896
+    /// output blocks of `gimmickinfo_pabgb_clean.bin` and never names the
+    /// constants, so it fails if either moves again. `peony_01`'s first block is
+    /// the real-world case, asserted against the fixture itself in
+    /// `desert-core/tests/gimmick_real.rs`.
+    #[test]
+    fn reads_the_item_id_at_the_offset_the_table_uses() {
+        let mut raw = vec![0u8; 4 + BLOCK];
+        raw[0] = 1; // the u32 count
+        let b = 4;
+        raw[b] = 1; // +0  flag
+        raw[b + 1..b + 5].copy_from_slice(&757_006u32.to_le_bytes()); // +1  item
+        // +5 .. +9 stays zero: the padding the constants used to point at.
+        raw[b + 42..b + 50].copy_from_slice(&4u64.to_le_bytes()); // +42 min
+        raw[b + 50..b + 58].copy_from_slice(&7u64.to_le_bytes()); // +50 max
+        raw[b + 58] = 0xFF;
+        raw[b + 59] = 0xFF;
+        raw[b + 60..b + 64].copy_from_slice(&757_006u32.to_le_bytes()); // +60 item
+        // +64 .. +68 stays zero: the other padding.
+
+        assert_eq!(
+            output_blocks(&raw),
+            vec![OutputBlock { offset: b, item: 757_006, min: 4, max: 7 }],
+            "peony_01's first block, byte for byte"
+        );
+        // And the two pads really are zero here, so the block that proves the
+        // item offsets is also the block that proves what is at +5 and +64.
+        assert_eq!(u32_at(&raw, b + 5), Some(0));
+        assert_eq!(u32_at(&raw, b + 64), Some(0));
+
+        // The same bytes with the item id written where the constants used to
+        // say it was are not a block at all: the two "copies" are then zero and
+        // the two pads disagree.
+        let mut wrong = raw.clone();
+        wrong[b + 1..b + 5].copy_from_slice(&0u32.to_le_bytes());
+        wrong[b + 5..b + 9].copy_from_slice(&757_006u32.to_le_bytes());
+        wrong[b + 60..b + 64].copy_from_slice(&0u32.to_le_bytes());
+        wrong[b + 64..b + 68].copy_from_slice(&757_006u32.to_le_bytes());
+        assert_eq!(
+            output_blocks(&wrong),
+            vec![OutputBlock { offset: b, item: 0, min: 4, max: 7 }],
+            "the old layout still parses, with item 0 - which is the bug"
+        );
     }
 
     /// The blocks and the edits are two views of the same thing, which is what
@@ -1105,8 +1224,28 @@ mod tests {
         assert!(output_lists(&good(&[b], 1)).is_empty());
 
         let mut b = block(9, 1, 8);
-        b[64] = 0x0A; // trailing item id mismatch
+        b[ITEM_TAIL_AT] = 0x0A; // the two copies of the item id disagree
         assert!(output_lists(&good(&[b], 1)).is_empty());
+
+        let mut b = block(9, 1, 8);
+        b[ITEM_AT] = 0x0A; // ... either way round
+        assert!(output_lists(&good(&[b], 1)).is_empty());
+
+        // The two pads have to agree too. Only this clause excludes the 16
+        // otherwise-identical lists in the clean body whose tail pad is nonzero,
+        // so a block that fails it must not be accepted.
+        let mut b = block(9, 1, 8);
+        b[PAD_TAIL_AT] = 0x0A;
+        assert!(output_lists(&good(&[b], 1)).is_empty(), "tail pad set, head pad zero");
+        let mut b = block(9, 1, 8);
+        b[PAD_AT] = 0x0A;
+        assert!(output_lists(&good(&[b], 1)).is_empty(), "head pad set, tail pad zero");
+        // Agreeing non-zero pads are not what this clause is about and are
+        // accepted, which is the honest statement of what it checks.
+        let mut b = block(9, 1, 8);
+        b[PAD_AT] = 0x0A;
+        b[PAD_TAIL_AT] = 0x0A;
+        assert_eq!(output_lists(&good(&[b], 1)), vec![(0, 1)]);
 
         let mut b = block(9, 1, 8);
         b[58] = 0xFE; // missing FF FF

@@ -26,8 +26,9 @@
 //! `Acquire` sees the whole slot. Nothing is ever freed: the table lives as
 //! long as the process, which is exactly as long as the records do.
 //!
-//! [`MAX_RECORDS`] is comfortably above the 275 gather records `collect` knows
-//! about, and [`MAX_BLOCKS`] above the 4 blocks the biggest vanilla record has.
+//! [`MAX_RECORDS`] is comfortably above the 276 gather records `collect` knows
+//! about (275 from the DMM pack plus the water well), and [`MAX_BLOCKS`]
+//! above the 4 blocks the biggest vanilla record has.
 //! Both are refusals, not truncations: a record that does not fit is simply not
 //! remembered, and the live path leaves it alone rather than half-rewriting it.
 //!

@@ -25,6 +25,9 @@ pub const MS_RANGE: (u32, u32) = (100, 60_000);
 
 /// `StackLimit`'s accepted range, used by `parse` and [`schema`] alike.
 pub const STACK_LIMIT_RANGE: (u32, u32) = (10, 1_000_000);
+/// `SurveyLines`' accepted range. The floor is where a listing stops being
+/// one; the ceiling is a guard on the shared log, not a recommendation.
+pub const SURVEY_LINES_RANGE: (u32, u32) = (16, 2_000);
 
 /// The furthest `GatherRange` may reach. The parser accepts anything above 0
 /// up to this; the menu's slider starts at [`GATHER_RANGE_MENU_MIN`] because a
@@ -53,6 +56,17 @@ pub struct Config {
     pub log_received: bool,
     /// Survey radius in game metres.
     pub scan_range: f32,
+    /// How many actor lines one F11 survey may print. It was a hard-coded 64
+    /// until 2026-09-13, and because the listing was distance-sorted that
+    /// meant "the 64 nearest actors" - a window a few metres wide with a heap
+    /// of smashed pottery underfoot, which silently cut the very actors the
+    /// survey exists to show and cost three investigations
+    /// (`TODO.md`, "the looter's survey truncates at 64 lines"). The listing
+    /// is now ordered kind-first (gather nodes, then items, then the rest)
+    /// and says how many lines it cut, so this is a budget on the shared
+    /// log, not a filter on what is seen. The kind census at the foot of the
+    /// survey was never truncated and still is not.
+    pub survey_lines: u32,
     /// Radius within which a gather node is picked, in game metres.
     pub gather_range: f32,
     /// Start with automatic gathering on.
@@ -102,6 +116,7 @@ impl Default for Config {
             debug: false,
             log_received: false,
             scan_range: 40.0,
+            survey_lines: 200,
             gather_range: 6.0,
             auto_gather: false,
             gather_unarmed: true,
@@ -125,11 +140,56 @@ impl Default for Config {
     }
 }
 
+/// The water well's bucket, `gimmick_well_0001_parts01`. It is a `Foraging`
+/// record and the multiplier reaches it like any other; the **looter** must
+/// never send a `PickUpItem` at it. Tried in game on 2026-09-13, build
+/// 25246367 (`analysis/logs/DesertTooling-2026-09-13-well-coin-bugs.log`,
+/// `t=197`): F9 at a well forged the pickup, the player received `22008 x5`,
+/// the bucket actor was gone 0.1 s later and **the well never produced another
+/// one** - the game's own crank sequence is what respawns the bucket, and a
+/// pickup delivered from outside that sequence leaves the well permanently
+/// empty. That is worse than the duplication exploit the earlier comment
+/// worried about; it is a broken world object. So this is a record-level
+/// refusal, not a family switch: `GatherForaging` still means what it says
+/// for every bush, and the well is the one Foraging record it never covers.
+///
+/// How it was reachable at all (two F11 surveys, same log's successor
+/// `DesertTooling-2026-09-13-well-x15-x30.log`, `t=272` and `t=319`): the
+/// bucket actor is **always present** - it classifies `Unarmed` while the
+/// well is empty and `Gather` once the bucket is raised full. So it is
+/// `GatherUnarmed=1`, the default, that put an *empty* well in front of F9,
+/// and turning that off would only have narrowed the damage to full ones.
+/// The refusal is by record, so neither switch matters for it.
+pub const WELL_BUCKET_RECORD_KEY: u32 = 1001081;
+/// The same record by name, for the case where the header's key did not read:
+/// `actors::node_identity` falls back to the name to find the family, so the
+/// refusal has to fall back the same way or an unreadable key would let the
+/// one record this exists for straight through.
+pub const WELL_BUCKET_RECORD_NAME: &str = "gimmick_well_0001_parts01";
+
+/// Whether the looter must refuse to forge a pickup at this record, whatever
+/// the family switches say. Either identifier is enough on its own. The set is
+/// one record today and is kept as a predicate so a second multi-step gimmick
+/// has somewhere to go that is not a new `if` in `nearest_gather`.
+pub fn never_forge_pickup(record_key: Option<u32>, record_name: Option<&str>) -> bool {
+    record_key == Some(WELL_BUCKET_RECORD_KEY) || record_name == Some(WELL_BUCKET_RECORD_NAME)
+}
+
 impl Config {
     /// Whether gather nodes of this family are wanted. Called with the typed
     /// family from `desert_core::collect`, before anything stringifies it.
+    /// [`never_forge_pickup`] is checked **before** this, on the record key,
+    /// and wins: the water well is a `Foraging` record this switch does not
+    /// reach, and the constant's doc comment says why.
     pub fn allows_family(&self, f: Family) -> bool {
         match f {
+            // Foraging includes the water well (`gimmick_well_0001_parts01`,
+            // key 1001081) for the *multiplier*; for the looter that record
+            // is refused one step earlier by `never_forge_pickup`. The reason
+            // the two disagree is in that constant's doc comment - a forged
+            // pickup at the bucket breaks the well - and the yield multiplier
+            // is independent of all of it: it edits the record's block at
+            // load time and never consults the looter.
             Family::Foraging => self.gather_foraging,
             Family::Logging => self.gather_logging,
             Family::Mining => self.gather_mining,
@@ -259,7 +319,9 @@ pub fn schema() -> Section {
                     "GatherForaging",
                     "Foraging",
                     Kind::Bool { default: d.gather_foraging },
-                    "Plants, fruit, berries, mushrooms, crops.",
+                    "Plants, fruit, berries, mushrooms, crops. Never the water well: taking its \
+                     bucket with a forged pickup leaves the well empty for good, so the plugin \
+                     refuses that one record whatever this is set to.",
                 ),
             ),
             beside(f(
@@ -320,6 +382,20 @@ pub fn schema() -> Section {
                     format: Some("%.0f m".to_string()),
                 },
                 "Survey radius in game metres.",
+            ),
+            f(
+                "SurveyLines",
+                "Survey lines",
+                Kind::Int {
+                    default: i64::from(d.survey_lines),
+                    min: i64::from(SURVEY_LINES_RANGE.0),
+                    max: i64::from(SURVEY_LINES_RANGE.1),
+                    step: 16,
+                    slider: false,
+                    format: None,
+                },
+                "How many actor lines one F11 survey prints. Gather nodes and items are listed first, so \
+                 raising this only ever adds the less interesting actors; the survey says how many it cut.",
             ),
             f(
                 "GatherRange",
@@ -457,6 +533,10 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherore" => cfg.gather_ore = bool_of(v),
             "gatherbugs" => cfg.gather_bugs = bool_of(v),
             "gatherfish" => cfg.gather_fish = bool_of(v),
+            "surveylines" => match v.parse::<u32>() {
+                Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => cfg.survey_lines = n,
+                _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", cfg.survey_lines)),
+            },
             "stacklimit" => match v.parse::<u32>() {
                 Ok(n) if (STACK_LIMIT_RANGE.0..=STACK_LIMIT_RANGE.1).contains(&n) => cfg.stack_limit = n,
                 _ => warnings.push(format!("StackLimit: bad value {v:?}, keeping {}", cfg.stack_limit)),
@@ -531,6 +611,39 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert!(d.allows_family(f), "{f:?} should be on by default");
         }
+        // Four families, four switches; there is no fifth of either. The
+        // water well is a Foraging record and rides on `GatherForaging` -
+        // see `allows_family`.
+        assert_eq!(desert_core::collect::family_by_key(1001081), Some(Family::Foraging));
+        // - and yet the looter must refuse it, by key, before the family
+        // switch is even consulted: a forged pickup at the bucket breaks the
+        // well (see `WELL_BUCKET_RECORD_KEY`). Both halves are asserted so a
+        // change to either side has to come here and argue.
+        assert_eq!(WELL_BUCKET_RECORD_KEY, 1001081);
+        assert_eq!(
+            desert_core::collect::family_by_name(WELL_BUCKET_RECORD_NAME),
+            Some(Family::Foraging),
+            "the name constant must be the record collect.rs knows"
+        );
+        // Key alone, name alone, both, and the unreadable-key case.
+        assert!(never_forge_pickup(Some(WELL_BUCKET_RECORD_KEY), None));
+        assert!(never_forge_pickup(None, Some(WELL_BUCKET_RECORD_NAME)));
+        assert!(never_forge_pickup(Some(WELL_BUCKET_RECORD_KEY), Some(WELL_BUCKET_RECORD_NAME)));
+        assert!(never_forge_pickup(None, Some("gimmick_well_0001_parts01")));
+        // The crank, its neighbours, firewood and money are all let through,
+        // and a record with neither identifier readable is not refused (it
+        // is not a gather node either - `family` would be None).
+        assert!(!never_forge_pickup(None, Some("gimmick_well_0001_parts02")));
+        for key in [1001080, 1001082, 1002971, 1] {
+            assert!(!never_forge_pickup(Some(key), None), "{key} must not be refused");
+        }
+        assert!(!never_forge_pickup(None, None));
+        let help = schema().field("GatherForaging").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(help.contains("water well"), "the Foraging switch has to say it excludes the well: {help}");
+        assert!(
+            schema().field("GatherIngredients").is_none(),
+            "Ingredients never shipped, so the menu must not offer a switch for it"
+        );
         let (c, w) = parse(&sectioned("GatherForaging=1\nGatherLogging=0\nGatherMining=no\nGatherOre=on\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.allows_family(Family::Foraging));
@@ -727,16 +840,27 @@ Scale=1.5
             }
             other => panic!("ScanRange is not a float field: {other:?}"),
         }
+        match s.field("SurveyLines").map(|f| f.kind.clone()) {
+            Some(Kind::Int { min, max, default, .. }) => {
+                assert_eq!((min, max), (i64::from(SURVEY_LINES_RANGE.0), i64::from(SURVEY_LINES_RANGE.1)));
+                assert_eq!(default, 200, "the old hard-coded 64 must not come back as the default");
+            }
+            other => panic!("SurveyLines is not an int field: {other:?}"),
+        }
 
         // A value at either end of every int range is one `parse` keeps, and
         // one past it is one it refuses: the menu's stops are the real stops.
-        let (c, w) = parse(&sectioned("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\n"));
+        let (c, w) = parse(&sectioned("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\nSurveyLines=2000\n"));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(c.gather_interval_ms, MS_RANGE.0);
         assert_eq!(c.node_cooldown_ms, MS_RANGE.1);
         assert_eq!(c.stack_limit, STACK_LIMIT_RANGE.1);
-        let (c, w) = parse(&sectioned("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\n"));
-        assert_eq!(w.len(), 4, "{w:?}");
+        assert_eq!(c.survey_lines, SURVEY_LINES_RANGE.1);
+        let (c, w) = parse(&sectioned("SurveyLines=16\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.survey_lines, SURVEY_LINES_RANGE.0);
+        let (c, w) = parse(&sectioned("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\nSurveyLines=15\n"));
+        assert_eq!(w.len(), 5, "{w:?}");
         assert_eq!(c, Config::default());
     }
 

@@ -459,6 +459,96 @@ fn multiply_reproduces_the_dmm_pack_edits() {
     assert_eq!(starts.len(), 275, "275 gather records");
 }
 
+/// Where the item id is, against the table itself.
+///
+/// `ITEM_AT` and `ITEM_TAIL_AT` were 4 too high until 2026-09-12 - `+5` and
+/// `+64`, the two zero pads - so `OutputBlock::item` read 0 for every block in
+/// the game, `desert-gatherer`'s `remember` stored 0, and `hook::reapply`'s
+/// "is this the block I remembered" cross-check could never match. `multiply`
+/// writes only min/max and so was never affected, which is why the pack oracle
+/// above passed throughout and nothing else noticed.
+///
+/// Nothing synthetic can catch that class of mistake: the unit tests built their
+/// blocks with the same wrong offsets the code read them at. This is the test
+/// that needs the real bytes, and it asserts two things - `peony_01`'s first
+/// block reads back the item id `docs/reference-internals.md` section 13.1
+/// records for it, and no block anywhere in the body has an item id of 0, which
+/// is what every single one of them had before the fix.
+///
+/// Same fixture and the same skip contract as the pack oracle: the clean body is
+/// DMM's artifact, so its absence is a hole in coverage and says so, not a
+/// failure.
+#[test]
+#[ignore]
+fn output_blocks_read_the_item_id_the_table_actually_carries() {
+    let bar = "=".repeat(76);
+    let Ok(table) = std::fs::read(TABLE) else {
+        println!("\n{bar}");
+        println!("!! SKIPPED: THE ITEM-OFFSET CHECK DID NOT RUN. IT PROVED NOTHING. !!");
+        println!("{bar}");
+        println!("missing fixture: {TABLE}");
+        println!();
+        println!("`gimmick::ITEM_AT` / `ITEM_TAIL_AT` were NOT checked against real table");
+        println!("bytes on this run. They were wrong by 4 once and only the fixture can");
+        println!("say so. Read this as a hole in coverage, not a pass.");
+        println!();
+        println!("`multiply_reproduces_the_dmm_pack_edits` above prints how to get a clean");
+        println!("body; the same file serves both tests and any build's copy will do.");
+        println!("{bar}\n");
+        return;
+    };
+    println!("table: {} bytes", table.len());
+
+    // Locate one record the same way the pack oracle does, and bound the slice
+    // with the next record so the blocks read are certainly this record's.
+    let peony: Record = (17_020_006, "peony_01".to_owned());
+    let wanted: BTreeSet<Record> = [peony.clone()].into_iter().collect();
+    let start = *locate_records(&table, &wanted)
+        .expect("peony_01 is in this table exactly once")
+        .get(&peony)
+        .expect("located");
+    let end = (start + 65536).min(table.len());
+    let slice = table.get(start..end).expect("record slice");
+    let first = *gimmick::output_blocks(slice).first().expect("peony_01 has output blocks");
+    println!(
+        "peony_01 at {start}: first block +{} item {} min {} max {}",
+        first.offset, first.item, first.min, first.max
+    );
+    // Section 13.1 learned 757006 from the game itself, through the pickup
+    // event - an origin entirely outside this table - so it is a real oracle and
+    // not a second reading of the same bytes.
+    assert_eq!(first.item, 757_006, "peony_01's first output block is Peony");
+    assert_eq!((first.min, first.max), (4, 7), "and its vanilla yield is 4..=7");
+
+    // The whole body, which is the part no synthetic block can stand in for: on
+    // the old constants every one of these would have been 0.
+    let all = gimmick::output_blocks(&table);
+    let lists = gimmick::output_lists(&table).len();
+    println!("whole body: {lists} output lists, {} blocks", all.len());
+    assert!(all.len() > 800, "expected the whole body's blocks, got {}", all.len());
+    let zero = all.iter().filter(|b| b.item == 0).count();
+    assert_eq!(zero, 0, "{zero} of {} blocks have item id 0", all.len());
+    // The two copies agree and the two pads are zero, which is the layout claim
+    // the constants encode, stated over every block rather than over one.
+    for b in &all {
+        let head = u32_at(&table, b.offset + gimmick::ITEM_AT).expect("item id in the table");
+        let tail = u32_at(&table, b.offset + gimmick::ITEM_TAIL_AT).expect("item echo");
+        assert_eq!((head, tail), (b.item, b.item), "block at {}", b.offset);
+        assert_eq!(u32_at(&table, b.offset + gimmick::PAD_AT), Some(0), "pad at {}", b.offset);
+        assert_eq!(
+            u32_at(&table, b.offset + gimmick::PAD_TAIL_AT),
+            Some(0),
+            "tail pad at {}",
+            b.offset
+        );
+    }
+    println!("all {} blocks: item at +1 == item at +60 != 0, both pads zero", all.len());
+}
+
+fn u32_at(b: &[u8], o: usize) -> Option<u32> {
+    b.get(o..o + 4)?.try_into().ok().map(u32::from_le_bytes)
+}
+
 // ---------------------------------------------------------------------------
 // The accessor census and the tables resolved through it.
 //

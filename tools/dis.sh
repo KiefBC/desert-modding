@@ -2,11 +2,18 @@
 # Disassemble a range of CrimsonDesert.exe by RVA (Intel syntax). Addresses and
 # branch targets are printed as RVAs (add 0x140000000 for the preferred VA).
 #   tools/dis.sh <start-rva-hex> <end-rva-hex>
-# Builds an image-layout copy of the exe on first use in $TMPDIR (or /tmp).
+# Builds an image-layout copy of the exe on first use in $TMPDIR (or /tmp), and
+# rebuilds it whenever the exe is newer than the copy. That second half is not a
+# nicety: the cache used to be keyed on existence alone, so after a game update
+# every call kept disassembling the PREVIOUS build's bytes - clean-looking,
+# correctly formatted and wrong, with nothing printed to say so. One 2026-09-13
+# investigation lost time to it before noticing the cached image was three days
+# older than the exe and a different size.
 set -euo pipefail
 EXE="${EXE:-/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe}"
 IMG="${IMG:-${TMPDIR:-/tmp}/crimsondesert.img}"
-if [ ! -s "$IMG" ]; then
+if [ ! -s "$IMG" ] || [ "$EXE" -nt "$IMG" ]; then
+  [ -s "$IMG" ] && echo "dis.sh: $EXE is newer than $IMG, rebuilding" >&2
   python3 - "$EXE" "$IMG" <<'PY'
 import struct, sys
 d = open(sys.argv[1], "rb").read()

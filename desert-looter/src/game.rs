@@ -111,6 +111,23 @@ fn class_of(m: &MainModule, obj: usize) -> String {
 /// Inert actors closer than this get a detail line in the survey.
 pub const INERT_DETAIL_RANGE: f32 = 10.0;
 
+/// Print order of the F11 listing, lowest first: the actors a gather or
+/// pickup question is about, then the ones a catch question is about, then
+/// scenery. Distance orders within a rank. Kept as a function rather than a
+/// derive on `Kind` so the enum's own order stays free to mean nothing.
+fn survey_rank(k: actors::Kind) -> u8 {
+    // Exhaustive on purpose: a new `Kind` must decide where it prints.
+    match k {
+        actors::Kind::Gather => 0,
+        actors::Kind::Unarmed => 1,
+        actors::Kind::Item | actors::Kind::Equipment => 2,
+        actors::Kind::Interactable => 3,
+        actors::Kind::Catchable => 4,
+        actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 5,
+        actors::Kind::Inert => 6,
+    }
+}
+
 /// One survey line for an actor with no gimmick record: the class, the type
 /// byte, the two `ClientStatusActorComponent` bytes, the interaction category
 /// (`status+0x5A`, what `FUN_1429DB730` switches on) and the components. This
@@ -220,12 +237,37 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
         })
         .collect();
     near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // Classify everything once. The census below counts every actor in range
+    // and is never truncated; only the listing is.
+    let classified: Vec<(f32, usize, u32, Vec3, actors::Kind)> = near
+        .iter()
+        .map(|&(d, a, eid, pos)| (d, a, eid, pos, actors::classify(m, a, player)))
+        .collect();
     let mut counts = std::collections::BTreeMap::<String, usize>::new();
-    let mut shown = 0usize;
-    for (d, a, eid, pos) in &near {
-        let kind = actors::classify(m, *a, player);
+    for (_, _, _, _, kind) in &classified {
         *counts.entry(format!("{kind:?}")).or_default() += 1;
+    }
+    // Kind-first, then distance. Until 2026-09-13 this was distance only,
+    // and with a heap of smashed pottery underfoot the budget went entirely
+    // on inert shards a metre away while the gather nodes and items - the
+    // actors the survey exists for - fell off the end unprinted and unreported.
+    // Three investigations read that window as the world (TODO.md, "the
+    // looter's survey truncates at 64 lines"). Ordering by kind means the
+    // budget only ever cuts the least interesting actors, and the line after
+    // the listing says exactly what it cut.
+    let mut ordered = classified;
+    ordered.sort_by(|a, b| survey_rank(a.4).cmp(&survey_rank(b.4)).then(a.0.total_cmp(&b.0)));
+    let mut shown = 0usize;
+    let mut cut = std::collections::BTreeMap::<String, usize>::new();
+    for (d, a, eid, pos, kind) in &ordered {
+        let (d, a, eid, kind) = (d, a, eid, *kind);
+        // A far-off inert gimmick prints nothing outside debug, so it must
+        // not spend a line of the budget either.
+        if kind == actors::Kind::Inert && *d > INERT_DETAIL_RANGE && !debug {
+            continue;
+        }
         if shown >= max_lines {
+            *cut.entry(format!("{kind:?}")).or_default() += 1;
             continue;
         }
         shown += 1;
@@ -291,6 +333,14 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
     }
     let summary: Vec<String> = counts.iter().map(|(k, v)| format!("{k}={v}")).collect();
     crate::log!("[survey] within {range:.0} m: {}", summary.join(" "));
+    if !cut.is_empty() {
+        let dropped: usize = cut.values().sum();
+        let by_kind: Vec<String> = cut.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        crate::log!(
+            "[survey] listing capped at {max_lines} lines ([Looter] SurveyLines): {dropped} more not printed - {}",
+            by_kind.join(" ")
+        );
+    }
     if debug {
         if let Some((_, a, eid, _)) = near.iter().find(|(_, a, _, _)| actors::classify(m, *a, player) == actors::Kind::Gather) {
             crate::log!("[debug] strings of gather node eid={eid:08X}");
@@ -877,6 +927,7 @@ pub fn nearest_gather(
     // reads the same. A creature of an unknown class is *not* counted, because
     // nothing the player can set would have taken it.
     let mut family_off_seen = 0usize;
+    let mut refused_seen = 0usize;
     for &(d, eid, a, pos, kind) in &nodes {
         // Catchable creatures carry no gimmick record, so they are decided
         // before `node_identity` (which returns None for them) rather than
@@ -953,6 +1004,14 @@ pub fn nearest_gather(
             ("Item".to_string(), crate::payload::PickupMode::Item)
         } else {
             let Some(f) = id.family else { continue };
+            // The water well's bucket is refused by record key, before its
+            // family is even consulted: a forged pickup there leaves the well
+            // permanently empty (`config::WELL_BUCKET_RECORD_KEY`). Counted so
+            // the "nothing to gather" line can say that is what it walked past.
+            if crate::config::never_forge_pickup(id.key, id.name.as_deref()) {
+                refused_seen += 1;
+                continue;
+            }
             // Filtered on the typed family, before it becomes a string.
             if !cfg.allows_family(f) {
                 family_off_seen += 1;
@@ -979,6 +1038,9 @@ pub fn nearest_gather(
     }
     if family_off_seen > 0 {
         return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)"));
+    }
+    if refused_seen > 0 {
+        return Err(format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)"));
     }
     Err(format!("no Gather node within {range:.1} m"))
 }

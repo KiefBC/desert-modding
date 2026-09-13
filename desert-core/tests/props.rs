@@ -26,17 +26,22 @@ fn cfg() -> ProptestConfig {
 // ---------------------------------------------------------------------------
 
 /// One well-formed resource-output block, laid out field by field.
+///
+/// Until 2026-09-12 this put the item id at `+5` and `+64` — the two zero pads —
+/// matching the constants of the day rather than the table, which is half of why
+/// the off-by-4 in `ITEM_AT`/`ITEM_TAIL_AT` survived its own test suite (the
+/// other half is the identical builder in `gimmick.rs`'s unit tests).
 fn block(item: u32, min: u64, max: u64) -> Vec<u8> {
     let mut b = Vec::with_capacity(BLOCK);
     b.push(1u8); //  +0  flag
-    b.extend_from_slice(&[0; 4]); //  +1
-    b.extend_from_slice(&item.to_le_bytes()); //  +5  item
+    b.extend_from_slice(&item.to_le_bytes()); //  +1  item
+    b.extend_from_slice(&[0; 4]); //  +5  padding
     b.extend_from_slice(&[0; 33]); //  +9
     b.extend_from_slice(&min.to_le_bytes()); // +42  min
     b.extend_from_slice(&max.to_le_bytes()); // +50  max
     b.extend_from_slice(&[0xFF, 0xFF]); // +58
-    b.extend_from_slice(&[0; 4]); // +60
-    b.extend_from_slice(&item.to_le_bytes()); // +64  item again
+    b.extend_from_slice(&item.to_le_bytes()); // +60  item again
+    b.extend_from_slice(&[0; 4]); // +64  padding
     b
 }
 
@@ -264,7 +269,9 @@ proptest! {
             prev_end = b.offset + BLOCK;
 
             // The signature keeps both copies of the item id in step, so the
-            // one at ITEM_TAIL_AT is the one at ITEM_AT.
+            // one at ITEM_TAIL_AT is the one at ITEM_AT. Before 2026-09-12 both
+            // constants pointed at a zero pad and this held vacuously; it is a
+            // real cross-check now.
             let tail = u32::from_le_bytes(
                 bytes[b.offset + ITEM_TAIL_AT..b.offset + ITEM_TAIL_AT + 4].try_into().unwrap());
             let head = u32::from_le_bytes(

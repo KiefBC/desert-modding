@@ -18,7 +18,7 @@ game's `bin64`).
 
 | Mod | Version | What it does |
 | --- | --- | --- |
-| [desert-tooling](desert-tooling) | 0.4.0 | Auto-loot, gathering yields and the in-game menu, in one plugin |
+| [desert-tooling](desert-tooling) | 0.4.1 | Auto-loot, gathering yields and the in-game menu, in one plugin |
 
 One `DesertTooling.asi`, one `DesertTooling.ini`, one `DesertTooling.log`. It
 carries four subsystems, each with its own section in that ini and its own tag
@@ -44,7 +44,7 @@ Manager without an ASI loader. Never mount it alongside the plugin.
 Grab the zip from the latest release, or build it yourself, then copy
 `DesertTooling.asi` and `DesertTooling.ini` into the game's `bin64`.
 
-- **Desert Tooling**: [desert-tooling-v0.4.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.4.0)
+- **Desert Tooling**: [desert-tooling-v0.4.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.4.1)
 - **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.1)
 
 Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).

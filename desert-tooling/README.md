@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.4.0**, for Crimson Desert Enhanced, Steam build **25246367**.
+**Version 0.4.1**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
@@ -10,7 +10,7 @@ Rust, installed by dropping two files into `bin64`.
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
 | Looter | gathers plants, ore, stone, wood, insects and fish around you | `[Looter]` | `[looter]` |
-| Gatherer | multiplies what a gathering node or a caught creature gives | `[Gatherer]` | `[gatherer]` |
+| Gatherer | multiplies what a gathering node, a water well or a caught creature gives | `[Gatherer]` | `[gatherer]` |
 | Dispatch | shorter dispatch missions, bigger mission rewards, no skill or headcount gate | `[Dispatch]` | `[dispatch]` |
 | Overlay | the settings menu, `Insert` | `[Overlay]` | `[overlay]` |
 
@@ -107,8 +107,8 @@ subsystem re-reads its own section of it once a second, so:
   subsystem reading the file at the wrong moment never sees half of it.
 
 Presets sit above the Looter section: `Everything`, `Plants only`, `Wood only`,
-`Rock and ore only`. One click sets the four gather families and ground items
-and leaves everything else alone.
+`Rock and ore only`. One click sets the Looter's four gather families and
+ground items and leaves everything else alone.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
@@ -131,7 +131,7 @@ it.
 | Insert | show and hide the settings menu |
 | F9 | gather the nearest eligible node or item once |
 | F10 | toggle automatic gathering on and off |
-| F11 | write a survey of everything nearby to the log (read-only) |
+| F11 | write a survey of everything nearby to the log (read-only); gather nodes and items are listed first, up to `SurveyLines`, and a final line says how many actors were left unprinted |
 | F7 | debug: record every event the game queues until pressed again |
 
 Every gathering keypress beeps once. All five keys can be changed in the ini or
@@ -163,8 +163,9 @@ from the menu.
 - **Respects the bag.** Nothing is sent when the bag is full unless every item
   the node can give would stack onto a stack you already carry, read from the
   node's own record. Repeated refusals switch auto mode off.
-- **Leaves alone**: standing trees, log chunks, animals and NPCs, furniture and,
-  by default, dropped weapons and armour.
+- **Leaves alone**: standing trees, log chunks, animals and NPCs, furniture,
+  breakable pots, market-stall goods and, by default, dropped weapons and
+  armour.
 
 Nothing is simulated and no input is faked: the plugin sends the game the same
 pickup event it sends when you press E.
@@ -172,12 +173,12 @@ pickup event it sends when you press E.
 ## What the Gatherer does
 
 Every gathering node in the game carries a minimum and a maximum quantity for
-each item it can produce. Desert Tooling multiplies both, for the 275 records
-the game counts as genuine gather nodes, split into four independent families:
+each item it can produce. Desert Tooling multiplies both, in 276 records across
+four independent families:
 
 | family | what it covers | records |
 |---|---|---|
-| Foraging | plants, fruit, berries, mushrooms, crops | 82 |
+| Foraging | plants, fruit, berries, mushrooms, crops, and the water you draw from a **water well** | 83 |
 | Logging | firewood cut from felled trees (`firewood_*`) | 141 |
 | Mining | the `collect_mine` family: rocks, veins, cave variants, breakable stalactites | 36 |
 | Ore Nodes | the `collect_ore` family: `ore_*` deposits, sulfur stone, collectible stalactites | 16 |
@@ -186,6 +187,16 @@ Each family has its own multiplier, 1 to 100. Mining and Ore Nodes look alike in
 game but are separate families in the game's data; set both if you want all
 mining-style gathering raised together. Nothing is patched on disk: the numbers
 are multiplied in memory as the game loads them.
+
+They are the game's own groupings — the 275 records it classes as gather nodes,
+the same four the DMM pack covered — plus one record the pack never had: the
+water well, which pays out through the same kind of record as a bush and so
+sits under `Foraging`. Water from a well is a thing you gather out of the world
+like everything else there, and a player reading "plants, fruit, berries" would
+not guess it, so it is said here: **`Foraging` also multiplies the water you
+draw from a well.** It does *not* touch the breakable water pots or the goods
+sitting on market stalls — those hand you a ready-made item and never read the
+table, so they are not in any family.
 
 Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
@@ -212,7 +223,7 @@ Abyss objects, artifacts, gates or fast travel.
 ### What to expect in game
 
 The multiplier scales the numbers in the record, not the amount you happen to
-get on one pick. Three things surprise people:
+get on one pick. Four things surprise people:
 
 - **A node picks one of its ranges, then rolls it.** Most records carry several
   resource-output blocks, and a single gather pays out one of them, chosen at
@@ -235,6 +246,12 @@ get on one pick. Three things surprise people:
   block of 1-1, and rocks carry three blocks that are each 1-1, so a pick goes
   from exactly 1 to exactly 2 at 2x, every time. If you want to check the plugin
   is working at all, check one of those.
+- **A well never rolls.** Its record's minimum and maximum are already the same
+  number, so unlike a bush there is no range to land anywhere in: a well that
+  gives 5 gives exactly 15 at `Foraging=3`, every time - measured, with the
+  bag count logged before and after. And the multiplier is read when you
+  **take** the water, not when the bucket fills: raise a full bucket at 3,
+  turn the slider to 6, take it, and you get 30.
 
 One more thing that looks odd: pressing E can hand the total over as several
 separate "x1" pickups a second or so apart. That is the game's own delivery
@@ -248,7 +265,8 @@ multiplier preset** change the same minimum/maximum quantities, on disk.
 If either is mounted while this `.asi` is installed, the two stack: a mounted
 DMM 5X plus `Mining=2` here gives 10x. **Unmount both in DMM before using this
 plugin.** The `desert-gatherer-dmm/` directory in this repository is that pack;
-this plugin is its replacement, not its companion.
+this plugin is its replacement, not its companion. The one record with nothing
+on the DMM side to stack with is the water well, which the pack never covered.
 
 ## Settings (`DesertTooling.ini`)
 
@@ -277,9 +295,20 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
+| `SurveyLines` | 200 | how many actor lines one F11 prints; gather nodes and items come first, and the survey says how many it cut |
 | `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
 | `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | see the key names below |
+
+**The plugin never takes a water well's bucket**, whatever `GatherForaging`
+says, and F9 will not either. The well's record is a `Foraging` record, so the
+`Foraging` multiplier reaches it - but a pickup the plugin sends at the bucket
+is delivered from outside the well's own crank sequence, and that sequence is
+what puts the next bucket there. Tried on 2026-09-13: the water arrived, the
+bucket vanished, and the well stayed empty for good. So at a well you do all of
+it yourself - lower, crank, take - and the multiplier still applies to what
+you take. When the nearest thing is a well the F9 line says it was refused
+rather than pretending nothing was there.
 
 ### `[Gatherer]`
 
@@ -288,7 +317,7 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `Enabled` | 1 | 0 = the record-loader hook still reads every record to keep its own remembered table current, but writes nothing as records load, and the re-apply pass (see below) writes vanilla numbers back into whatever is already parsed. Flipping it back to 1 re-applies the multipliers the same way |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
-| `Foraging` | 1 | multiplier for plants and crops, 1..100 |
+| `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
 | `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
@@ -427,7 +456,8 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 13,906 records, 275 of which are gather nodes. Roughly
+called `gimmickinfo`: 13,906 records, 276 of which this plugin multiplies — the
+275 the game classes as gather nodes, plus the water well. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
 a preload pass that reads every record in order, parses each one into an object
 in memory, stores the object's pointer in a slot table, and then closes the
@@ -465,7 +495,7 @@ through the load-time hook, whenever it does load.
 **What the log shows.** Right after each `[ini] reloaded: ...` line:
 
 ```text
-[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1: 82 records rewritten, 193 unchanged, 0 skipped; 644 scalars written
+[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1: 83 records rewritten, 193 unchanged, 0 skipped; 646 scalars written
 ```
 
 or, with `DryRun=1`, the same line as `[dry] would re-apply ...`. At `Enabled=0`
@@ -486,7 +516,7 @@ is nothing left for the re-apply pass to do yet.
 the summary line is followed by one naming the reasons, for example:
 
 ```text
-[gatherer] [live] WARN 12 of 275 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
+[gatherer] [live] WARN 12 of 276 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
 ```
 
 or, if the record manager itself could not be read at all:
@@ -526,7 +556,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertTooling.asi` | the plugin | yes, that uninstalls it |
-| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all six multipliers, so deleting it turns them off |
+| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all seven multipliers, so deleting it turns them off |
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
 

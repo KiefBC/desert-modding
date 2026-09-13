@@ -9,6 +9,149 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.4.1] - 2026-09-12
+
+Game build 25246367. The work below is dated 2026-09-12 and **was taken into the game the same
+day, on that build** - but not uniformly, and the difference is the point. The water well under
+*Added*, the live re-apply pass and the parsed-side offset correction under *Fixed* were exercised
+and are confirmed. The four families' plants, wood, rocks and ore are still unmeasured on this
+build. `Bugs` is: on 2026-09-13 the same insect item went `x1` at `Bugs=1` to `x3` at `Bugs=3`,
+twice (`1000583`, `1004880`), and the Firefly Colony's variable second item came in at `x5`
+against a `x3` first - the once-per-unit roll 0.2.0's changelog describes, not a fault.
+
+### Added
+
+- **`Foraging` now also multiplies the water you draw from a water well.** One new record in the
+  family, `gimmick_well_0001_parts01`, the filled bucket at the top of the well's crank sequence,
+  and the one record in the table the DMM pack never had. The well pays a fixed amount - its
+  block's minimum and maximum are both 5 - so unlike a bush there is no roll to widen and the
+  multiple is exact: at x3 a well pays **15** water where vanilla pays 5. Measured on 2026-09-13
+  under `Foraging`: the vanilla `x5` as a `[recv]` line, and the x3 as a bag delta of exactly +15
+  between two F11 surveys either side of the take (`Water x33` -> `x48`). The slider is read when
+  the water is **taken**, not when the bucket fills - a full bucket raised at 3 and taken at 6
+  paid 30 - because the live re-apply pass rewrites the parsed record and the game rolls the
+  amount at grant time.
+  Water from a well is gathered out of the world like everything else in `Foraging`, which is why
+  it lives there rather than under a key of its own; the `Foraging` help in the menu, the ini
+  comment and the README all say so, because "plants, fruit, berries, mushrooms, crops" would not
+  make a player guess it.
+
+  **What it does not reach, stated so nobody goes looking.** The breakable water pot
+  (`Background_Breakable_66`) and the goods sitting on market stalls (`gimmick_item_trade_*`) are
+  *not* multiplied, and are not in any family. They hand the player a **pre-made item instance**
+  that already carries its own count, and the game only rolls an amount out of a record's output
+  block when there is no such instance to hand over; the well has none, so it rolls its block, and
+  the pot has one, so its block is read by nobody. Measured the same day: the pot paid 5 at x3, 1 and
+  then 5 at x1 (a partial pickup, then a full sweep), 6 at x10 and 4 at x100 - flat, with no
+  relation to the multiplier - while its block read up to 500, and two patched pepper stalls logged
+  their `1 -> 3` edit and still granted `[recv] item 1000608 x1`. An unpatched pickup points the
+  same way: item `755015` has exactly two source records, both with a **vanilla** `2..2` block, and
+  it arrived as `x1` - so whichever prop it came from, the block was not the count (the receipt
+  names the item, not the prop, so this is corroboration rather than proof). Reaching those props needs a different lever
+  entirely; `TODO.md` carries it. The sixteen records are recorded, with the evidence, as
+  `records_not_enabled` in `tools/extra-families.json`, and a generated test keeps them out of the
+  table.
+
+- **Desert Looter's `GatherForaging` covers the well too**, since its record is a `Foraging` record
+  and the looter gates on the family. The well is a four-step sequence - lower the bucket, crank it
+  up, the water then sits in the bucket as its own interactable, take it - and the looter only ever
+  sends that final pickup, the same one it sends at a bush, so the player still does the cranking.
+  **Untested in game**: whether the filled-bucket record shows up as a gather node *before* the
+  bucket is raised is an open question in `TODO.md`, with the check that settles it.
+
+### Changed
+
+- `tools/gen-collect-names.py` now owns every row of `desert-core/src/collect.rs`, including the
+  hand-written parts it used to drop, so regenerating that file no longer silently loses content.
+  Its second input, `tools/extra-families.json`, is **record-keyed**: it names the well by record
+  key, stores the item ids the record pays as derived data, and the generator re-derives those from
+  DMM's clean table body on every run and refuses to write on any mismatch (or on a record that
+  pays item 1, which is money). An earlier item-keyed form of that file expanded water to both of
+  its source records and put the pot in the table, which is exactly the mistake the record keying
+  exists to prevent. `tools/items.py` is a new offline item cross-reference with a `--loose` mode.
+  None of this ships; it is listed because the generator overwriting `collect.rs` wholesale is a
+  hazard a future editor will meet.
+
+### Fixed
+
+- **The F11 survey no longer cuts the actors it exists to show.** Its listing was capped at a
+  hard-coded 64 lines and sorted by distance, so with a heap of smashed pottery underfoot it
+  printed 64 inert shards a metre away and dropped the gather nodes and items further out -
+  silently, with the census line at the foot still counting them. Three investigations on
+  2026-09-12 read that window as the world (the "5 cups for 5 water" and "36 new actors" figures
+  were withdrawn for exactly this). Now: the cap is a `[Looter]` setting, `SurveyLines`
+  (default **200**, 16..2000), the listing is ordered **kind-first** - gather nodes, then unarmed
+  nodes, items and equipment, interactables, catchables, characters, and scenery last, each by distance - so
+  raising the budget only ever adds the least interesting actors and cutting it only ever removes
+  them, and a final `[survey] listing capped at N lines ... M more not printed` line names what
+  was cut, by kind. A far-off inert prop that prints nothing outside `Debug=1` no longer spends a
+  line of the budget either. The kind census was never truncated and is unchanged. Exercised the
+  same day in a crowded area (`analysis/logs/DesertTooling-2026-09-13-survey-lines.log`): 192
+  actors in range, 192 lines printed in the order `Equipment 9, Item 22, Interactable 11, Catchable
+  24, Character 4, Inert 122`, matching the census exactly, no cap line because 192 < 200. And
+  once more at `ScanRange=165` in Hernand, 699 actors in range: every piece of equipment, every
+  item and every interactable printed (9 + 17 + 21), then 153 of 339 catchables to the cap, and
+  the line `listing capped at 200 lines ([Looter] SurveyLines): 499 more not printed -
+  Catchable=186 Character=39 Inert=274` - which is the whole fix in one line.
+- **The looter refuses the water well's bucket, by record key, before any family switch is
+  consulted.** Putting the well under `Foraging` made it a gather node in the looter's eyes too,
+  and the 0.4.1 draft shipped that as a QoL guess: "auto-gather saves you the last interact at a
+  well, untested". Tested on 2026-09-13 (`analysis/logs/DesertTooling-2026-09-13-well-coin-bugs.log`,
+  `t=197`): F9 at a well forged the pickup at `gimmick_well_0001_parts01`, the player received
+  `[recv] item 22008 x5` - the first well receipt ever logged, vanilla 5 at `Foraging=1`, in **one**
+  `x5` grant rather than five `x1`s - the bucket actor was gone 0.1 s later, and **the well never
+  produced another one**. The crank sequence is what respawns the bucket; a pickup from outside
+  it leaves the well permanently empty. That is a broken world object, not a duplication exploit.
+  `desert-looter/src/config.rs` now carries `WELL_BUCKET_RECORD_KEY` and `never_forge_pickup`,
+  `nearest_gather` checks it first, the F9 "nothing to gather" line says a well was refused, and
+  the `GatherForaging` help says the switch never covers it. The multiplier is untouched: draw the
+  water yourself and `Foraging` still scales it.
+- **The item id in a raw `gimmickinfo` output block was read four bytes too high.**
+  `desert_core::gimmick::ITEM_AT` and `ITEM_TAIL_AT` pointed at `+5` and `+64`, which are two
+  four-byte zero pads; the item id is at `+1` and echoed at `+60`. Confirmed over **all 896**
+  output blocks of DMM's clean table body: `u32@+1` is nonzero and equal to `u32@+60` on
+  896/896, and `u32@+5` and `u32@+64` are zero on 896/896. Nothing caught it because the unit
+  tests built their synthetic blocks at the same wrong offsets the code read them at, so the
+  code and its tests agreed with each other about a layout neither shared with the game.
+
+- **The same mistake on the parsed side**: `desert-gatherer`'s `BLOCK_ITEM` pointed at `0x6C`,
+  which is always zero, and is now `0x68`. The list entry's `ENTRY_ITEM` field is not a second
+  copy of the item id at all - it is the entry's own key, zero on every gather record - and the
+  live re-apply now checks it against the zero it should be instead of against an item id.
+
+- **What this did and did not break, stated plainly.** Load-time yields were never affected:
+  `multiply` only ever writes the two `u64` scalars at `+42` and `+50`, and those offsets were
+  right. The live re-apply was **not** broken either, but only by accident - every field
+  involved read zero, so its "is this the block I remembered" guard compared zero against zero
+  and passed trivially. That is the trap worth recording: correcting only the disk half would
+  have made `remember` store real item ids while `reapply` kept reading zeros, turning a
+  working feature into a silent no-op. Both halves move together for that reason.
+
+- The detected population is unchanged, and deliberately so. `block_ok` gained the real
+  item-id comparison and **kept** the old one as a pad-equality check, which is not redundant:
+  dropping it grows the detector from 573 lists / 896 blocks to 589 / 1038, and the 16 extra
+  lists are chests, dig sites and dungeon loot rather than gather nodes. So the correction
+  changes no yield anywhere. The DMM pack oracle still reproduces every edit exactly - 275
+  records, 587 blocks, 1174 offsets.
+
+- A new `#[ignore]`d test in `desert-core/tests/gimmick_real.rs` asserts the item offsets
+  against the real table: `peony_01`'s first block must read item 757006 at 4..=7 - a number
+  learned from the game's own pickup event, not from these bytes - and **no** block anywhere in
+  the body may have an item id of 0, which is what every one of them had before. It skips with
+  a banner when the clean body is absent, like the pack oracle beside it.
+
+- **The parsed-side offset is now verified in game.** It could never be tested natively - it is a
+  read into memory the game itself parsed - and the check named here was the `[gatherer] [live]
+  re-applied` line after changing a multiplier while playing. That line was produced **nine** times
+  over the session of 2026-09-12 on build 25246367, across nine slider changes, and reported
+  **`0 skipped` every time**, with no `[live] WARN` naming a block item id. **That confirms two
+  things and no more**: the live re-apply path works end to end, and `BLOCK_ITEM = 0x68` is right,
+  since a wrong one is exactly what would have surfaced as a jump in `skipped`. It says nothing
+  about whether any given family multiplies correctly in play - that is measured one record at a
+  time, and on this build only the water well has been (see *Added*). The disk-side
+  `ITEM_AT`/`ITEM_TAIL_AT` correction is carried by the 896/896 check against DMM's clean body,
+  which needs no running game at all.
+
 ## [0.4.0] - 2026-09-11
 
 Game build 25116796.

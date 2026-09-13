@@ -10,19 +10,20 @@
 //! the config plus ready-to-log warnings, and a bad value never replaces the
 //! default.
 //!
-//! The four family multiplier keys are the four independent gather families
-//! of `desert_core::collect::Family`, and they carry the vocabulary the DMM
-//! pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and
-//! Ore Nodes are separate internal families, and setting one does not touch
-//! the others.
+//! The family multiplier keys are the independent gather families of
+//! `desert_core::collect::Family`, and they carry the vocabulary the DMM pack
+//! used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and Ore
+//! Nodes are separate internal families, and setting one does not touch the
+//! others. `Foraging` also covers the one record that is not from the pack,
+//! the water well - see the field's doc comment below.
 //!
 //! `Bugs` and `Fish` are a different lever entirely. Creatures caught by hand
 //! are not gimmick records, so there is nothing in a table to multiply; the
 //! count is an immediate in the game's code (`docs/reference-internals.md`
 //! section 17) and the plugin patches it. They share the multiplier range and
 //! the parsing of the family keys, and nothing else - hence
-//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than a
-//! fifth and sixth `Family`.
+//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than two
+//! more `Family` arms.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -47,7 +48,14 @@ pub struct Config {
     /// 1 = also log every record the loader hands us that is not a gather
     /// record (13,600 of them), capped by the hook so the log stays finite.
     pub debug: bool,
-    /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms).
+    /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms,
+    /// crops, and the water drawn from a water well - `gimmick_well_0001_parts01`,
+    /// the one record in the family the DMM pack never had. Its block is a fixed
+    /// `5..5`, so a 3 pays exactly 15 - and on 2026-09-13 it did, with the bag
+    /// count logged either side of the take (`Water x33` -> `x48` at
+    /// `Foraging=3`, `analysis/logs/DesertTooling-2026-09-13-well-x15-x30.log`).
+    /// Raising the slider *after* the bucket is full still counts: the amount
+    /// is rolled when the water is taken, not when the bucket fills).
     pub foraging: u32,
     /// Yield multiplier for `Family::Logging` (`firewood_*`).
     pub logging: u32,
@@ -262,8 +270,8 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
     }
 }
 
-/// One of the four family multipliers: an identical `1..=100` slider, so the
-/// four differ only in their key, label and help.
+/// One of the family multipliers: an identical `1..=100` slider, so they
+/// differ only in their key, label and help.
 fn mult(key: &str, help: &str) -> Field {
     f(
         key,
@@ -335,7 +343,12 @@ pub fn schema() -> Section {
             },
             Field {
                 heading: Some("Yield multipliers:".to_string()),
-                ..mult("Foraging", "Plants, fruit, berries, mushrooms, crops. 82 records.")
+                ..mult(
+                    "Foraging",
+                    "Plants, fruit, berries, mushrooms, crops, and the water you draw from a water \
+                     well. 83 records. A well pays a fixed amount, so at 3 a well that gave 5 gives \
+                     exactly 15.",
+                )
             },
             mult("Logging", "Firewood cut from felled trees (firewood_*). 141 records."),
             mult(
@@ -464,6 +477,26 @@ mod tests {
         let (c, w) = parse("[Gatherer]\nBugs=10\nFish=10\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
+    }
+
+    /// The water well is a `Foraging` record, so the `Foraging` key is what
+    /// reaches it - there is no separate well key, and an `Ingredients` key
+    /// (a family that never shipped) is an unknown key like any other.
+    #[test]
+    fn the_well_is_reached_through_foraging() {
+        assert_eq!(
+            desert_core::collect::family_by_name("gimmick_well_0001_parts01"),
+            Some(Family::Foraging)
+        );
+        let (c, w) = parse("[Gatherer]\nForaging=3\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.multiplier(Family::Foraging), 3);
+        assert!(!c.all_vanilla());
+
+        let (c, w) = parse("[Gatherer]\nIngredients=3\n");
+        assert_eq!(c, Config::default());
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].starts_with("unknown key"), "{w:?}");
     }
 
     #[test]
@@ -680,7 +713,17 @@ mod tests {
         let keys: Vec<&str> = s.fields.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(
             keys,
-            vec!["Enabled", "DryRun", "Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish", "Debug"]
+            vec![
+                "Enabled",
+                "DryRun",
+                "Foraging",
+                "Logging",
+                "Mining",
+                "Ore",
+                "Bugs",
+                "Fish",
+                "Debug"
+            ]
         );
         // Under the same heading as the four families: the menu shows one
         // list of multipliers, not two.
@@ -697,6 +740,21 @@ mod tests {
         // not the "next gather" the rest of the section talks about.
         let notice = s.notice.clone().unwrap_or_default();
         assert!(notice.contains("next catch"), "{notice}");
+    }
+
+    /// A player reading "plants, fruit, berries, mushrooms, crops" would not
+    /// guess that water is in there, so the Foraging help has to say it covers
+    /// the water well - and there must be no separate well or `Ingredients`
+    /// field for them to go looking for instead.
+    #[test]
+    fn the_foraging_help_names_the_water_well() {
+        let s = schema();
+        let help = s
+            .field("Foraging")
+            .and_then(|f| f.help.clone())
+            .unwrap_or_else(|| panic!("the menu must offer Foraging, with help"));
+        assert!(help.contains("water well"), "{help}");
+        assert!(s.field("Ingredients").is_none(), "Ingredients never shipped; it must not be offered");
     }
 
     /// Prints this section as it is seeded into `DesertTooling.ini`.

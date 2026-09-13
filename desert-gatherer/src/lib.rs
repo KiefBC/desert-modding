@@ -6,7 +6,10 @@
 //! the instant between the loader being entered and the deserializer reading
 //! the record. Four independent families - Foraging, Logging, Mining and Ore
 //! Nodes - each get their own multiplier from the `[Gatherer]` section of
-//! `DesertTooling.ini`. This replaces the DMM JSON pack in
+//! `DesertTooling.ini`. They are the DMM pack's own families; the one record
+//! the pack never had is the water well, which sits in Foraging (water drawn
+//! from a well is gathered out of the world like everything else there) and
+//! comes from `tools/extra-families.json`. This replaces the DMM JSON pack in
 //! `desert-gatherer-dmm/`, which patched the same scalars on disk; **the pack
 //! and DMM's built-in gathering multiplier must be unmounted, or yields
 //! multiply twice.**
@@ -61,8 +64,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// come out as `[gatherer]`. Nothing else names it.
 pub const LOG_TAG: &str = "gatherer";
 
-/// How many gather records `desert_core::collect` knows about (275 on build
-/// 25116796). The ceiling on the plugin's own per-record log lines.
+/// How many gather records `desert_core::collect` knows about (276: the DMM
+/// pack's 275 plus the water well). The ceiling on the plugin's own per-record
+/// log lines.
 pub fn known_records() -> usize {
     collect::COLLECT_RECORDS.len()
 }

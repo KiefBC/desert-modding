@@ -1,0 +1,39 @@
+{
+  "Foraging": {
+    "note": "Also the water drawn from a WATER WELL: `gimmick_well_0001_parts01` (key 1001081, item 22008, a fixed 5..5), the one record in this table that is not from the DMM pack. It comes from tools/extra-families.json, which tools/gen-collect-names.py verifies against DMM's clean gimmickinfo table body on every run. Water from a well is gathered out of the world like everything else here, so it lives here rather than in a family of its own. The other water source, the breakable pot `Background_Breakable_66`, and the market-stall goods hand the player a pre-built item instance and never read their record, so a table edit cannot reach them; they are listed as `records_not_enabled` in the same file and the `foraging_records_not_enabled_stay_out` test below keeps them out. See docs/findings-water-wells-2026-09-12.md section 11.",
+    "records": {
+      "1001081": {
+        "name": "gimmick_well_0001_parts01",
+        "items": [22008],
+        "why": "The water well's payout part (the crank is parts02). Holds no item instance, so the game rolls its output block and a table edit reaches the player. The block is 5..5, so there is no roll and the multiple is exact arithmetic. CONFIRMED IN GAME 2026-09-13, build 25246367, under Foraging: vanilla x5 logged as a [recv] line (DesertTooling-2026-09-13-well-coin-bugs.log t=197), and x3 -> 15 logged as the bag delta between two F11 surveys, Water x33 -> x48 (DesertTooling-2026-09-13-well-x15-x30.log t=272/t=319). A x6 -> 30 taken after the bucket was already full was seen on screen only. The 2026-09-12 x15 on the Ingredients slider was the same number, unlogged."
+      }
+    },
+    "records_not_enabled": {
+      "21030076": {
+        "name": "Background_Breakable_66",
+        "items": [22008],
+        "why": "The breakable water pot, the other source of item 22008. Smashing it spawns generic item_basic_cup drops carrying a pre-built item instance whose count lives at instance+0x10, and the yield producer is only called when that instance is null (FUN_1429db730, findings-water-wells section 11). CONFIRMED IN GAME 2026-09-12 that the receipts were flat, PLAUSIBLE-strong that this pot is the source (analysis/logs/DesertTooling-2026-09-12-water-pot-survey.log; item 22008 has exactly two block sources, this pot and the well, and receipts are not attributed to a prop): paid 5 at x3, 1 then 5 at x1 (a partial pickup, then a full sweep with the survey running), 6 at x10 and 4 at x100 - flat, with no relation to the multiplier, while its block read 5->500."
+      },
+      "1001130": { "name": "gimmick_item_trade_cheese_01", "items": [1000667], "why": "Market-stall prop; hands over a pre-built item instance, block never read (same path as the pot; the item-instance lever in TODO.md is what would reach it)." },
+      "1001167": { "name": "gimmick_item_trade_cheese_02", "items": [1000667], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001131": { "name": "gimmick_item_trade_fishmeat_01", "items": [1000668], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001168": { "name": "gimmick_item_trade_fishmeat_02", "items": [1000668], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001160": { "name": "gimmick_item_trade_flour_02", "items": [1000646], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001120": { "name": "gimmick_item_trade_flour_03", "items": [1000646], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001129": { "name": "gimmick_item_trade_ginseng_01", "items": [1000666], "why": "Market-stall prop; item-instance path, block never read. Trade ginseng 1000666 is a different item from the foraged ginseng plants (756513 / 1000142), which are Foraging rows from the DMM pack." },
+      "1001166": { "name": "gimmick_item_trade_ginseng_02", "items": [1000666], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001123": { "name": "gimmick_item_trade_honey_01", "items": [1000603], "why": "Market-stall prop; item-instance path, block never read. That 1000603 is honey rests on this single record and is PLAUSIBLE only." },
+      "1001128": { "name": "gimmick_item_trade_pepper_01", "items": [1000608], "why": "Market-stall prop. CONFIRMED IN GAME 2026-09-12: both pepper records logged their 1->3 edit and the player received `[recv] item 1000608 x1`; pepper has no other block-carrying source, so the block was not read. This is the measurement the other 14 stall props rest on." },
+      "1001132": { "name": "gimmick_item_trade_pepper_03", "items": [1000608], "why": "Market-stall prop; measured with pepper_01 above, granted x1 at x3." },
+      "1001162": { "name": "gimmick_item_trade_salt_02", "items": [1000648], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001127": { "name": "gimmick_item_trade_salt_03", "items": [1000648], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001122": { "name": "gimmick_item_trade_sugar_01", "items": [1000602], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001118": { "name": "gimmick_item_trade_sugar_03", "items": [1000602], "why": "Market-stall prop; item-instance path, block never read." }
+    },
+    "candidates_not_enabled": {
+      "1000647": "wine - gimmick_item_trade_wine_02 only. A market-stall prop of the same shape as the 15 above, so a row would be inert until the item-instance lever exists; and whether wine is gathered is taste, not fact. Deferred.",
+      "28901": "bread - 11 records including gimmick_item_dropset_food_* and gimmick_tableset_food_*. Placed food props, same shape as the stall goods; deferred for the same two reasons.",
+      "1000965": "dryham - gimmick_item_common_dryham_0001 plus Item_Collect_Hang_Meat_03/04/11. Same again; deferred."
+    }
+  }
+}

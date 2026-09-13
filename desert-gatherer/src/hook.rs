@@ -376,10 +376,10 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// rec+0x278   ptr   output list data: entries of 16 bytes
 /// rec+0x280   u32   entry count
 /// entry+0x00  ptr   block object (0x70 bytes), null when the disk flag was 0
-/// entry+0x08  u32   item key (raw block +64)
+/// entry+0x08  u32   _dropTagNameHash (raw block +64); ZERO on gather records
 /// block+0x20  u64   MIN   (raw block +42)
 /// block+0x28  u64   MAX   (raw block +50)
-/// block+0x6c  u32   item id (raw block +5)
+/// block+0x68  u32   item id (raw block +1, echoed at +60)
 /// ```
 ///
 /// `rec+0x288` holds one further optional block of the same type with no
@@ -395,12 +395,31 @@ mod parsed {
     pub const REC_KEY: usize = 0x08;
     pub const REC_LIST: usize = 0x278;
     pub const REC_COUNT: usize = 0x280;
-    /// Bytes per list entry, and the offset of the item key inside one.
+    /// Bytes per list entry.
     pub const ENTRY: usize = 16;
+    /// The list entry's own key field, which `FUN_1414a7cc0` reads as the four
+    /// bytes *after* each 64-byte block body — disk `+64`.
+    ///
+    /// **It is zero on every gather record**, measured over all 896 output
+    /// blocks in DMM's clean table body, so it identifies nothing and must not
+    /// be compared against an item id. It is still read, as a structural
+    /// canary: the 142 blocks in the table that do carry a nonzero value here
+    /// are chests, dig sites and dungeon loot, and a gather record growing one
+    /// means the record shape moved. See `docs/reference-internals.md` §16.
     pub const ENTRY_ITEM: usize = 8;
     pub const BLOCK_MIN: usize = 0x20;
     pub const BLOCK_MAX: usize = 0x28;
-    pub const BLOCK_ITEM: usize = 0x6C;
+    /// The block's item id.
+    ///
+    /// **Corrected 2026-09-12 from `0x6C`, which is always zero.** The block
+    /// parser's first read (`FUN_141a37180`) takes eight bytes from disk `+1`
+    /// into `block+0x68`, so the low dword at `0x68` is the item id (disk `+1`)
+    /// and the high dword at `0x6C` is disk `+5` — a pad that is zero on all
+    /// 1038 blocks in the table. §16 named `0x6C` the item id from the same
+    /// off-by-four reading that put the disk-side item at `+5` instead of `+1`;
+    /// both are fixed together, and neither can be tested natively because
+    /// these are offsets into memory the game parsed.
+    pub const BLOCK_ITEM: usize = 0x68;
 }
 
 /// What one [`reapply`] pass did, for the single summary line its caller logs.
@@ -444,7 +463,8 @@ pub struct Outcome {
 
     /// The list entry's block pointer is null (the disk flag byte was 0).
     pub block_null: usize,
-    /// The block's item id is not the one the raw block had.
+    /// The block's item id is not the one the raw block had, or the list
+    /// entry's key field is not the zero every gather record carries there.
     pub block_item: usize,
     /// A guarded read of the block failed.
     pub block_read: usize,
@@ -691,9 +711,15 @@ pub fn reapply() -> Outcome {
                 out.block_read += 1;
                 continue;
             };
-            // Both copies of the item id have to be the one the raw block
-            // carried, or this is not the block we remembered.
-            if entry_item != item || block_item != item {
+            // The block's item id has to be the one the raw block carried, or
+            // this is not the block we remembered. `entry_item` is not a second
+            // copy of it - it is the list entry's own key field, zero on every
+            // gather record (see `parsed::ENTRY_ITEM`) - so it is checked
+            // against the zero it should be rather than against `item`.
+            // Comparing it to `item` is what the pre-2026-09-12 code did, and
+            // it only ever passed because `item` was itself being read from a
+            // pad and was also zero.
+            if block_item != item || entry_item != 0 {
                 out.blocks_skipped += 1;
                 out.block_item += 1;
                 continue;
