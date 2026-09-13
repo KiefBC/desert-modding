@@ -14,6 +14,7 @@ pub const THEME: Theme = Theme {
     window_rounding: 2.0,
     frame_rounding: 2.0,
     grab_rounding: 2.0,
+    tab_rounding: 2.0,
     window_border: 1.0,
     frame_border: 1.0,
     colors,

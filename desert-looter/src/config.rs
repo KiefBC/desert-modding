@@ -9,7 +9,7 @@
 
 use desert_core::collect::Family;
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Preset, Section};
+use desert_core::schema::{Field, Kind, Preset, Section, Tab};
 
 /// The shared ini every subsystem reads and the overlay writes.
 pub const INI_FILE: &str = "DesertTooling.ini";
@@ -235,6 +235,7 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
 }
 
@@ -247,6 +248,14 @@ fn under(heading: &str, mut field: Field) -> Field {
 /// Draw this field on the same row as the one before it.
 fn beside(mut field: Field) -> Field {
     field.same_line = true;
+    field
+}
+
+/// Draw this field on one of the menu's shared tabs instead of the looter's
+/// own: the hotkeys belong with every other key a player binds, and the
+/// diagnostics belong with every other switch a bug report asks for.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
     field
 }
 
@@ -273,8 +282,11 @@ fn preset(label: &str, hint: &str, families: (bool, bool, bool, bool)) -> Preset
 /// `desert-tooling` hands this straight to the overlay at startup, and uses it
 /// to seed the ini when the file is missing.
 ///
-/// `Debug`, `LogReceived` and `BagTab` are here too, grouped at the bottom
-/// under `Diagnostics:`. They used to be left out as "diagnostics and a
+/// `Debug`, `LogReceived`, `BagTab` and `SurveyLines` are here too, marked
+/// [`Tab::Debug`] so the menu draws them on its shared Debug tab rather than on
+/// the looter's own page; the four hotkeys are marked [`Tab::Settings`] for the
+/// same reason, so that every key a player binds is in one place. They used to
+/// be left out as "diagnostics and a
 /// game-build detail", which stopped being tenable once this schema became
 /// what the plugin writes its own ini from (`schema::create_ini_if_missing`):
 /// a key that is not named here is missing from the generated file as well as
@@ -409,19 +421,23 @@ pub fn schema() -> Section {
                 },
                 "Survey radius in game metres.",
             ),
-            f(
-                "SurveyLines",
-                "Survey lines",
-                Kind::Int {
-                    default: i64::from(d.survey_lines),
-                    min: i64::from(SURVEY_LINES_RANGE.0),
-                    max: i64::from(SURVEY_LINES_RANGE.1),
-                    step: 16,
-                    slider: false,
-                    format: None,
-                },
-                "How many actor lines one F11 survey prints. Gather nodes and items are listed first, so \
-                 raising this only ever adds the less interesting actors; the survey says how many it cut.",
+            on(
+                Tab::Debug,
+                f(
+                    "SurveyLines",
+                    "Survey lines",
+                    Kind::Int {
+                        default: i64::from(d.survey_lines),
+                        min: i64::from(SURVEY_LINES_RANGE.0),
+                        max: i64::from(SURVEY_LINES_RANGE.1),
+                        step: 16,
+                        slider: false,
+                        format: None,
+                    },
+                    "How many actor lines one F11 survey prints. Gather nodes and items are listed \
+                     first, so raising this only ever adds the less interesting actors; the survey \
+                     says how many it cut.",
+                ),
             ),
             f(
                 "GatherRange",
@@ -459,19 +475,27 @@ pub fn schema() -> Section {
                 },
                 "When the bag is full a node whose yield is already stacked is still gathered, unless the stack would pass this ceiling.",
             ),
-            under(
-                "Keys:",
+            // The four hotkeys live on the menu's shared Settings tab, under
+            // this section's own title, so every key a player binds is in one
+            // place. No "Keys:" heading any more: on that tab the section
+            // title is the group header.
+            on(Tab::Settings,
                 key("KeyToggle", "Toggle auto gather", d.key_toggle,
-                    "Turns automatic gathering on and off. Avoid keys the game already uses."),
-            ),
-            key("KeyScan", "Survey", d.key_scan,
-                "Writes the nodes and items in scan range to the log."),
-            key("KeyGather", "Gather nearest", d.key_gather,
-                "Gather the nearest node: one node per press, whatever the auto state."),
-            key("KeyRecord", "Record events (debug)", d.key_record,
-                "Toggles recording of every event the game queues, capped at 300."),
-            under(
-                "Diagnostics:",
+                    "Turns automatic gathering on and off. Avoid keys the game already uses.")),
+            on(Tab::Settings,
+                key("KeyScan", "Survey", d.key_scan,
+                    "Writes the nodes and items in scan range to the log.")),
+            on(Tab::Settings,
+                key("KeyGather", "Gather nearest", d.key_gather,
+                    "Gather the nearest node: one node per press, whatever the auto state.")),
+            on(Tab::Settings,
+                key("KeyRecord", "Record events (debug)", d.key_record,
+                    "Toggles recording of every event the game queues, capped at 300.")),
+            // The diagnostics go to the shared Debug tab, where the section
+            // title is the group header, so the "Diagnostics:" heading these
+            // three used to sit under is gone.
+            on(
+                Tab::Debug,
                 f(
                     "Debug",
                     "Debug",
@@ -479,13 +503,15 @@ pub fn schema() -> Section {
                     "The very verbose survey: the first Survey press after this is on dumps hundreds of lines to the log. For working out why something is not picked up, not for playing.",
                 ),
             ),
-            beside(f(
+            on(Tab::Debug, beside(f(
                 "LogReceived",
                 "Log received items",
                 Kind::Bool { default: d.log_received },
                 "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured. Coin props are the exception: picking one up writes no line, so measure money with the bag count an F11 survey prints.",
-            )),
-            f(
+            ))),
+            on(
+                Tab::Debug,
+                f(
                 "BagTab",
                 "Bag tab",
                 Kind::Int {
@@ -497,6 +523,7 @@ pub fn schema() -> Section {
                     format: None,
                 },
                 "Which inventory tab counts as the bag for the full check. 1 is the right answer on build 25116796; -1 means auto, i.e. whichever tab has the largest capacity.",
+                ),
             ),
         ],
     }
@@ -950,11 +977,10 @@ Scale=1.5
         for key in ["Debug", "LogReceived", "BagTab"] {
             assert!(s.field(key).is_some(), "the menu must offer {key}");
         }
-        // The heading is what groups the three at the bottom of the section.
-        assert_eq!(
-            s.field("Debug").and_then(|f| f.heading.clone()),
-            Some("Diagnostics:".to_string())
-        );
+        // What groups them is the tab now, not a heading: the menu draws the
+        // section's title above the group on its shared Debug tab.
+        assert_eq!(s.field("Debug").map(|f| f.tab), Some(Tab::Debug));
+        assert_eq!(s.field("Debug").and_then(|f| f.heading.clone()), None);
 
         // `BagTab` opens at the default tab, and the bottom of its range is
         // the "auto" the parser turns into `None`: a value the menu can
@@ -975,6 +1001,35 @@ Scale=1.5
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug && c.log_received);
         assert_eq!(c.bag_tab, Some(0));
+    }
+
+    /// Where the menu draws each of these keys. The four hotkeys go on the
+    /// shared Settings tab beside every other binding, the four diagnostics on
+    /// the shared Debug tab, and everything else stays on the looter's own tab -
+    /// which is also what keeps that tab from disappearing, because a section
+    /// with nothing left on [`Tab::Section`] gets no tab at all.
+    #[test]
+    fn the_keys_and_the_diagnostics_are_on_the_shared_tabs() {
+        let s = schema();
+        let tab = |key: &str| s.field(key).map(|f| f.tab);
+        for key in ["KeyToggle", "KeyScan", "KeyGather", "KeyRecord"] {
+            assert_eq!(tab(key), Some(Tab::Settings), "{key}");
+        }
+        for key in ["Debug", "LogReceived", "BagTab", "SurveyLines"] {
+            assert_eq!(tab(key), Some(Tab::Debug), "{key}");
+        }
+        let shared = ["KeyToggle", "KeyScan", "KeyGather", "KeyRecord", "Debug", "LogReceived",
+                      "BagTab", "SurveyLines"];
+        for field in &s.fields {
+            if shared.contains(&field.key.as_str()) {
+                continue;
+            }
+            assert_eq!(field.tab, Tab::Section, "{} belongs on the looter's own tab", field.key);
+        }
+        assert!(s.fields.iter().any(|f| f.tab == Tab::Section), "the looter must keep a tab");
+        // LogReceived is drawn beside Debug and Debug is the field before it on
+        // that tab, so the pairing survives the move.
+        assert!(s.field("LogReceived").is_some_and(|f| f.same_line));
     }
 
     /// Prints this section as the seeded ini would carry it. `cargo test --

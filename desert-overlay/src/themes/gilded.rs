@@ -14,6 +14,7 @@ pub const THEME: Theme = Theme {
     window_rounding: 2.0,
     frame_rounding: 2.0,
     grab_rounding: 2.0,
+    tab_rounding: 2.0,
     window_border: 1.0,
     frame_border: 1.0,
     colors,
@@ -66,6 +67,15 @@ fn colors() -> Vec<(Role, Rgba)> {
         (Role::Separator, gold),
         (Role::SeparatorHovered, gold_bright),
         (Role::SeparatorActive, crimson),
+        // The tabs take the brass family the headers and buttons take: antique
+        // brass at rest, gold under the pointer, crimson for the page showing.
+        // Unfocused drops to the scrollbar's near-black and its active tab back
+        // to brass, so an unfocused menu keeps its structure without its spark.
+        (Role::Tab, brass_dark),
+        (Role::TabHovered, gold),
+        (Role::TabActive, crimson),
+        (Role::TabUnfocused, charcoal_deep),
+        (Role::TabUnfocusedActive, brass_dark),
         (Role::ResizeGrip, brass_dark),
         (Role::ResizeGripHovered, gold),
         (Role::ResizeGripActive, crimson),

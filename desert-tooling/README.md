@@ -89,9 +89,12 @@ instead. And the source is public: all of it is in this repository.
 ## The menu
 
 Press **Insert** and a window appears over the game (DirectX 12, Dear ImGui)
-with every setting in it as a checkbox, slider or key picker, in three
-collapsible sections. Change one and it takes effect within about a second,
-without leaving the game and without a restart.
+with every setting in it as a checkbox, slider or key picker, behind a row of
+tabs: **Looter**, **Gatherer** and **Dispatch**, then **Settings** (every key you
+can bind, and how the menu itself looks, the overlay's own included) and
+**Debug** (every logging switch and dump). Change one and
+it takes effect within about a second, without leaving the game and without a
+restart.
 
 The ini is the whole contract. The menu writes `DesertTooling.ini` and each
 subsystem re-reads its own section of it once a second, so:
@@ -106,15 +109,15 @@ subsystem re-reads its own section of it once a second, so:
   exactly as they were. Writes go through a temporary file and a rename, so a
   subsystem reading the file at the wrong moment never sees half of it.
 
-Presets sit above the Looter section: `Everything`, `Plants only`, `Wood only`,
+Presets sit at the top of the Looter tab: `Everything`, `Plants only`, `Wood only`,
 `Rock and ore only`. One click sets the Looter's four gather families and
 ground items and leaves everything else alone.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
 field is written when you press Enter or click away, not while you are still
-typing. If the file cannot be read or written, the reason appears as a red line
-under that section and in `DesertTooling.log`; nothing is lost and the game is
+typing. If the file cannot be read or written, the reason appears in red in the
+menu's footer, in full on hover, and in `DesertTooling.log`; nothing is lost and the game is
 unaffected.
 
 **While the menu is open**, keyboard and mouse input is held back from the game,
@@ -377,7 +380,7 @@ is.)
 | `Font` | `segoeui.ttf` | the font the menu is drawn in. A bare file name is looked up in `%WINDIR%\Fonts`, an absolute path is used as it stands, and an empty value goes back to Dear ImGui's built-in font. `georgia.ttf`, `constan.ttf` and `cambria.ttc:0` give a more fantasy, serif look; the `:N` suffix picks a face out of a `.ttc` collection. A missing or unreadable file is a warning in the log and the built-in font |
 | `HdrBrightness` | `203` | paper white in nits on an HDR display: how bright the menu's white is drawn. `80` to `1000`; ignored on SDR |
 | `ColorSpace` | `auto` | what the menu's pixels are encoded for: `auto` (follow the swapchain), `sdr`, `hdr10` or `scrgb`. Anything else is `auto` with a warning in the log |
-| `Theme` | `banner` | the menu's colour theme: `classic`, `parchment`, `gilded`, `splash`, `banner` or `steel`. The picker at the top of the menu switches between them live; this key is what makes a choice stick across launches |
+| `Theme` | `banner` | the menu's colour theme: `classic`, `parchment`, `gilded`, `splash`, `banner` or `steel`. The `Theme` setting on the menu's Settings tab switches between them live; this key is what makes a choice stick across launches |
 
 The game presents an HDR10 (PQ) signal, so the menu is converted into the
 swapchain's colour space before it is drawn; without that its sRGB colours come
@@ -476,8 +479,7 @@ at its default, instead of leaving nothing to edit. An existing file is never
 read, rewritten or replaced — the create is the OS's own atomic "only if
 absent" — so this can never touch your settings. The generated file is bare,
 unlike the shipped template's comments explaining each key, but every key in the
-tables above is in it, including the three the menu groups under
-`Diagnostics:`.
+tables above is in it, including the ones the menu draws on its Debug tab.
 
 ## How a changed multiplier becomes live
 

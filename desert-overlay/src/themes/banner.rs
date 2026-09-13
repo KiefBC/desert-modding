@@ -14,6 +14,7 @@ pub const THEME: Theme = Theme {
     window_rounding: 0.0,
     frame_rounding: 0.0,
     grab_rounding: 0.0,
+    tab_rounding: 0.0,
     window_border: 1.0,
     frame_border: 0.0,
     colors,
@@ -76,6 +77,17 @@ fn colors() -> Vec<(Role, Rgba)> {
         (Role::Separator, rgb(0xC9A648, 0.4)),
         (Role::SeparatorHovered, gold_bright),
         (Role::SeparatorActive, blood),
+        // The tabs are the banner's own lettering board: the charcoal the
+        // title bars sit at when they are not the page you are on, the shadow
+        // gold of a hover, and the splash red for the page that is showing -
+        // the same three steps the section headers used to take. Unfocused
+        // goes a shade darker still, so a menu behind another window reads as
+        // set aside rather than as a second live one.
+        (Role::Tab, charcoal),
+        (Role::TabHovered, gold_shadow),
+        (Role::TabActive, blood),
+        (Role::TabUnfocused, charcoal_deep),
+        (Role::TabUnfocusedActive, blood_deep),
         (Role::ResizeGrip, button),
         (Role::ResizeGripHovered, gold_shadow),
         (Role::ResizeGripActive, blood),

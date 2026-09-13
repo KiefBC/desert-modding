@@ -13,6 +13,7 @@ pub const THEME: Theme = Theme {
     window_rounding: 3.0,
     frame_rounding: 2.0,
     grab_rounding: 2.0,
+    tab_rounding: 2.0,
     window_border: 1.0,
     frame_border: 0.0,
     colors,
@@ -47,6 +48,15 @@ fn colors() -> Vec<(Role, Rgba)> {
         (Role::Header, rgb(0x3D4248, 1.0)),
         (Role::HeaderHovered, rgb(0x5A6169, 1.0)),
         (Role::HeaderActive, rgb(0x9E1B1E, 1.0)),
+        // The tabs are plate, like the title bar and the headers: the mid grey
+        // at rest, the lighter grey hovered, blood red for the page showing.
+        // Unfocused drops to the frame grey and its active tab to the darker
+        // red, so an unfocused menu is cooler all over rather than dimmer.
+        (Role::Tab, rgb(0x3D4248, 1.0)),
+        (Role::TabHovered, rgb(0x5A6169, 1.0)),
+        (Role::TabActive, rgb(0x9E1B1E, 1.0)),
+        (Role::TabUnfocused, rgb(0x33383E, 1.0)),
+        (Role::TabUnfocusedActive, rgb(0x6E1214, 1.0)),
         (Role::Separator, rgb(0x5A6169, 1.0)),
         (Role::SeparatorHovered, rgb(0x8A9098, 1.0)),
         (Role::SeparatorActive, rgb(0x9E1B1E, 1.0)),

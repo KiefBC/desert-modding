@@ -12,8 +12,11 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 ## [0.6.0] - 2026-09-13
 
 Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted
-off, so an install that upgrades behaves exactly as it did. Nothing in this release changes
-anything in the game - the whole of it is a diagnostic that reads.
+off, so an install that upgrades behaves exactly as it did, and a menu that is now a row of tabs
+instead of a stack of collapsing sections. Nothing in this release changes anything in the game:
+the one new key is a diagnostic that reads, and the menu change is where a setting is drawn plus
+two things the menu now tells you that it did not before - same sections, same keys, same
+defaults, same hotkeys.
 
 ### Added
 
@@ -55,6 +58,64 @@ anything in the game - the whole of it is a diagnostic that reads.
   address in the resolution path. On build 25246367 their manager slots are `0x6C367C8` and
   `0x6C2E328`; `desert-core`'s `#[ignore]`d exe test now asserts both, and that each name is
   still a unique NUL-delimited literal in the image.
+
+### Changed
+
+- **One tab per subsystem, plus Settings and Debug.** The menu used to be four collapsing headers
+  on one long page. It is now a tab bar: `Looter`, `Gatherer`, `Dispatch`, `Settings`, `Debug`,
+  each tab labelled with the same word as the `[Section]` it draws. A subsystem's tab holds that
+  subsystem's own settings and its presets; every page is far shorter than the old scroll, and the
+  window opens 700 px tall at scale 1.0 instead of 770.
+- **Every key you can bind is on the Settings tab, whichever subsystem owns it.** That is the
+  looter's four hotkeys (toggle auto gather, survey, gather nearest, record events) and the
+  overlay's menu key, grouped under the name of the subsystem they belong to, along with the rest
+  of how the menu looks: open at startup, scale, font size, theme, colour space, HDR paper white,
+  and the overlay's own `Enabled`. The overlay has no tab of its own any more, because everything
+  it declares is on one of the two shared tabs.
+- **Every logging switch is on the Debug tab**, grouped the same way, with one line at the top
+  saying that all of it goes to `DesertTooling.log` beside the game: the looter's `Debug`,
+  `LogReceived`, `BagTab` and `SurveyLines`, the gatherer's `DryRun` and `Debug`, the dispatch
+  subsystem's `LogRecords`, `MaxLines`, `DryRun`, `Debug`, `DumpRaw`, `DumpRewards` and the new
+  `DumpBuffs`, and the overlay's `Debug`. The `Diagnostics:` headings they used to sit under are
+  gone - on that tab the subsystem's name is the heading.
+- **The theme picker that sat at the top of the window is now the `Theme` setting on the Settings
+  tab.** It works the way the old picker did - the menu repaints as soon as you choose, listing the
+  themes by their full names with a line on each explaining itself - and, being a setting, it is
+  written to `Theme=` under `[Overlay]` at once, so the choice sticks. It follows the file the
+  other way too: edit `Theme=` by hand while the game runs and the menu repaints within a second.
+  There is no longer a picker and a key that could disagree.
+- **A tab is dimmed while its subsystem is switched off.** `Enabled=0` under `[Looter]` greys out
+  the word `Looter` in the tab bar, so the bar says what is running without opening anything.
+- **The footer says whether the ini is saved.** One row along the bottom, always in view: your
+  position on the left, as before, and on the right `DesertTooling.ini · saved`, or
+  `DesertTooling.ini · saving…` while an edit is still in the debounce. If a read or a write fails,
+  that turns red and says why - hovering shows the whole reason, the OS error included. It replaces
+  the red line that used to appear under whichever section noticed; every subsystem writes the same
+  file, so there was never more than one thing to say. The line "Changes are saved to the ini as
+  you make them." is gone with it: the footer says it better.
+- The themes name their own tab colours, so the bar is part of each look rather than Dear ImGui's
+  blend of it - which came out brown on Enhanced Banner. Enhanced Banner, Gilded Ash, Steel and Blood
+  and Crimson Splash were given tab colours (Parchment already had them; Classic keeps Dear ImGui's
+  stock ones, as it does for everything), and all six a corner rounding for them (square on
+  Enhanced Banner, matching each other theme's frames).
+- Library bookkeeping, nothing a player sees: `desert-core` 0.7.0 (a `Field` carries which tab it
+  is drawn on, and the two table accessors under *Added*) and `desert-overlay` 0.3.0 (the new window); `desert-looter` 0.3.1 and
+  `desert-gatherer` 0.3.1, each of which only says where its fields go (`desert-dispatch` 0.3.0 is
+  the `DumpBuffs` key above).
+
+### How to check it
+
+Press **Insert** in game. Expect five tabs, `Looter` first and `Debug` last, and the footer
+reading `DesertTooling.ini · saved`. Open Settings, change `Theme` - the menu repaints on the
+spot - and watch the footer go to `saving…` and back to `saved`; `DesertTooling.log` carries
+`[overlay] [menu] theme: <name> (Theme=<name> under [Overlay], already written to the ini)`, and
+`Theme=` under `[Overlay]` in the ini is the theme you picked. Then set `Enabled=0` under
+`[Looter]` in the ini by hand: within a second the word `Looter` in the tab bar goes dim.
+
+For the census, set `DumpBuffs=1` under `[Dispatch]` (the last switch on the Debug tab) and
+restart: the log gains a run of `[buffs]` lines, the last of them the verdict on whether the
+layout still holds. Set it back to 0 afterwards; the pass is the most expensive thing the
+section does.
 
 ## [0.5.0] - 2026-09-13
 

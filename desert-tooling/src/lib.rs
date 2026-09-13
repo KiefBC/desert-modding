@@ -415,6 +415,57 @@ mod tests {
         assert!(orders.windows(2).all(|w| w[0] < w[1]), "orders: {orders:?}");
     }
 
+    /// The menu is a tab bar, and this is the shape of it: one tab per section
+    /// that kept a field of its own, plus the two shared tabs. Read across all
+    /// four schemas at once, because that is the only place the answer exists -
+    /// each subsystem marks its own fields and none of them can see the others.
+    #[test]
+    fn every_subsystem_but_the_overlay_gets_a_tab_and_both_shared_tabs_have_content() {
+        use desert_core::schema::Tab;
+
+        let sections = sections();
+        let own_tab = |name: &str| {
+            sections
+                .iter()
+                .find(|s| s.ini_section == name)
+                .unwrap_or_else(|| panic!("no [{name}]"))
+                .fields
+                .iter()
+                .any(|f| f.tab == Tab::Section)
+        };
+        for name in ["Looter", "Gatherer", "Dispatch"] {
+            assert!(own_tab(name), "[{name}] must keep a field of its own, or it gets no tab");
+        }
+        assert!(
+            !own_tab("Overlay"),
+            "every [Overlay] key is on a shared tab, so the menu gives it no tab of its own"
+        );
+
+        // Neither shared tab may be empty: an empty one would be a tab a player
+        // clicks on and finds nothing behind.
+        for tab in [Tab::Settings, Tab::Debug] {
+            let keys: Vec<&str> = sections
+                .iter()
+                .flat_map(|s| s.fields.iter())
+                .filter(|f| f.tab == tab)
+                .map(|f| f.key.as_str())
+                .collect();
+            assert!(!keys.is_empty(), "nothing is on the {tab:?} tab");
+        }
+        // And the two things a player looks for by name are where they were put:
+        // every hotkey on Settings, every `Debug` switch on Debug.
+        for section in &sections {
+            for field in &section.fields {
+                if field.key.starts_with("Key") {
+                    assert_eq!(field.tab, Tab::Settings, "[{}] {}", section.ini_section, field.key);
+                }
+                if field.key.eq_ignore_ascii_case("Debug") {
+                    assert_eq!(field.tab, Tab::Debug, "[{}] {}", section.ini_section, field.key);
+                }
+            }
+        }
+    }
+
     /// Every section names the one shared ini, and nothing names a file of its
     /// own any more.
     #[test]

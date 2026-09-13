@@ -26,7 +26,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Section};
+use desert_core::schema::{Field, Kind, Section, Tab};
 
 use crate::node::parsed::SKILL_NONE;
 
@@ -498,7 +498,17 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
+}
+
+/// Draw this field on one of the menu's shared tabs instead of this section's
+/// own. Everything this subsystem sends to the log goes on the Debug tab, where
+/// the section's title is the group header, so the levers are all that is left
+/// on the Dispatch page.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
+    field
 }
 
 /// What Desert Overlay draws for the `[Dispatch]` section of
@@ -532,8 +542,8 @@ pub fn schema() -> Section {
              build 25116796: no mission defers a payout, and the figure ignores the worker count. \
              The plugin reads both at startup and says so on the [banking] line of the log; check \
              it after a game update, because an update can flip them. Faster missions and no skill \
-             requirement are nowhere in that figure at all. The dump below stays read-only \
-             whatever the levers say."
+             requirement are nowhere in that figure at all. The dump on the Debug tab stays \
+             read-only whatever the levers say."
                 .to_string(),
         ),
         presets_label: None,
@@ -589,57 +599,97 @@ pub fn schema() -> Section {
                     "Multiply how much of each item a mission pays. 1 = vanilla. Only the reward rows dispatch missions name are touched, never the game's wider drop table. The game reads the amounts at the moment items land, so this reaches rewards already waiting to be paid - and, the other way round, banks nothing: set it back to 1 and anything still waiting pays vanilla.",
                 )
             },
-            f(
-                "LogRecords",
-                "Log each mission",
-                Kind::Bool { default: d.log_records },
-                "One line per dispatch mission: its node, key, group, duration in hours, operator counts and condition keys. The summary and the condition histogram are printed either way.",
-            ),
-            f(
-                "MaxLines",
-                "Line limit",
-                Kind::Int {
-                    default: i64::from(d.max_lines),
-                    min: i64::from(LINES_MIN),
-                    max: i64::from(LINES_MAX),
-                    step: 50,
-                    slider: false,
-                    format: None,
+            // Everything below goes on the menu's shared Debug tab, three rows
+            // deep: what to log, then the cap on it, then the three switches
+            // that only make sense while something is being chased. The
+            // "Diagnostics:" heading is gone with them - on that tab this
+            // section's title is the group header - but "The log:" is kept on
+            // the first of them, because it is what the ini's own comment calls
+            // the group and the row below it is a number, not a switch.
+            on(
+                Tab::Debug,
+                Field {
+                    heading: Some("The log:".to_string()),
+                    ..f(
+                        "LogRecords",
+                        "Log each mission",
+                        Kind::Bool { default: d.log_records },
+                        "One line per dispatch mission: its node, key, group, duration in hours, operator counts and condition keys. The summary and the condition histogram are printed either way.",
+                    )
                 },
-                "Ceiling on the lines one pass writes - mission lines, reward lines, raw hex lines and the per-change lines Debug and DryRun add - so an unexpectedly large table cannot fill the log. The summaries are never capped.",
             ),
-            Field {
-                heading: Some("Diagnostics:".to_string()),
-                ..f(
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "DumpRewards",
+                        "Dump reward rows",
+                        Kind::Bool { default: d.dump_rewards },
+                        "Dump the reward rows the missions name into the log: the items and amounts a mission pays. A diagnostic only - the reward multiplier on the Dispatch tab reads and edits those rows whether or not this is on.",
+                    )
+                },
+            ),
+            on(
+                Tab::Debug,
+                f(
+                    "MaxLines",
+                    "Line limit",
+                    Kind::Int {
+                        default: i64::from(d.max_lines),
+                        min: i64::from(LINES_MIN),
+                        max: i64::from(LINES_MAX),
+                        step: 50,
+                        slider: false,
+                        format: None,
+                    },
+                    "Ceiling on the lines one pass writes - mission lines, reward lines, raw hex lines and the per-change lines Debug and DryRun add - so an unexpectedly large table cannot fill the log. The summaries are never capped.",
+                ),
+            ),
+            on(
+                Tab::Debug,
+                f(
                     "DryRun",
                     "Dry run",
                     Kind::Bool { default: d.dry_run },
-                    "Show, do not touch. Every change the settings above ask for is logged and nothing is written to the game.",
-                )
-            },
-            f(
-                "Debug",
-                "Debug",
-                Kind::Bool { default: d.debug },
-                "Also log the faction nodes that carry no missions, every change written one line at a time, and the reason behind every record or entry the pass skipped. Useful only when the numbers look wrong.",
+                    "Show, do not touch. Every change the settings on the Dispatch tab ask for is logged and nothing is written to the game.",
+                ),
             ),
-            f(
-                "DumpRaw",
-                "Dump raw bytes",
-                Kind::Bool { default: d.dump_raw },
-                "Log every mission's raw 0x120 bytes as hex, and the raw bytes of every reward row and reward entry when those are dumped too, for locating a field whose offset is not known yet. One long line each.",
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "Debug",
+                        "Debug",
+                        Kind::Bool { default: d.debug },
+                        "Also log the faction nodes that carry no missions, every change written one line at a time, and the reason behind every record or entry the pass skipped. Useful only when the numbers look wrong.",
+                    )
+                },
             ),
-            f(
-                "DumpRewards",
-                "Dump reward rows",
-                Kind::Bool { default: d.dump_rewards },
-                "Dump the reward rows the missions name into the log: the items and amounts a mission pays. A diagnostic only - the reward multiplier above reads and edits those rows whether or not this is on.",
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "DumpRaw",
+                        "Dump raw bytes",
+                        Kind::Bool { default: d.dump_raw },
+                        "Log every mission's raw 0x120 bytes as hex, and the raw bytes of every reward row and reward entry when those are dumped too, for locating a field whose offset is not known yet. One long line each.",
+                    )
+                },
             ),
-            f(
-                "DumpBuffs",
-                "Dump buffs and stats",
-                Kind::Bool { default: d.dump_buffs },
-                "Census of the game's buff table and stat table into the log, read-only: every buff effect that touches drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drop rates. A one-launch diagnostic for the drop-rate investigation; it edits nothing and can be left off.",
+            // Its own row at the foot of the Debug tab: three switches already
+            // share the row above it, and a fourth label this long would not fit
+            // the window's default width.
+            on(
+                Tab::Debug,
+                f(
+                    "DumpBuffs",
+                    "Dump buffs and stats",
+                    Kind::Bool { default: d.dump_buffs },
+                    "Census of the game's buff table and stat table into the log, read-only: every buff effect that touches drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drop rates. A one-launch diagnostic for the drop-rate investigation; it edits nothing and can be left off.",
+                ),
             ),
         ],
     }
@@ -1228,6 +1278,51 @@ mod tests {
             assert_eq!(w.len(), 1, "{key}: {w:?}");
             assert_eq!(c, Config::default(), "{key}");
         }
+    }
+
+    /// Where the menu draws each of these keys. Everything that only writes to
+    /// the log is on the shared Debug tab; the five levers that change the game
+    /// stay on this section's own tab, which is also what keeps it in the tab
+    /// bar - a section with nothing left on [`Tab::Section`] gets no tab at all.
+    #[test]
+    fn the_log_switches_are_on_the_shared_debug_tab_and_the_levers_are_not() {
+        let s = schema();
+        let field = |key: &str| s.field(key).unwrap_or_else(|| panic!("no {key}"));
+        for key in ["LogRecords", "MaxLines", "DryRun", "Debug", "DumpRaw", "DumpRewards", "DumpBuffs"] {
+            assert_eq!(field(key).tab, Tab::Debug, "{key}");
+        }
+        for key in ["Speed", "NoSkillRequirement", "AnyOperatorCount", "Rewards", "Enabled"] {
+            assert_eq!(field(key).tab, Tab::Section, "{key}");
+        }
+        assert!(s.fields.iter().any(|f| f.tab == Tab::Section), "Dispatch must keep a tab");
+
+        // Four rows on that tab: what to log and the reward dump beside it, the
+        // line limit on its own, the three chasing switches together, then the
+        // buff census on a row of its own because its label is the longest. A
+        // `same_line` is only honest when the field before it *on the same tab*
+        // is the one it should sit beside, so the order here is the pairing.
+        let debug_page: Vec<(&str, bool)> = s
+            .fields
+            .iter()
+            .filter(|f| f.tab == Tab::Debug)
+            .map(|f| (f.key.as_str(), f.same_line))
+            .collect();
+        assert_eq!(
+            debug_page,
+            vec![
+                ("LogRecords", false),
+                ("DumpRewards", true),
+                ("MaxLines", false),
+                ("DryRun", false),
+                ("Debug", true),
+                ("DumpRaw", true),
+                ("DumpBuffs", false),
+            ]
+        );
+        // The one heading that survived the move: it is what the ini calls the
+        // group, and the row under it is a number rather than a switch.
+        assert_eq!(field("LogRecords").heading.as_deref(), Some("The log:"));
+        assert_eq!(field("DryRun").heading, None, "no Diagnostics: heading any more");
     }
 
     /// Prints this section as it is seeded into `DesertTooling.ini`.

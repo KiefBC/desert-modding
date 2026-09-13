@@ -41,7 +41,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use desert_core::collect::Family;
 use desert_core::creature::CatchClass;
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Section};
+use desert_core::schema::{Field, Kind, Section, Tab};
 
 /// Multipliers below this are meaningless (0 would zero out every yield) and
 /// above it are almost certainly a typo, so both are refused.
@@ -307,7 +307,16 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
+}
+
+/// Draw this field on one of the menu's shared tabs instead of this section's
+/// own: the two switches a bug report asks for belong with every other
+/// subsystem's, not in the middle of the yield multipliers.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
+    field
 }
 
 /// One of the family multipliers: an identical `1..=100` slider, so they
@@ -334,13 +343,15 @@ fn mult(key: &str, help: &str) -> Field {
 /// which also seeds the ini from it; the overlay needs no other knowledge of
 /// this subsystem at all.
 ///
-/// `Debug` is here too, at the bottom under `Diagnostics:`. It used to be left
-/// out as a diagnostic that costs 400 log lines, which stopped being tenable
-/// once this schema became what the shared ini is seeded from
-/// (`schema::create_ini_if_missing_all`): a key that is not named here is missing
-/// from the generated file as well as from the menu, and a player working from
-/// that file would never find out it existed. `DryRun` stays where it is, near
-/// the top: it is the one diagnostic a player genuinely reaches for.
+/// `Debug` is here too. It used to be left out as a diagnostic that costs 400
+/// log lines, which stopped being tenable once this schema became what the
+/// shared ini is seeded from (`schema::create_ini_if_missing_all`): a key that
+/// is not named here is missing from the generated file as well as from the
+/// menu, and a player working from that file would never find out it existed.
+/// It and `DryRun` are both marked [`Tab::Debug`], so the menu draws them on
+/// its shared Debug tab under this section's title rather than anywhere on this
+/// page: whichever subsystem a player is chasing, the switches a bug report
+/// needs are in one place.
 ///
 /// Every default is `Config::default()` (vanilla yields, which the shipped
 /// template now matches) and the multiplier range is
@@ -372,15 +383,18 @@ pub fn schema() -> Section {
                 Kind::Bool { default: d.enabled },
                 "Master switch. 0 = vanilla yields: the hook still reads each gather record, but writes nothing and puts back anything it already multiplied.",
             ),
-            Field {
-                same_line: true,
-                ..f(
+            // On the shared Debug tab, where it is the first of this section's
+            // two switches: no `same_line` any more, because the field it used
+            // to sit beside (Enabled) is not on that tab.
+            on(
+                Tab::Debug,
+                f(
                     "DryRun",
                     "Dry run",
                     Kind::Bool { default: d.dry_run },
                     "Log what would change and write nothing to the game.",
-                )
-            },
+                ),
+            ),
             Field {
                 heading: Some("Yield multipliers:".to_string()),
                 ..mult(
@@ -414,15 +428,20 @@ pub fn schema() -> Section {
                 "Insects caught by hand. One code patch on the catch count, not a table edit.",
             ),
             mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
-            Field {
-                heading: Some("Diagnostics:".to_string()),
-                ..f(
-                    "Debug",
-                    "Debug",
-                    Kind::Bool { default: d.debug },
-                    "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
-                )
-            },
+            // Beside DryRun on the shared Debug tab, where this section's title
+            // is the group header the "Diagnostics:" heading used to be.
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "Debug",
+                        "Debug",
+                        Kind::Bool { default: d.debug },
+                        "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
+                    )
+                },
+            ),
         ],
     }
 }
@@ -740,20 +759,35 @@ mod tests {
     }
 
     #[test]
-    fn debug_is_in_the_schema_under_diagnostics_and_dry_run_is_not() {
+    fn debug_and_dry_run_are_on_the_shared_debug_tab_and_the_multipliers_are_not() {
         let s = schema();
         let debug = s.field("Debug").unwrap_or_else(|| panic!("the menu must offer Debug"));
-        assert_eq!(debug.heading.as_deref(), Some("Diagnostics:"));
+        assert_eq!(debug.tab, Tab::Debug);
+        assert_eq!(debug.heading, None, "the section title is the group header there");
         assert_eq!(debug.kind, Kind::Bool { default: false });
         assert_eq!(debug.kind.default_text(), "0");
-        // Last in the section: the heading groups the diagnostics at the end.
         assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("Debug"));
 
-        // `DryRun` stays where it was, near the top and un-headed: it is the
-        // diagnostic a player reaches for after a game update.
+        // `DryRun` moves with it, and leads the pair: it no longer sits beside
+        // Enabled, because Enabled is not on that tab.
         let dry = s.field("DryRun").unwrap_or_else(|| panic!("no DryRun"));
+        assert_eq!(dry.tab, Tab::Debug);
         assert_eq!(dry.heading, None);
+        assert!(!dry.same_line, "the field it used to sit beside is on another tab");
+        assert!(debug.same_line, "Debug is drawn beside DryRun");
         assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
+
+        // Everything else is this section's own page, which is what keeps the
+        // Gatherer tab in the bar at all.
+        for field in &s.fields {
+            if matches!(field.key.as_str(), "Debug" | "DryRun") {
+                continue;
+            }
+            assert_eq!(field.tab, Tab::Section, "{} belongs on the Gatherer tab", field.key);
+        }
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish"] {
+            assert_eq!(s.field(key).map(|f| f.tab), Some(Tab::Section), "{key}");
+        }
 
         let (c, w) = parse("[Gatherer]\nDebug=1\n");
         assert!(w.is_empty(), "{w:?}");

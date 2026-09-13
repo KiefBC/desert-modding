@@ -11,6 +11,26 @@
 //! [`desert_core::schema::Section`] per subsystem: this module is a renderer
 //! for [`desert_core::schema::Field`] and nothing more.
 //!
+//! The window is four things stacked, and only the third of them scrolls:
+//!
+//! 1. the header - the logo and the name;
+//! 2. the tab bar - one tab per section that kept fields of its own, labelled
+//!    by that section's ini `[Header]`, then the two shared tabs `Settings`
+//!    (every key a player binds, plus the menu's own look) and `Debug` (every
+//!    switch a bug report asks for), each grouping its fields by the section
+//!    that declared them;
+//! 3. the page, a child window sized to leave the footer its room, so a long
+//!    page scrolls under a bar and a footer that stay put;
+//! 4. the footer - where the player is, and whether the ini is saved.
+//!
+//! Which tab a field is on is the schema's answer, never this module's
+//! ([`desert_core::schema::Tab`]), and the arithmetic around it - which fields a
+//! tab draws, whether a section gets a tab, whether its `Enabled` is off, what
+//! the footer says - lives in [`crate::dynmodel`], where it is unit-tested on
+//! Linux. Two key names are a convention this renderer relies on, and both say
+//! so where they are used: `Enabled` (a section's master switch, which dims its
+//! tab) and the overlay's own `Theme` (which gets a picker instead of a combo).
+//!
 //! Three things about running inside somebody else's frame:
 //!
 //! * hudhook calls [`ImguiRenderLoop::message_filter`] *before*
@@ -36,12 +56,12 @@ use std::time::Instant;
 use hudhook::{ImguiRenderLoop, MessageFilter};
 use imgui::{
     Condition, Context, FontAtlas, FontConfig, FontId, FontSource, Io, Style, StyleColor,
-    TextureId, TreeNodeFlags, Ui,
+    TextureId, Ui,
 };
 
 use desert_core::hotkey::Hotkey;
 use desert_core::ini;
-use desert_core::schema::{Kind, Section};
+use desert_core::schema::{Field, Kind, Section, Tab};
 use desert_core::telemetry;
 
 use crate::config::{ColorSpace, Config, FontChoice};
@@ -79,10 +99,6 @@ const FONT_MAX_BYTES: u64 = 32 * 1024 * 1024;
 /// What the log calls the font when there is no file behind it.
 const BUILT_IN_FONT: &str = "built-in ProggyClean";
 
-/// The widest the position readout ever gets, and the string the row is laid
-/// out against. Never displayed.
-const READOUT_WIDEST: &str = "X -000000.0   Y -000000.0   Z -000000.0";
-
 /// What the readout says when no position has been published lately: the world
 /// is not up yet, the player is on a load screen, or the subsystem that
 /// publishes it is not running in this build.
@@ -93,9 +109,27 @@ const NO_POSITION: &str = "position unavailable";
 const POSITION_HELP: &str = "The player character's position in the game world. Y is altitude: X \
                              and Z are the two that place you on the map.";
 
-/// The narrowest the theme combo is allowed to get before it stops making room
-/// for the readout beside it.
-const COMBO_MIN_WIDTH: f32 = 80.0;
+/// The tab bar's imgui id, and the tab body's. Both start with `##` so neither
+/// draws a word of its own: the bar is only a row of tabs, and the body is a
+/// plain scrolling panel.
+const TAB_BAR_ID: &str = "##tabs";
+const BODY_ID: &str = "##body";
+
+/// The two shared tabs, label and imgui id in one string. Their words are not
+/// taken from a section, because no section owns them: they hold whichever
+/// fields every subsystem marked for them.
+const SETTINGS_TAB: &str = "Settings##settings";
+const DEBUG_TAB: &str = "Debug##debug";
+
+/// The one line at the top of the Debug tab. Everything on that page ends up in
+/// the log, so it says where the log is rather than repeating itself per switch.
+const DEBUG_INTRO: &str = "Diagnostics for bug reports. Everything here is written to \
+                           DesertTooling.log beside the game.";
+
+/// Fully transparent, pushed over `ChildBg` while the tab body is drawn: two of
+/// the themes paint a panel colour there, and a panel inside the window would
+/// read as a second window.
+const TRANSPARENT: [f32; 4] = [0.0, 0.0, 0.0, 0.0];
 
 /// The name on the window and in the header, in one place so the two cannot
 /// drift apart. It is also the imgui window id, so changing it resets a
@@ -388,6 +422,7 @@ impl Overlay {
         style.window_rounding = theme.window_rounding * scale;
         style.frame_rounding = theme.frame_rounding * scale;
         style.grab_rounding = theme.grab_rounding * scale;
+        style.tab_rounding = theme.tab_rounding * scale;
         style.window_border_size = theme.window_border;
         style.frame_border_size = theme.frame_border;
     }
@@ -720,7 +755,7 @@ impl ImguiRenderLoop for Overlay {
             self.theme = theme;
             Self::apply_theme(ctx.style_mut(), theme, self.scale);
             crate::log!(
-                "[menu] theme: {} (Theme={} under [Overlay] in the ini keeps it)",
+                "[menu] theme: {} (Theme={} under [Overlay], already written to the ini)",
                 theme.title, theme.name
             );
         }
@@ -740,6 +775,19 @@ impl ImguiRenderLoop for Overlay {
         }
         self.poll_files(now);
         self.poll_plugins(now);
+        // The ini is the source of truth for the theme as for everything else.
+        // The poll above rewrites the Theme slot from disk whenever the file
+        // changed, so a `Theme=` edited by hand while the game runs shows in
+        // the picker a second later - and has to repaint the window too, or
+        // the picker and the window disagree until the next pick. A pick made
+        // this frame is already in `pending_theme` and takes precedence.
+        if self.pending_theme.is_none() {
+            let named = dynmodel::ini_theme_name(&self.sections, crate::config::INI_SECTION)
+                .and_then(Theme::by_name);
+            if let Some(theme) = named.filter(|t| *t != self.theme) {
+                self.pending_theme = Some(theme);
+            }
+        }
     }
 
     fn render(&mut self, ui: &mut Ui) {
@@ -750,33 +798,30 @@ impl ImguiRenderLoop for Overlay {
 
         ui.window(TITLE)
             .position([40.0 * self.scale, 40.0 * self.scale], Condition::FirstUseEver)
-            // Measured in game on 2026-09-08 (the `[menu] window size` log
-            // line at scale 1.25): the size at which everything fits with no
-            // scrollbar. Unscaled units, the same as the constraints below.
-            .size([575.0 * self.scale, 770.0 * self.scale], Condition::FirstUseEver)
-            .size_constraints([360.0 * self.scale, 120.0 * self.scale], [900.0 * self.scale, 1200.0 * self.scale])
+            // Laid out at scale 1.0 and FontSize 20: Settings is the tallest
+            // page - the overlay's whole group, its notice, and the looter's
+            // four keys - and comes to about 700 with the header, the tab bar
+            // and the footer around it. It was 770 while every section was a
+            // collapsing header on one page; the tabs are what made it shorter.
+            // Unscaled units, the same as the constraints below.
+            .size([575.0 * self.scale, 700.0 * self.scale], Condition::FirstUseEver)
+            // 480 across rather than the old 360: five tabs have to fit on one
+            // row at FontSize 20, and a narrower window would hide some of them
+            // behind imgui's scrolling arrows. 200 down rather than 120: the
+            // header, the tab bar and the footer come to about 160 at FontSize
+            // 20 before the page gets a pixel, and imgui never shrinks the page
+            // below four, so a shorter window would push the footer off the
+            // bottom behind a scrollbar rather than squeeze the page.
+            .size_constraints([480.0 * self.scale, 200.0 * self.scale], [900.0 * self.scale, 1200.0 * self.scale])
             .build(|| {
                 let t = self.theme;
                 self.header(ui);
                 ui.separator();
-                self.pending_theme = theme_picker(ui, t, position_reserve(ui));
-                position_readout(ui, t);
-                ui.separator();
-                ui.text_colored(t.dim, "Changes are saved to the ini as you make them.");
-                ui.separator();
-
-                // One collapsible section per subsystem, in the order they
-                // sorted into. Nothing in here knows which mod it is drawing.
-                if self.sections.is_empty() {
-                    // Wrapped, not `text_colored`: it is the longest line in
-                    // the window and would otherwise put a horizontal
-                    // scrollbar under an otherwise empty menu.
-                    let _dim = ui.push_style_color(StyleColor::Text, t.dim);
-                    ui.text_wrapped(NO_SECTIONS);
-                }
-                for entry in &mut self.sections {
-                    draw_section(ui, t, entry);
-                }
+                // Applied next frame, in `before_render`, which is the only
+                // place with the imgui style to paint it into; the same frame
+                // has already written the name into the ini's slot.
+                self.pending_theme = self.tabs(ui, t).filter(|picked| *picked != t);
+                footer(ui, t, &self.sections);
                 window_size = ui.window_size();
             });
         self.note_window_size(window_size, Instant::now());
@@ -798,20 +843,6 @@ impl ImguiRenderLoop for Overlay {
         } else {
             MessageFilter::empty()
         }
-    }
-}
-
-/// Header text for a section. The `##` suffix is the section's own ini
-/// `[Header]`, which keeps imgui's widget id stable when the visible text
-/// changes, so the section does not collapse or re-open the moment a module
-/// appears or disappears - and two subsystems that happen to share a title
-/// still get one id each. It has to be the header and not the file name: every
-/// section names the same file now.
-fn section_title(title: &str, ini_section: &str, loaded: bool) -> String {
-    if loaded {
-        format!("{title}##{ini_section}")
-    } else {
-        format!("{title} (not installed)##{ini_section}")
     }
 }
 
@@ -841,34 +872,138 @@ impl Overlay {
             );
         }
     }
+
+    /// The tab bar and whichever page is showing, and the theme picked on the
+    /// Settings tab this frame if one was.
+    ///
+    /// One tab per section that has fields of its own, in the order the sections
+    /// sorted into, then the two shared tabs. A subsystem's tab is labelled by
+    /// its ini `[Header]` - one word, and the same word the file uses - and the
+    /// label is drawn in the disabled text colour while that subsystem is
+    /// switched off or its module is missing, so the bar says at a glance what
+    /// is live. That is what [`dynmodel::section_enabled`] is for, and it is one
+    /// of this renderer's two key-name conventions: every section declares a
+    /// `Kind::Bool` called `Enabled` as its master switch. The shared tabs are
+    /// never dimmed - they hold several subsystems' keys at once, and there is
+    /// nothing there for a switch to be off.
+    fn tabs(&mut self, ui: &Ui, t: &Theme) -> Option<&'static Theme> {
+        if self.sections.is_empty() {
+            wrapped_dim(ui, t, NO_SECTIONS);
+            return None;
+        }
+        // Read from the live style rather than from the theme's own list,
+        // because a theme that names no TextDisabled still has imgui's.
+        let disabled = ui.style_color(StyleColor::TextDisabled);
+        let reserve = footer_height(ui);
+        let mut picked = None;
+        // No flags: the one tooltip a tab bar shows is the full label of a
+        // tab whose text was clipped, which is exactly what a narrow window
+        // or a big font needs.
+        let _bar = ui.tab_bar(TAB_BAR_ID)?;
+        for entry in &mut self.sections {
+            if !dynmodel::has_own_tab(entry.section()) {
+                continue;
+            }
+            let label = format!("{0}##{0}", entry.ini_section());
+            let off = !entry.loaded
+                || !dynmodel::section_enabled(entry.section(), &entry.store.model.values);
+            // The colour is pushed around the `tab_item` call alone: imgui draws
+            // a tab's label inside it, so popping straight afterwards leaves the
+            // page itself in the ordinary text colour.
+            let dim = off.then(|| ui.push_style_color(StyleColor::Text, disabled));
+            let showing = ui.tab_item(&label);
+            drop(dim);
+            if showing.is_some() {
+                tab_body(ui, reserve, || draw_page(ui, t, entry, &mut picked));
+            }
+        }
+        for tab in [Tab::Settings, Tab::Debug] {
+            if !dynmodel::any_fields_on(&self.sections, tab) {
+                continue;
+            }
+            let label = if tab == Tab::Settings { SETTINGS_TAB } else { DEBUG_TAB };
+            let showing = ui.tab_item(label);
+            if showing.is_some() {
+                tab_body(ui, reserve, || {
+                    if tab == Tab::Debug {
+                        wrapped_dim(ui, t, DEBUG_INTRO);
+                    }
+                    // Every section in display order, each drawing nothing at
+                    // all when it has no field on this tab.
+                    for entry in &mut self.sections {
+                        draw_group(ui, t, entry, tab, &mut picked);
+                    }
+                });
+            }
+        }
+        picked
+    }
 }
 
-/// The theme picker at the top of the window. Returns the newly chosen theme
-/// on the frame the choice is made, which the caller applies next frame.
+/// How much of the window's bottom edge the footer needs, so the page above it
+/// can be sized to leave exactly that much: one line of text, the rule above it,
+/// and imgui's own spacing.
+fn footer_height(ui: &Ui) -> f32 {
+    let spacing = ui.clone_style().item_spacing[1];
+    ui.text_line_height_with_spacing() + spacing + 1.0
+}
+
+/// The scrolling page under the tab bar.
 ///
-/// `reserve` is how much room to leave on its right for [`position_readout`],
-/// which shares this row. Left to itself an imgui combo takes about 65% of the
-/// window, which at the default width leaves the coordinates nowhere to go, so
-/// the width is set here rather than fought over afterwards.
-fn theme_picker(ui: &Ui, current: &Theme, reserve: f32) -> Option<&'static Theme> {
-    let mut index = current.index();
-    let label = ui.calc_text_size("Theme")[0] + ui.clone_style().item_inner_spacing[0];
-    let width = ui.content_region_avail()[0] - label - reserve;
-    // A window dragged narrow enough would ask for a negative width, which
-    // imgui reads as "measured back from the right edge" and turns into a
-    // combo wider than the window rather than a smaller one. Below the floor
-    // the picker keeps its default size and the readout gets squeezed instead.
-    if width >= COMBO_MIN_WIDTH {
-        ui.set_next_item_width(width);
-    }
-    let changed = ui.combo("Theme", &mut index, themes::ALL, |t| Cow::Borrowed(t.title));
-    if !changed {
-        return None;
-    }
-    themes::ALL.get(index).copied().filter(|t| *t != current)
+/// A child window rather than the window itself, so the tab bar and the footer
+/// stay put and only the settings move: a negative height is imgui's "all the
+/// room there is, less this much", which is how the footer keeps its row. The
+/// child's own background is pushed transparent ([`TRANSPARENT`]) because two
+/// themes paint a panel there and a panel inside the window reads as a second
+/// window.
+fn tab_body(ui: &Ui, footer: f32, page: impl FnOnce()) {
+    let _bg = ui.push_style_color(StyleColor::ChildBg, TRANSPARENT);
+    let _drawn = ui.child_window(BODY_ID).size([0.0, -footer]).build(page);
 }
 
-/// The player's position, right-aligned on the theme picker's row.
+/// One dim explanatory line, wrapped to the window.
+///
+/// `text_colored` does not wrap, and these are the longest lines in the menu -
+/// the dispatch notice is a paragraph - so drawing them unwrapped put a
+/// horizontal scrollbar across the whole window.
+fn wrapped_dim(ui: &Ui, t: &Theme, text: &str) {
+    let _dim = ui.push_style_color(StyleColor::Text, t.dim);
+    ui.text_wrapped(text);
+}
+
+/// The one row along the bottom: where the player is, and what has become of the
+/// ini.
+///
+/// Both belong to the window rather than to any one section, which is why there
+/// is no red line under a section any more: every section writes the same file,
+/// so a failure is the window's news. The file's name comes from the first
+/// section's store instead of a literal, because the store is what names the
+/// file it actually writes.
+fn footer(ui: &Ui, t: &Theme, sections: &[SectionEntry]) {
+    ui.separator();
+    position_readout(ui, t);
+    let Some(first) = sections.first() else { return };
+    let state = dynmodel::file_state(sections);
+    let text = state.label(first.store.file_name());
+    ui.same_line();
+    // Right-aligned, but never further left than the readout it shares the row
+    // with: a window dragged narrow squeezes it rather than overlapping it.
+    let x = (ui.content_region_max()[0] - ui.calc_text_size(&text)[0]).max(ui.cursor_pos()[0]);
+    ui.set_cursor_pos([x, ui.cursor_pos()[1]]);
+    match state.tooltip() {
+        // A failure: the store's own words, cut to the row, with all of them
+        // - the OS error included - in the tooltip.
+        Some(full) => {
+            ui.text_colored(t.error, &text);
+            if ui.is_item_hovered() {
+                ui.tooltip_text(full);
+            }
+        }
+        None => ui.text_colored(t.dim, &text),
+    }
+}
+
+/// The player's position, at the left end of the footer.
 ///
 /// The overlay reads no game memory (`crate` docs): these coordinates come
 /// from [`desert_core::telemetry`], where the looter publishes them from its
@@ -883,27 +1018,10 @@ fn position_readout(ui: &Ui, t: &Theme) {
         Some(p) => format!("X {:.1}   Y {:.1}   Z {:.1}", p.x, p.y, p.z),
         None => NO_POSITION.to_string(),
     };
-    ui.same_line();
-    // imgui puts the cursor at the top of the row after a `same_line`, so the
-    // text would sit against the combo's upper edge; half the frame padding
-    // is the difference between a text line's height and a widget's.
-    let row_top = ui.cursor_pos()[1];
-    let right = ui.content_region_max()[0];
-    let x = (right - ui.calc_text_size(&text)[0]).max(ui.cursor_pos()[0]);
-    ui.set_cursor_pos([x, row_top + ui.clone_style().frame_padding[1]]);
     ui.text_colored(t.dim, &text);
     if ui.is_item_hovered() {
         ui.tooltip_text(POSITION_HELP);
     }
-}
-
-/// How wide to keep the right-hand end of the theme picker's row free.
-///
-/// Measured off a worst case rather than off the live text: the numbers change
-/// every frame, and sizing the combo from them would make it twitch as the
-/// player walks. Six digits and a sign is wider than the map.
-fn position_reserve(ui: &Ui) -> f32 {
-    ui.calc_text_size(READOUT_WIDEST)[0] + ui.clone_style().item_spacing[0]
 }
 
 /// One dim line explaining why a section is greyed out. Nothing when the
@@ -920,18 +1038,14 @@ fn not_installed_line(ui: &Ui, t: &Theme, module: Option<&str>, loaded: bool) {
     }
 }
 
-/// One mod's whole section: the header, its presets, its fields, its notice
-/// and its status line, all of it out of the schema.
+/// One subsystem's own page: why it is greyed out if it is, its presets, the
+/// fields it kept on its own tab, and its notice at the foot.
 ///
-/// The section is drawn even when its plugin is missing, but disabled: the
-/// settings are still on disk and still worth looking at, and a greyed-out
-/// section with a reason under it is a better answer than an empty window.
-fn draw_section(ui: &Ui, t: &Theme, entry: &mut SectionEntry) {
+/// The page is drawn even when its plugin is missing, but disabled: the settings
+/// are still on disk and still worth looking at, and a greyed-out page with a
+/// reason at the top of it is a better answer than an empty one.
+fn draw_page(ui: &Ui, t: &Theme, entry: &mut SectionEntry, picked: &mut Option<&'static Theme>) {
     let loaded = entry.loaded;
-    let title = section_title(entry.title(), entry.ini_section(), loaded);
-    if !ui.collapsing_header(&title, TreeNodeFlags::DEFAULT_OPEN) {
-        return;
-    }
     not_installed_line(ui, t, entry.module(), loaded);
     let _disabled = ui.begin_disabled(!loaded);
 
@@ -943,15 +1057,53 @@ fn draw_section(ui: &Ui, t: &Theme, entry: &mut SectionEntry) {
         changed |= presets_row(ui, t, section, values);
         ui.separator();
     }
-    changed |= fields(ui, t, section, values);
+    changed |= fields(ui, t, section, values, Tab::Section, picked);
     if let Some(notice) = &section.notice {
-        ui.text_colored(t.dim, notice);
+        wrapped_dim(ui, t, notice);
     }
 
     if changed {
         entry.store.touch();
     }
-    status_line(ui, t, entry.store.status.as_deref());
+}
+
+/// One section's share of a shared tab: its title as the group header, then
+/// whichever of its fields are marked for this tab.
+///
+/// A section with nothing on this tab draws nothing at all, not an empty header:
+/// the Settings tab would otherwise carry a rule and a title for the gatherer,
+/// which binds no keys. The disabled state and the "not installed" line are per
+/// group, because a tab holds several subsystems and only some of them may be
+/// missing.
+fn draw_group(
+    ui: &Ui,
+    t: &Theme,
+    entry: &mut SectionEntry,
+    tab: Tab,
+    picked: &mut Option<&'static Theme>,
+) {
+    if !dynmodel::has_fields_on(entry.section(), tab) {
+        return;
+    }
+    // The section's own title, in the ordinary text colour rather than the dim
+    // one a schema heading uses: it says whose keys these are, and the rule
+    // under it is what separates one subsystem's group from the next.
+    ui.text(entry.title());
+    ui.separator();
+    let loaded = entry.loaded;
+    not_installed_line(ui, t, entry.module(), loaded);
+    let _disabled = ui.begin_disabled(!loaded);
+
+    let DynModel { section, values } = &mut entry.store.model;
+    let changed = fields(ui, t, section, values, tab, picked);
+    if dynmodel::shows_notice_on(section, tab) {
+        if let Some(notice) = &section.notice {
+            wrapped_dim(ui, t, notice);
+        }
+    }
+    if changed {
+        entry.store.touch();
+    }
 }
 
 /// The preset buttons, two to a row: a label like "Rock and ore only" is long
@@ -978,21 +1130,51 @@ fn presets_row(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> 
     changed
 }
 
-/// Every field of the schema, in the order the schema lists them.
-fn fields(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> bool {
+/// The fields of `section` that belong on `tab`, in the order the schema lists
+/// them.
+///
+/// `same_line` is ignored on the first of them, whatever the schema says: a
+/// field that sits beside its neighbour on its own page can be the first thing
+/// in a group on a shared tab, and a `same_line` there would pull it up onto the
+/// group's header. The schemas are kept honest about it anyway - a `same_line`
+/// is only written where the field before it *on the same tab* is the one it
+/// should sit beside - so this is a floor, not a mechanism.
+fn fields(
+    ui: &Ui,
+    t: &Theme,
+    section: &Section,
+    values: &mut [String],
+    tab: Tab,
+    picked: &mut Option<&'static Theme>,
+) -> bool {
     let mut changed = false;
+    let mut first = true;
     for (i, field) in section.fields.iter().enumerate() {
+        if field.tab != tab {
+            continue;
+        }
         let Some(slot) = values.get_mut(i) else { continue };
-        if let Some(heading) = &field.heading {
+        // A field drawn beside its neighbour cannot also open a heading: the
+        // heading is an item of its own, and `same_line` after it would pull
+        // the widget up onto the heading's row instead of the neighbour's. No
+        // schema sets both today; if one ever does, the row wins.
+        if field.same_line && !first {
+            ui.same_line();
+        } else if let Some(heading) = &field.heading {
             ui.text_colored(t.dim, heading);
         }
-        if field.same_line {
-            ui.same_line();
-        }
+        first = false;
         // `##<header>.<key>` so two sections can show the same label - which
         // `Enabled` and `Debug` do - and so a relabelled field keeps its widget
         // state. The file name would not do it: all three share one file.
         let label = format!("{}##{}.{}", field.label, section.ini_section, field.key);
+        if picks_theme(section, field) {
+            if let Some(theme) = theme_picker(ui, &label, &field.kind, slot, field.help.as_deref()) {
+                *picked = Some(theme);
+                changed = true;
+            }
+            continue;
+        }
         changed |= widget(ui, &label, &field.kind, slot);
         if let Some(help) = &field.help {
             if ui.is_item_hovered() {
@@ -1001,6 +1183,63 @@ fn fields(ui: &Ui, t: &Theme, section: &Section, values: &mut [String]) -> bool 
         }
     }
     changed
+}
+
+/// Whether this field is the one the menu draws with a widget of its own: the
+/// `Theme` choice under the overlay's own `[Header]`.
+///
+/// The second and last key-name convention in this renderer, and the reason it
+/// exists is that a generic combo over that field's options cannot do the job.
+/// The options are ini spellings, so it would show `banner` where the picker
+/// wants "Enhanced Banner"; it could not say what a theme is going for; and the
+/// menu would keep its old colours until the next launch.
+fn picks_theme(section: &Section, field: &Field) -> bool {
+    section.ini_section == crate::config::INI_SECTION
+        && field.key.eq_ignore_ascii_case("Theme")
+        && matches!(field.kind, Kind::Choice { .. })
+}
+
+/// The theme picker, on the Settings tab: [`themes::ALL`] by `title`, with the
+/// chosen theme's `blurb` on a hover.
+///
+/// Returns the theme on the frame it is chosen, which the caller hands to
+/// `pending_theme` so the look changes next frame. Nothing here saves anything:
+/// the name goes into the field's slot through [`Kind::normalize`] like every
+/// other write, and the store puts it in the ini on its usual debounce.
+fn theme_picker(
+    ui: &Ui,
+    label: &str,
+    kind: &Kind,
+    slot: &mut String,
+    help: Option<&str>,
+) -> Option<&'static Theme> {
+    let mut index = theme_in(slot).index();
+    let mut chosen = None;
+    if ui.combo(label, &mut index, themes::ALL, |t| Cow::Borrowed(t.title)) {
+        if let Some(theme) = themes::ALL.get(index).copied() {
+            if set_text(kind, slot, theme.name) {
+                chosen = Some(theme);
+            }
+        }
+    }
+    // The blurb is the one thing a list of titles cannot say, so hovering the
+    // picker is how a theme explains itself; the field's own help follows it,
+    // because that is what says the choice is kept in the ini.
+    if ui.is_item_hovered() {
+        let blurb = theme_in(slot).blurb;
+        match help {
+            Some(help) => ui.tooltip_text(format!("{blurb}\n\n{help}")),
+            None => ui.tooltip_text(blurb),
+        }
+    }
+    chosen
+}
+
+/// The theme a slot names, falling back to the default for a name no theme has -
+/// the same fallback [`crate::config::parse`] makes at startup, so the picker
+/// shows the theme the menu is actually painted in.
+fn theme_in(name: &str) -> &'static Theme {
+    Theme::by_name(name).unwrap_or_else(crate::config::default_theme)
 }
 
 /// One field's widget, chosen by its kind. `slot` is the value in its written
@@ -1096,12 +1335,4 @@ fn int_input(ui: &Ui, label: &str, value: &mut i32, (lo, hi): (i32, i32), step: 
         return true;
     }
     false
-}
-
-/// The red failure line under a section, or nothing at all when the last read
-/// and write both worked.
-fn status_line(ui: &Ui, t: &Theme, status: Option<&str>) {
-    if let Some(msg) = status {
-        ui.text_colored(t.error, msg);
-    }
 }

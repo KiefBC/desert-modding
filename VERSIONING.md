@@ -7,9 +7,9 @@ for the workspace's benefit and are never tagged or released.
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
 | `desert-tooling` | 0.6.0 | `DesertTooling.asi` | `desert-tooling-v0.6.0` |
-| `desert-looter` | 0.3.0 | nothing, linked in | never |
-| `desert-gatherer` | 0.3.0 | nothing, linked in | never |
-| `desert-overlay` | 0.2.0 | nothing, linked in | never |
+| `desert-looter` | 0.3.1 | nothing, linked in | never |
+| `desert-gatherer` | 0.3.1 | nothing, linked in | never |
+| `desert-overlay` | 0.3.0 | nothing, linked in | never |
 | `desert-dispatch` | 0.3.0 | nothing, linked in | never |
 | `desert-core` | 0.7.0 | nothing, linked in | never |
 

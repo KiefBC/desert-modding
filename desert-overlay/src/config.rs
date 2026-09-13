@@ -17,7 +17,7 @@
 //! the graphics hook is installed long before a later edit could be noticed.
 
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Section};
+use desert_core::schema::{Field, Kind, Section, Tab};
 
 /// The one ini every subsystem shares, beside the game exe.
 pub const INI_NAME: &str = "DesertTooling.ini";
@@ -231,8 +231,10 @@ impl Config {
     }
 }
 
-/// The theme the ini gets when it names none.
-fn default_theme() -> &'static crate::theme::Theme {
+/// The theme the ini gets when it names none, and the one the menu's picker
+/// falls back to for a name no theme has: both ends need the same answer, or the
+/// picker would show a theme the window is not painted in.
+pub fn default_theme() -> &'static crate::theme::Theme {
     // DEFAULT is checked against ALL by the theme tests, and ALL is never
     // empty, so the fallbacks here can only fire on a broken build.
     crate::theme::Theme::by_name(crate::themes::DEFAULT)
@@ -325,7 +327,19 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
+}
+
+/// Draw this field on one of the menu's shared tabs. Every field of this
+/// section is on one of them: the menu's own look and its key belong on
+/// Settings beside every other binding, and `Debug` belongs on Debug beside
+/// every other subsystem's. Nothing is left on [`Tab::Section`], which is
+/// exactly why the menu gives this section no tab of its own - it would be a
+/// page with the same contents as the Settings tab already has.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
+    field
 }
 
 /// The same field, drawn on the row above's line.
@@ -346,7 +360,14 @@ fn under(heading: &str, mut field: Field) -> Field {
 /// hands all three to [`crate::start`], so the menu that edits the other two
 /// subsystems edits itself as well. Every key here is read **once**, at
 /// startup, so a change made in the menu is on disk immediately and on screen
-/// at the next launch - which the section's `notice` says out loud.
+/// at the next launch - which the section's `notice` says out loud. `Theme` is
+/// the exception, and the notice says that too: the menu repaints itself the
+/// moment the picker changes, and this key is what makes the choice stick.
+///
+/// Every field is marked for one of the menu's two shared tabs - the look and
+/// the menu key on Settings, `Debug` on Debug - so this section gets no tab of
+/// its own. That is not a special case in the renderer: it falls out of "a
+/// section with no fields left on [`Tab::Section`] has no page to draw".
 ///
 /// `Font` is deliberately **not** here. Its value is a file name, an absolute
 /// path or an empty string, optionally suffixed `:N` for a `.ttc` face, and
@@ -367,101 +388,127 @@ pub fn schema() -> Section {
         // exists to configure.
         order: 30,
         notice: Some(
-            "These are read once, at startup: a change here is saved now and takes effect at the \
-             next launch."
+            "Theme changes live. Everything else here is read once, at startup: a change is saved \
+             now and takes effect at the next launch."
                 .to_string(),
         ),
         presets_label: None,
         presets: Vec::new(),
         fields: vec![
-            f(
-                "Enabled",
-                "Enabled",
-                Kind::Bool { default: d.enabled },
-                "Master switch. 0 = the overlay installs no graphics hook at all and the game \
-                 renders exactly as it would without it. Use this rather than deleting anything \
-                 while chasing a crash.",
-            ),
-            beside(f(
-                "ShowOnStart",
-                "Open at startup",
-                Kind::Bool { default: d.show_on_start },
-                "1 = the menu is already open at the first frame instead of waiting for the key.",
-            )),
-            f(
-                "KeyMenu",
-                "Menu key",
-                Kind::Key { default: key_name(d.key_menu) },
-                "Shows and hides the menu. Avoid keys the game uses, and the ones Desert Looter \
-                 already has.",
-            ),
-            under(
-                "Size and font:",
+            on(
+                Tab::Settings,
                 f(
-                    "Scale",
-                    "Scale",
+                    "Enabled",
+                    "Enabled",
+                    Kind::Bool { default: d.enabled },
+                    "Master switch. 0 = the overlay installs no graphics hook at all and the game \
+                     renders exactly as it would without it. Use this rather than deleting anything \
+                     while chasing a crash.",
+                ),
+            ),
+            on(
+                Tab::Settings,
+                beside(f(
+                    "ShowOnStart",
+                    "Open at startup",
+                    Kind::Bool { default: d.show_on_start },
+                    "1 = the menu is already open at the first frame instead of waiting for the key.",
+                )),
+            ),
+            on(
+                Tab::Settings,
+                f(
+                    "KeyMenu",
+                    "Menu key",
+                    Kind::Key { default: key_name(d.key_menu) },
+                    "Shows and hides the menu. Avoid keys the game uses, and the ones Desert Looter \
+                     already has.",
+                ),
+            ),
+            on(
+                Tab::Settings,
+                under(
+                    "Size and font:",
+                    f(
+                        "Scale",
+                        "Scale",
+                        Kind::Float {
+                            default: d.scale,
+                            // 0 is "follow the Windows display scaling", so the
+                            // slider has to reach it. Between 0 and SCALE_MIN the
+                            // value is not accepted and automatic is what you get,
+                            // which is what the help text says.
+                            min: 0.0,
+                            max: SCALE_MAX,
+                            format: Some("%.2f".to_string()),
+                        },
+                        "Size of the menu: fonts, spacing and the window. 0 follows the Windows \
+                         display scaling (125% gives 1.25); anything below 0.5 is treated as 0.",
+                    ),
+                ),
+            ),
+            on(
+                Tab::Settings,
+                f(
+                    "FontSize",
+                    "Font size (px)",
                     Kind::Float {
-                        default: d.scale,
-                        // 0 is "follow the Windows display scaling", so the
-                        // slider has to reach it. Between 0 and SCALE_MIN the
-                        // value is not accepted and automatic is what you get,
-                        // which is what the help text says.
-                        min: 0.0,
-                        max: SCALE_MAX,
-                        format: Some("%.2f".to_string()),
+                        default: d.font_size,
+                        min: FONT_SIZE_MIN,
+                        max: FONT_SIZE_MAX,
+                        format: Some("%.0f px".to_string()),
                     },
-                    "Size of the menu: fonts, spacing and the window. 0 follows the Windows \
-                     display scaling (125% gives 1.25); anything below 0.5 is treated as 0.",
+                    "Height of the menu's text in pixels before Scale is applied. The font is \
+                     rasterised at that size rather than blown up, so raising this makes the text \
+                     sharper, not blockier.",
                 ),
             ),
-            f(
-                "FontSize",
-                "Font size (px)",
-                Kind::Float {
-                    default: d.font_size,
-                    min: FONT_SIZE_MIN,
-                    max: FONT_SIZE_MAX,
-                    format: Some("%.0f px".to_string()),
-                },
-                "Height of the menu's text in pixels before Scale is applied. The font is \
-                 rasterised at that size rather than blown up, so raising this makes the text \
-                 sharper, not blockier.",
+            on(
+                Tab::Settings,
+                under(
+                    "Colour:",
+                    f(
+                        "Theme",
+                        "Theme",
+                        Kind::Choice { default: d.theme.name.to_string(), options: theme_names() },
+                        "The menu's colour theme. Changes the look live; this key is what makes it \
+                         stick.",
+                    ),
+                ),
             ),
-            under(
-                "Colour:",
+            on(
+                Tab::Settings,
                 f(
-                    "Theme",
-                    "Theme",
-                    Kind::Choice { default: d.theme.name.to_string(), options: theme_names() },
-                    "The menu's colour theme. The picker at the top of the window changes it \
-                     live; this key is what makes the choice stick.",
+                    "ColorSpace",
+                    "Colour space",
+                    Kind::Choice {
+                        default: d.color_space.as_str().to_string(),
+                        options: COLOR_SPACES.iter().map(|s| (*s).to_string()).collect(),
+                    },
+                    "What the menu's pixels are encoded for. Leave it on auto; the forced values are \
+                     for when the swapchain's own answer is wrong and the menu comes out washed out \
+                     or oversaturated.",
                 ),
             ),
-            f(
-                "ColorSpace",
-                "Colour space",
-                Kind::Choice {
-                    default: d.color_space.as_str().to_string(),
-                    options: COLOR_SPACES.iter().map(|s| (*s).to_string()).collect(),
-                },
-                "What the menu's pixels are encoded for. Leave it on auto; the forced values are \
-                 for when the swapchain's own answer is wrong and the menu comes out washed out \
-                 or oversaturated.",
+            on(
+                Tab::Settings,
+                f(
+                    "HdrBrightness",
+                    "HDR paper white (nits)",
+                    Kind::Float {
+                        default: d.hdr_brightness,
+                        min: HDR_MIN,
+                        max: HDR_MAX,
+                        format: Some("%.0f nits".to_string()),
+                    },
+                    "How bright the menu's white is on an HDR display. 203 is the broadcast \
+                     reference. Ignored entirely on an SDR display.",
+                ),
             ),
-            f(
-                "HdrBrightness",
-                "HDR paper white (nits)",
-                Kind::Float {
-                    default: d.hdr_brightness,
-                    min: HDR_MIN,
-                    max: HDR_MAX,
-                    format: Some("%.0f nits".to_string()),
-                },
-                "How bright the menu's white is on an HDR display. 203 is the broadcast \
-                 reference. Ignored entirely on an SDR display.",
-            ),
-            under(
-                "Diagnostics:",
+            // No "Diagnostics:" heading: on the shared Debug tab this section's
+            // title is the group header, beside every other subsystem's switch.
+            on(
+                Tab::Debug,
                 f(
                     "Debug",
                     "Debug",
@@ -704,6 +751,36 @@ mod tests {
         assert_eq!(s.ini_section, "Overlay");
         assert_eq!(s.module, None, "one .asi: there is no module to be missing");
         assert!(s.field("Font").is_none(), "Font is free text; no Kind can express it");
+    }
+
+    /// Every field of this section is on one of the menu's shared tabs, which is
+    /// what leaves the overlay without a tab of its own: the look and the menu
+    /// key on Settings, `Debug` on Debug with every other subsystem's.
+    #[test]
+    fn every_field_is_on_a_shared_tab_so_the_overlay_gets_no_tab_of_its_own() {
+        let s = schema();
+        for field in &s.fields {
+            let want = if field.key == "Debug" { Tab::Debug } else { Tab::Settings };
+            assert_eq!(field.tab, want, "{}", field.key);
+        }
+        assert!(
+            !s.fields.iter().any(|f| f.tab == Tab::Section),
+            "a field left here would give the menu a second copy of this page"
+        );
+        assert_eq!(s.field("Debug").and_then(|f| f.heading.clone()), None);
+        // The two headings that group the look are kept: they are drawn inside
+        // this section's group on the Settings tab.
+        assert_eq!(s.field("Scale").and_then(|f| f.heading.clone()).as_deref(), Some("Size and font:"));
+        assert_eq!(s.field("Theme").and_then(|f| f.heading.clone()).as_deref(), Some("Colour:"));
+        // The notice is the one line that tells a player which of these keys
+        // takes effect now and which waits for the next launch.
+        let notice = s.notice.clone().unwrap_or_default();
+        assert!(notice.starts_with("Theme changes live."), "{notice}");
+        assert!(notice.contains("read once, at startup"), "{notice}");
+        // And the Theme help must not promise a picker that no longer exists.
+        let help = s.field("Theme").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(!help.contains("top of the window"), "{help}");
+        assert!(help.contains("live"), "{help}");
     }
 
     #[test]

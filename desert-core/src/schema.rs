@@ -5,7 +5,9 @@
 //! range and its label, plus the [`Preset`] buttons that write several keys at
 //! once. Each subsystem builds its own in its `config.rs`; `desert-tooling`
 //! collects them and hands them to the overlay at startup, and the overlay
-//! draws one collapsible menu section per [`Section`].
+//! draws one menu tab per [`Section`] that has fields of its own, plus the two
+//! shared tabs [`Tab::Settings`] and [`Tab::Debug`] that collect the fields
+//! every section marked as belonging there.
 //!
 //! None of this is a file format. The sections travel in process; the ini is
 //! the only thing on disk. Every section names the file it describes
@@ -43,6 +45,21 @@ pub enum Kind {
     Key { default: String },
 }
 
+/// Which tab of the menu a field is drawn on. A subsystem's ordinary settings
+/// sit on its own tab; the keys a player binds and the diagnostics a bug report
+/// needs are pulled out onto two shared tabs so they are in one place whichever
+/// subsystem owns them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Tab {
+    /// The owning section's own tab. The default.
+    #[default]
+    Section,
+    /// The shared Settings tab: hotkeys and the menu's own look.
+    Settings,
+    /// The shared Debug tab: logging switches, dumps, dry runs, line caps.
+    Debug,
+}
+
 /// One ini key, in display order.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Field {
@@ -57,6 +74,10 @@ pub struct Field {
     pub same_line: bool,
     /// Tooltip.
     pub help: Option<String>,
+    /// Which tab of the menu this field is drawn on. The ini does not care -
+    /// the key sits under the section's own `[Header]` either way - so this is
+    /// purely where a player finds it.
+    pub tab: Tab,
 }
 
 /// A button that writes several keys at once.
@@ -68,8 +89,8 @@ pub struct Preset {
     pub set: Vec<(String, String)>,
 }
 
-/// One subsystem's settings: one menu section, and one `[Header]` of the
-/// shared ini.
+/// One subsystem's settings: one `[Header]` of the shared ini, and - when any
+/// of its fields stayed on [`Tab::Section`] - one tab of the menu.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Section {
     pub title: String,
@@ -314,6 +335,7 @@ mod tests {
             heading: None,
             same_line: false,
             help: None,
+            tab: Tab::Section,
         }
     }
 
@@ -422,6 +444,19 @@ mod tests {
         assert_eq!(s.field("scanrange").map(|f| f.key.as_str()), Some("ScanRange"));
         assert_eq!(s.field("SCANRANGE").map(|f| f.key.as_str()), Some("ScanRange"));
         assert!(s.field("nope").is_none());
+    }
+
+    /// A tab is a menu detail and nothing else, so the default is the owning
+    /// section's own tab: a section built without a word about tabs draws
+    /// exactly where it always did.
+    #[test]
+    fn a_field_sits_on_its_own_sections_tab_unless_it_says_otherwise() {
+        assert_eq!(Tab::default(), Tab::Section);
+        for s in [looter(), gatherer()] {
+            for f in &s.fields {
+                assert_eq!(f.tab, Tab::Section, "[{}] {}", s.ini_section, f.key);
+            }
+        }
     }
 
     // -----------------------------------------------------------------------

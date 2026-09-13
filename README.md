@@ -11,7 +11,7 @@ game's `bin64`).
 <br clear="left">
 
 <p align="center">
-  <img src="assets/readme_image.webp" alt="The Desert Tooling in-game menu: a Looter section with presets, gather families and ranges, and a Gatherer section with the four yield multipliers" width="560">
+  <img src="assets/readme_image.webp" alt="The Desert Tooling in-game menu: a row of tabs, Looter through Debug, with the Looter tab open on its presets, gather families and ranges" width="560">
 </p>
 
 <p align="center"><em>The in-game menu (<code>Insert</code>): every setting, saved to <code>DesertTooling.ini</code> as you change it.</em></p>
