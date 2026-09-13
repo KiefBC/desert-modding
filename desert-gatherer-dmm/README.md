@@ -45,7 +45,7 @@ Disable DMM's built-in gathering multiplier preset if it is mounted; it edits th
 
 This pack changes the minimum and maximum item quantities produced by genuine foraging, logging, mining, and ore collection nodes. It does not alter enemy loot, chests, fishing, skinning, quests, Abyss objects, artifacts, gates, or fast travel.
 
-Built and verified against Crimson Desert Enhanced Steam build 25116796 (pack version 1.1). Version 1.0 targeted build 24994088 and no longer applies cleanly.
+Built against Crimson Desert Enhanced Steam build 25116796 (pack version 1.1), and verified to still apply unchanged on build 25246367: the structural check in step 3 below reproduced every one of the 1174 offsets against that build's clean table, so no rebase was needed and `VERIFICATION.txt` still names 25116796 as the build it was generated from. Version 1.0 targeted build 24994088 and no longer applies cleanly.
 
 ## Verified coverage
 
