@@ -215,6 +215,13 @@ in vanilla on 2026-09-13: three pickups of the small coin prop paid 15, 14 and
 15, all inside its 10..15 block, and one pickup at `Money=3` paid 30 with the
 bag up by exactly 30, so the prop rolls its record and the same edit that
 multiplies a bush multiplies it, live, after a slider change mid-session.
+At `Money=100` the same day, two coin pickups between two F11 surveys moved the
+bag from 11919 to 14384 copper, two grants inside the multiplied 1000..1500.
+
+**The pickup prompt counts copper; the HUD counts silver.** A prompt reading
+1,400 on a multiplied coin is 1,400 copper, which lands as 14 silver on the
+HUD. The base coin is worth a few copper, so even at 100x one coin is a
+handful of silver, never a thousand.
 
 Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
@@ -273,7 +280,8 @@ get on one pick. Four things surprise people:
   turn the slider to 6, take it, and you get 30.
 - **A coin prop rolls a small range.** The common coin prop pays 10 to 15 in
   vanilla (measured: 15, 14, 15); at `Money=3` one pickup pays 30 to 45, and the
-  game may show it in silver once it crosses the display threshold.
+  game may show it in silver once it crosses the display threshold. The prompt
+  on the coin is in copper; divide by 100 for what the HUD will add.
 
 One more thing that looks odd: pressing E can hand the total over as several
 separate "x1" pickups a second or so apart. That is the game's own delivery
@@ -320,7 +328,7 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `ScanRange` | 40 | radius of the F11 survey |
 | `SurveyLines` | 200 | how many actor lines one F11 prints; gather nodes and items come first, and the survey says how many it cut |
 | `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
-| `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields |
+| `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields. Coin props are not logged: measure money with the bag line of two F11 surveys |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | see the key names below |
 
 **The plugin never takes a water well's bucket**, whatever `GatherForaging`
@@ -607,7 +615,10 @@ happens.
 `[gatherer]` lines record what was **written** to the records, not what you
 received. To measure actual yields, set `LogReceived=1` under `[Looter]` and
 read the `[recv] item <key> x<count>` lines as you gather. That is every item the
-game hands you, and it is how the numbers in this README were measured.
+game hands you, and it is how the numbers in this README were measured. The one
+exception is money: picking up a coin prop writes no `[recv]` line at all, so
+measure `Money` with the bag line an F11 survey prints (`Money_Copper key=1
+x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 

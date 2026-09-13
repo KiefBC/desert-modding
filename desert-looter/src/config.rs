@@ -483,7 +483,7 @@ pub fn schema() -> Section {
                 "LogReceived",
                 "Log received items",
                 Kind::Bool { default: d.log_received },
-                "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured.",
+                "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured. Coin props are the exception: picking one up writes no line, so measure money with the bag count an F11 survey prints.",
             )),
             f(
                 "BagTab",
