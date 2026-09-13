@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.5.0**, for Crimson Desert Enhanced, Steam build **25246367**.
+**Version 0.6.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
@@ -397,6 +397,7 @@ turning you away.
 | `Debug` | `0` | `1` = also log the nodes with no missions, every change one line at a time, and why anything was stepped over |
 | `DumpRaw` | `0` | `1` = log each mission's raw bytes as hex, for chasing an offset after a game update |
 | `DumpRewards` | `1` | `1` = also dump the reward rows the missions name. A diagnostic only: `Rewards` reads and edits those rows either way |
+| `DumpBuffs` | `0` | `1` = census the game's buff and stat tables into the log, read-only: the buff effects that touch drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drops. A diagnostic for one investigation, tagged `[buffs]`; it edits nothing |
 
 A change takes effect within about a second. Only the 219 reward rows dispatch
 missions actually name are touched — never the game's wider drop table — so this

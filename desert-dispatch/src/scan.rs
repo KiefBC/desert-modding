@@ -70,6 +70,7 @@
 use std::collections::BTreeSet;
 
 use crate::apply;
+use crate::census;
 use crate::config::{self, Config, Levers};
 use crate::gate::Gate;
 use crate::module::MainModule;
@@ -102,7 +103,7 @@ const WATCH_MS: u64 = 2000;
 const REDUMP_GROWTH: usize = 8;
 /// How many polls the count must hold still before a dump is written, so a
 /// burst is dumped once it has finished rather than part-way through.
-const STABLE_POLLS: u32 = 2;
+pub(crate) const STABLE_POLLS: u32 = 2;
 /// Re-dump the reward rows once at least this many more of them have loaded
 /// since the last reward dump.
 ///
@@ -192,6 +193,21 @@ pub(crate) struct Budget {
 impl Budget {
     pub(crate) fn new(max: u32) -> Self {
         Budget { used: 0, max, capped: false }
+    }
+
+    /// True once a line has actually been refused, so the `[cap]` line is
+    /// written when the cap bit and not merely because a pass logged fewer
+    /// lines than it read.
+    ///
+    /// An accessor rather than a `pub(crate)` field: a caller may read whether
+    /// the cap bit, and no caller may clear it.
+    pub(crate) fn capped(&self) -> bool {
+        self.capped
+    }
+
+    /// How many lines this pass has claimed, for the `[cap]` line to report.
+    pub(crate) fn used(&self) -> u32 {
+        self.used
     }
 
     /// Claim one line, or refuse it and remember that the cap bit.
@@ -759,13 +775,14 @@ fn finish_walk(sum: Summary, budget: &Budget, cfg: &Config) -> Summary {
 fn ini_summary(cfg: &Config) -> String {
     format!(
         "Enabled={} LogRecords={} MaxLines={} Debug={} DumpRaw={} DumpRewards={} \
-         Speed={} Rewards={} NoSkillRequirement={} AnyOperatorCount={} DryRun={}",
+         DumpBuffs={} Speed={} Rewards={} NoSkillRequirement={} AnyOperatorCount={} DryRun={}",
         cfg.enabled as u8,
         cfg.log_records as u8,
         cfg.max_lines,
         cfg.debug as u8,
         cfg.dump_raw as u8,
         cfg.dump_rewards as u8,
+        cfg.dump_buffs as u8,
         cfg.speed,
         cfg.rewards,
         cfg.no_skill_requirement as u8,
@@ -913,6 +930,48 @@ pub fn start() {
                 None
             }
         };
+    // The census's two tables, resolved through the same `sites` already in hand
+    // and by the same rule: by content, never by address. Both lookups are made
+    // **unconditionally**, whatever `DumpBuffs` says - the four accessor passes
+    // have already run, so a lookup against them costs nothing measurable, and
+    // the key can be flipped on mid-session from the menu or by hand, at which
+    // point there is no scan left to run. A failure here costs the census alone:
+    // neither the mission walk nor the write path knows these tables exist.
+    //
+    // These two lines stay `[dispatch]` rather than `[buffs]`: they are this
+    // thread reporting what it resolved at startup, beside the other two slot
+    // lines, and a reader comparing the four wants them together. Everything the
+    // census itself writes is `[buffs]`.
+    let buff_slot = match sites.manager_slot(module.bytes(), gimmick::BUFF_TABLE) {
+        Ok(rva) => {
+            crate::log!("buffinfo manager slot at +0x{rva:X} (0x{:X})", module.base + rva);
+            Some(module.base + rva)
+        }
+        Err(e) => {
+            crate::log!(
+                "the buffinfo manager slot was NOT found: {e}; the buff half of the DumpBuffs \
+                 census cannot run, everything else is unaffected"
+            );
+            None
+        }
+    };
+    let status_slot = match sites.manager_slot(module.bytes(), gimmick::STATUS_TABLE) {
+        Ok(rva) => {
+            crate::log!("statusinfo manager slot at +0x{rva:X} (0x{:X})", module.base + rva);
+            Some(module.base + rva)
+        }
+        Err(e) => {
+            crate::log!(
+                "the statusinfo manager slot was NOT found: {e}; the stat half of the DumpBuffs \
+                 census cannot run, and without it a buff naming a stat row cannot be told to be \
+                 about money"
+            );
+            None
+        }
+    };
+    if cfg.dump_buffs {
+        crate::log!("[ini] DumpBuffs=1: the buff and stat tables are dumped read-only");
+    }
     if !cfg.dump_rewards {
         crate::log!(
             "[rewards] DumpRewards=0: the reward rows are not dumped. They are still read and \
@@ -931,7 +990,7 @@ pub fn start() {
     crate::log!("manager 0x{mgr:X}, {count} records");
     // `count` is not passed on: `watch` re-reads it, and the array it indexes,
     // on every poll. It is only logged here.
-    watch(mgr, cfg, &ini_path, dropset_slot);
+    watch(mgr, cfg, &ini_path, dropset_slot, &module, buff_slot, status_slot);
 }
 
 /// `(record count, record-object array)` of the `FactionNode` manager as they
@@ -1331,7 +1390,15 @@ impl Watch {
 /// slower of the two clocks and runs every [`WATCH_MS`] - except immediately
 /// after an ini change, which forces one, so a menu edit does not have to wait
 /// out the rest of a watch interval.
-fn watch(mgr: usize, cfg: Config, ini_path: &std::path::Path, dropset_slot: Option<usize>) {
+fn watch(
+    mgr: usize,
+    cfg: Config,
+    ini_path: &std::path::Path,
+    dropset_slot: Option<usize>,
+    module: &MainModule,
+    buff_slot: Option<usize>,
+    status_slot: Option<usize>,
+) {
     let Some((count, _)) = manager_view(mgr) else {
         crate::log!("the manager's record array at +0x{:X} would not read", parsed::MGR_RECORDS);
         return;
@@ -1344,6 +1411,14 @@ fn watch(mgr: usize, cfg: Config, ini_path: &std::path::Path, dropset_slot: Opti
     );
 
     let mut w = Watch::new();
+    // The buff/stat census, which shares this loop and nothing else: it keeps
+    // its own settle-then-dump clocks, its own logged sets and its own `[buffs]`
+    // tag, and it is ticked only while `DumpBuffs` is on. It is built whatever
+    // the key says, because the key is live and building it costs two moves.
+    // `module` is what it needs that nothing else here does: the class of a
+    // BuffData object is read out of its RTTI, which means checking a vtable
+    // against the module's own range.
+    let mut w_census = census::Census::new(buff_slot, status_slot);
     // What this subsystem is already running on. The modified time says the
     // *file* changed; this says whether **this subsystem's section** did.
     let mut live = cfg;
@@ -1420,6 +1495,12 @@ fn watch(mgr: usize, cfg: Config, ini_path: &std::path::Path, dropset_slot: Opti
         w.missions_tick(mgr, &live);
         if let Some(slot) = dropset_slot {
             w.rewards_tick(slot, &live);
+        }
+        // Last in the tick, and read-only: the census cannot affect what the
+        // passes above read, and a pass of it is the most expensive thing on
+        // this clock when it is on at all.
+        if live.dump_buffs {
+            w_census.tick(module, &live);
         }
     }
 }

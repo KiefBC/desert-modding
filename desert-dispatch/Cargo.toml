@@ -1,6 +1,6 @@
 [package]
 name = "desert-dispatch"
-version = "0.2.0"
+version = "0.3.0"
 description = "Desert Dispatch - Crimson Desert dispatch-mission levers: faster missions, bigger rewards, no skill or headcount gate"
 edition.workspace = true
 license.workspace = true

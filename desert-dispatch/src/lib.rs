@@ -117,6 +117,25 @@
 //! [`apply`] asserts it before touching a row - a free check that the pointer
 //! being walked really is a dropset record.
 //!
+//! # The buff/stat census
+//!
+//! One more diagnostic rides the same watch loop, behind `DumpBuffs`, and it is
+//! read-only in the structural sense the dump used to be: [`buff`] and `census`
+//! contain no `safe::write`, no hook, no patch and no call into a game function,
+//! so nothing in them can change anything whatever the rest of the ini says. It
+//! walks the game's `buffinfo` and `statusinfo` tables - resolved by content
+//! through the same accessor sites as the two above - and logs the buff effects
+//! that touch a drop rate, a sell price, a crime price or a dispatch reward
+//! rate, plus the stat rows behind money and equipment drops. Its lines carry
+//! their own `[buffs]` tag, because its subject is not this subsystem's levers.
+//!
+//! It is the one walk here that reads a **class** rather than a field: a
+//! `buffDataList` entry points at one of 122 `BuffData` subclasses, the kind
+//! byte that chose it comes off the stream and is not known to be stored, so the
+//! class is read out of the object's own RTTI at runtime. `census::class_name`
+//! is the live counterpart of [`desert_core::rtti`], which does the same walk
+//! over a file image in the other direction.
+//!
 //! # Why it needs no hook
 //!
 //! The gatherer hooks the record loader because the raw stream buffer it edits
@@ -161,6 +180,13 @@ pub use desert_core::{module, safe};
 // Same split as every other crate here: anything that talks to the game or to
 // Win32 is #[cfg(windows)], the rest links natively on Linux so `cargo test
 // --target x86_64-unknown-linux-gnu` runs the unit tests.
+// The buff/stat census's pure half: the `buffinfo` and `statusinfo` offsets,
+// the seven `BuffData` subclasses worth a line, the decoders, the line
+// rendering and the verdict. Always compiled and natively tested, for the same
+// reason `node` is: a layout claim is only worth making if it can fail on this
+// machine. Its walk (`census`, Windows-only) reads and logs and does nothing
+// else - no hook, no patch, no `safe::write`.
+pub mod buff;
 pub mod config;
 // The apply-pass memo. Pure state, so the sequences that used to leave the game
 // non-vanilla while the ini said vanilla (a dry pass memoised as if it had
@@ -172,6 +198,8 @@ pub mod remember;
 
 #[cfg(windows)]
 mod apply;
+#[cfg(windows)]
+mod census;
 #[cfg(windows)]
 mod scan;
 #[cfg(windows)]
@@ -196,5 +224,8 @@ mod tests {
         // gimmick resolver, so the link is not incidental.
         assert_eq!(super::gimmick::FACTION_NODE_TABLE, b"FactionNode");
         assert_eq!(super::gimmick::DROPSET_TABLE, b"dropsetinfo");
+        // And the two the read-only census walks, found the same way.
+        assert_eq!(super::gimmick::BUFF_TABLE, b"buffinfo");
+        assert_eq!(super::gimmick::STATUS_TABLE, b"statusinfo");
     }
 }

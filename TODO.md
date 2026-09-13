@@ -377,6 +377,17 @@ day with 0.5.0 installed:** `Money=3`, one `coin_0001` by hand, `[recv] item 1 x
 second and ten coin props listed `Unarmed family=Money` in the first. That is section 13.7's
 PLAUSIBLE-strong turned CONFIRMED, and it was the live re-apply pass that wrote the 30.
 
+**The other money axis, 2026-09-13.** `AddMoneyDropRate` is a `statusinfo` record name (not a
+`_statType` value, as the drop-rate entry below first guessed), and buff kind 5 (`VaryStat`)
+carries a `statusinfo` row index at `+0x90` - so a buff that scales money drops is a kind-5 entry
+naming that row. The `DumpBuffs` census ran the same day (drop-rate entry, "Built"): the stat is
+a *static* stat, and shipped data raises it through exactly one buff, `BuffLevel_Socket_AddMoneyDropRate`
+(`buffinfo` key 1000117, ten levels, `VaryStaticStat` on row 46). So there is a second currency
+surface: the game's own money-drop multiplier, set by a socket, whose per-level grant is a
+parsed field the dispatch shape can write and whose applied value sits on the player. It is
+about money *dropped* (PLAUSIBLE from the name); the coin-prop slider stays the lever for money
+*placed*. Whether the buff also scales coin props is one pickup with the socket equipped.
+
 ## The water well is a `Foraging` record; the 16 inert records are the instance lever's payload
 
 **Raised** 2026-09-12 as "the `Ingredients` family". **Status: DECIDED and LANDED, released in 0.4.1 on 2026-09-12.**
@@ -1038,3 +1049,50 @@ verbatim - that subsystem already resolves arbitrary tables through `AccessorSit
 That answers whether any of this is secretly a record-field lever the gatherer could write, and
 it settles the currency entry at the same time. It is the same shape as the dispatch dump that
 paid for itself twice, and it carries the same near-zero risk: reads only, no hook, no patch.
+
+### Built, 2026-09-13: `[Dispatch] DumpBuffs=1`, log tag `[buffs]` - awaiting one launch
+
+`docs/findings-buff-stat-census-2026-09-13.md` is the record. Two corrections to the section
+above on the way in: the kind enum has **122** values (0-121; 124 was the reserve), and the
+19-name table is **not** `_statType`'s value table - it is the list of well-known `statusinfo`
+**record names** the game resolves to row indices at startup (`FUN_14250b680`), so
+`AddMoneyDropRate` is a `statusinfo` row. `_statType` is a `u8` at `+0x30` whose enum is unknown;
+the census prints its histogram.
+
+What the pass reads, all by content: the `buffinfo` and `statusinfo` managers through the
+`AccessorSites` the dispatch thread already holds; every `BuffInfo._buffDataList` entry
+(`+0x18`/`+0x20`, 0x10-byte entries `{u32; ptr BuffData}`), the BuffData's class through its
+vtable's RTTI name, and the per-kind fields: kind 2 `{i32 key @+0x90; i64 value @+0x98}`, kind 5
+`{u16 statusinfo row @+0x90; i64 x3 + u32 @+0x98; u8 @+0xB8}`, kind 8 `{u8 @+0x90; u8 @+0x91;
+i64 @+0x98}`, kind 11 `{u8}`, kinds 99/101 `{i64 rate @+0x90}`, kind 100 raw. Kind 5 is the money
+axis: an entry whose `+0x90` is the `AddMoneyDropRate` row index is a buff varying that stat, and
+the pass prints those with a `MONEY` prefix. Off by default; the user sets `DumpBuffs=1` under
+`[Dispatch]` (with `Enabled=1`), launches once, and pastes the `[buffs]` lines.
+
+**First run, 2026-09-13, from the main menu (both tables are fully parsed by 20 s; no save
+needed).** Layout verdict LOOKS RIGHT, 2811/2811 entries resolved. Answers, with the record in
+`findings-buff-stat-census` section 8:
+
+- **The kind-2 key is `DropInfoData._dropTagNameHash` - CONFIRMED.** Its five values sit at
+  block +22 (not +64, which section 16.1 of the internals reference had) of 606/606 gather
+  output blocks: Ore on 125 mining blocks, Plant on 339 foraging, Log on 142 logging; Animal
+  and Machine are in no gimmickinfo block. The 54 entries are seven `BuffLevel_CollectDrop_*` /
+  `BuffLevel_Drop_*` records, levels 1..10, `value = level x 100000` ppm: +10% collect-drop
+  **chance** per level. So a buff-side lever exists and is the dispatch shape (an `i64` in a
+  parsed object, written from the plugin thread); it scales a chance the gatherer does not
+  touch, and only while the player carries the buff.
+- **`AddMoneyDropRate` is `statusinfo` row 46 (key 1000047), `_staticStatType=14`,
+  `usePercent=1`, named by no buff.** The 19-name table is the value table of
+  `_staticStatType`, exactly - so the static-stat buff kinds (3 `VaryStaticStat`, 188 entries;
+  4 `VaryStaticStatLevel`, 80; 7 `VaryStaticStatRate`, 38) are the money axis, not kind 5
+  (100 entries, none naming money or equip). Kinds 8, 11, 99, 100, 101 have **no entries in
+  `buffinfo` at all**. The census now decodes kinds 3/4/7 too.
+- **Second run, same day: the money buff exists.** `buffinfo` key 1000117
+  `BuffLevel_Socket_AddMoneyDropRate` is ten `VaryStaticStat` (kind 3) entries on row 46, levels
+  1..10, `+0x98 = level x 100,000,000` (PLAUSIBLE 1e9 = 100%, so +10% per level; the scale is
+  not fixed by anything read); `BuffLevel_EquipDropRate` (key 1000066) is the same shape on row
+  21 at `level x 10,000,000`. Nothing else in the table names either row; kinds 8/11/99/100/101
+  have no entries. So the money-drop lever in shipped data is a socket buff, and the two
+  writable shapes are the buff's `+0x98` (dispatch-shaped, a parsed field, effective only while
+  the player wears the socket) and the character's applied static stat (direct, actor memory,
+  not located). The kind byte is stored at `BuffData+0x08` - CONFIRMED over kinds 2 and 3.

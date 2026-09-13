@@ -9,6 +9,53 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.6.0] - 2026-09-13
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted
+off, so an install that upgrades behaves exactly as it did. Nothing in this release changes
+anything in the game - the whole of it is a diagnostic that reads.
+
+### Added
+
+- **A `DumpBuffs` key under `[Dispatch]`, and the `[buffs]` log tag: a read-only census of the
+  game's buff table and stat table.** With `DumpBuffs=1` the dispatch subsystem's existing watch
+  loop also walks the parsed `buffinfo` and `statusinfo` records and writes what it finds to the
+  log. It reports:
+
+  - every `buffinfo` entry whose `BuffData` object is one of ten classes -
+    `VaryCollectDropRate`, `VaryStaticStat`, `VaryStaticStatLevel`, `VaryStat`,
+    `VaryStaticStatRate`, `VaryStatRate`, `Loot`, `RegisterItemSellPriceRate`,
+    `RegisterCrimePriceRate` and `RegisterFactionOperationRewardRate` - decoded per class, with
+    the stat classes narrowed to the entries that reference a money or equipment-drop stat
+    (a vanilla table holds thousands of plain stat changes, and printing them all would bury the
+    handful that matter). Both are counted in full either way, seen against logged, so the log
+    says what it left out.
+  - every `statusinfo` row whose name is one of the 19 the game itself resolves by hash at
+    startup, `AddMoneyDropRate` above all - the row that name resolves to is what the census
+    exists to get - plus a histogram of the unnamed `_statType` byte over every loaded row, so
+    the log can say whether that byte is the same 19-value enum the names are.
+  - a class histogram, per-class counts, the counted skips, a per-pass line budget (`MaxLines`
+    covers it, as it covers every other line this section writes) and a verdict line saying
+    whether the layout still looks right at all.
+
+  **It edits nothing, and that is structural rather than a promise.** No hook, no patched code,
+  nothing written to the game, no call into a game function: the census is guarded reads and
+  `format!`. It is off by default because it is a diagnostic for one investigation over two of
+  the largest tables in the game, and its lines carry their own `[buffs]` tag rather than
+  `[dispatch]`, so one search finds all of it and none of the mission levers' output.
+
+  The class of a buff effect is read out of the object's own RTTI at runtime, because the kind
+  byte the game's constructor switch dispatches on comes off the stream and is not known to be
+  stored in the object at all.
+
+- **Two more tables resolved by content: `buffinfo` and `statusinfo`.** Both are found through
+  the same accessor template that already finds `gimmickinfo`, `iteminfo`, `FactionNode` and
+  `dropsetinfo`, and through the same single scan the dispatch subsystem already makes - so the
+  two extra lookups cost nothing measurable at startup and there is still not one bare image
+  address in the resolution path. On build 25246367 their manager slots are `0x6C367C8` and
+  `0x6C2E328`; `desert-core`'s `#[ignore]`d exe test now asserts both, and that each name is
+  still a unique NUL-delimited literal in the image.
+
 ## [0.5.0] - 2026-09-13
 
 Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": two new ini keys, both

@@ -663,6 +663,8 @@ const TABLES: &[(&[u8], usize, usize)] = &[
     (gimmick::FACTION_NODE_TABLE, 0x6C30308, 0x3C1F30),
     (b"Skill", 0x6C2E330, 0x3871C0),
     (gimmick::DROPSET_TABLE, 0x6C328A8, 0x437E70),
+    (gimmick::BUFF_TABLE, 0x6C367C8, 0x5FE880),
+    (gimmick::STATUS_TABLE, 0x6C2E328, 0x512A30),
 ];
 
 #[test]
@@ -700,10 +702,14 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
     let img = pe::file_to_image(&file).expect("image layout");
     let base = h.image_base as usize;
 
-    // The name that reaches the reward table occurs once, which is what lets an
-    // accessor be identified by it at all.
-    let once = img.windows(12).filter(|w| *w == b"dropsetinfo\0").count();
-    assert_eq!(once, 1, "\"dropsetinfo\" is no longer a unique string");
+    // Each of these names occurs exactly once as a NUL-delimited literal, which
+    // is what lets an accessor be identified by the name it passes at all. The
+    // reward table is here because it was the first one resolved this way; the
+    // buff and stat tables because the census in `desert-dispatch` now is.
+    for want in [&b"dropsetinfo\0"[..], b"buffinfo\0", b"statusinfo\0"] {
+        let once = img.windows(want.len()).filter(|w| *w == want).count();
+        assert_eq!(once, 1, "{:?} is no longer a unique string", String::from_utf8_lossy(want));
+    }
 
     for (table, slot, loader) in TABLES {
         let name = String::from_utf8_lossy(table);

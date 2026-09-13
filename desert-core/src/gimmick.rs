@@ -293,6 +293,19 @@ pub const FACTION_NODE_TABLE: &[u8] = b"FactionNode";
 /// invisible to this module until the scan covered all four encodings. On build
 /// 25246367 its manager slot is `0x6C328A8` and its record loader `0x437E70`.
 pub const DROPSET_TABLE: &[u8] = b"dropsetinfo";
+/// The name the `buffinfo` accessor passes: the game's buff table, whose
+/// records carry the `BuffData` objects that move a drop rate. A `45 33 C9` +
+/// `lea` copy of the template; on build 25246367 its manager slot is `0x6C367C8`
+/// and its record loader `0x5FE880`. Walked **read-only** by the dispatch
+/// subsystem's buff census (`DumpBuffs`), which writes nothing and installs
+/// nothing.
+pub const BUFF_TABLE: &[u8] = b"buffinfo";
+/// The name the `statusinfo` accessor passes: the stat table the buffs above
+/// name by row index, and where `AddMoneyDropRate` is a record rather than an
+/// enum value. Also a `45 33 C9` + `lea` copy; on build 25246367 its manager
+/// slot is `0x6C2E328` and its record loader `0x512A30`. Same census, same
+/// read-only pass.
+pub const STATUS_TABLE: &[u8] = b"statusinfo";
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
     b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)

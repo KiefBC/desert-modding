@@ -119,6 +119,25 @@ pub struct Config {
     /// read and still multiplied, they are just not printed. There is no way
     /// to multiply a row without reading it.
     pub dump_rewards: bool,
+    /// 1 = census the game's **buff** table and **stat** table into the log,
+    /// read-only.
+    ///
+    /// A different question from everything else in this section, and a
+    /// one-launch one: which of the game's buffs touch a drop rate, a sell
+    /// price, a crime price or a dispatch reward rate, and which `statusinfo`
+    /// row the name `AddMoneyDropRate` resolves to. [`crate::buff`] holds the
+    /// layout and `census.rs` the walk.
+    ///
+    /// It **edits nothing**: no hook, no code patch, no `safe::write`, no call
+    /// into a game function - so unlike [`Self::dump_rewards`], which shares a
+    /// read path with the `Rewards` lever, there is no lever anywhere that
+    /// needs this on. Its lines carry their own `[buffs]` tag rather than
+    /// `[dispatch]`, so one `grep` finds all of it and none of the rest.
+    ///
+    /// Off by default: it is a diagnostic for one investigation, its two tables
+    /// are the biggest in the game, and nothing about the plugin's behaviour
+    /// changes when it is left off.
+    pub dump_buffs: bool,
 
     // -- the levers: the keys that write to the game --
     /// Mission duration divisor. `1` = vanilla; `4` means a mission takes a
@@ -156,6 +175,7 @@ impl Default for Config {
             debug: false,
             dump_raw: false,
             dump_rewards: true,
+            dump_buffs: false,
             // Every lever ships at vanilla, so installing the plugin changes
             // nothing about dispatch until the player asks for it.
             speed: 1,
@@ -373,6 +393,7 @@ pub struct LiveConfig {
     debug: AtomicBool,
     dump_raw: AtomicBool,
     dump_rewards: AtomicBool,
+    dump_buffs: AtomicBool,
     speed: AtomicU32,
     rewards: AtomicU32,
     no_skill_requirement: AtomicBool,
@@ -391,6 +412,7 @@ impl LiveConfig {
             debug: AtomicBool::new(false),
             dump_raw: AtomicBool::new(false),
             dump_rewards: AtomicBool::new(true),
+            dump_buffs: AtomicBool::new(false),
             speed: AtomicU32::new(1),
             rewards: AtomicU32::new(1),
             no_skill_requirement: AtomicBool::new(false),
@@ -408,6 +430,7 @@ impl LiveConfig {
         self.debug.store(cfg.debug, Ordering::Relaxed);
         self.dump_raw.store(cfg.dump_raw, Ordering::Relaxed);
         self.dump_rewards.store(cfg.dump_rewards, Ordering::Relaxed);
+        self.dump_buffs.store(cfg.dump_buffs, Ordering::Relaxed);
         self.speed.store(cfg.speed, Ordering::Relaxed);
         self.rewards.store(cfg.rewards, Ordering::Relaxed);
         self.no_skill_requirement.store(cfg.no_skill_requirement, Ordering::Relaxed);
@@ -424,6 +447,7 @@ impl LiveConfig {
             debug: self.debug.load(Ordering::Relaxed),
             dump_raw: self.dump_raw.load(Ordering::Relaxed),
             dump_rewards: self.dump_rewards.load(Ordering::Relaxed),
+            dump_buffs: self.dump_buffs.load(Ordering::Relaxed),
             speed: self.speed.load(Ordering::Relaxed),
             rewards: self.rewards.load(Ordering::Relaxed),
             no_skill_requirement: self.no_skill_requirement.load(Ordering::Relaxed),
@@ -611,6 +635,12 @@ pub fn schema() -> Section {
                 Kind::Bool { default: d.dump_rewards },
                 "Dump the reward rows the missions name into the log: the items and amounts a mission pays. A diagnostic only - the reward multiplier above reads and edits those rows whether or not this is on.",
             ),
+            f(
+                "DumpBuffs",
+                "Dump buffs and stats",
+                Kind::Bool { default: d.dump_buffs },
+                "Census of the game's buff table and stat table into the log, read-only: every buff effect that touches drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drop rates. A one-launch diagnostic for the drop-rate investigation; it edits nothing and can be left off.",
+            ),
         ],
     }
 }
@@ -639,6 +669,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "debug" => cfg.debug = ini::parse_bool(v),
             "dumpraw" => cfg.dump_raw = ini::parse_bool(v),
             "dumprewards" => cfg.dump_rewards = ini::parse_bool(v),
+            "dumpbuffs" => cfg.dump_buffs = ini::parse_bool(v),
             "noskillrequirement" => cfg.no_skill_requirement = ini::parse_bool(v),
             "anyoperatorcount" => cfg.any_operator_count = ini::parse_bool(v),
             "dryrun" => cfg.dry_run = ini::parse_bool(v),
@@ -688,6 +719,10 @@ mod tests {
         // On by default: the reward rows are the one layer nothing has read at
         // runtime yet, and confirming them is what the next launch is for.
         assert!(c.dump_rewards);
+        // Off by default, unlike the reward dump: the buff census is a
+        // diagnostic for one investigation over the two biggest tables in the
+        // game, and nothing the plugin does depends on it.
+        assert!(!c.dump_buffs);
     }
 
     /// The install-and-nothing-happens property. Every lever ships at vanilla,
@@ -708,7 +743,7 @@ mod tests {
         let (c, w) = parse(
             "; comment\n[Dispatch]\nEnabled=0\nLogRecords=no\nMaxLines=1234\nDebug=on\n\
              DumpRaw=1\nDumpRewards=0\nSpeed=4\nRewards=3\nNoSkillRequirement=1\n\
-             AnyOperatorCount=yes\nDryRun=1\n",
+             AnyOperatorCount=yes\nDryRun=1\nDumpBuffs=1\n",
         );
         assert!(!c.enabled);
         assert!(!c.log_records);
@@ -721,6 +756,7 @@ mod tests {
         assert!(c.no_skill_requirement);
         assert!(c.any_operator_count);
         assert!(c.dry_run);
+        assert!(c.dump_buffs);
         assert!(w.is_empty(), "{w:?}");
     }
 
@@ -1054,6 +1090,7 @@ mod tests {
             debug: true,
             dump_raw: true,
             dump_rewards: false,
+            dump_buffs: true,
             speed: 6,
             rewards: 9,
             no_skill_requirement: true,
