@@ -1,6 +1,6 @@
 [package]
 name = "desert-gatherer"
-version = "0.2.0"
+version = "0.3.0"
 description = "Desert Gatherer - Crimson Desert gathering yield multiplier subsystem"
 edition.workspace = true
 license.workspace = true

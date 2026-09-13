@@ -350,10 +350,10 @@ mod entry {
     /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
     fn ini_summary(cfg: &Config) -> String {
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherBugs={} GatherFish={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

@@ -1,6 +1,6 @@
 [package]
 name = "desert-looter"
-version = "0.2.0"
+version = "0.3.0"
 description = "Desert Looter - Crimson Desert gathering auto-loot (ASI plugin)"
 edition.workspace = true
 license.workspace = true

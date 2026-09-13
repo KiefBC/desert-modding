@@ -18,13 +18,14 @@ dies on the next run, so add it here instead.
    Each `changes` entry already carries `entry` (record name) and `record_key`.
 
 2. tools/extra-families.json - records the DMM pack has no module for, added to
-   a family by hand. Today that is one record, the water well
-   `gimmick_well_0001_parts01`, which joins `Foraging`: water drawn from a well
-   is gathered out of the world like everything else there. An entry may name
-   an existing DMM family, in which case its records extend that family and its
-   note is appended to the variant's doc comment, or a new one, in which case
-   the generator emits the variant. Either way a hand-added row in `collect.rs`
-   dies on the next regenerate; this input is how the generator owns it.
+   a family by hand. Today that is the water well `gimmick_well_0001_parts01`,
+   which joins `Foraging` (water drawn from a well is gathered out of the world
+   like everything else there), and the three placed money props, which are
+   the `Money` family on their own. An entry may name an existing DMM family,
+   in which case its records extend that family and its note is appended to
+   the variant's doc comment, or a new one, in which case the generator emits
+   the variant. Either way a hand-added row in `collect.rs` dies on the next
+   regenerate; this input is how the generator owns it.
 
 FORMAT of tools/extra-families.json: a JSON object mapping family name ->
 {note, records, records_not_enabled?, candidates_not_enabled?}, where
@@ -68,10 +69,18 @@ Either way `collect.rs` regenerates. `$CD_CLEAN_TABLE` overrides the path, and
 pointing it somewhere that does not exist is how that second branch gets tested
 deliberately.
 
-Item `1` is money (coin_0001 10..15, silverbar_0001 2500..2500), so a record
-paying it would make this an economy mod rather than a yield multiplier. It is
-refused outright, in the stored `items` and again in what the body says the
-record pays - see `MONEY_ITEM`.
+Item `1` is money (coin_0001 10..15, silverbar_0001 2500..2500). A record
+paying it inside Foraging or any other gathering family would turn a yield
+slider into an economy lever by accident, so every family but one refuses it
+outright, in the stored `items` and again in what the body says the record
+pays - see `MONEY_ITEM`. The one exception is the `Money` family
+(MONEY_FAMILY), which exists for exactly those records and has the opposite
+rule: every record in it, enabled or not, must pay item 1 and NOTHING ELSE,
+checked the same two ways. So money can never ride into a gathering family and
+a gathering item can never ride into Money; the two refusals are each other's
+mirror. The family is the currency multiplier's whole surface: the placed coin
+props, which read their block (docs/findings-water-wells-2026-09-12.md section
+13.7, measured 2026-09-13 on build 25246367).
 
 The walk re-implements `desert_core::gimmick::output_lists` + `block_ok`
 (greedy, non-overlapping, item id at block+1) and attributes each list to its
@@ -105,8 +114,31 @@ CLEAN_TABLE = os.environ.get(
 # zero padding (findings-water-wells section 5).
 BLOCK, ITEM_AT, MIN_AT, MAX_AT, MAX_QTY = 68, 1, 42, 50, 100_000
 
-# Item 1 is money. Never paid by a row; see the module docstring.
+# Item 1 is money. Paid by no row outside MONEY_FAMILY, and by every row inside
+# it; see the module docstring.
 MONEY_ITEM = 1
+MONEY_FAMILY = "Money"
+
+
+def check_money_rule(where, name, family, items, source):
+    """The two-way money rule, applied to one record's item list.
+
+    `source` names where the list came from ("stored" for the json, "the clean
+    body" for the walk) so the message says which of the two disagreed.
+    """
+    if family == MONEY_FAMILY:
+        if items != [MONEY_ITEM]:
+            die(
+                f"{where}: {name!r} is a {MONEY_FAMILY} record but {source} says it "
+                f"pays {items}; a {MONEY_FAMILY} record must pay item {MONEY_ITEM} "
+                "(money) and nothing else"
+            )
+    elif MONEY_ITEM in items:
+        die(
+            f"{where}: {name!r} pays item {MONEY_ITEM} ({source}), which is MONEY "
+            f"(coin_0001 10..15, silverbar_0001 2500..2500). Money never rides into "
+            f"a gathering family; the {MONEY_FAMILY} family is the only place for it."
+        )
 
 # Table-wide totals and three (list offset -> record, record-relative offset)
 # anchors the record walk must reproduce. `firewood_0001` is the load-bearing
@@ -228,12 +260,7 @@ def read_record_map(path, family, field, raw):
             or not all(isinstance(i, int) and i > 0 for i in items)
         ):
             die(f"{where}: `items` must be a non-empty list of item ids")
-        if MONEY_ITEM in items:
-            die(
-                f"{where}: {name!r} pays item {MONEY_ITEM}, which is MONEY "
-                "(coin_0001 10..15, silverbar_0001 2500..2500). A currency "
-                "multiplier is a separate feature; see TODO.md entry 1."
-            )
+        check_money_rule(where, name, family, sorted(set(items)), "stored")
         why = rec.get("why", "")
         if not isinstance(why, str):
             die(f"{where}: `why` must be text")
@@ -438,8 +465,7 @@ def verify_or_warn(spec):
                 items, nlists = paid.get(hits[0][0], ([], 0))
                 if must_pay and nlists == 0:
                     die(f"{where}: owns no resource-output block; nothing to multiply")
-                if MONEY_ITEM in items:
-                    die(f"{where}: pays item {MONEY_ITEM} (MONEY) in the clean body; refused")
+                check_money_rule(where, name, family, items, "the clean body")
                 if items != rec["items"]:
                     die(
                         f"{where}: the stored items do not match the clean body.\n"
@@ -569,11 +595,12 @@ def render_extra_tests(spec, rows):
         out += [
             "",
             "    /// `records_not_enabled` in tools/extra-families.json: records a table",
-            "    /// edit was measured or argued not to reach (they hand the player a",
-            "    /// pre-built item instance and never read their output block; see",
-            "    /// docs/findings-water-wells-2026-09-12.md section 11). They must stay",
-            "    /// OUT of the table, not sit in it inert: a row here would be an edit",
-            "    /// the log reports and the player never sees.",
+            "    /// edit was measured or argued not to reach - they hand the player a",
+            "    /// pre-built item instance and never read their output block (see",
+            "    /// docs/findings-water-wells-2026-09-12.md section 11), or they are",
+            "    /// not pickups at all; each record's `why` in that file says which.",
+            "    /// They must stay OUT of the table, not sit in it inert: a row here",
+            "    /// would be an edit the log reports and the player never sees.",
             "    #[test]",
             f"    fn {family.lower()}_records_not_enabled_stay_out() {{",
             "        let out: &[(u32, &str)] = &[",

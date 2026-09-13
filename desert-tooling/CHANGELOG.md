@@ -9,6 +9,99 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.5.0] - 2026-09-13
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": two new ini keys, both
+defaulted so an install that upgrades behaves exactly as it did, and one label in the F11 survey
+that changes (under *Changed*). **Measured on this build on 2026-09-13, both halves:** three
+*vanilla* coin pickups paid 15, 14 and 15, and then, with 0.5.0 installed, one pickup at `Money=3`
+paid `[recv] item 1 x30` against a bag delta of exactly +30 between two F11 surveys. "A coin
+prop reads its block, and the multiplier reaches it" is CONFIRMED IN GAME; the check at the end
+of this entry is the one that was run.
+
+### Added
+
+- **A `Money` multiplier under `[Gatherer]`: the coins you find lying in the world, and nothing
+  else.** A fifth family, `Money`, beside Foraging, Logging, Mining and Ore, holding the three
+  records in the game's gather table that are placed money props:
+
+  | record | key | vanilla |
+  | --- | --- | --- |
+  | `gimmick_item_common_coin_0001` | 1000183 | 10..15 |
+  | `gimmick_item_common_coin_0002` | 1006419 | 100..150 |
+  | `gimmick_item_common_silverbar_0001` | 1000712 | 2500..2500 |
+
+  All three pay item `1`, which is the game's **one** money item: the bag names it `Money_Copper`,
+  and copper, silver and gold are display units over that one count (2500 copper reads as 25
+  silver). So the amount a prop pays *is* the denomination, and a multiplied pickup may show on
+  screen as a different denomination than the vanilla one did - that is the display threshold,
+  not a fault. The lever is nothing new: it is the same block edit the plugin makes for a bush,
+  applied to these three records, and the live re-apply pass reaches them the same way, so a
+  change in the menu counts from the next coin you pick up.
+
+  **Read this before raising it.** `Money` multiplies money *lying in the world* and nothing else.
+  It does **not** touch what enemies drop, what quests pay, what a coin pouch opens to, what a
+  chest holds, what anything sells for, or what a dispatch mission returns; all of those pay as
+  they did. And it is the first setting in this plugin that is a *balance* lever rather than a
+  convenience one - it changes how fast you accumulate money, not how many berries a bush gives -
+  which is why it ships at `1` on purpose and the ini says so in more words than the others get.
+
+  The evidence it rests on (`docs/findings-water-wells-2026-09-12.md` section 13.7): three hand
+  pickups of `coin_0001` on 2026-09-13 paid `[recv] item 1 x15`, `x14`, `x15` - every one inside
+  its `10..15` block, and varying - against a bag delta of exactly +44 between two F11 surveys.
+  Every prop that hands over a pre-built item instance has ever been seen to carry a count of 1, so
+  one prop paying 14 and then 15 is its block being rolled, which is the one thing a table edit
+  needs. The multiplied half, taken the same day: `Money` moved from 1 to 3 in the menu at 54 s
+  (`[live] re-applied ... Money=3: 3 records rewritten, 276 unchanged, 0 skipped; 6 scalars
+  written` - the three Money rows and nothing else), an F11 showed ten coin props as `Unarmed`
+  with `family=Money` and `Money_Copper x11889` in the bag, one hand pickup logged `[recv] item 1
+  x30`, and the next F11 showed the nearest coin gone and `x11919`: a roll of 10 on the `10..15`
+  block, times 3, delivered by the live re-apply pass since the table had loaded long before the
+  slider moved. The three `gimmick_box_donation_reward_coin_*` records also pay item 1 and are
+  deliberately **not** rows: the donation box is where you *give* items to the camp, and what
+  comes back is a token, not a payout from that block. A generated test keeps them out. The
+  silver-bar record is a row because it is a placed money record, but nobody on this project has
+  seen one placed and the player reports there are none; if one exists and ignores its block the
+  row is inert, not wrong.
+
+  The generator that owns `collect.rs` used to refuse *any* record paying item 1, so money could
+  never ride into `Foraging` by accident. That refusal is now two-way: every family except `Money`
+  still refuses item 1, and `Money` refuses anything *but* item 1, both checked against the stored
+  rows and again against DMM's clean table body. Neither half is shipped code; it is listed
+  because it is the guard rail on the one family that can move the economy.
+
+- **`GatherMoney` under `[Looter]`, default `0`.** The coin props surveyed as `Inert` until now
+  only because no family covered them - they carry neither an interaction object nor an item
+  instance, and a gimmick like that with a known family is what the looter calls `Unarmed`. With
+  `Money` a family, they are, and `GatherUnarmed=1` (the default) plus `GatherMoney=1` would
+  forge a pickup at one exactly as it does at an ore dropping. That has never been tried in game,
+  and `0` is also what keeps this upgrade behaviour-preserving, so it is off. It is only the
+  auto-loot switch: the amount is `[Gatherer]`'s `Money`, which applies to the coins you pick up
+  by hand whether or not this is on. No preset touches it.
+
+### Changed
+
+- **The F11 survey lists the placed coin props as `Unarmed` instead of `Inert`.** Same actors,
+  new label: they now print in the second group of the listing rather than last, and count under
+  `Unarmed` in the census line. Nothing is sent at them unless `GatherMoney=1`.
+- The `[gatherer] [ini]` and `[live] re-applied` lines carry `Money=` after `Ore=`, and the
+  `[looter] [ini]` line carries `GatherMoney=` after `GatherOre=`. Every other field is where it
+  was.
+- The record count is 279: the DMM pack's 275, the water well, and the three money records.
+- Library bookkeeping, nothing a player sees: `desert-core` 0.6.0 (a new `Family` variant is a
+  breaking change for anything matching on it), `desert-gatherer` 0.3.0 and `desert-looter`
+  0.3.0 (a new config field each).
+
+### How to check it
+
+This is the check that was run on 2026-09-13 and paid 30. Set `Money=3` under `[Gatherer]` and
+`LogReceived=1` under `[Looter]`, then pick up **one** common coin prop by hand. Expect one line
+`[looter] [recv] item 1 x30..45` (vanilla paid 15, 14 and 15). If the amount is inside `10..15`, the prop did not read its block and the row is inert;
+if it is outside `30..45`, something else paid. Either way the log also shows what was written:
+`[gatherer] [gimmick] gimmick_item_common_coin_0001 key=1000183 Money x3 blocks=1 applied 2/2:
+10->30/15->45` at load, or `[gatherer] [live] re-applied ... Money=3: 3 records rewritten ...`
+right after the ini change.
+
 ## [0.4.1] - 2026-09-12
 
 Game build 25246367. The work below is dated 2026-09-12 and **was taken into the game the same

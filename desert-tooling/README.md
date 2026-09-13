@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.4.1**, for Crimson Desert Enhanced, Steam build **25246367**.
+**Version 0.5.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
@@ -10,7 +10,7 @@ Rust, installed by dropping two files into `bin64`.
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
 | Looter | gathers plants, ore, stone, wood, insects and fish around you | `[Looter]` | `[looter]` |
-| Gatherer | multiplies what a gathering node, a water well or a caught creature gives | `[Gatherer]` | `[gatherer]` |
+| Gatherer | multiplies what a gathering node, a water well, a caught creature or a coin lying in the world gives | `[Gatherer]` | `[gatherer]` |
 | Dispatch | shorter dispatch missions, bigger mission rewards, no skill or headcount gate | `[Dispatch]` | `[dispatch]` |
 | Overlay | the settings menu, `Insert` | `[Overlay]` | `[overlay]` |
 
@@ -173,8 +173,8 @@ pickup event it sends when you press E.
 ## What the Gatherer does
 
 Every gathering node in the game carries a minimum and a maximum quantity for
-each item it can produce. Desert Tooling multiplies both, in 276 records across
-four independent families:
+each item it can produce. Desert Tooling multiplies both, in 279 records across
+five independent families:
 
 | family | what it covers | records |
 |---|---|---|
@@ -182,6 +182,7 @@ four independent families:
 | Logging | firewood cut from felled trees (`firewood_*`) | 141 |
 | Mining | the `collect_mine` family: rocks, veins, cave variants, breakable stalactites | 36 |
 | Ore Nodes | the `collect_ore` family: `ore_*` deposits, sulfur stone, collectible stalactites | 16 |
+| Money | the coins placed in the world: **money lying around, and nothing else** | 3 |
 
 Each family has its own multiplier, 1 to 100. Mining and Ore Nodes look alike in
 game but are separate families in the game's data; set both if you want all
@@ -189,14 +190,31 @@ mining-style gathering raised together. Nothing is patched on disk: the numbers
 are multiplied in memory as the game loads them.
 
 They are the game's own groupings — the 275 records it classes as gather nodes,
-the same four the DMM pack covered — plus one record the pack never had: the
-water well, which pays out through the same kind of record as a bush and so
-sits under `Foraging`. Water from a well is a thing you gather out of the world
+the same four the DMM pack covered — plus four records the pack never had: the
+three placed money records, which are the `Money` family and get their own
+section below, and the water well, which pays out through the same kind of
+record as a bush and so sits under `Foraging`. Water from a well is a thing you gather out of the world
 like everything else there, and a player reading "plants, fruit, berries" would
 not guess it, so it is said here: **`Foraging` also multiplies the water you
 draw from a well.** It does *not* touch the breakable water pots or the goods
 sitting on market stalls — those hand you a ready-made item and never read the
 table, so they are not in any family.
+
+**`Money` multiplies the money you find lying in the world, and nothing else.**
+Three records in the gather table are placed money props - the small coin prop
+(`gimmick_item_common_coin_0001`, 10..15), the large one (100..150) and a
+silver-bar record (a fixed 2500) - and all three pay the game's one money item,
+which the bag calls `Money_Copper`. Copper, silver and gold are display units
+over that one count (2500 copper shows as 25 silver), so the amount *is* the
+denomination, and a multiplied pickup may show in a different unit than the
+vanilla one did. It does **not** touch what enemies drop, what quests pay, what a
+coin pouch opens to, what a chest holds, what anything sells for, or what a
+dispatch mission returns. This is the one setting here that is a *balance* lever
+rather than a convenience one, which is why it ships at `1` on purpose. Measured
+in vanilla on 2026-09-13: three pickups of the small coin prop paid 15, 14 and
+15, all inside its 10..15 block, and one pickup at `Money=3` paid 30 with the
+bag up by exactly 30, so the prop rolls its record and the same edit that
+multiplies a bush multiplies it, live, after a slider change mid-session.
 
 Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
@@ -218,7 +236,8 @@ different number every time — at `Bugs=10`, ten colonies and somewhere around
 twenty fireflies. That is the game's own drop rule, not a bug in the patch.
 
 It does **not** touch enemy loot, chests, rod-and-line fishing, skinning, quests,
-Abyss objects, artifacts, gates or fast travel.
+Abyss objects, artifacts, gates or fast travel - and `Money` does not reach the
+money any of those pay, only the coins placed in the world.
 
 ### What to expect in game
 
@@ -252,6 +271,9 @@ get on one pick. Four things surprise people:
   bag count logged before and after. And the multiplier is read when you
   **take** the water, not when the bucket fills: raise a full bucket at 3,
   turn the slider to 6, take it, and you get 30.
+- **A coin prop rolls a small range.** The common coin prop pays 10 to 15 in
+  vanilla (measured: 15, 14, 15); at `Money=3` one pickup pays 30 to 45, and the
+  game may show it in silver once it crosses the display threshold.
 
 One more thing that looks odd: pressing E can hand the total over as several
 separate "x1" pickups a second or so apart. That is the game's own delivery
@@ -290,6 +312,7 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `GatherLogging` | 1 | 0 = pass over firewood cut from felled trees |
 | `GatherMining` | 1 | 0 = pass over the `collect_mine` family: rocks, veins, stalactites |
 | `GatherOre` | 1 | 0 = pass over the `collect_ore` family: ore deposits and sulfur stone (separate from Mining; set both to gather all of them) |
+| `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is `[Gatherer]`'s `Money`. Untested in game, so off by default |
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
@@ -321,6 +344,7 @@ rather than pretending nothing was there.
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
 | `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
+| `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
 | `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
 | `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
 
@@ -456,8 +480,9 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 13,906 records, 276 of which this plugin multiplies — the
-275 the game classes as gather nodes, plus the water well. Roughly
+called `gimmickinfo`: 13,906 records, 279 of which this plugin multiplies — the
+275 the game classes as gather nodes, plus the water well and the three placed
+money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
 a preload pass that reads every record in order, parses each one into an object
 in memory, stores the object's pointer in a slot table, and then closes the
@@ -495,11 +520,11 @@ through the load-time hook, whenever it does load.
 **What the log shows.** Right after each `[ini] reloaded: ...` line:
 
 ```text
-[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1: 83 records rewritten, 193 unchanged, 0 skipped; 646 scalars written
+[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1 Money=1: 83 records rewritten, 196 unchanged, 0 skipped; 646 scalars written
 ```
 
 or, with `DryRun=1`, the same line as `[dry] would re-apply ...`. At `Enabled=0`
-the multiplier part instead reads `Foraging=1 Logging=1 Mining=1 Ore=1
+the multiplier part instead reads `Foraging=1 Logging=1 Mining=1 Ore=1 Money=1
 (Enabled=0)`: `Enabled=0` means vanilla, not "leave whatever is already there,"
 so the pass writes every record's minimum and maximum back to their disk values.
 With `Debug=1`, each rewritten record also gets its own line:
@@ -516,7 +541,7 @@ is nothing left for the re-apply pass to do yet.
 the summary line is followed by one naming the reasons, for example:
 
 ```text
-[gatherer] [live] WARN 12 of 276 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
+[gatherer] [live] WARN 12 of 279 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
 ```
 
 or, if the record manager itself could not be read at all:
@@ -556,7 +581,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertTooling.asi` | the plugin | yes, that uninstalls it |
-| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all seven multipliers, so deleting it turns them off |
+| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all eight multipliers, so deleting it turns them off |
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
 

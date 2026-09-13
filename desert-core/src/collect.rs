@@ -28,6 +28,26 @@ pub enum Family {
     Logging,
     Mining,
     Ore,
+
+    /// The CURRENCY multiplier: the money props placed in the world, and
+    /// nothing else. Item 1 is the game's one money item (the bag names it
+    /// `Money_Copper`; copper, silver and gold are display units over one
+    /// count, so 2500 copper reads as 25 silver), and these are the only
+    /// gimmickinfo records paying it that are pickups. A placed coin prop reads
+    /// its output block - three vanilla hand pickups of
+    /// `gimmick_item_common_coin_0001` on 2026-09-13, build 25246367, paid x15,
+    /// x14, x15 inside its 10..15 block, and one pickup at Money=3 the same day
+    /// paid x30 against a bag delta of exactly +30
+    /// (docs/findings-water-wells-2026-09-12.md section 13.7; CONFIRMED IN GAME
+    /// on build 25246367) - so the same block edit that multiplies a bush
+    /// multiplies them, and `hook::reapply` is what reached them live. This is
+    /// the ONLY family allowed to pay item 1, and every record in it must pay
+    /// item 1 and nothing else; tools/gen-collect-names.py enforces both
+    /// halves. What it reaches is money lying in the world and nothing else:
+    /// not enemy drops, not quest rewards, not coin pouches, not chests, not
+    /// shop prices, not dispatch rewards. The three donation-box coin records
+    /// are not pickups and are kept out below.
+    Money,
 }
 
 pub const COLLECT_RECORDS: &[(u32, &str, Family)] = &[
@@ -204,6 +224,9 @@ pub const COLLECT_RECORDS: &[(u32, &str, Family)] = &[
     (1006768, "firewood_2003_Fine", Family::Logging),
     (1006769, "firewood_2003_Premium", Family::Logging),
     (17020022, "garlic_01", Family::Foraging),
+    (1000183, "gimmick_item_common_coin_0001", Family::Money),
+    (1006419, "gimmick_item_common_coin_0002", Family::Money),
+    (1000712, "gimmick_item_common_silverbar_0001", Family::Money),
     (1001261, "gimmick_kudzu_vine_0001", Family::Foraging),
     (1004924, "gimmick_stalactite_0003", Family::Mining),
     (1004925, "gimmick_stalactite_0004", Family::Mining),
@@ -340,7 +363,7 @@ mod tests {
         assert_eq!(family_by_key(17020006), Some(Family::Foraging));
         assert_eq!(family_by_name("ore_copper_01"), Some(Family::Ore));
         assert_eq!(family_by_name("gimmick_gate_metal_lattice_01_dungeon"), None);
-        assert_eq!(COLLECT_RECORDS.len(), 276);
+        assert_eq!(COLLECT_RECORDS.len(), 279);
     }
 
     /// Rows from tools/extra-families.json, not from the DMM pack.
@@ -361,11 +384,12 @@ mod tests {
     }
 
     /// `records_not_enabled` in tools/extra-families.json: records a table
-    /// edit was measured or argued not to reach (they hand the player a
-    /// pre-built item instance and never read their output block; see
-    /// docs/findings-water-wells-2026-09-12.md section 11). They must stay
-    /// OUT of the table, not sit in it inert: a row here would be an edit
-    /// the log reports and the player never sees.
+    /// edit was measured or argued not to reach - they hand the player a
+    /// pre-built item instance and never read their output block (see
+    /// docs/findings-water-wells-2026-09-12.md section 11), or they are
+    /// not pickups at all; each record's `why` in that file says which.
+    /// They must stay OUT of the table, not sit in it inert: a row here
+    /// would be an edit the log reports and the player never sees.
     #[test]
     fn foraging_records_not_enabled_stay_out() {
         let out: &[(u32, &str)] = &[
@@ -385,6 +409,45 @@ mod tests {
             (1001127, "gimmick_item_trade_salt_03"),
             (1001122, "gimmick_item_trade_sugar_01"),
             (1001118, "gimmick_item_trade_sugar_03"),
+        ];
+        for &(key, name) in out {
+            assert_eq!(family_by_key(key), None, "{name}");
+            assert_eq!(family_by_name(name), None, "{name}");
+        }
+    }
+
+    /// Rows from tools/extra-families.json, not from the DMM pack.
+    /// Items paid: 1.
+    #[test]
+    fn money_extra_records_are_present() {
+        let extra: &[(u32, &str)] = &[
+            (1000183, "gimmick_item_common_coin_0001"),
+            (1006419, "gimmick_item_common_coin_0002"),
+            (1000712, "gimmick_item_common_silverbar_0001"),
+        ];
+        for &(key, name) in extra {
+            assert_eq!(family_by_key(key), Some(Family::Money), "{name}");
+            assert_eq!(family_by_name(name), Some(Family::Money), "{name}");
+        }
+        assert_eq!(
+            COLLECT_RECORDS.iter().filter(|(_, _, f)| *f == Family::Money).count(),
+            3
+        );
+    }
+
+    /// `records_not_enabled` in tools/extra-families.json: records a table
+    /// edit was measured or argued not to reach - they hand the player a
+    /// pre-built item instance and never read their output block (see
+    /// docs/findings-water-wells-2026-09-12.md section 11), or they are
+    /// not pickups at all; each record's `why` in that file says which.
+    /// They must stay OUT of the table, not sit in it inert: a row here
+    /// would be an edit the log reports and the player never sees.
+    #[test]
+    fn money_records_not_enabled_stay_out() {
+        let out: &[(u32, &str)] = &[
+            (1005717, "gimmick_box_donation_reward_coin_01"),
+            (1005718, "gimmick_box_donation_reward_coin_02"),
+            (1005719, "gimmick_box_donation_reward_coin_03"),
         ];
         for &(key, name) in out {
             assert_eq!(family_by_key(key), None, "{name}");

@@ -415,8 +415,12 @@ versions dropped - so running it straight over the file is safe. Anything added
 to `collect.rs` by hand still dies on the next run; add it to the generator.
 
 `extra-families.json` is the second input: records the pack has no module for,
-**keyed by record** (today just the water well, added to `Foraging`), with the
-item ids each pays stored as derived data. When DMM's clean table body is
+**keyed by record** (the water well, added to `Foraging`, and the three placed
+money props, which are the `Money` family on their own), with the item ids each
+pays stored as derived data. Item 1 is money and the rule on it is two-way:
+every family but `Money` refuses a record that pays it, and `Money` refuses a
+record that pays anything else - so a yield slider can never become an economy
+lever by accident, and the economy lever can never pick up a material. When DMM's clean table body is
 present the generator re-derives those from the bytes and refuses to write on
 any mismatch; when it is absent it prints a banner saying the rows were not
 verified. Records measured to be unreachable by a table edit are kept in the

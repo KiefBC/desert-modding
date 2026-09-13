@@ -6,12 +6,12 @@ for the workspace's benefit and are never tagged or released.
 
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
-| `desert-tooling` | 0.4.1 | `DesertTooling.asi` | `desert-tooling-v0.4.1` |
-| `desert-looter` | 0.2.0 | nothing, linked in | never |
-| `desert-gatherer` | 0.2.0 | nothing, linked in | never |
+| `desert-tooling` | 0.5.0 | `DesertTooling.asi` | `desert-tooling-v0.5.0` |
+| `desert-looter` | 0.3.0 | nothing, linked in | never |
+| `desert-gatherer` | 0.3.0 | nothing, linked in | never |
 | `desert-overlay` | 0.2.0 | nothing, linked in | never |
 | `desert-dispatch` | 0.2.0 | nothing, linked in | never |
-| `desert-core` | 0.5.0 | nothing, linked in | never |
+| `desert-core` | 0.6.0 | nothing, linked in | never |
 
 The DMM offset-patch pack in `desert-gatherer-dmm/` is versioned separately off its own
 `dmm_pack.json` and tagged `desert-gatherer-dmm-v<x.y>`. It is data, not a crate, and nothing below
@@ -209,8 +209,8 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
    `<package>-v<version>` and push the tag:
    ```bash
-   git tag desert-tooling-v0.4.1
-   git push origin desert-tooling-v0.4.1
+   git tag desert-tooling-v0.5.0
+   git push origin desert-tooling-v0.5.0
    ```
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks

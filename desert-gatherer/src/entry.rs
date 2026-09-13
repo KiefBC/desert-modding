@@ -44,7 +44,8 @@ fn load_config(path: &std::path::Path) -> Config {
 /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
 fn ini_summary(cfg: &Config) -> String {
     format!(
-        "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={} Bugs={} Fish={}",
+        "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={} Money={} \
+         Bugs={} Fish={}",
         cfg.enabled as u8,
         cfg.dry_run as u8,
         cfg.debug as u8,
@@ -52,6 +53,7 @@ fn ini_summary(cfg: &Config) -> String {
         cfg.logging,
         cfg.mining,
         cfg.ore,
+        cfg.money,
         cfg.bugs,
         cfg.fish
     )
@@ -63,9 +65,12 @@ fn ini_summary(cfg: &Config) -> String {
 /// sitting unused in the file.
 fn live_summary(cfg: &Config) -> String {
     if !cfg.enabled {
-        return "Foraging=1 Logging=1 Mining=1 Ore=1 (Enabled=0)".to_string();
+        return "Foraging=1 Logging=1 Mining=1 Ore=1 Money=1 (Enabled=0)".to_string();
     }
-    format!("Foraging={} Logging={} Mining={} Ore={}", cfg.foraging, cfg.logging, cfg.mining, cfg.ore)
+    format!(
+        "Foraging={} Logging={} Mining={} Ore={} Money={}",
+        cfg.foraging, cfg.logging, cfg.mining, cfg.ore, cfg.money
+    )
 }
 
 /// The ini's last-modified time, or `None` if it cannot be stat'd (missing,

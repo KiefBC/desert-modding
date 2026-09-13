@@ -78,11 +78,25 @@ pub struct Config {
     /// Also pick up dropped gear (`item_basic_equip_*`).
     pub gather_gear: bool,
     /// Per-family switches for gather nodes, the same gate `gather_items` and
-    /// `gather_gear` are for ground items. All four on = the old behaviour.
+    /// `gather_gear` are for ground items. All four on = the old behaviour;
+    /// the fifth family, `gather_money`, is the exception and says why.
     pub gather_foraging: bool,
     pub gather_logging: bool,
     pub gather_mining: bool,
     pub gather_ore: bool,
+    /// The fifth family, and the only one that starts off. The placed coin
+    /// props (`gimmick_item_common_coin_0001`, key 1000183, and its siblings)
+    /// surveyed as `Kind::Inert` on 2026-09-13: they carry neither an
+    /// interaction object nor an instance object, and they were classified
+    /// that way only because no family covered them. With `Family::Money`
+    /// they classify `Kind::Unarmed` instead, so `gather_unarmed` - on by
+    /// default - plus this switch would forge a pickup at a coin exactly the
+    /// way the looter already forges one at an ore dropping. That has never
+    /// been tried in game, which is why the default is 0; 0 also keeps the
+    /// upgrade behaviour-preserving, which `VERSIONING.md` requires of a
+    /// MINOR. This is only the auto-loot switch: how much a coin pays is the
+    /// `[Gatherer]` `Money` multiplier, which applies to hand pickups too.
+    pub gather_money: bool,
     /// Catch insects within `GatherRange`. Not a gather family: it is a
     /// different game event (`TrocTrPushCharacterToInventoryOnceTimer`) sent
     /// at a different kind of actor, so it has its own switch.
@@ -126,6 +140,7 @@ impl Default for Config {
             gather_logging: true,
             gather_mining: true,
             gather_ore: true,
+            gather_money: false,
             gather_bugs: true,
             gather_fish: true,
             bag_tab: Some(1),
@@ -194,6 +209,9 @@ impl Config {
             Family::Logging => self.gather_logging,
             Family::Mining => self.gather_mining,
             Family::Ore => self.gather_ore,
+            // The one family that is off unless asked for: a forged pickup at
+            // a coin prop has never been tried in game. See `gather_money`.
+            Family::Money => self.gather_money,
         }
     }
 }
@@ -341,6 +359,14 @@ pub fn schema() -> Section {
                 "Ore",
                 Kind::Bool { default: d.gather_ore },
                 "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining.",
+            )),
+            beside(f(
+                "GatherMoney",
+                "Money",
+                Kind::Bool { default: d.gather_money },
+                "0 by default. 1 = also pick up the coins lying in the world (the placed coin props). \
+                 Untested in game: the pickup is forged the same way as at an ore chunk. This is the \
+                 auto-loot switch; the amount is the [Gatherer] Money multiplier.",
             )),
             f(
                 "GatherItems",
@@ -531,6 +557,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherlogging" => cfg.gather_logging = bool_of(v),
             "gathermining" => cfg.gather_mining = bool_of(v),
             "gatherore" => cfg.gather_ore = bool_of(v),
+            "gathermoney" => cfg.gather_money = bool_of(v),
             "gatherbugs" => cfg.gather_bugs = bool_of(v),
             "gatherfish" => cfg.gather_fish = bool_of(v),
             "surveylines" => match v.parse::<u32>() {
@@ -611,8 +638,11 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert!(d.allows_family(f), "{f:?} should be on by default");
         }
-        // Four families, four switches; there is no fifth of either. The
-        // water well is a Foraging record and rides on `GatherForaging` -
+        // Money is the fifth family and the only one that starts off, so it
+        // is not in the loop above; it has its own test below.
+        assert!(!d.gather_money);
+        assert!(!d.allows_family(Family::Money), "Money is off until it is asked for");
+        // The water well is a Foraging record and rides on `GatherForaging` -
         // see `allows_family`.
         assert_eq!(desert_core::collect::family_by_key(1001081), Some(Family::Foraging));
         // - and yet the looter must refuse it, by key, before the family
@@ -650,6 +680,8 @@ mod tests {
         assert!(!c.allows_family(Family::Logging));
         assert!(!c.allows_family(Family::Mining));
         assert!(c.allows_family(Family::Ore));
+        // The four say nothing about the fifth: this file set none of them.
+        assert!(!c.allows_family(Family::Money));
     }
 
     /// `GatherBugs` and `GatherFish` are not gather families - they are one
@@ -695,6 +727,37 @@ mod tests {
         let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=1\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_bugs && c.gather_fish);
+    }
+
+    /// `GatherMoney` is a family switch like the four above - it has an
+    /// `allows_family` arm and a `Family::Money` behind it - but it is the one
+    /// that starts **off**, so it is held to the opposite default. The coin
+    /// props carry neither an interaction object nor an instance object, so
+    /// they classify `Unarmed`, and `GatherUnarmed=1` (the default) plus this
+    /// would forge a pickup at one the same way as at an ore dropping. Nobody
+    /// has tried that in game yet, and a MINOR may not change behaviour.
+    #[test]
+    fn gather_money_defaults_off_and_follows_the_family_switch() {
+        assert!(!Config::default().gather_money);
+        let (c, w) = parse(&sectioned("GatherMoney=1\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_money);
+        assert!(c.allows_family(Family::Money), "the switch is what allows_family reads");
+        let (c, w) = parse(&sectioned("GatherMoney=off\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_money && !c.allows_family(Family::Money));
+        assert!(schema().field("GatherMoney").is_some(), "the menu must offer GatherMoney");
+        // No preset names it, the same as GatherBugs and GatherFish: a preset
+        // sets the four DMM families plus GatherItems and nothing else, so an
+        // untested switch can never be turned on by pressing a button.
+        for p in &schema().presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "GatherMoney"), "{}", p.label);
+        }
+        // The help has to say both halves: that it is untested, and that the
+        // amount is not this key's business.
+        let help = schema().field("GatherMoney").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(help.contains("Untested in game"), "{help}");
+        assert!(help.contains("[Gatherer] Money multiplier"), "{help}");
     }
 
     // -----------------------------------------------------------------------

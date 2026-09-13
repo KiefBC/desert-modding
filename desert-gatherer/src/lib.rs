@@ -4,15 +4,20 @@
 //! It hooks the game's gimmickinfo record loader and multiplies the minimum
 //! and maximum yield scalars in the raw table bytes of each gather record, in
 //! the instant between the loader being entered and the deserializer reading
-//! the record. Four independent families - Foraging, Logging, Mining and Ore
-//! Nodes - each get their own multiplier from the `[Gatherer]` section of
-//! `DesertTooling.ini`. They are the DMM pack's own families; the one record
-//! the pack never had is the water well, which sits in Foraging (water drawn
-//! from a well is gathered out of the world like everything else there) and
-//! comes from `tools/extra-families.json`. This replaces the DMM JSON pack in
-//! `desert-gatherer-dmm/`, which patched the same scalars on disk; **the pack
-//! and DMM's built-in gathering multiplier must be unmounted, or yields
-//! multiply twice.**
+//! the record. Five independent families - Foraging, Logging, Mining, Ore
+//! Nodes and Money - each get their own multiplier from the `[Gatherer]`
+//! section of `DesertTooling.ini`. The first four are the DMM pack's own
+//! families; the one record the pack never had is the water well, which sits
+//! in Foraging (water drawn from a well is gathered out of the world like
+//! everything else there) and comes from `tools/extra-families.json`. Money is
+//! this plugin's own family and the odd one out: the three coin and silver bar
+//! props placed in the world read an output block like any other node, so the
+//! same edit reaches them, but what it multiplies is money rather than a
+//! material - it is the first balance lever here, and so it ships at 1.
+//!
+//! This replaces the DMM JSON pack in `desert-gatherer-dmm/`, which patched
+//! the same scalars on disk; **the pack and DMM's built-in gathering
+//! multiplier must be unmounted, or yields multiply twice.**
 //!
 //! Two further multipliers, Bugs and Fish, scale the creatures the player
 //! catches by hand. Those are not gimmick records and have no yields in any
@@ -64,9 +69,9 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// come out as `[gatherer]`. Nothing else names it.
 pub const LOG_TAG: &str = "gatherer";
 
-/// How many gather records `desert_core::collect` knows about (276: the DMM
-/// pack's 275 plus the water well). The ceiling on the plugin's own per-record
-/// log lines.
+/// How many gather records `desert_core::collect` knows about (279: the DMM
+/// pack's 275, plus the water well, plus the three money props). The ceiling
+/// on the plugin's own per-record log lines.
 pub fn known_records() -> usize {
     collect::COLLECT_RECORDS.len()
 }

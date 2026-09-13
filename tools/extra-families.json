@@ -35,5 +35,30 @@
       "28901": "bread - 11 records including gimmick_item_dropset_food_* and gimmick_tableset_food_*. Placed food props, same shape as the stall goods; deferred for the same two reasons.",
       "1000965": "dryham - gimmick_item_common_dryham_0001 plus Item_Collect_Hang_Meat_03/04/11. Same again; deferred."
     }
+  },
+  "Money": {
+    "note": "The CURRENCY multiplier: the money props placed in the world, and nothing else. Item 1 is the game's one money item (the bag names it `Money_Copper`; copper, silver and gold are display units over one count, so 2500 copper reads as 25 silver), and these are the only gimmickinfo records paying it that are pickups. A placed coin prop reads its output block - three vanilla hand pickups of `gimmick_item_common_coin_0001` on 2026-09-13, build 25246367, paid x15, x14, x15 inside its 10..15 block, and one pickup at Money=3 the same day paid x30 against a bag delta of exactly +30 (docs/findings-water-wells-2026-09-12.md section 13.7; CONFIRMED IN GAME on build 25246367) - so the same block edit that multiplies a bush multiplies them, and `hook::reapply` is what reached them live. This is the ONLY family allowed to pay item 1, and every record in it must pay item 1 and nothing else; tools/gen-collect-names.py enforces both halves. What it reaches is money lying in the world and nothing else: not enemy drops, not quest rewards, not coin pouches, not chests, not shop prices, not dispatch rewards. The three donation-box coin records are not pickups and are kept out below.",
+    "records": {
+      "1000183": {
+        "name": "gimmick_item_common_coin_0001",
+        "items": [1],
+        "why": "The small placed coin prop, 10..15. Reads its block: three vanilla hand pickups on 2026-09-13, build 25246367, paid `[recv] item 1 x15`, `x14`, `x15` - all inside 10..15 and varying - against a bag delta of exactly +44 (`Money_Copper x12096` -> `x12140` between two F11 surveys, analysis/logs/DesertTooling-2026-09-13-coins.log t=793..807). Every item-instance carrier ever dumped holds a count of 1, so one prop paying x14 is the block being rolled, not an instance being copied. That was the vanilla half (section 13.7). CONFIRMED IN GAME 2026-09-13, build 25246367, at Money=3: one hand pickup of coin_0001 paid `[recv] item 1 x30` (a roll of 10 on the 10..15 block, times 3) against a bag delta of exactly +30 (`Money_Copper x11889` -> `x11919` between two F11 surveys, the taken coin gone from the second), with the `[live] re-applied ... Money=3: 3 records rewritten, 6 scalars written, 0 skipped` line being what wrote the 30. Vanilla the day before paid 15, 14, 15, so a 30 is not a vanilla roll."
+      },
+      "1006419": {
+        "name": "gimmick_item_common_coin_0002",
+        "items": [1],
+        "why": "The larger placed coin prop, 100..150: the same record shape as coin_0001 (a `gimmick_item_common_*` record with no `catch_*` preset and no tag list, bucket E of the loot taxonomy), so it is expected to read its block the same way. Not itself picked up under the plugin yet; it rides on coin_0001's measurement until one is."
+      },
+      "1000712": {
+        "name": "gimmick_item_common_silverbar_0001",
+        "items": [1],
+        "why": "A fixed 2500..2500 of item 1 (2500 copper displays as 25 silver; silver is a denomination of the one money item, not an item of its own). Never seen placed by anyone on this project, and the player reports no silver bar exists in the world - only gold bars, which are item 53 (section 13.8). Its record carries a `catch_onehand` preset, which on the market stalls went with handing over a pre-built instance, so if one is ever found it may ignore its block; the row would then be inert, not wrong, and the multiple would be an exact 2500 x N if it does read it. Kept because it is a placed money record paying item 1 and the family is defined as exactly those."
+      }
+    },
+    "records_not_enabled": {
+      "1005717": { "name": "gimmick_box_donation_reward_coin_01", "items": [1], "why": "NOT a pickup. The donation box in the world is where the player GIVES items to the camp (three Honey trade goods went in on 2026-09-13) and the reward is the faction's; what the player got back was `[recv] item 103 x1`, a token no gimmickinfo record pays. Its 150..250 block is not a payout the player receives, so a row would be an edit the log reports and the player never sees. Section 13.8." },
+      "1005718": { "name": "gimmick_box_donation_reward_coin_02", "items": [1], "why": "NOT a pickup; the donation box, 270..450. See coin_01." },
+      "1005719": { "name": "gimmick_box_donation_reward_coin_03", "items": [1], "why": "NOT a pickup; the donation box, 500..1000. See coin_01." }
+    }
   }
 }

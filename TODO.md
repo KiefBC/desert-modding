@@ -206,8 +206,9 @@ per-pass line budget that is a setting rather than a constant.
 
 ## A currency multiplier: Silver, Gold and other coins
 
-**Raised** 2026-09-12. **Status: OPEN.** Wanted, not designed. It is the reason this file was
-rewritten - and since 2026-09-12 its cheap implementation is gone, see the refutation below.
+**Raised** 2026-09-12. **Status: DECIDED and built, 2026-09-13, shipped in 0.5.0.** Everything
+from here to the Resolution at the bottom is the argument as it moved, kept as the record; the
+2026-09-13 correction at the end of the recommendation is what the build follows.
 
 ### What is known
 
@@ -352,6 +353,29 @@ everything else in that bucket. Write the ini warning - "this multiplies money y
 around, and nothing else" - before the slider. The old closing line of this entry, "let this
 feature follow the instance lever rather than lead it", is **withdrawn for the coin props**: they
 do not need that lever.
+
+### Resolution (2026-09-13)
+
+Built as the coin-prop entry above describes, in 0.5.0: a fifth family `Money` in
+`desert_core::collect` holding the three placed money records (`coin_0001` 10..15, `coin_0002`
+100..150, `silverbar_0001` 2500..2500), from a `Money` block in `tools/extra-families.json`; a
+`Money` key and slider under `[Gatherer]` with the same 1..100 range, reached by the existing
+block edit and by `hook::reapply`; the generator's money refusal lifted for `Money` only and
+made two-way (no other family may pay item 1, and no `Money` record may pay anything but item
+1, both checked against the clean body). The three donation-box records are `records_not_enabled`
+in that block and a generated test keeps them out. The open questions above settled as: one
+slider, not several (three denominations of one item, and the gap between them scaling is the
+price of one key); the silver bar stays a row, with its `why` saying nobody has seen one placed
+and that the row is inert rather than wrong if it ignores its block; the display-threshold
+effect is documented, not worked around. The looter side is `GatherMoney=0`: with a family the
+coin props classify `Unarmed` rather than `Inert`, so `allows_family` needed an arm and the
+switch is the honest one, off because a forged pickup at a coin has never been tried and
+because a MINOR must preserve behaviour. The louder warning this entry asked for is in the ini,
+the menu help and the README: money lying in the world, and nothing else. **Measured the same
+day with 0.5.0 installed:** `Money=3`, one `coin_0001` by hand, `[recv] item 1 x30`, bag
+`Money_Copper x11889` -> `x11919` between two F11 surveys with the taken coin gone from the
+second and ten coin props listed `Unarmed family=Money` in the first. That is section 13.7's
+PLAUSIBLE-strong turned CONFIRMED, and it was the live re-apply pass that wrote the 30.
 
 ## The water well is a `Foraging` record; the 16 inert records are the instance lever's payload
 
