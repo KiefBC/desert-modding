@@ -32,11 +32,29 @@ fn gimmick_slot() -> Option<usize> {
 /// `game::resolve`'s `[sig]` lines. Called once at startup; a failure for one
 /// table leaves the other working.
 pub fn resolve_slots(m: &MainModule) {
+    // Both slots come out of one scan. Finding the accessor template's copies
+    // does not depend on which table is being asked about - the name is
+    // consulted only afterwards - so a resolve per table searched the whole
+    // 363 MB image twice over for the same two encodings. Measured 0.53-0.65 s
+    // per-call against 0.25-0.28 s shared, 2.1-2.4x.
+    //
+    // `None`, not `m.base`: this subsystem wants two tables that a `lea`
+    // encoding names, and a base would put the two indirect encodings into the
+    // scan as well - twice the passes to reach the same two answers. The base
+    // belongs to the scan rather than to each lookup precisely so that this
+    // call site can decline it.
+    let sites = match desert_core::gimmick::AccessorSites::scan(m.bytes(), None) {
+        Ok(sites) => sites,
+        Err(e) => {
+            crate::log!("[slot] the accessor template could not be scanned: {e}");
+            return;
+        }
+    };
     for (name, table, cell) in [
         ("iteminfo", desert_core::gimmick::ITEM_TABLE, &ITEM_INFO_SLOT),
         ("gimmickinfo", desert_core::gimmick::GIMMICK_TABLE, &GIMMICK_INFO_SLOT),
     ] {
-        match desert_core::gimmick::resolve_manager_slot(m.bytes(), table) {
+        match sites.manager_slot(m.bytes(), table) {
             Ok(rva) => {
                 crate::log!("[slot] {name:<22} = +0x{rva:X}");
                 // Runs once, so a second `set` cannot happen; ignoring it is
@@ -286,8 +304,9 @@ pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
     }).map(|i| i as u16)
 }
 
-/// Resource outputs of a constructed gimmick record (build 25116796, from the
-/// record deserializer `FUN_141472070` -> `FUN_1414a7cc0`): one vector at
+/// Resource outputs of a constructed gimmick record, from the record
+/// deserializer - `FUN_141472070` on build 25116796, `FUN_1414711e0` on
+/// 25246367, and every offset below survived that move untouched: one vector at
 /// `record+0x278` — `{ptr data @0, u32 size @8, u32 cap @0xC}`, elements of 16
 /// bytes `{Block* @0, u32 item id @8}`; the block (112 bytes) has `u64 min @0x20`,
 /// `u64 max @0x28` and the item id again as the high dword of `u64 @0x68`.

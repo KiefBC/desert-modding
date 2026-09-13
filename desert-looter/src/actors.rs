@@ -481,7 +481,7 @@ pub enum Kind {
     /// the survey lists all of them.
     Catchable,
     /// Gimmick with the +0xE0 interaction object whose record is a known
-    /// gather record (Foraging/Logging/Mining/Ore).
+    /// gather record (Foraging/Logging/Mining/Ore/Money).
     Gather,
     /// Gimmick with an interaction object but some other record (gate, puzzle...).
     Interactable,
@@ -490,9 +490,17 @@ pub enum Kind {
     Item,
     /// Gimmick with an instance object that references the player: equipment.
     Equipment,
-    /// Gimmick with neither object but a known gather record: a node the game
-    /// has not armed with an interaction object (ore droppings beyond the one
-    /// in focus). The reference mod's AutoArm exists for these.
+    /// Gimmick with neither object but a known gather record
+    /// (Foraging/Logging/Mining/Ore/Money): a node the game has not armed
+    /// with an interaction object (ore droppings beyond the one in focus).
+    /// The reference mod's AutoArm exists for these.
+    ///
+    /// The placed coin props land here too, and only here: surveyed on
+    /// 2026-09-13 they carry neither an interaction object nor an instance
+    /// object, so before `Family::Money` existed they fell through to
+    /// [`Kind::Inert`] for want of a family rather than for any structural
+    /// reason. `Config::gather_money` is what decides whether one is
+    /// actually targeted.
     Unarmed,
     /// Gimmick with neither object and no gather record: the empty twin of a
     /// node, scenery, or not yet loaded.

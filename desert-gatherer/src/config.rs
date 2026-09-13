@@ -10,26 +10,38 @@
 //! the config plus ready-to-log warnings, and a bad value never replaces the
 //! default.
 //!
-//! The four family multiplier keys are the four independent gather families
-//! of `desert_core::collect::Family`, and they carry the vocabulary the DMM
-//! pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging, Mining and
-//! Ore Nodes are separate internal families, and setting one does not touch
-//! the others.
+//! The family multiplier keys are the independent gather families of
+//! `desert_core::collect::Family`, and four of the five carry the vocabulary
+//! the DMM pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging,
+//! Mining and Ore Nodes are separate internal families, and setting one does
+//! not touch the others. `Foraging` also covers the one record that is not
+//! from the pack, the water well - see the field's doc comment below.
+//!
+//! `Money` is the fifth family and the odd one out: the DMM pack never had it,
+//! and what it multiplies is money rather than a material. Mechanically it is
+//! the same lever as the other four - the placed coin and silver bar props
+//! read an output block like any other node, so the same table edit reaches
+//! them - but it is the first *balance* lever this subsystem has, because it
+//! changes how fast the player gets money rather than saving them trips. Its
+//! default 1 is therefore deliberate, and the help says so. It multiplies the
+//! money lying in the world and nothing else: not enemy drops, not quest
+//! rewards, not coin pouches, not chests, not shop prices, not dispatch
+//! rewards.
 //!
 //! `Bugs` and `Fish` are a different lever entirely. Creatures caught by hand
 //! are not gimmick records, so there is nothing in a table to multiply; the
 //! count is an immediate in the game's code (`docs/reference-internals.md`
 //! section 17) and the plugin patches it. They share the multiplier range and
 //! the parsing of the family keys, and nothing else - hence
-//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than a
-//! fifth and sixth `Family`.
+//! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than two
+//! more `Family` arms.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use desert_core::collect::Family;
 use desert_core::creature::CatchClass;
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Section};
+use desert_core::schema::{Field, Kind, Section, Tab};
 
 /// Multipliers below this are meaningless (0 would zero out every yield) and
 /// above it are almost certainly a typo, so both are refused.
@@ -47,7 +59,14 @@ pub struct Config {
     /// 1 = also log every record the loader hands us that is not a gather
     /// record (13,600 of them), capped by the hook so the log stays finite.
     pub debug: bool,
-    /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms).
+    /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms,
+    /// crops, and the water drawn from a water well - `gimmick_well_0001_parts01`,
+    /// the one record in the family the DMM pack never had. Its block is a fixed
+    /// `5..5`, so a 3 pays exactly 15 - and on 2026-09-13 it did, with the bag
+    /// count logged either side of the take (`Water x33` -> `x48` at
+    /// `Foraging=3`, `analysis/logs/DesertTooling-2026-09-13-well-x15-x30.log`).
+    /// Raising the slider *after* the bucket is full still counts: the amount
+    /// is rolled when the water is taken, not when the bucket fills).
     pub foraging: u32,
     /// Yield multiplier for `Family::Logging` (`firewood_*`).
     pub logging: u32,
@@ -57,6 +76,22 @@ pub struct Config {
     /// Yield multiplier for `Family::Ore` (`collect_ore`: `ore_*` deposits,
     /// sulfur stone, collectible stalactites). Separate from Mining.
     pub ore: u32,
+    /// Yield multiplier for `Family::Money`: the three money props placed in
+    /// the world - `gimmick_item_common_coin_0001` (10..15),
+    /// `gimmick_item_common_coin_0002` (100..150) and
+    /// `gimmick_item_common_silverbar_0001` (a fixed 2500..2500), all paying
+    /// item 1, the game's one money item. This is the money lying in the world
+    /// and nothing else: not enemy drops, not quest rewards, not coin pouches,
+    /// not chests, not shop prices, not dispatch rewards. The default is 1 on
+    /// purpose - unlike the other four this changes how fast the player gets
+    /// money, which is a balance decision rather than a convenience one.
+    /// CONFIRMED IN GAME 2026-09-13, build 25246367: three vanilla hand
+    /// pickups of `coin_0001` paid item 1 x15, x14, x15, inside its 10..15
+    /// block, and one pickup at `Money=3` paid `x30` (a roll of 10, times 3)
+    /// against a bag delta of exactly +30 between two F11 surveys - written
+    /// by the live re-apply pass, not the load-time hook, since the slider
+    /// moved after the table had loaded.
+    pub money: u32,
     /// Count multiplier for insects caught by hand
     /// (`desert_core::creature::CatchClass::Bug`). A code patch, not a table
     /// edit: see the module docs.
@@ -76,6 +111,7 @@ impl Default for Config {
             logging: 1,
             mining: 1,
             ore: 1,
+            money: 1,
             bugs: 1,
             fish: 1,
         }
@@ -91,6 +127,7 @@ impl Config {
             Family::Logging => self.logging,
             Family::Mining => self.mining,
             Family::Ore => self.ore,
+            Family::Money => self.money,
         }
     }
 
@@ -106,10 +143,16 @@ impl Config {
     }
 
     /// True if no gather family is multiplied, i.e. the record-loader hook
-    /// would never write. Says nothing about `Bugs`/`Fish`, which are not
-    /// families and never touch a record.
+    /// would never write. `Money` counts: its records are ordinary gimmick
+    /// records with ordinary output blocks, so raising it gives the hook work
+    /// to do exactly as raising `Ore` does. Says nothing about `Bugs`/`Fish`,
+    /// which are not families and never touch a record.
     pub fn all_vanilla(&self) -> bool {
-        self.foraging <= 1 && self.logging <= 1 && self.mining <= 1 && self.ore <= 1
+        self.foraging <= 1
+            && self.logging <= 1
+            && self.mining <= 1
+            && self.ore <= 1
+            && self.money <= 1
     }
 }
 
@@ -136,6 +179,7 @@ pub struct LiveConfig {
     logging: AtomicU32,
     mining: AtomicU32,
     ore: AtomicU32,
+    money: AtomicU32,
     bugs: AtomicU32,
     fish: AtomicU32,
 }
@@ -152,6 +196,7 @@ impl LiveConfig {
             logging: AtomicU32::new(1),
             mining: AtomicU32::new(1),
             ore: AtomicU32::new(1),
+            money: AtomicU32::new(1),
             bugs: AtomicU32::new(1),
             fish: AtomicU32::new(1),
         }
@@ -168,6 +213,7 @@ impl LiveConfig {
         self.logging.store(cfg.logging, Ordering::Relaxed);
         self.mining.store(cfg.mining, Ordering::Relaxed);
         self.ore.store(cfg.ore, Ordering::Relaxed);
+        self.money.store(cfg.money, Ordering::Relaxed);
         self.bugs.store(cfg.bugs, Ordering::Relaxed);
         self.fish.store(cfg.fish, Ordering::Relaxed);
     }
@@ -182,6 +228,7 @@ impl LiveConfig {
             logging: self.logging.load(Ordering::Relaxed),
             mining: self.mining.load(Ordering::Relaxed),
             ore: self.ore.load(Ordering::Relaxed),
+            money: self.money.load(Ordering::Relaxed),
             bugs: self.bugs.load(Ordering::Relaxed),
             fish: self.fish.load(Ordering::Relaxed),
         }
@@ -211,6 +258,7 @@ impl LiveConfig {
             Family::Logging => self.logging.load(Ordering::Relaxed),
             Family::Mining => self.mining.load(Ordering::Relaxed),
             Family::Ore => self.ore.load(Ordering::Relaxed),
+            Family::Money => self.money.load(Ordering::Relaxed),
         }
     }
 
@@ -259,11 +307,20 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
 }
 
-/// One of the four family multipliers: an identical `1..=100` slider, so the
-/// four differ only in their key, label and help.
+/// Draw this field on one of the menu's shared tabs instead of this section's
+/// own: the two switches a bug report asks for belong with every other
+/// subsystem's, not in the middle of the yield multipliers.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
+    field
+}
+
+/// One of the family multipliers: an identical `1..=100` slider, so they
+/// differ only in their key, label and help.
 fn mult(key: &str, help: &str) -> Field {
     f(
         key,
@@ -286,13 +343,15 @@ fn mult(key: &str, help: &str) -> Field {
 /// which also seeds the ini from it; the overlay needs no other knowledge of
 /// this subsystem at all.
 ///
-/// `Debug` is here too, at the bottom under `Diagnostics:`. It used to be left
-/// out as a diagnostic that costs 400 log lines, which stopped being tenable
-/// once this schema became what the shared ini is seeded from
-/// (`schema::create_ini_if_missing_all`): a key that is not named here is missing
-/// from the generated file as well as from the menu, and a player working from
-/// that file would never find out it existed. `DryRun` stays where it is, near
-/// the top: it is the one diagnostic a player genuinely reaches for.
+/// `Debug` is here too. It used to be left out as a diagnostic that costs 400
+/// log lines, which stopped being tenable once this schema became what the
+/// shared ini is seeded from (`schema::create_ini_if_missing_all`): a key that
+/// is not named here is missing from the generated file as well as from the
+/// menu, and a player working from that file would never find out it existed.
+/// It and `DryRun` are both marked [`Tab::Debug`], so the menu draws them on
+/// its shared Debug tab under this section's title rather than anywhere on this
+/// page: whichever subsystem a player is chasing, the switches a bug report
+/// needs are in one place.
 ///
 /// Every default is `Config::default()` (vanilla yields, which the shipped
 /// template now matches) and the multiplier range is
@@ -324,18 +383,26 @@ pub fn schema() -> Section {
                 Kind::Bool { default: d.enabled },
                 "Master switch. 0 = vanilla yields: the hook still reads each gather record, but writes nothing and puts back anything it already multiplied.",
             ),
-            Field {
-                same_line: true,
-                ..f(
+            // On the shared Debug tab, where it is the first of this section's
+            // two switches: no `same_line` any more, because the field it used
+            // to sit beside (Enabled) is not on that tab.
+            on(
+                Tab::Debug,
+                f(
                     "DryRun",
                     "Dry run",
                     Kind::Bool { default: d.dry_run },
                     "Log what would change and write nothing to the game.",
-                )
-            },
+                ),
+            ),
             Field {
                 heading: Some("Yield multipliers:".to_string()),
-                ..mult("Foraging", "Plants, fruit, berries, mushrooms, crops. 82 records.")
+                ..mult(
+                    "Foraging",
+                    "Plants, fruit, berries, mushrooms, crops, and the water you draw from a water \
+                     well. 83 records. A well pays a fixed amount, so at 3 a well that gave 5 gives \
+                     exactly 15.",
+                )
             },
             mult("Logging", "Firewood cut from felled trees (firewood_*). 141 records."),
             mult(
@@ -347,19 +414,34 @@ pub fn schema() -> Section {
                 "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining. 16 records.",
             ),
             mult(
+                "Money",
+                "The placed coin and silver bar props, 3 records, all paying the game's one money \
+                 item. This multiplies money lying in the world and nothing else - not enemy drops, \
+                 not quest rewards, not coin pouches, not chests, not shop prices, not dispatch \
+                 rewards. The default is 1 on purpose: this one changes how fast you get money \
+                 rather than saving you trips, so it is yours to raise. Copper, silver and gold are \
+                 display units over one count, so a multiplied pickup can show up as a different \
+                 denomination than the vanilla one did.",
+            ),
+            mult(
                 "Bugs",
                 "Insects caught by hand. One code patch on the catch count, not a table edit.",
             ),
             mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
-            Field {
-                heading: Some("Diagnostics:".to_string()),
-                ..f(
-                    "Debug",
-                    "Debug",
-                    Kind::Bool { default: d.debug },
-                    "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
-                )
-            },
+            // Beside DryRun on the shared Debug tab, where this section's title
+            // is the group header the "Diagnostics:" heading used to be.
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "Debug",
+                        "Debug",
+                        Kind::Bool { default: d.debug },
+                        "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
+                    )
+                },
+            ),
         ],
     }
 }
@@ -386,11 +468,12 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "enabled" => cfg.enabled = ini::parse_bool(v),
             "dryrun" => cfg.dry_run = ini::parse_bool(v),
             "debug" => cfg.debug = ini::parse_bool(v),
-            "foraging" | "logging" | "mining" | "ore" | "bugs" | "fish" => {
+            "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" => {
                 let slot: &mut u32 = match k.to_ascii_lowercase().as_str() {
                     "foraging" => &mut cfg.foraging,
                     "logging" => &mut cfg.logging,
                     "mining" => &mut cfg.mining,
+                    "money" => &mut cfg.money,
                     "bugs" => &mut cfg.bugs,
                     "fish" => &mut cfg.fish,
                     _ => &mut cfg.ore,
@@ -419,7 +502,7 @@ mod tests {
         assert!(!c.dry_run);
         assert!(!c.debug);
         assert!(c.all_vanilla());
-        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
+        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(c.multiplier(f), 1);
         }
         for k in [CatchClass::Bug, CatchClass::Fish] {
@@ -431,7 +514,7 @@ mod tests {
     fn parses_every_key() {
         let (c, w) = parse(
             "; comment\n[Gatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
-             Foraging=10\nLogging=2\nMining=5\nOre=100\nBugs=3\nFish=7\n",
+             Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\n",
         );
         assert!(c.enabled);
         assert!(c.dry_run);
@@ -440,6 +523,7 @@ mod tests {
         assert_eq!(c.multiplier(Family::Logging), 2);
         assert_eq!(c.multiplier(Family::Mining), 5);
         assert_eq!(c.multiplier(Family::Ore), 100);
+        assert_eq!(c.multiplier(Family::Money), 4);
         assert_eq!(c.catch_multiplier(CatchClass::Bug), 3);
         assert_eq!(c.catch_multiplier(CatchClass::Fish), 7);
         assert!(!c.all_vanilla());
@@ -464,6 +548,26 @@ mod tests {
         let (c, w) = parse("[Gatherer]\nBugs=10\nFish=10\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
+    }
+
+    /// The water well is a `Foraging` record, so the `Foraging` key is what
+    /// reaches it - there is no separate well key, and an `Ingredients` key
+    /// (a family that never shipped) is an unknown key like any other.
+    #[test]
+    fn the_well_is_reached_through_foraging() {
+        assert_eq!(
+            desert_core::collect::family_by_name("gimmick_well_0001_parts01"),
+            Some(Family::Foraging)
+        );
+        let (c, w) = parse("[Gatherer]\nForaging=3\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.multiplier(Family::Foraging), 3);
+        assert!(!c.all_vanilla());
+
+        let (c, w) = parse("[Gatherer]\nIngredients=3\n");
+        assert_eq!(c, Config::default());
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert!(w[0].starts_with("unknown key"), "{w:?}");
     }
 
     #[test]
@@ -512,7 +616,7 @@ mod tests {
         assert!(live.enabled());
         assert!(!live.dry_run());
         assert!(!live.debug());
-        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
+        for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(live.multiplier(f), 1);
         }
         for k in [CatchClass::Bug, CatchClass::Fish] {
@@ -525,7 +629,7 @@ mod tests {
         let live = LiveConfig::new();
         let (cfg, w) = parse(
             "[Gatherer]\nEnabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\n\
-             Ore=100\nBugs=4\nFish=9\n",
+             Ore=100\nMoney=7\nBugs=4\nFish=9\n",
         );
         assert!(w.is_empty(), "{w:?}");
         live.publish(&cfg);
@@ -537,6 +641,7 @@ mod tests {
         assert_eq!(live.multiplier(Family::Logging), 2);
         assert_eq!(live.multiplier(Family::Mining), 5);
         assert_eq!(live.multiplier(Family::Ore), 100);
+        assert_eq!(live.multiplier(Family::Money), 7);
         assert_eq!(live.catch_multiplier(CatchClass::Bug), 4);
         assert_eq!(live.catch_multiplier(CatchClass::Fish), 9);
     }
@@ -602,7 +707,7 @@ mod tests {
         // One .asi, always loaded: there is no module whose absence could
         // grey this section out any more.
         assert_eq!(s.module, None);
-        assert!(s.presets.is_empty(), "there is nothing to preset: four independent numbers");
+        assert!(s.presets.is_empty(), "there is nothing to preset: five independent numbers");
         assert!(s.notice.is_some(), "the section says when a change takes effect");
     }
 
@@ -632,7 +737,7 @@ mod tests {
     #[test]
     fn schema_ranges_are_the_ones_parse_enforces() {
         let s = schema();
-        for key in ["Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish"] {
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish"] {
             match s.field(key).map(|f| f.kind.clone()) {
                 Some(Kind::Int { min, max, default, slider, .. }) => {
                     assert_eq!(min, i64::from(MULT_MIN), "{key}");
@@ -654,20 +759,35 @@ mod tests {
     }
 
     #[test]
-    fn debug_is_in_the_schema_under_diagnostics_and_dry_run_is_not() {
+    fn debug_and_dry_run_are_on_the_shared_debug_tab_and_the_multipliers_are_not() {
         let s = schema();
         let debug = s.field("Debug").unwrap_or_else(|| panic!("the menu must offer Debug"));
-        assert_eq!(debug.heading.as_deref(), Some("Diagnostics:"));
+        assert_eq!(debug.tab, Tab::Debug);
+        assert_eq!(debug.heading, None, "the section title is the group header there");
         assert_eq!(debug.kind, Kind::Bool { default: false });
         assert_eq!(debug.kind.default_text(), "0");
-        // Last in the section: the heading groups the diagnostics at the end.
         assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("Debug"));
 
-        // `DryRun` stays where it was, near the top and un-headed: it is the
-        // diagnostic a player reaches for after a game update.
+        // `DryRun` moves with it, and leads the pair: it no longer sits beside
+        // Enabled, because Enabled is not on that tab.
         let dry = s.field("DryRun").unwrap_or_else(|| panic!("no DryRun"));
+        assert_eq!(dry.tab, Tab::Debug);
         assert_eq!(dry.heading, None);
+        assert!(!dry.same_line, "the field it used to sit beside is on another tab");
+        assert!(debug.same_line, "Debug is drawn beside DryRun");
         assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
+
+        // Everything else is this section's own page, which is what keeps the
+        // Gatherer tab in the bar at all.
+        for field in &s.fields {
+            if matches!(field.key.as_str(), "Debug" | "DryRun") {
+                continue;
+            }
+            assert_eq!(field.tab, Tab::Section, "{} belongs on the Gatherer tab", field.key);
+        }
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish"] {
+            assert_eq!(s.field(key).map(|f| f.tab), Some(Tab::Section), "{key}");
+        }
 
         let (c, w) = parse("[Gatherer]\nDebug=1\n");
         assert!(w.is_empty(), "{w:?}");
@@ -680,7 +800,18 @@ mod tests {
         let keys: Vec<&str> = s.fields.iter().map(|f| f.key.as_str()).collect();
         assert_eq!(
             keys,
-            vec!["Enabled", "DryRun", "Foraging", "Logging", "Mining", "Ore", "Bugs", "Fish", "Debug"]
+            vec![
+                "Enabled",
+                "DryRun",
+                "Foraging",
+                "Logging",
+                "Mining",
+                "Ore",
+                "Money",
+                "Bugs",
+                "Fish",
+                "Debug"
+            ]
         );
         // Under the same heading as the four families: the menu shows one
         // list of multipliers, not two.
@@ -697,6 +828,48 @@ mod tests {
         // not the "next gather" the rest of the section talks about.
         let notice = s.notice.clone().unwrap_or_default();
         assert!(notice.contains("next catch"), "{notice}");
+    }
+
+    /// A player reading "plants, fruit, berries, mushrooms, crops" would not
+    /// guess that water is in there, so the Foraging help has to say it covers
+    /// the water well - and there must be no separate well or `Ingredients`
+    /// field for them to go looking for instead.
+    #[test]
+    fn the_foraging_help_names_the_water_well() {
+        let s = schema();
+        let help = s
+            .field("Foraging")
+            .and_then(|f| f.help.clone())
+            .unwrap_or_else(|| panic!("the menu must offer Foraging, with help"));
+        assert!(help.contains("water well"), "{help}");
+        assert!(s.field("Ingredients").is_none(), "Ingredients never shipped; it must not be offered");
+    }
+
+    /// The one balance lever in the section, and the one whose help has to be
+    /// read before it is moved: a player who reads "money multiplier" will
+    /// assume it covers everything that pays money, so the help has to name
+    /// what it does not reach, and it has to say the 1 is a decision rather
+    /// than an oversight.
+    #[test]
+    fn the_money_help_says_what_it_multiplies_and_what_it_does_not() {
+        let s = schema();
+        let f = s
+            .field("Money")
+            .unwrap_or_else(|| panic!("the menu must offer Money, with help"));
+        let help = f.help.clone().unwrap_or_default();
+        assert!(help.contains("money lying in the world"), "{help}");
+        for missed in ["enemy drops", "quest rewards", "pouches", "chests", "shop prices"] {
+            assert!(help.contains(missed), "the help must say it does not touch {missed}: {help}");
+        }
+        assert!(help.contains("default is 1"), "the default has to read as deliberate: {help}");
+        assert_eq!(f.kind.default_text(), "1");
+
+        // A family like the other four, drawn in the same list: no heading of
+        // its own, and between Ore and the two catch multipliers.
+        assert_eq!(f.heading, None, "Money continues the Yield multipliers: group");
+        assert!(!f.same_line);
+        let at = |key: &str| s.fields.iter().position(|f| f.key == key);
+        assert!(at("Ore") < at("Money") && at("Money") < at("Bugs"));
     }
 
     /// Prints this section as it is seeded into `DesertTooling.ini`.

@@ -1,0 +1,64 @@
+{
+  "Foraging": {
+    "note": "Also the water drawn from a WATER WELL: `gimmick_well_0001_parts01` (key 1001081, item 22008, a fixed 5..5), the one record in this table that is not from the DMM pack. It comes from tools/extra-families.json, which tools/gen-collect-names.py verifies against DMM's clean gimmickinfo table body on every run. Water from a well is gathered out of the world like everything else here, so it lives here rather than in a family of its own. The other water source, the breakable pot `Background_Breakable_66`, and the market-stall goods hand the player a pre-built item instance and never read their record, so a table edit cannot reach them; they are listed as `records_not_enabled` in the same file and the `foraging_records_not_enabled_stay_out` test below keeps them out. See docs/findings-water-wells-2026-09-12.md section 11.",
+    "records": {
+      "1001081": {
+        "name": "gimmick_well_0001_parts01",
+        "items": [22008],
+        "why": "The water well's payout part (the crank is parts02). Holds no item instance, so the game rolls its output block and a table edit reaches the player. The block is 5..5, so there is no roll and the multiple is exact arithmetic. CONFIRMED IN GAME 2026-09-13, build 25246367, under Foraging: vanilla x5 logged as a [recv] line (DesertTooling-2026-09-13-well-coin-bugs.log t=197), and x3 -> 15 logged as the bag delta between two F11 surveys, Water x33 -> x48 (DesertTooling-2026-09-13-well-x15-x30.log t=272/t=319). A x6 -> 30 taken after the bucket was already full was seen on screen only. The 2026-09-12 x15 on the Ingredients slider was the same number, unlogged."
+      }
+    },
+    "records_not_enabled": {
+      "21030076": {
+        "name": "Background_Breakable_66",
+        "items": [22008],
+        "why": "The breakable water pot, the other source of item 22008. Smashing it spawns generic item_basic_cup drops carrying a pre-built item instance whose count lives at instance+0x10, and the yield producer is only called when that instance is null (FUN_1429db730, findings-water-wells section 11). CONFIRMED IN GAME 2026-09-12 that the receipts were flat, PLAUSIBLE-strong that this pot is the source (analysis/logs/DesertTooling-2026-09-12-water-pot-survey.log; item 22008 has exactly two block sources, this pot and the well, and receipts are not attributed to a prop): paid 5 at x3, 1 then 5 at x1 (a partial pickup, then a full sweep with the survey running), 6 at x10 and 4 at x100 - flat, with no relation to the multiplier, while its block read 5->500."
+      },
+      "1001130": { "name": "gimmick_item_trade_cheese_01", "items": [1000667], "why": "Market-stall prop; hands over a pre-built item instance, block never read (same path as the pot; the item-instance lever in TODO.md is what would reach it)." },
+      "1001167": { "name": "gimmick_item_trade_cheese_02", "items": [1000667], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001131": { "name": "gimmick_item_trade_fishmeat_01", "items": [1000668], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001168": { "name": "gimmick_item_trade_fishmeat_02", "items": [1000668], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001160": { "name": "gimmick_item_trade_flour_02", "items": [1000646], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001120": { "name": "gimmick_item_trade_flour_03", "items": [1000646], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001129": { "name": "gimmick_item_trade_ginseng_01", "items": [1000666], "why": "Market-stall prop; item-instance path, block never read. Trade ginseng 1000666 is a different item from the foraged ginseng plants (756513 / 1000142), which are Foraging rows from the DMM pack." },
+      "1001166": { "name": "gimmick_item_trade_ginseng_02", "items": [1000666], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001123": { "name": "gimmick_item_trade_honey_01", "items": [1000603], "why": "Market-stall prop; item-instance path, block never read. That 1000603 is honey rests on this single record and is PLAUSIBLE only." },
+      "1001128": { "name": "gimmick_item_trade_pepper_01", "items": [1000608], "why": "Market-stall prop. CONFIRMED IN GAME 2026-09-12: both pepper records logged their 1->3 edit and the player received `[recv] item 1000608 x1`; pepper has no other block-carrying source, so the block was not read. This is the measurement the other 14 stall props rest on." },
+      "1001132": { "name": "gimmick_item_trade_pepper_03", "items": [1000608], "why": "Market-stall prop; measured with pepper_01 above, granted x1 at x3." },
+      "1001162": { "name": "gimmick_item_trade_salt_02", "items": [1000648], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001127": { "name": "gimmick_item_trade_salt_03", "items": [1000648], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001122": { "name": "gimmick_item_trade_sugar_01", "items": [1000602], "why": "Market-stall prop; item-instance path, block never read." },
+      "1001118": { "name": "gimmick_item_trade_sugar_03", "items": [1000602], "why": "Market-stall prop; item-instance path, block never read." }
+    },
+    "candidates_not_enabled": {
+      "1000647": "wine - gimmick_item_trade_wine_02 only. A market-stall prop of the same shape as the 15 above, so a row would be inert until the item-instance lever exists; and whether wine is gathered is taste, not fact. Deferred.",
+      "28901": "bread - 11 records including gimmick_item_dropset_food_* and gimmick_tableset_food_*. Placed food props, same shape as the stall goods; deferred for the same two reasons.",
+      "1000965": "dryham - gimmick_item_common_dryham_0001 plus Item_Collect_Hang_Meat_03/04/11. Same again; deferred."
+    }
+  },
+  "Money": {
+    "note": "The CURRENCY multiplier: the money props placed in the world, and nothing else. Item 1 is the game's one money item (the bag names it `Money_Copper`; copper, silver and gold are display units over one count, so 2500 copper reads as 25 silver), and these are the only gimmickinfo records paying it that are pickups. A placed coin prop reads its output block - three vanilla hand pickups of `gimmick_item_common_coin_0001` on 2026-09-13, build 25246367, paid x15, x14, x15 inside its 10..15 block, and one pickup at Money=3 the same day paid x30 against a bag delta of exactly +30 (docs/findings-water-wells-2026-09-12.md section 13.7; CONFIRMED IN GAME on build 25246367) - so the same block edit that multiplies a bush multiplies them, and `hook::reapply` is what reached them live. This is the ONLY family allowed to pay item 1, and every record in it must pay item 1 and nothing else; tools/gen-collect-names.py enforces both halves. What it reaches is money lying in the world and nothing else: not enemy drops, not quest rewards, not coin pouches, not chests, not shop prices, not dispatch rewards. The three donation-box coin records are not pickups and are kept out below.",
+    "records": {
+      "1000183": {
+        "name": "gimmick_item_common_coin_0001",
+        "items": [1],
+        "why": "The small placed coin prop, 10..15. Reads its block: three vanilla hand pickups on 2026-09-13, build 25246367, paid `[recv] item 1 x15`, `x14`, `x15` - all inside 10..15 and varying - against a bag delta of exactly +44 (`Money_Copper x12096` -> `x12140` between two F11 surveys, analysis/logs/DesertTooling-2026-09-13-coins.log t=793..807). Every item-instance carrier ever dumped holds a count of 1, so one prop paying x14 is the block being rolled, not an instance being copied. That was the vanilla half (section 13.7). CONFIRMED IN GAME 2026-09-13, build 25246367, at Money=3: one hand pickup of coin_0001 paid `[recv] item 1 x30` (a roll of 10 on the 10..15 block, times 3) against a bag delta of exactly +30 (`Money_Copper x11889` -> `x11919` between two F11 surveys, the taken coin gone from the second), with the `[live] re-applied ... Money=3: 3 records rewritten, 6 scalars written, 0 skipped` line being what wrote the 30. Vanilla the day before paid 15, 14, 15, so a 30 is not a vanilla roll."
+      },
+      "1006419": {
+        "name": "gimmick_item_common_coin_0002",
+        "items": [1],
+        "why": "The larger placed coin prop, 100..150: the same record shape as coin_0001 (a `gimmick_item_common_*` record with no `catch_*` preset and no tag list, bucket E of the loot taxonomy), so it is expected to read its block the same way. Not itself picked up under the plugin yet; it rides on coin_0001's measurement until one is."
+      },
+      "1000712": {
+        "name": "gimmick_item_common_silverbar_0001",
+        "items": [1],
+        "why": "A fixed 2500..2500 of item 1 (2500 copper displays as 25 silver; silver is a denomination of the one money item, not an item of its own). Never seen placed by anyone on this project, and the player reports no silver bar exists in the world - only gold bars, which are item 53 (section 13.8). Its record carries a `catch_onehand` preset, which on the market stalls went with handing over a pre-built instance, so if one is ever found it may ignore its block; the row would then be inert, not wrong, and the multiple would be an exact 2500 x N if it does read it. Kept because it is a placed money record paying item 1 and the family is defined as exactly those."
+      }
+    },
+    "records_not_enabled": {
+      "1005717": { "name": "gimmick_box_donation_reward_coin_01", "items": [1], "why": "NOT a pickup. The donation box in the world is where the player GIVES items to the camp (three Honey trade goods went in on 2026-09-13) and the reward is the faction's; what the player got back was `[recv] item 103 x1`, a token no gimmickinfo record pays. Its 150..250 block is not a payout the player receives, so a row would be an edit the log reports and the player never sees. Section 13.8." },
+      "1005718": { "name": "gimmick_box_donation_reward_coin_02", "items": [1], "why": "NOT a pickup; the donation box, 270..450. See coin_01." },
+      "1005719": { "name": "gimmick_box_donation_reward_coin_03", "items": [1], "why": "NOT a pickup; the donation box, 500..1000. See coin_01." }
+    }
+  }
+}

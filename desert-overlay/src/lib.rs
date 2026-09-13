@@ -16,9 +16,10 @@
 //! [`desert_core::schema::Section`] in its own `config.rs`, and `desert-tooling`
 //! hands all of them to [`start`] at startup: [`dynmodel`] holds one model per
 //! section, [`store`] watches and writes the one file, and [`ui`] draws
-//! whatever the sections describe, one collapsible section each. A new
-//! subsystem appears in the menu by passing another `Section` in - this crate
-//! needs no change.
+//! whatever the sections describe - one tab per section, plus the two shared
+//! tabs (`Settings`, `Debug`) that collect whichever fields a section marked for
+//! them ([`desert_core::schema::Tab`]). A new subsystem appears in the menu by
+//! passing another `Section` in - this crate needs no change.
 //!
 //! Because all three sections sit in **one** file, in which `Enabled` exists
 //! under every header, every read is scoped through

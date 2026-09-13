@@ -9,7 +9,7 @@
 
 use desert_core::collect::Family;
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Field, Kind, Preset, Section};
+use desert_core::schema::{Field, Kind, Preset, Section, Tab};
 
 /// The shared ini every subsystem reads and the overlay writes.
 pub const INI_FILE: &str = "DesertTooling.ini";
@@ -25,6 +25,9 @@ pub const MS_RANGE: (u32, u32) = (100, 60_000);
 
 /// `StackLimit`'s accepted range, used by `parse` and [`schema`] alike.
 pub const STACK_LIMIT_RANGE: (u32, u32) = (10, 1_000_000);
+/// `SurveyLines`' accepted range. The floor is where a listing stops being
+/// one; the ceiling is a guard on the shared log, not a recommendation.
+pub const SURVEY_LINES_RANGE: (u32, u32) = (16, 2_000);
 
 /// The furthest `GatherRange` may reach. The parser accepts anything above 0
 /// up to this; the menu's slider starts at [`GATHER_RANGE_MENU_MIN`] because a
@@ -53,6 +56,17 @@ pub struct Config {
     pub log_received: bool,
     /// Survey radius in game metres.
     pub scan_range: f32,
+    /// How many actor lines one F11 survey may print. It was a hard-coded 64
+    /// until 2026-09-13, and because the listing was distance-sorted that
+    /// meant "the 64 nearest actors" - a window a few metres wide with a heap
+    /// of smashed pottery underfoot, which silently cut the very actors the
+    /// survey exists to show and cost three investigations
+    /// (`TODO.md`, "the looter's survey truncates at 64 lines"). The listing
+    /// is now ordered kind-first (gather nodes, then items, then the rest)
+    /// and says how many lines it cut, so this is a budget on the shared
+    /// log, not a filter on what is seen. The kind census at the foot of the
+    /// survey was never truncated and still is not.
+    pub survey_lines: u32,
     /// Radius within which a gather node is picked, in game metres.
     pub gather_range: f32,
     /// Start with automatic gathering on.
@@ -64,11 +78,25 @@ pub struct Config {
     /// Also pick up dropped gear (`item_basic_equip_*`).
     pub gather_gear: bool,
     /// Per-family switches for gather nodes, the same gate `gather_items` and
-    /// `gather_gear` are for ground items. All four on = the old behaviour.
+    /// `gather_gear` are for ground items. All four on = the old behaviour;
+    /// the fifth family, `gather_money`, is the exception and says why.
     pub gather_foraging: bool,
     pub gather_logging: bool,
     pub gather_mining: bool,
     pub gather_ore: bool,
+    /// The fifth family, and the only one that starts off. The placed coin
+    /// props (`gimmick_item_common_coin_0001`, key 1000183, and its siblings)
+    /// surveyed as `Kind::Inert` on 2026-09-13: they carry neither an
+    /// interaction object nor an instance object, and they were classified
+    /// that way only because no family covered them. With `Family::Money`
+    /// they classify `Kind::Unarmed` instead, so `gather_unarmed` - on by
+    /// default - plus this switch would forge a pickup at a coin exactly the
+    /// way the looter already forges one at an ore dropping. That has never
+    /// been tried in game, which is why the default is 0; 0 also keeps the
+    /// upgrade behaviour-preserving, which `VERSIONING.md` requires of a
+    /// MINOR. This is only the auto-loot switch: how much a coin pays is the
+    /// `[Gatherer]` `Money` multiplier, which applies to hand pickups too.
+    pub gather_money: bool,
     /// Catch insects within `GatherRange`. Not a gather family: it is a
     /// different game event (`TrocTrPushCharacterToInventoryOnceTimer`) sent
     /// at a different kind of actor, so it has its own switch.
@@ -102,6 +130,7 @@ impl Default for Config {
             debug: false,
             log_received: false,
             scan_range: 40.0,
+            survey_lines: 200,
             gather_range: 6.0,
             auto_gather: false,
             gather_unarmed: true,
@@ -111,6 +140,7 @@ impl Default for Config {
             gather_logging: true,
             gather_mining: true,
             gather_ore: true,
+            gather_money: false,
             gather_bugs: true,
             gather_fish: true,
             bag_tab: Some(1),
@@ -125,15 +155,63 @@ impl Default for Config {
     }
 }
 
+/// The water well's bucket, `gimmick_well_0001_parts01`. It is a `Foraging`
+/// record and the multiplier reaches it like any other; the **looter** must
+/// never send a `PickUpItem` at it. Tried in game on 2026-09-13, build
+/// 25246367 (`analysis/logs/DesertTooling-2026-09-13-well-coin-bugs.log`,
+/// `t=197`): F9 at a well forged the pickup, the player received `22008 x5`,
+/// the bucket actor was gone 0.1 s later and **the well never produced another
+/// one** - the game's own crank sequence is what respawns the bucket, and a
+/// pickup delivered from outside that sequence leaves the well permanently
+/// empty. That is worse than the duplication exploit the earlier comment
+/// worried about; it is a broken world object. So this is a record-level
+/// refusal, not a family switch: `GatherForaging` still means what it says
+/// for every bush, and the well is the one Foraging record it never covers.
+///
+/// How it was reachable at all (two F11 surveys, same log's successor
+/// `DesertTooling-2026-09-13-well-x15-x30.log`, `t=272` and `t=319`): the
+/// bucket actor is **always present** - it classifies `Unarmed` while the
+/// well is empty and `Gather` once the bucket is raised full. So it is
+/// `GatherUnarmed=1`, the default, that put an *empty* well in front of F9,
+/// and turning that off would only have narrowed the damage to full ones.
+/// The refusal is by record, so neither switch matters for it.
+pub const WELL_BUCKET_RECORD_KEY: u32 = 1001081;
+/// The same record by name, for the case where the header's key did not read:
+/// `actors::node_identity` falls back to the name to find the family, so the
+/// refusal has to fall back the same way or an unreadable key would let the
+/// one record this exists for straight through.
+pub const WELL_BUCKET_RECORD_NAME: &str = "gimmick_well_0001_parts01";
+
+/// Whether the looter must refuse to forge a pickup at this record, whatever
+/// the family switches say. Either identifier is enough on its own. The set is
+/// one record today and is kept as a predicate so a second multi-step gimmick
+/// has somewhere to go that is not a new `if` in `nearest_gather`.
+pub fn never_forge_pickup(record_key: Option<u32>, record_name: Option<&str>) -> bool {
+    record_key == Some(WELL_BUCKET_RECORD_KEY) || record_name == Some(WELL_BUCKET_RECORD_NAME)
+}
+
 impl Config {
     /// Whether gather nodes of this family are wanted. Called with the typed
     /// family from `desert_core::collect`, before anything stringifies it.
+    /// [`never_forge_pickup`] is checked **before** this, on the record key,
+    /// and wins: the water well is a `Foraging` record this switch does not
+    /// reach, and the constant's doc comment says why.
     pub fn allows_family(&self, f: Family) -> bool {
         match f {
+            // Foraging includes the water well (`gimmick_well_0001_parts01`,
+            // key 1001081) for the *multiplier*; for the looter that record
+            // is refused one step earlier by `never_forge_pickup`. The reason
+            // the two disagree is in that constant's doc comment - a forged
+            // pickup at the bucket breaks the well - and the yield multiplier
+            // is independent of all of it: it edits the record's block at
+            // load time and never consults the looter.
             Family::Foraging => self.gather_foraging,
             Family::Logging => self.gather_logging,
             Family::Mining => self.gather_mining,
             Family::Ore => self.gather_ore,
+            // The one family that is off unless asked for: a forged pickup at
+            // a coin prop has never been tried in game. See `gather_money`.
+            Family::Money => self.gather_money,
         }
     }
 }
@@ -157,6 +235,7 @@ fn f(key: &str, label: &str, kind: Kind, help: &str) -> Field {
         heading: None,
         same_line: false,
         help: Some(help.to_string()),
+        tab: Tab::Section,
     }
 }
 
@@ -169,6 +248,14 @@ fn under(heading: &str, mut field: Field) -> Field {
 /// Draw this field on the same row as the one before it.
 fn beside(mut field: Field) -> Field {
     field.same_line = true;
+    field
+}
+
+/// Draw this field on one of the menu's shared tabs instead of the looter's
+/// own: the hotkeys belong with every other key a player binds, and the
+/// diagnostics belong with every other switch a bug report asks for.
+fn on(tab: Tab, mut field: Field) -> Field {
+    field.tab = tab;
     field
 }
 
@@ -195,8 +282,11 @@ fn preset(label: &str, hint: &str, families: (bool, bool, bool, bool)) -> Preset
 /// `desert-tooling` hands this straight to the overlay at startup, and uses it
 /// to seed the ini when the file is missing.
 ///
-/// `Debug`, `LogReceived` and `BagTab` are here too, grouped at the bottom
-/// under `Diagnostics:`. They used to be left out as "diagnostics and a
+/// `Debug`, `LogReceived`, `BagTab` and `SurveyLines` are here too, marked
+/// [`Tab::Debug`] so the menu draws them on its shared Debug tab rather than on
+/// the looter's own page; the four hotkeys are marked [`Tab::Settings`] for the
+/// same reason, so that every key a player binds is in one place. They used to
+/// be left out as "diagnostics and a
 /// game-build detail", which stopped being tenable once this schema became
 /// what the plugin writes its own ini from (`schema::create_ini_if_missing`):
 /// a key that is not named here is missing from the generated file as well as
@@ -259,7 +349,9 @@ pub fn schema() -> Section {
                     "GatherForaging",
                     "Foraging",
                     Kind::Bool { default: d.gather_foraging },
-                    "Plants, fruit, berries, mushrooms, crops.",
+                    "Plants, fruit, berries, mushrooms, crops. Never the water well: taking its \
+                     bucket with a forged pickup leaves the well empty for good, so the plugin \
+                     refuses that one record whatever this is set to.",
                 ),
             ),
             beside(f(
@@ -279,6 +371,14 @@ pub fn schema() -> Section {
                 "Ore",
                 Kind::Bool { default: d.gather_ore },
                 "The collect_ore family: ore_* deposits and sulfur stone, separate from Mining.",
+            )),
+            beside(f(
+                "GatherMoney",
+                "Money",
+                Kind::Bool { default: d.gather_money },
+                "0 by default. 1 = also pick up the coins lying in the world (the placed coin props). \
+                 Untested in game: the pickup is forged the same way as at an ore chunk. This is the \
+                 auto-loot switch; the amount is the [Gatherer] Money multiplier.",
             )),
             f(
                 "GatherItems",
@@ -321,6 +421,24 @@ pub fn schema() -> Section {
                 },
                 "Survey radius in game metres.",
             ),
+            on(
+                Tab::Debug,
+                f(
+                    "SurveyLines",
+                    "Survey lines",
+                    Kind::Int {
+                        default: i64::from(d.survey_lines),
+                        min: i64::from(SURVEY_LINES_RANGE.0),
+                        max: i64::from(SURVEY_LINES_RANGE.1),
+                        step: 16,
+                        slider: false,
+                        format: None,
+                    },
+                    "How many actor lines one F11 survey prints. Gather nodes and items are listed \
+                     first, so raising this only ever adds the less interesting actors; the survey \
+                     says how many it cut.",
+                ),
+            ),
             f(
                 "GatherRange",
                 "Gather range",
@@ -357,19 +475,27 @@ pub fn schema() -> Section {
                 },
                 "When the bag is full a node whose yield is already stacked is still gathered, unless the stack would pass this ceiling.",
             ),
-            under(
-                "Keys:",
+            // The four hotkeys live on the menu's shared Settings tab, under
+            // this section's own title, so every key a player binds is in one
+            // place. No "Keys:" heading any more: on that tab the section
+            // title is the group header.
+            on(Tab::Settings,
                 key("KeyToggle", "Toggle auto gather", d.key_toggle,
-                    "Turns automatic gathering on and off. Avoid keys the game already uses."),
-            ),
-            key("KeyScan", "Survey", d.key_scan,
-                "Writes the nodes and items in scan range to the log."),
-            key("KeyGather", "Gather nearest", d.key_gather,
-                "Gather the nearest node: one node per press, whatever the auto state."),
-            key("KeyRecord", "Record events (debug)", d.key_record,
-                "Toggles recording of every event the game queues, capped at 300."),
-            under(
-                "Diagnostics:",
+                    "Turns automatic gathering on and off. Avoid keys the game already uses.")),
+            on(Tab::Settings,
+                key("KeyScan", "Survey", d.key_scan,
+                    "Writes the nodes and items in scan range to the log.")),
+            on(Tab::Settings,
+                key("KeyGather", "Gather nearest", d.key_gather,
+                    "Gather the nearest node: one node per press, whatever the auto state.")),
+            on(Tab::Settings,
+                key("KeyRecord", "Record events (debug)", d.key_record,
+                    "Toggles recording of every event the game queues, capped at 300.")),
+            // The diagnostics go to the shared Debug tab, where the section
+            // title is the group header, so the "Diagnostics:" heading these
+            // three used to sit under is gone.
+            on(
+                Tab::Debug,
                 f(
                     "Debug",
                     "Debug",
@@ -377,13 +503,15 @@ pub fn schema() -> Section {
                     "The very verbose survey: the first Survey press after this is on dumps hundreds of lines to the log. For working out why something is not picked up, not for playing.",
                 ),
             ),
-            beside(f(
+            on(Tab::Debug, beside(f(
                 "LogReceived",
                 "Log received items",
                 Kind::Bool { default: d.log_received },
-                "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured.",
-            )),
-            f(
+                "Logs every item the game hands the player as [recv] item <key> x<count>, whether or not this plugin caused it, capped at 500 a session. This is how a gathering yield is actually measured. Coin props are the exception: picking one up writes no line, so measure money with the bag count an F11 survey prints.",
+            ))),
+            on(
+                Tab::Debug,
+                f(
                 "BagTab",
                 "Bag tab",
                 Kind::Int {
@@ -395,6 +523,7 @@ pub fn schema() -> Section {
                     format: None,
                 },
                 "Which inventory tab counts as the bag for the full check. 1 is the right answer on build 25116796; -1 means auto, i.e. whichever tab has the largest capacity.",
+                ),
             ),
         ],
     }
@@ -455,8 +584,13 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherlogging" => cfg.gather_logging = bool_of(v),
             "gathermining" => cfg.gather_mining = bool_of(v),
             "gatherore" => cfg.gather_ore = bool_of(v),
+            "gathermoney" => cfg.gather_money = bool_of(v),
             "gatherbugs" => cfg.gather_bugs = bool_of(v),
             "gatherfish" => cfg.gather_fish = bool_of(v),
+            "surveylines" => match v.parse::<u32>() {
+                Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => cfg.survey_lines = n,
+                _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", cfg.survey_lines)),
+            },
             "stacklimit" => match v.parse::<u32>() {
                 Ok(n) if (STACK_LIMIT_RANGE.0..=STACK_LIMIT_RANGE.1).contains(&n) => cfg.stack_limit = n,
                 _ => warnings.push(format!("StackLimit: bad value {v:?}, keeping {}", cfg.stack_limit)),
@@ -531,12 +665,50 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore] {
             assert!(d.allows_family(f), "{f:?} should be on by default");
         }
+        // Money is the fifth family and the only one that starts off, so it
+        // is not in the loop above; it has its own test below.
+        assert!(!d.gather_money);
+        assert!(!d.allows_family(Family::Money), "Money is off until it is asked for");
+        // The water well is a Foraging record and rides on `GatherForaging` -
+        // see `allows_family`.
+        assert_eq!(desert_core::collect::family_by_key(1001081), Some(Family::Foraging));
+        // - and yet the looter must refuse it, by key, before the family
+        // switch is even consulted: a forged pickup at the bucket breaks the
+        // well (see `WELL_BUCKET_RECORD_KEY`). Both halves are asserted so a
+        // change to either side has to come here and argue.
+        assert_eq!(WELL_BUCKET_RECORD_KEY, 1001081);
+        assert_eq!(
+            desert_core::collect::family_by_name(WELL_BUCKET_RECORD_NAME),
+            Some(Family::Foraging),
+            "the name constant must be the record collect.rs knows"
+        );
+        // Key alone, name alone, both, and the unreadable-key case.
+        assert!(never_forge_pickup(Some(WELL_BUCKET_RECORD_KEY), None));
+        assert!(never_forge_pickup(None, Some(WELL_BUCKET_RECORD_NAME)));
+        assert!(never_forge_pickup(Some(WELL_BUCKET_RECORD_KEY), Some(WELL_BUCKET_RECORD_NAME)));
+        assert!(never_forge_pickup(None, Some("gimmick_well_0001_parts01")));
+        // The crank, its neighbours, firewood and money are all let through,
+        // and a record with neither identifier readable is not refused (it
+        // is not a gather node either - `family` would be None).
+        assert!(!never_forge_pickup(None, Some("gimmick_well_0001_parts02")));
+        for key in [1001080, 1001082, 1002971, 1] {
+            assert!(!never_forge_pickup(Some(key), None), "{key} must not be refused");
+        }
+        assert!(!never_forge_pickup(None, None));
+        let help = schema().field("GatherForaging").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(help.contains("water well"), "the Foraging switch has to say it excludes the well: {help}");
+        assert!(
+            schema().field("GatherIngredients").is_none(),
+            "Ingredients never shipped, so the menu must not offer a switch for it"
+        );
         let (c, w) = parse(&sectioned("GatherForaging=1\nGatherLogging=0\nGatherMining=no\nGatherOre=on\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(c.allows_family(Family::Foraging));
         assert!(!c.allows_family(Family::Logging));
         assert!(!c.allows_family(Family::Mining));
         assert!(c.allows_family(Family::Ore));
+        // The four say nothing about the fifth: this file set none of them.
+        assert!(!c.allows_family(Family::Money));
     }
 
     /// `GatherBugs` and `GatherFish` are not gather families - they are one
@@ -582,6 +754,37 @@ mod tests {
         let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=1\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_bugs && c.gather_fish);
+    }
+
+    /// `GatherMoney` is a family switch like the four above - it has an
+    /// `allows_family` arm and a `Family::Money` behind it - but it is the one
+    /// that starts **off**, so it is held to the opposite default. The coin
+    /// props carry neither an interaction object nor an instance object, so
+    /// they classify `Unarmed`, and `GatherUnarmed=1` (the default) plus this
+    /// would forge a pickup at one the same way as at an ore dropping. Nobody
+    /// has tried that in game yet, and a MINOR may not change behaviour.
+    #[test]
+    fn gather_money_defaults_off_and_follows_the_family_switch() {
+        assert!(!Config::default().gather_money);
+        let (c, w) = parse(&sectioned("GatherMoney=1\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_money);
+        assert!(c.allows_family(Family::Money), "the switch is what allows_family reads");
+        let (c, w) = parse(&sectioned("GatherMoney=off\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_money && !c.allows_family(Family::Money));
+        assert!(schema().field("GatherMoney").is_some(), "the menu must offer GatherMoney");
+        // No preset names it, the same as GatherBugs and GatherFish: a preset
+        // sets the four DMM families plus GatherItems and nothing else, so an
+        // untested switch can never be turned on by pressing a button.
+        for p in &schema().presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "GatherMoney"), "{}", p.label);
+        }
+        // The help has to say both halves: that it is untested, and that the
+        // amount is not this key's business.
+        let help = schema().field("GatherMoney").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(help.contains("Untested in game"), "{help}");
+        assert!(help.contains("[Gatherer] Money multiplier"), "{help}");
     }
 
     // -----------------------------------------------------------------------
@@ -727,16 +930,27 @@ Scale=1.5
             }
             other => panic!("ScanRange is not a float field: {other:?}"),
         }
+        match s.field("SurveyLines").map(|f| f.kind.clone()) {
+            Some(Kind::Int { min, max, default, .. }) => {
+                assert_eq!((min, max), (i64::from(SURVEY_LINES_RANGE.0), i64::from(SURVEY_LINES_RANGE.1)));
+                assert_eq!(default, 200, "the old hard-coded 64 must not come back as the default");
+            }
+            other => panic!("SurveyLines is not an int field: {other:?}"),
+        }
 
         // A value at either end of every int range is one `parse` keeps, and
         // one past it is one it refuses: the menu's stops are the real stops.
-        let (c, w) = parse(&sectioned("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\n"));
+        let (c, w) = parse(&sectioned("GatherInterval=100\nNodeCooldown=60000\nStackLimit=1000000\nSurveyLines=2000\n"));
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(c.gather_interval_ms, MS_RANGE.0);
         assert_eq!(c.node_cooldown_ms, MS_RANGE.1);
         assert_eq!(c.stack_limit, STACK_LIMIT_RANGE.1);
-        let (c, w) = parse(&sectioned("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\n"));
-        assert_eq!(w.len(), 4, "{w:?}");
+        assert_eq!(c.survey_lines, SURVEY_LINES_RANGE.1);
+        let (c, w) = parse(&sectioned("SurveyLines=16\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.survey_lines, SURVEY_LINES_RANGE.0);
+        let (c, w) = parse(&sectioned("GatherInterval=99\nNodeCooldown=60001\nStackLimit=9\nGatherRange=50.1\nSurveyLines=15\n"));
+        assert_eq!(w.len(), 5, "{w:?}");
         assert_eq!(c, Config::default());
     }
 
@@ -763,11 +977,10 @@ Scale=1.5
         for key in ["Debug", "LogReceived", "BagTab"] {
             assert!(s.field(key).is_some(), "the menu must offer {key}");
         }
-        // The heading is what groups the three at the bottom of the section.
-        assert_eq!(
-            s.field("Debug").and_then(|f| f.heading.clone()),
-            Some("Diagnostics:".to_string())
-        );
+        // What groups them is the tab now, not a heading: the menu draws the
+        // section's title above the group on its shared Debug tab.
+        assert_eq!(s.field("Debug").map(|f| f.tab), Some(Tab::Debug));
+        assert_eq!(s.field("Debug").and_then(|f| f.heading.clone()), None);
 
         // `BagTab` opens at the default tab, and the bottom of its range is
         // the "auto" the parser turns into `None`: a value the menu can
@@ -788,6 +1001,35 @@ Scale=1.5
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug && c.log_received);
         assert_eq!(c.bag_tab, Some(0));
+    }
+
+    /// Where the menu draws each of these keys. The four hotkeys go on the
+    /// shared Settings tab beside every other binding, the four diagnostics on
+    /// the shared Debug tab, and everything else stays on the looter's own tab -
+    /// which is also what keeps that tab from disappearing, because a section
+    /// with nothing left on [`Tab::Section`] gets no tab at all.
+    #[test]
+    fn the_keys_and_the_diagnostics_are_on_the_shared_tabs() {
+        let s = schema();
+        let tab = |key: &str| s.field(key).map(|f| f.tab);
+        for key in ["KeyToggle", "KeyScan", "KeyGather", "KeyRecord"] {
+            assert_eq!(tab(key), Some(Tab::Settings), "{key}");
+        }
+        for key in ["Debug", "LogReceived", "BagTab", "SurveyLines"] {
+            assert_eq!(tab(key), Some(Tab::Debug), "{key}");
+        }
+        let shared = ["KeyToggle", "KeyScan", "KeyGather", "KeyRecord", "Debug", "LogReceived",
+                      "BagTab", "SurveyLines"];
+        for field in &s.fields {
+            if shared.contains(&field.key.as_str()) {
+                continue;
+            }
+            assert_eq!(field.tab, Tab::Section, "{} belongs on the looter's own tab", field.key);
+        }
+        assert!(s.fields.iter().any(|f| f.tab == Tab::Section), "the looter must keep a tab");
+        // LogReceived is drawn beside Debug and Debug is the field before it on
+        // that tab, so the pairing survives the move.
+        assert!(s.field("LogReceived").is_some_and(|f| f.same_line));
     }
 
     /// Prints this section as the seeded ini would carry it. `cargo test --

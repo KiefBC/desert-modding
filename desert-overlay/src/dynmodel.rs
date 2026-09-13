@@ -27,12 +27,19 @@
 //! Keys the section does not mention are ignored on read and never written -
 //! [`crate::rewrite`] only touches the lines whose key it was handed, so hand
 //! edits and keys a newer plugin added survive an edit from the menu.
+//!
+//! The menu's own arithmetic lives here too, at the bottom: which of a
+//! section's fields belong on which tab, whether a section gets a tab of its
+//! own, whether its `Enabled` is off, and what the footer says about the file.
+//! None of it draws anything, which is the point - [`crate::ui`] is
+//! `#[cfg(windows)]` and cannot run on Linux, so every rule about what the menu
+//! shows is decided by a plain function that is unit-tested natively.
 
 use std::path::Path;
 use std::time::Instant;
 
 use desert_core::ini::{self, Line};
-use desert_core::schema::{Kind, Preset, Section};
+use desert_core::schema::{Kind, Preset, Section, Tab};
 
 use crate::store::Store;
 
@@ -174,7 +181,7 @@ impl crate::store::IniModel for DynModel {
 }
 
 // ---------------------------------------------------------------------------
-// One menu section
+// One section, which is one tab of the menu plus a share of the two shared ones
 // ---------------------------------------------------------------------------
 
 /// One subsystem's section of the menu: its model over the shared ini, and
@@ -326,6 +333,159 @@ pub fn i32_of(v: i64) -> i32 {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Which fields go on which tab, and what the footer says
+// ---------------------------------------------------------------------------
+
+/// Whether `section` has anything at all on `tab`, which is what decides
+/// whether the shared tab draws a group header for it.
+///
+/// A yes/no rather than the list: the renderer walks `section.fields` itself
+/// and pairs each field with its slot by index, and this is asked once per
+/// section per frame on a render thread, where collecting a list only to test
+/// it for emptiness is an allocation for nothing.
+pub fn has_fields_on(section: &Section, tab: Tab) -> bool {
+    section.fields.iter().any(|f| f.tab == tab)
+}
+
+/// The fields of `section` that belong on `tab`, each with its index into
+/// [`DynModel::values`]. Test-only: it spells out the pairing the renderer
+/// relies on, that the index is into the full list and not the filtered one.
+#[cfg(test)]
+pub fn fields_on(section: &Section, tab: Tab) -> Vec<(usize, &desert_core::schema::Field)> {
+    section.fields.iter().enumerate().filter(|(_, f)| f.tab == tab).collect()
+}
+
+/// The `Theme` value the overlay's own section currently holds, by the
+/// section's ini `[Header]`, so the window can follow the ini rather than only
+/// the picker: the store rewrites every slot from disk once a second, and a
+/// `Theme=` edited by hand while the game runs has to repaint the menu the way
+/// a pick in the menu does.
+pub fn ini_theme_name<'a>(sections: &'a [SectionEntry], overlay_section: &str) -> Option<&'a str> {
+    sections
+        .iter()
+        .find(|e| e.ini_section().eq_ignore_ascii_case(overlay_section))
+        .and_then(|e| e.store.model.get("Theme"))
+}
+
+/// Whether this section gets a tab of its own, which it does exactly when it
+/// has a field that stayed on [`Tab::Section`].
+///
+/// The overlay's own section is the one that does not: every key it declares is
+/// marked for Settings or Debug, so a tab for it would be a second copy of what
+/// the Settings tab already shows.
+pub fn has_own_tab(section: &Section) -> bool {
+    section.fields.iter().any(|f| f.tab == Tab::Section)
+}
+
+/// Whether any section has anything to show on `tab`, which is what decides
+/// whether that tab is in the bar at all.
+pub fn any_fields_on(sections: &[SectionEntry], tab: Tab) -> bool {
+    sections.iter().any(|e| e.section().fields.iter().any(|f| f.tab == tab))
+}
+
+/// Whether a section's own master switch is on.
+///
+/// **This is the one key name the menu relies on.** Every section declares a
+/// `Kind::Bool` called `Enabled` as its master switch (the ini's header says so
+/// in as many words), and the tab bar dims a subsystem's tab while that switch
+/// reads false, so a player can see which subsystems are live without opening
+/// each page. A section that declares no such field is treated as on: the tab
+/// is then never dimmed, which is the harmless answer, and so is a section whose
+/// values have not been filled in - "on" is the answer that claims the least.
+pub fn section_enabled(section: &Section, values: &[String]) -> bool {
+    let found = section
+        .fields
+        .iter()
+        .enumerate()
+        .find(|(_, f)| f.key.eq_ignore_ascii_case("Enabled") && matches!(f.kind, Kind::Bool { .. }));
+    match found.and_then(|(i, _)| values.get(i)) {
+        Some(value) => as_bool(value),
+        None => true,
+    }
+}
+
+/// Whether a section's `notice` is drawn under its group on `tab`.
+///
+/// A notice belongs at the foot of the page that section owns, and a section
+/// with a page of its own gets it there. A section with **no** page of its own -
+/// the overlay - has nowhere else to put it, so it goes under its group on the
+/// Settings tab, which is the first shared tab and the one that holds most of
+/// its keys. Never on both: a line about when a change takes effect said twice
+/// reads as two different claims.
+pub fn shows_notice_on(section: &Section, tab: Tab) -> bool {
+    section.notice.is_some() && tab == Tab::Settings && !has_own_tab(section)
+}
+
+/// What the footer says about the one ini every section shares.
+///
+/// The stores each watch and write the same file, so this is one answer for all
+/// of them rather than a line under each section: a failure anybody hit is the
+/// failure, and "saving" is true while anybody is still holding an edit.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FileState {
+    /// A read or a write failed. The string is the store's own status line,
+    /// which names the file and the reason.
+    Failed(String),
+    /// An edit is waiting for the debounce to run out.
+    Saving,
+    /// Everything a widget changed is on disk.
+    Saved,
+}
+
+/// The widest the footer draws a failure before it becomes a tooltip. A status
+/// line carries an OS error message and there is no useful width to give it, so
+/// the footer shows the front of it and hovering shows all of it.
+const STATUS_SHOWN: usize = 44;
+
+impl FileState {
+    /// The footer's own words, given the file name every section shares.
+    ///
+    /// A failure is shown in the store's own wording (`cannot write
+    /// DesertTooling.ini: ...`), because that already names the file and says
+    /// which half failed, cut to [`STATUS_SHOWN`] characters with an ellipsis.
+    pub fn label(&self, file_name: &str) -> String {
+        match self {
+            FileState::Failed(status) => ellipsis(status, STATUS_SHOWN),
+            // A middle dot rather than a colon: the file name is not a label
+            // for what follows, the two are one phrase.
+            FileState::Saving => format!("{file_name} \u{b7} saving\u{2026}"),
+            FileState::Saved => format!("{file_name} \u{b7} saved"),
+        }
+    }
+
+    /// The full status text, for the tooltip, when there is more to say than
+    /// [`FileState::label`] shows.
+    pub fn tooltip(&self) -> Option<&str> {
+        match self {
+            FileState::Failed(status) => Some(status.as_str()),
+            _ => None,
+        }
+    }
+}
+
+/// `text` cut to at most `max` characters, with an ellipsis when anything was
+/// cut. Counted in characters and cut on a character boundary, because a status
+/// line carries an OS message and nothing promises it is ASCII.
+fn ellipsis(text: &str, max: usize) -> String {
+    match text.char_indices().nth(max) {
+        Some((at, _)) => format!("{}\u{2026}", &text[..at]),
+        None => text.to_string(),
+    }
+}
+
+/// The one state the footer draws, from every section's store: the first
+/// failure if there is one, otherwise saving while anybody is dirty, otherwise
+/// saved.
+pub fn file_state(sections: &[SectionEntry]) -> FileState {
+    let failure = sections.iter().find_map(|e| e.store.status.clone());
+    match failure {
+        Some(status) => FileState::Failed(status),
+        None if sections.iter().any(|e| e.store.dirty()) => FileState::Saving,
+        None => FileState::Saved,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,6 +499,7 @@ mod tests {
             heading: None,
             same_line: false,
             help: None,
+            tab: Tab::Section,
         }
     }
 
@@ -611,6 +772,157 @@ mod tests {
         assert_eq!(i32_of(42), 42);
         assert_eq!(i32_of(i64::MAX), i32::MAX);
         assert_eq!(i32_of(i64::MIN), i32::MIN);
+    }
+
+    // -----------------------------------------------------------------------
+    // Which fields go on which tab, and what the footer says
+    // -----------------------------------------------------------------------
+
+    /// A section like the shipped ones: a page of its own, two keys pulled onto
+    /// the shared Settings tab and two switches onto the shared Debug tab.
+    fn tabbed() -> Section {
+        let mut s = section();
+        s.notice = Some("Takes effect on the next load.".to_string());
+        for field in &mut s.fields {
+            field.tab = match field.key.as_str() {
+                "KeyToggle" | "Theme" => Tab::Settings,
+                "ScanRange" => Tab::Debug,
+                _ => Tab::Section,
+            };
+        }
+        s
+    }
+
+    #[test]
+    fn fields_on_answers_with_each_fields_own_index() {
+        let s = tabbed();
+        let keys = |tab| {
+            fields_on(&s, tab).into_iter().map(|(i, f)| (i, f.key.as_str())).collect::<Vec<_>>()
+        };
+        assert_eq!(keys(Tab::Settings), vec![(4, "Theme"), (5, "KeyToggle")]);
+        assert_eq!(keys(Tab::Debug), vec![(3, "ScanRange")]);
+        assert_eq!(
+            keys(Tab::Section),
+            vec![(0, "Enabled"), (1, "Interval"), (2, "Foraging")],
+            "the index is into the values, not into the filtered list"
+        );
+        // Which is the whole reason the index is carried: it still selects the
+        // right slot after the list has been filtered.
+        let m = DynModel::new(s.clone());
+        for (i, field) in fields_on(&s, Tab::Settings) {
+            assert_eq!(m.value(i), field.kind.default_text(), "{}", field.key);
+        }
+    }
+
+    #[test]
+    fn has_fields_on_agrees_with_the_list() {
+        let s = tabbed();
+        for tab in [Tab::Section, Tab::Settings, Tab::Debug] {
+            assert_eq!(has_fields_on(&s, tab), !fields_on(&s, tab).is_empty(), "{tab:?}");
+        }
+        let mut none = s.clone();
+        none.fields.retain(|f| f.tab != Tab::Debug);
+        assert!(!has_fields_on(&none, Tab::Debug));
+    }
+
+    #[test]
+    fn the_ini_theme_name_is_read_off_the_overlays_own_section() {
+        let dir = std::env::temp_dir().join(format!("desert-overlay-theme-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("DesertTooling.ini"), "[TestMod]\nTheme=parchment\n").unwrap();
+        let built = entries(&dir, vec![tabbed()], std::time::Instant::now());
+        assert_eq!(ini_theme_name(&built, "testmod"), Some("parchment"), "header matched case-insensitively");
+        assert_eq!(ini_theme_name(&built, "Overlay"), None, "no such section, nothing to follow");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_section_with_nothing_left_on_its_own_tab_gets_no_tab() {
+        let mut s = tabbed();
+        assert!(has_own_tab(&s));
+        for field in &mut s.fields {
+            field.tab = Tab::Settings;
+        }
+        assert!(!has_own_tab(&s), "every field is on a shared tab: there is no page to draw");
+        assert!(fields_on(&s, Tab::Section).is_empty());
+    }
+
+    #[test]
+    fn section_enabled_reads_the_sections_own_master_switch() {
+        let s = tabbed();
+        let mut m = DynModel::new(s.clone());
+        assert!(section_enabled(&s, &m.values), "the fixture defaults to Enabled=1");
+        m.parse_ini(&under("Enabled=0\n"));
+        assert!(!section_enabled(&s, &m.values));
+        // Anything that is not a truthy spelling is off, the same rule the
+        // plugins read the file with.
+        m.parse_ini(&under("Enabled=nonsense\n"));
+        assert!(!section_enabled(&s, &m.values));
+
+        // A section with no `Enabled` at all is treated as on, so its tab is
+        // never dimmed; so is one whose `Enabled` is not a checkbox.
+        let mut without = s.clone();
+        without.fields.retain(|f| f.key != "Enabled");
+        assert!(section_enabled(&without, &DynModel::new(without.clone()).values));
+        assert!(section_enabled(&s, &[]), "nor one whose values were never filled in");
+    }
+
+    #[test]
+    fn a_notice_is_drawn_on_the_settings_tab_only_when_the_section_has_no_page() {
+        let s = tabbed();
+        // It has a page of its own, so the notice goes there, not on a shared tab.
+        for tab in [Tab::Section, Tab::Settings, Tab::Debug] {
+            assert!(!shows_notice_on(&s, tab), "{tab:?}");
+        }
+        let mut homeless = s.clone();
+        for field in &mut homeless.fields {
+            field.tab = if field.key == "Interval" { Tab::Debug } else { Tab::Settings };
+        }
+        assert!(shows_notice_on(&homeless, Tab::Settings));
+        assert!(!shows_notice_on(&homeless, Tab::Debug), "said once, not twice");
+        homeless.notice = None;
+        assert!(!shows_notice_on(&homeless, Tab::Settings), "there is no notice to draw");
+    }
+
+    #[test]
+    fn the_footer_says_saved_then_saving_then_why_it_failed() {
+        let dir = std::env::temp_dir().join(format!("desert-overlay-footer-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut built = entries(&dir, vec![tabbed()], std::time::Instant::now());
+
+        assert_eq!(file_state(&built), FileState::Saved);
+        assert_eq!(
+            file_state(&built).label("DesertTooling.ini"),
+            "DesertTooling.ini \u{b7} saved"
+        );
+        assert_eq!(file_state(&built).tooltip(), None);
+        assert!(any_fields_on(&built, Tab::Settings));
+        assert!(any_fields_on(&built, Tab::Debug));
+
+        built[0].store.touch();
+        assert_eq!(file_state(&built), FileState::Saving);
+        assert_eq!(
+            file_state(&built).label("DesertTooling.ini"),
+            "DesertTooling.ini \u{b7} saving\u{2026}"
+        );
+
+        // A failure wins over a pending edit: it is the reason the edit is still
+        // pending.
+        let status = "cannot write DesertTooling.ini: Permission denied (os error 13)";
+        built[0].store.status = Some(status.to_string());
+        assert_eq!(file_state(&built), FileState::Failed(status.to_string()));
+        let label = file_state(&built).label("DesertTooling.ini");
+        assert!(label.starts_with("cannot write DesertTooling.ini"), "{label}");
+        assert!(label.ends_with('\u{2026}'), "the rest is in the tooltip: {label}");
+        assert_eq!(label.chars().count(), 45, "44 characters and the ellipsis");
+        assert_eq!(file_state(&built).tooltip(), Some(status));
+
+        // A short status is shown whole, ellipsis and all.
+        let short = FileState::Failed("cannot read it".to_string());
+        assert_eq!(short.label("DesertTooling.ini"), "cannot read it");
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

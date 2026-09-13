@@ -3,7 +3,7 @@
 use std::ffi::c_void;
 use std::fmt::{self, Display};
 use std::mem;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::OnceLock;
 
 use imgui::Context;
@@ -29,6 +29,7 @@ use windows::Win32::Graphics::Dxgi::{
     DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH, DXGI_SWAP_CHAIN_FULLSCREEN_DESC,
     DXGI_SWAP_EFFECT_FLIP_DISCARD, DXGI_USAGE_RENDER_TARGET_OUTPUT,
 };
+use windows::Win32::System::Threading::GetCurrentThreadId;
 
 use super::DummyHwnd;
 use crate::mh::MhHook;
@@ -274,6 +275,19 @@ impl InitState {
 static INIT_STATE: InitState = InitState::new();
 static mut PIPELINE: OnceCell<Mutex<Pipeline<D3D12RenderEngine>>> = OnceCell::new();
 static mut RENDER_LOOP: OnceCell<Box<dyn ImguiRenderLoop + Send + Sync>> = OnceCell::new();
+
+// The thread `render` last ran on, or `0` before the first frame.
+//
+// `PIPELINE` and `RENDER_LOOP` are `static mut` cells with no synchronization
+// of their own, and `reset_pipeline` `take()`s both. `take` needs `&mut`, and
+// it replaces the whole cell - including the internal state `get_or_try_init`
+// is using - so a reset racing an initializing `Present` is a data race on the
+// cell itself, not merely a lost pipeline. The thirteen `reset_pipeline` calls
+// inside `render` cannot race it (same thread, sequentially); the five that
+// reach it through `release_swap_chain_references` are the ones that can, and
+// this is what lets that function tell the difference. See DESERT-CHANGES.md
+// item 10.
+static PRESENT_TID: AtomicU32 = AtomicU32::new(0);
 static ACTIVE_CONTEXT: Mutex<Option<ActiveDx12Context>> = Mutex::new(None);
 static COLOR_SPACE: Mutex<Option<ColorSpaceRecord>> = Mutex::new(None);
 
@@ -543,11 +557,50 @@ unsafe fn holds_swap_chain_references() -> bool {
 // It is a no-op when nothing is initialized. Everything is rebuilt on the next
 // `Present` through the same path as at first start.
 unsafe fn release_swap_chain_references(operation: &str) {
+    // Checked before `holds_swap_chain_references`, which reads `PIPELINE`:
+    // the point is to touch none of the unsynchronized cells from a thread that
+    // has no business in them.
+    //
+    // Refuse the reset rather than race it. `PRESENT_TID` is `0` only before the
+    // first frame, when there is no pipeline to race with.
+    //
+    // Skipping means we still hold a swap-chain reference across the call the
+    // caller is about to make, so `ResizeBuffers` may return `E_INVALIDARG` and
+    // the overlay may not come back until the next swap-chain creation. That is
+    // a degraded overlay in a log we can read; the alternative is undefined
+    // behaviour in the renderer. If this ever fires, the fix is to make
+    // `PIPELINE` and `RENDER_LOOP` real `Mutex<Option<_>>` cells - and this line
+    // is the evidence that it is worth the diff against upstream.
+    let present = PRESENT_TID.load(Ordering::Relaxed);
+    let current = GetCurrentThreadId();
+    if present != 0 && present != current {
+        error!(
+            "{operation} is on thread {current} but Present is on thread {present}; skipping the \
+             DX12 pipeline reset to avoid racing it"
+        );
+        return;
+    }
+
     if !holds_swap_chain_references() {
         return;
     }
 
-    debug!("Releasing DX12 swap-chain references before {operation}");
+    // The thread pair is logged on the way through, not only on refusal: a run
+    // with no refusal in it is only evidence that the assumption holds if this
+    // says the guard was in a position to refuse. `present == 0` means no frame
+    // has been presented yet, so the comparison proved nothing and the reset was
+    // safe for a different reason - which is a third outcome, not a pass.
+    if present == 0 {
+        debug!(
+            "Releasing DX12 swap-chain references before {operation} on thread {current}; no \
+             frame presented yet, so no pipeline reset can be racing"
+        );
+    } else {
+        debug!(
+            "Releasing DX12 swap-chain references before {operation} on thread {current}, which \
+             is the Present thread"
+        );
+    }
     reset_pipeline(operation);
 }
 
@@ -795,6 +848,11 @@ unsafe fn update_display_size_after_swap_chain_change(
 
 fn render(swap_chain: &IDXGISwapChain3) -> Result<()> {
     unsafe {
+        // Every frame, not once: if the game ever moves its present loop to
+        // another thread, the guard in `release_swap_chain_references` has to
+        // compare against where `Present` is now, not where it started.
+        PRESENT_TID.store(GetCurrentThreadId(), Ordering::Relaxed);
+
         if !validate_pending_initialization_context(swap_chain)? {
             return Ok(());
         }

@@ -8,17 +8,29 @@
 #                   Its hudhook/imgui dependencies are declared in its own
 #                   manifest, not here: one crate uses them, and they only
 #                   build for the Windows target.
+#   desert-dispatch rlib, the dispatch-mission levers    -> [Dispatch] [dispatch]
+#                   Shorter missions, bigger rewards, no skill or headcount
+#                   gate, plus the dump it grew out of. No hook, no code patch:
+#                   it edits parsed static-info records on its own thread, and
+#                   those are re-read from disk every launch.
 #   desert-tooling  cdylib -> DesertTooling.asi. The workspace's ONLY cdylib
-#                   and only DllMain: it links the three subsystems, gates on
+#                   and only DllMain: it links the four subsystems, gates on
 #                   the host exe, opens the one DesertTooling.log, seeds the one
-#                   DesertTooling.ini from all three schemas, and starts one
+#                   DesertTooling.ini from all four schemas, and starts one
 #                   thread per subsystem.
 #
 # desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
 
 [workspace]
 resolver = "2"
-members = ["desert-core", "desert-looter", "desert-gatherer", "desert-overlay", "desert-tooling"]
+members = [
+    "desert-core",
+    "desert-looter",
+    "desert-gatherer",
+    "desert-overlay",
+    "desert-dispatch",
+    "desert-tooling",
+]
 
 [workspace.package]
 edition = "2021"

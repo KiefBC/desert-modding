@@ -12,6 +12,9 @@ pub const THEME: Theme = Theme {
     window_rounding: 0.0,
     frame_rounding: 0.0,
     grab_rounding: 0.0,
+    // Dear ImGui's own default, like every other number here: this theme is the
+    // unstyled baseline and its tabs are the stock lerps of the stock palette.
+    tab_rounding: 4.0,
     window_border: 1.0,
     frame_border: 0.0,
     colors,

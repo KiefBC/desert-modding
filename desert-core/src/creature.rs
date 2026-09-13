@@ -38,17 +38,21 @@
 //! and `desert-core/tests/gimmick_real.rs` checks them against the real exe.
 
 // ---------------------------------------------------------------------------
-// The catch-count patch site (build 25116796, section 17.4)
+// The catch-count patch site (build 25246367, section 17.4)
 // ---------------------------------------------------------------------------
 
 /// The 21 bytes of section 17.4, unique in the mapped image:
 ///
 /// ```text
-/// 0x142a74151  41 B8 01 00 00 00        mov  r8d,1              <- the count
-/// 0x142a74157  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
-/// 0x142a7415E  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
-/// 0x142a74165  E8 ...                   call FUN_14234f210      ; (out, &item_index, count)
+/// 0x142a75891  41 B8 01 00 00 00        mov  r8d,1              <- the count
+/// 0x142a75897  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
+/// 0x142a7589E  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
+/// 0x142a758A5  E8 ...                   call FUN_1423507b0      ; (out, &item_index, count)
 /// ```
+///
+/// The bytes are the contract and the addresses are only illustration: the
+/// site moved 0x1740 between builds 25116796 and 25246367 without one of these
+/// bytes changing, which is exactly why it is found by scanning for them.
 ///
 /// The trailing `lea` and `E8` are not stolen; they are in the pattern
 /// because they are what makes it unique and what proves the immediate really

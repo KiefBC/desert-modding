@@ -4,6 +4,7 @@ result-*
 *:Zone.Identifier
 *.log
 /analysis/
+/evidence/
 /dist/
 __pycache__/
 *.pyc

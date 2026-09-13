@@ -16,6 +16,7 @@ pub const THEME: Theme = Theme {
     window_rounding: 2.0,
     frame_rounding: 2.0,
     grab_rounding: 2.0,
+    tab_rounding: 2.0,
     window_border: 1.0,
     frame_border: 1.0,
     colors,
@@ -89,11 +90,17 @@ fn colors() -> Vec<(Role, Rgba)> {
         (Role::ResizeGrip, rgb(0x5A6169, 0.5)),
         (Role::ResizeGripHovered, rgb(0x33383E, 0.7)),
         (Role::ResizeGripActive, leather),
+        // The tabs follow the structural bars: quiet warm grey at rest, gold on
+        // a hover, the full splash red for the page showing. An unfocused menu
+        // keeps its resting tabs exactly as they are and lets only the showing
+        // one fall back to the pale red a frame takes under the mouse - so the
+        // page you are on is still legible without the window claiming focus it
+        // does not have.
         (Role::Tab, shading),
         (Role::TabHovered, gold_mid),
         (Role::TabActive, red),
-        (Role::TabUnfocused, ground),
-        (Role::TabUnfocusedActive, shading),
+        (Role::TabUnfocused, shading),
+        (Role::TabUnfocusedActive, red_pale_active),
         (Role::TableHeaderBg, shading),
         (Role::TableRowBg, highlight),
         (Role::TableRowBgAlt, ground),

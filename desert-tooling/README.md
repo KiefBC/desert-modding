@@ -1,16 +1,17 @@
 # Desert Tooling
 
-**Version 0.3.0**, for Crimson Desert Enhanced, Steam build **25116796**.
+**Version 0.6.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
-One `.asi` plugin with three subsystems: **auto-loot**, **gathering yield
-multipliers** and an **in-game settings menu**. Written in Rust, installed by
-dropping two files into `bin64`.
+One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
+multipliers**, **dispatch missions** and an **in-game settings menu**. Written in
+Rust, installed by dropping two files into `bin64`.
 
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
 | Looter | gathers plants, ore, stone, wood, insects and fish around you | `[Looter]` | `[looter]` |
-| Gatherer | multiplies what a gathering node or a caught creature gives | `[Gatherer]` | `[gatherer]` |
+| Gatherer | multiplies what a gathering node, a water well, a caught creature or a coin lying in the world gives | `[Gatherer]` | `[gatherer]` |
+| Dispatch | shorter dispatch missions, bigger mission rewards, no skill or headcount gate | `[Dispatch]` | `[dispatch]` |
 | Overlay | the settings menu, `Insert` | `[Overlay]` | `[overlay]` |
 
 ## Upgrading from Desert Looter, Desert Gatherer and Desert Overlay
@@ -88,9 +89,12 @@ instead. And the source is public: all of it is in this repository.
 ## The menu
 
 Press **Insert** and a window appears over the game (DirectX 12, Dear ImGui)
-with every setting in it as a checkbox, slider or key picker, in three
-collapsible sections. Change one and it takes effect within about a second,
-without leaving the game and without a restart.
+with every setting in it as a checkbox, slider or key picker, behind a row of
+tabs: **Looter**, **Gatherer** and **Dispatch**, then **Settings** (every key you
+can bind, and how the menu itself looks, the overlay's own included) and
+**Debug** (every logging switch and dump). Change one and
+it takes effect within about a second, without leaving the game and without a
+restart.
 
 The ini is the whole contract. The menu writes `DesertTooling.ini` and each
 subsystem re-reads its own section of it once a second, so:
@@ -105,15 +109,15 @@ subsystem re-reads its own section of it once a second, so:
   exactly as they were. Writes go through a temporary file and a rename, so a
   subsystem reading the file at the wrong moment never sees half of it.
 
-Presets sit above the Looter section: `Everything`, `Plants only`, `Wood only`,
-`Rock and ore only`. One click sets the four gather families and ground items
-and leaves everything else alone.
+Presets sit at the top of the Looter tab: `Everything`, `Plants only`, `Wood only`,
+`Rock and ore only`. One click sets the Looter's four gather families and
+ground items and leaves everything else alone.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
 field is written when you press Enter or click away, not while you are still
-typing. If the file cannot be read or written, the reason appears as a red line
-under that section and in `DesertTooling.log`; nothing is lost and the game is
+typing. If the file cannot be read or written, the reason appears in red in the
+menu's footer, in full on hover, and in `DesertTooling.log`; nothing is lost and the game is
 unaffected.
 
 **While the menu is open**, keyboard and mouse input is held back from the game,
@@ -130,7 +134,7 @@ it.
 | Insert | show and hide the settings menu |
 | F9 | gather the nearest eligible node or item once |
 | F10 | toggle automatic gathering on and off |
-| F11 | write a survey of everything nearby to the log (read-only) |
+| F11 | write a survey of everything nearby to the log (read-only); gather nodes and items are listed first, up to `SurveyLines`, and a final line says how many actors were left unprinted |
 | F7 | debug: record every event the game queues until pressed again |
 
 Every gathering keypress beeps once. All five keys can be changed in the ini or
@@ -162,8 +166,9 @@ from the menu.
 - **Respects the bag.** Nothing is sent when the bag is full unless every item
   the node can give would stack onto a stack you already carry, read from the
   node's own record. Repeated refusals switch auto mode off.
-- **Leaves alone**: standing trees, log chunks, animals and NPCs, furniture and,
-  by default, dropped weapons and armour.
+- **Leaves alone**: standing trees, log chunks, animals and NPCs, furniture,
+  breakable pots, market-stall goods and, by default, dropped weapons and
+  armour.
 
 Nothing is simulated and no input is faked: the plugin sends the game the same
 pickup event it sends when you press E.
@@ -171,20 +176,55 @@ pickup event it sends when you press E.
 ## What the Gatherer does
 
 Every gathering node in the game carries a minimum and a maximum quantity for
-each item it can produce. Desert Tooling multiplies both, for the 275 records
-the game counts as genuine gather nodes, split into four independent families:
+each item it can produce. Desert Tooling multiplies both, in 279 records across
+five independent families:
 
 | family | what it covers | records |
 |---|---|---|
-| Foraging | plants, fruit, berries, mushrooms, crops | 82 |
+| Foraging | plants, fruit, berries, mushrooms, crops, and the water you draw from a **water well** | 83 |
 | Logging | firewood cut from felled trees (`firewood_*`) | 141 |
 | Mining | the `collect_mine` family: rocks, veins, cave variants, breakable stalactites | 36 |
 | Ore Nodes | the `collect_ore` family: `ore_*` deposits, sulfur stone, collectible stalactites | 16 |
+| Money | the coins placed in the world: **money lying around, and nothing else** | 3 |
 
 Each family has its own multiplier, 1 to 100. Mining and Ore Nodes look alike in
 game but are separate families in the game's data; set both if you want all
 mining-style gathering raised together. Nothing is patched on disk: the numbers
 are multiplied in memory as the game loads them.
+
+They are the game's own groupings — the 275 records it classes as gather nodes,
+the same four the DMM pack covered — plus four records the pack never had: the
+three placed money records, which are the `Money` family and get their own
+section below, and the water well, which pays out through the same kind of
+record as a bush and so sits under `Foraging`. Water from a well is a thing you gather out of the world
+like everything else there, and a player reading "plants, fruit, berries" would
+not guess it, so it is said here: **`Foraging` also multiplies the water you
+draw from a well.** It does *not* touch the breakable water pots or the goods
+sitting on market stalls — those hand you a ready-made item and never read the
+table, so they are not in any family.
+
+**`Money` multiplies the money you find lying in the world, and nothing else.**
+Three records in the gather table are placed money props - the small coin prop
+(`gimmick_item_common_coin_0001`, 10..15), the large one (100..150) and a
+silver-bar record (a fixed 2500) - and all three pay the game's one money item,
+which the bag calls `Money_Copper`. Copper, silver and gold are display units
+over that one count (2500 copper shows as 25 silver), so the amount *is* the
+denomination, and a multiplied pickup may show in a different unit than the
+vanilla one did. It does **not** touch what enemies drop, what quests pay, what a
+coin pouch opens to, what a chest holds, what anything sells for, or what a
+dispatch mission returns. This is the one setting here that is a *balance* lever
+rather than a convenience one, which is why it ships at `1` on purpose. Measured
+in vanilla on 2026-09-13: three pickups of the small coin prop paid 15, 14 and
+15, all inside its 10..15 block, and one pickup at `Money=3` paid 30 with the
+bag up by exactly 30, so the prop rolls its record and the same edit that
+multiplies a bush multiplies it, live, after a slider change mid-session.
+At `Money=100` the same day, two coin pickups between two F11 surveys moved the
+bag from 11919 to 14384 copper, two grants inside the multiplied 1000..1500.
+
+**The pickup prompt counts copper; the HUD counts silver.** A prompt reading
+1,400 on a multiplied coin is 1,400 copper, which lands as 14 silver on the
+HUD. The base coin is worth a few copper, so even at 100x one coin is a
+handful of silver, never a thousand.
 
 Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
@@ -206,12 +246,13 @@ different number every time — at `Bugs=10`, ten colonies and somewhere around
 twenty fireflies. That is the game's own drop rule, not a bug in the patch.
 
 It does **not** touch enemy loot, chests, rod-and-line fishing, skinning, quests,
-Abyss objects, artifacts, gates or fast travel.
+Abyss objects, artifacts, gates or fast travel - and `Money` does not reach the
+money any of those pay, only the coins placed in the world.
 
 ### What to expect in game
 
 The multiplier scales the numbers in the record, not the amount you happen to
-get on one pick. Three things surprise people:
+get on one pick. Four things surprise people:
 
 - **A node picks one of its ranges, then rolls it.** Most records carry several
   resource-output blocks, and a single gather pays out one of them, chosen at
@@ -234,6 +275,16 @@ get on one pick. Three things surprise people:
   block of 1-1, and rocks carry three blocks that are each 1-1, so a pick goes
   from exactly 1 to exactly 2 at 2x, every time. If you want to check the plugin
   is working at all, check one of those.
+- **A well never rolls.** Its record's minimum and maximum are already the same
+  number, so unlike a bush there is no range to land anywhere in: a well that
+  gives 5 gives exactly 15 at `Foraging=3`, every time - measured, with the
+  bag count logged before and after. And the multiplier is read when you
+  **take** the water, not when the bucket fills: raise a full bucket at 3,
+  turn the slider to 6, take it, and you get 30.
+- **A coin prop rolls a small range.** The common coin prop pays 10 to 15 in
+  vanilla (measured: 15, 14, 15); at `Money=3` one pickup pays 30 to 45, and the
+  game may show it in silver once it crosses the display threshold. The prompt
+  on the coin is in copper; divide by 100 for what the HUD will add.
 
 One more thing that looks odd: pressing E can hand the total over as several
 separate "x1" pickups a second or so apart. That is the game's own delivery
@@ -247,13 +298,14 @@ multiplier preset** change the same minimum/maximum quantities, on disk.
 If either is mounted while this `.asi` is installed, the two stack: a mounted
 DMM 5X plus `Mining=2` here gives 10x. **Unmount both in DMM before using this
 plugin.** The `desert-gatherer-dmm/` directory in this repository is that pack;
-this plugin is its replacement, not its companion.
+this plugin is its replacement, not its companion. The one record with nothing
+on the DMM side to stack with is the water well, which the pack never covered.
 
 ## Settings (`DesertTooling.ini`)
 
-One file, three sections. A key belongs to the `[Section]` header above it:
-`Enabled` and `Debug` exist under all three and mean different things in each,
-and `DryRun` exists under `[Gatherer]` only.
+One file, four sections. A key belongs to the `[Section]` header above it:
+`Enabled` and `Debug` exist under all four and mean different things in each,
+and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 
 ### `[Looter]`
 
@@ -271,14 +323,26 @@ and `DryRun` exists under `[Gatherer]` only.
 | `GatherLogging` | 1 | 0 = pass over firewood cut from felled trees |
 | `GatherMining` | 1 | 0 = pass over the `collect_mine` family: rocks, veins, stalactites |
 | `GatherOre` | 1 | 0 = pass over the `collect_ore` family: ore deposits and sulfur stone (separate from Mining; set both to gather all of them) |
+| `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is `[Gatherer]`'s `Money`. Untested in game, so off by default |
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
+| `SurveyLines` | 200 | how many actor lines one F11 prints; gather nodes and items come first, and the survey says how many it cut |
 | `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
-| `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields |
+| `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields. Coin props are not logged: measure money with the bag line of two F11 surveys |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | see the key names below |
+
+**The plugin never takes a water well's bucket**, whatever `GatherForaging`
+says, and F9 will not either. The well's record is a `Foraging` record, so the
+`Foraging` multiplier reaches it - but a pickup the plugin sends at the bucket
+is delivered from outside the well's own crank sequence, and that sequence is
+what puts the next bucket there. Tried on 2026-09-13: the water arrived, the
+bucket vanished, and the well stayed empty for good. So at a well you do all of
+it yourself - lower, crank, take - and the multiplier still applies to what
+you take. When the nearest thing is a well the F9 line says it was refused
+rather than pretending nothing was there.
 
 ### `[Gatherer]`
 
@@ -287,10 +351,11 @@ and `DryRun` exists under `[Gatherer]` only.
 | `Enabled` | 1 | 0 = the record-loader hook still reads every record to keep its own remembered table current, but writes nothing as records load, and the re-apply pass (see below) writes vanilla numbers back into whatever is already parsed. Flipping it back to 1 re-applies the multipliers the same way |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
-| `Foraging` | 1 | multiplier for plants and crops, 1..100 |
+| `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
 | `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
+| `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
 | `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
 | `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
 
@@ -315,7 +380,7 @@ is.)
 | `Font` | `segoeui.ttf` | the font the menu is drawn in. A bare file name is looked up in `%WINDIR%\Fonts`, an absolute path is used as it stands, and an empty value goes back to Dear ImGui's built-in font. `georgia.ttf`, `constan.ttf` and `cambria.ttc:0` give a more fantasy, serif look; the `:N` suffix picks a face out of a `.ttc` collection. A missing or unreadable file is a warning in the log and the built-in font |
 | `HdrBrightness` | `203` | paper white in nits on an HDR display: how bright the menu's white is drawn. `80` to `1000`; ignored on SDR |
 | `ColorSpace` | `auto` | what the menu's pixels are encoded for: `auto` (follow the swapchain), `sdr`, `hdr10` or `scrgb`. Anything else is `auto` with a warning in the log |
-| `Theme` | `banner` | the menu's colour theme: `classic`, `parchment`, `gilded`, `splash`, `banner` or `steel`. The picker at the top of the menu switches between them live; this key is what makes a choice stick across launches |
+| `Theme` | `banner` | the menu's colour theme: `classic`, `parchment`, `gilded`, `splash`, `banner` or `steel`. The `Theme` setting on the menu's Settings tab switches between them live; this key is what makes a choice stick across launches |
 
 The game presents an HDR10 (PQ) signal, so the menu is converted into the
 swapchain's colour space before it is drawn; without that its sRGB colours come
@@ -323,6 +388,82 @@ out blown out and oversaturated. `auto` reads the colour space off the swapchain
 and is right unless the detection is wrong, which is what the three forced
 values are for. `HdrBrightness` is the only one worth touching in normal use:
 raise it if the menu looks dull next to the game, lower it if it glares.
+
+### `[Dispatch]`
+
+Dispatch missions ("faction operations") are the jobs you send workers away on
+from the faction map. This section makes them finish sooner, pay more, and stop
+turning you away.
+
+| key | default | meaning |
+|---|---|---|
+| `Enabled` | `1` | Turned off **while the game runs**, every mission and reward it changed goes back to vanilla. Turned off **before you launch**, the pass never runs and nothing in the game is read at all — and it stays that way for the session: turning it back on, here or in the menu, does nothing until the next launch |
+| `Speed` | `1` | divide every mission's duration by this, 1..100. Vanilla runs 2h to 96h; `4` turns a 16h mission into a 4h one. Nothing ever goes below 6 minutes. Reaches missions already under way |
+| `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
+| `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243 — the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
+| `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |
+| `LogRecords` | `1` | `1` = one line per mission in the log |
+| `MaxLines` | `4000` | ceiling on the lines one pass writes, 0..20000. The summaries are never capped, and hitting it never stops a change being made |
+| `DryRun` | `0` | `1` = log every change that would be made and write nothing |
+| `Debug` | `0` | `1` = also log the nodes with no missions, every change one line at a time, and why anything was stepped over |
+| `DumpRaw` | `0` | `1` = log each mission's raw bytes as hex, for chasing an offset after a game update |
+| `DumpRewards` | `1` | `1` = also dump the reward rows the missions name. A diagnostic only: `Rewards` reads and edits those rows either way |
+| `DumpBuffs` | `0` | `1` = census the game's buff and stat tables into the log, read-only: the buff effects that touch drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drops. A diagnostic for one investigation, tagged `[buffs]`; it edits nothing |
+
+A change takes effect within about a second. Only the 219 reward rows dispatch
+missions actually name are touched — never the game's wider drop table — so this
+does not become a loot multiplier for chests and carcasses. No game code is
+patched and no hook is installed: the plugin edits five fields of the tables the
+game has already read (four settings, five fields — `Rewards` writes both ends of
+a min/max pair), on its own thread, and remembers what each one said first so it
+can put it back.
+
+**Two of the settings reach missions that are already out, and two do not.**
+`Speed` shortens a mission already under way — the game checks a mission's
+progress against the duration in the table every time it ticks — and `Rewards`
+reaches rewards already waiting to be paid, because the game reads the amounts at
+the moment the items land. `NoSkillRequirement` and `AnyOperatorCount` are
+checked when a mission *starts*, so a mission already out keeps running under the
+rules it started with. A **repeating** mission is the exception to that: it
+re-checks on every restart, which is why a repeating mission that needed a skill
+or a full crew stops with an error message at its next restart once the plugin is
+gone.
+
+**Nothing here is saved into your game.** The mission and reward tables are read
+from the game's own files every launch, so setting these back to `1` and `0` puts
+every mission back, and deleting the plugin leaves nothing to undo. `Rewards`
+banks nothing either: a reward still waiting on you is worked out from the table
+at the moment it lands, so set it back to `1`, or remove the plugin, and what is
+waiting pays vanilla.
+
+**Nor, on this game build, does anything else.** The game has code to bank a
+single percentage figure for a finished mission in your save, and part of that
+figure is a bonus for sending more workers than the mission needed — which is the
+one thing `AnyOperatorCount` could have inflated, since it tells the game every
+mission needs only one worker. Both of the switches that code sits behind are
+turned **off** on build 25246367, as they were on 25116796 before it: no mission
+defers a payout, and the figure ignores the worker count entirely. The plugin
+reads both at startup and says so in `DesertTooling.log`, on the `[banking]`
+line:
+
+```text
+[banking] deferred-reward gate (0x6BC6AA8) = 0 - no mission defers its payout, so nothing is
+stored in the save; surplus-worker gate (0x6BA07C8) = 0 - the stored percent ignores the worker
+count, so entry+0xC4 never enters it; on this launch nothing is ever banked: no completed mission
+defers a reward, so AnyOperatorCount cannot outlive the plugin.
+```
+
+**Check that line after a game update**, because these are the kind of switch an
+update can flip, and it is the only thing that would tell you.
+
+So nothing here reaches your save today. This section exists because the mechanism
+exists: if a future build turned those switches on, finishing a mission with
+`AnyOperatorCount=1` would bank a bigger figure than you earned, on the 142 of the
+game's 936 missions that can repeat, and it would pay out later even with the
+plugin gone. It would be bounded to the missions you finished with the setting on,
+it would clear itself as those rewards landed, and it would not be a corrupted
+save. `Speed` and `NoSkillRequirement` are nowhere in that figure and leave
+nothing behind at all.
 
 ### Key names
 
@@ -338,8 +479,7 @@ at its default, instead of leaving nothing to edit. An existing file is never
 read, rewritten or replaced — the create is the OS's own atomic "only if
 absent" — so this can never touch your settings. The generated file is bare,
 unlike the shipped template's comments explaining each key, but every key in the
-tables above is in it, including the three the menu groups under
-`Diagnostics:`.
+tables above is in it, including the ones the menu draws on its Debug tab.
 
 ## How a changed multiplier becomes live
 
@@ -351,7 +491,9 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 13,906 records, 275 of which are gather nodes. Roughly
+called `gimmickinfo`: 13,906 records, 279 of which this plugin multiplies — the
+275 the game classes as gather nodes, plus the water well and the three placed
+money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
 a preload pass that reads every record in order, parses each one into an object
 in memory, stores the object's pointer in a slot table, and then closes the
@@ -389,11 +531,11 @@ through the load-time hook, whenever it does load.
 **What the log shows.** Right after each `[ini] reloaded: ...` line:
 
 ```text
-[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1: 82 records rewritten, 193 unchanged, 0 skipped; 644 scalars written
+[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1 Money=1: 83 records rewritten, 196 unchanged, 0 skipped; 646 scalars written
 ```
 
 or, with `DryRun=1`, the same line as `[dry] would re-apply ...`. At `Enabled=0`
-the multiplier part instead reads `Foraging=1 Logging=1 Mining=1 Ore=1
+the multiplier part instead reads `Foraging=1 Logging=1 Mining=1 Ore=1 Money=1
 (Enabled=0)`: `Enabled=0` means vanilla, not "leave whatever is already there,"
 so the pass writes every record's minimum and maximum back to their disk values.
 With `Debug=1`, each rewritten record also gets its own line:
@@ -410,7 +552,7 @@ is nothing left for the re-apply pass to do yet.
 the summary line is followed by one naming the reasons, for example:
 
 ```text
-[gatherer] [live] WARN 12 of 275 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
+[gatherer] [live] WARN 12 of 279 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
 ```
 
 or, if the record manager itself could not be read at all:
@@ -450,7 +592,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertTooling.asi` | the plugin | yes, that uninstalls it |
-| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all six multipliers, so deleting it turns them off |
+| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all eight multipliers, so deleting it turns them off |
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
 
@@ -475,7 +617,10 @@ happens.
 `[gatherer]` lines record what was **written** to the records, not what you
 received. To measure actual yields, set `LogReceived=1` under `[Looter]` and
 read the `[recv] item <key> x<count>` lines as you gather. That is every item the
-game hands you, and it is how the numbers in this README were measured.
+game hands you, and it is how the numbers in this README were measured. The one
+exception is money: picking up a coin prop writes no `[recv]` line at all, so
+measure `Money` with the bag line an F11 survey prints (`Money_Copper key=1
+x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 

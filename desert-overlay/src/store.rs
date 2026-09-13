@@ -188,8 +188,14 @@ impl<M: IniModel> Store<M> {
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 // Not an error worth a red line: the file appears the moment
-                // anything is edited.
+                // anything is edited. And not a state that keeps an older red
+                // line either - a read that failed on a file since deleted
+                // has nothing left to complain about, and the footer reports
+                // the first status any store holds, so one stale one would
+                // speak for the whole window.
                 self.mtime = None;
+                self.status = None;
+                self.failed = false;
                 false
             }
             Err(e) => {
@@ -268,7 +274,7 @@ fn file_mtime(path: &Path) -> Option<SystemTime> {
 mod tests {
     use super::*;
     use crate::dynmodel::DynModel;
-    use desert_core::schema::{Field, Kind, Section};
+    use desert_core::schema::{Field, Kind, Section, Tab};
     use std::sync::atomic::{AtomicU32, Ordering};
 
     static N: AtomicU32 = AtomicU32::new(0);
@@ -284,6 +290,7 @@ mod tests {
             heading: None,
             same_line: false,
             help: None,
+            tab: Tab::Section,
         }
     }
 

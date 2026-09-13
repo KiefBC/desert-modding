@@ -1,9 +1,9 @@
 //! The gimmickinfo record-loader hook: multiply the yield scalars in the raw
 //! table bytes just before the game parses each record.
 //!
-//! ## The game side (build 25116796, from Ghidra)
+//! ## The game side (build 25246367, from Ghidra)
 //!
-//! `FUN_1403856b0(mgr, status, idx, stream)` — RVA resolved at runtime by
+//! `FUN_140385cd0(mgr, status, idx, stream)` — RVA resolved at runtime by
 //! `desert_core::gimmick::resolve_record_loader`, never hard-coded. Two
 //! callers reach it (the per-record accessor and a load-everything path) and
 //! both only call it when the record is *not* loaded yet
@@ -74,6 +74,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering}
 
 use desert_core::collect::{self, Family};
 use desert_core::gimmick::{self, Edit};
+use desert_core::manager;
 use desert_core::safe;
 
 use crate::config::LIVE;
@@ -187,7 +188,12 @@ fn describe(edits: &[Edit]) -> String {
 /// failed, an index out of range, a record already loaded, or an offsets table
 /// that disagrees with the stream cursor.
 fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>)> {
-    let count = safe::read::<u32>(mgr + 0x08)? as usize;
+    // The offsets are `desert_core::manager`'s, the reads are not: this function
+    // must read the count *before* the first-call diagnostic below and the
+    // records array *after* it, and it wants the `records[idx] == 0` reading
+    // rather than the object, so `manager::view_of` and `manager::slot` would
+    // both change what happens here. Only the two strides are shared.
+    let count = safe::read::<u32>(mgr + manager::MGR_COUNT)? as usize;
     if !FIRST_CALL_LOGGED.swap(true, Ordering::Relaxed) {
         let size = safe::read::<u32>(stream + 0x18).unwrap_or(0);
         let cursor = safe::read::<u32>(stream + 0x1C).unwrap_or(0);
@@ -206,7 +212,7 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     // The two callers only reach the loader when the slot is null. If it is
     // not, the game will not parse anything and a patch would be pointless
     // (and, since the buffer may hold a different record's bytes, wrong).
-    let records = safe::read_ptr(mgr + 0x58)?;
+    let records = safe::read_ptr(mgr + manager::MGR_RECORDS)?;
     if safe::read::<usize>(records + idx * 8)? != 0 {
         return None;
     }
@@ -255,7 +261,7 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     Some((buf + cursor, bytes))
 }
 
-/// Installed on `FUN_1403856b0`. Runs before the deserializer, on a game thread.
+/// Installed on `FUN_140385cd0`. Runs before the deserializer, on a game thread.
 ///
 /// # Safety
 /// Called from the trampoline stub with the hooked function's first four
@@ -370,10 +376,10 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// rec+0x278   ptr   output list data: entries of 16 bytes
 /// rec+0x280   u32   entry count
 /// entry+0x00  ptr   block object (0x70 bytes), null when the disk flag was 0
-/// entry+0x08  u32   item key (raw block +64)
+/// entry+0x08  u32   _dropTagNameHash (raw block +64); ZERO on gather records
 /// block+0x20  u64   MIN   (raw block +42)
 /// block+0x28  u64   MAX   (raw block +50)
-/// block+0x6c  u32   item id (raw block +5)
+/// block+0x68  u32   item id (raw block +1, echoed at +60)
 /// ```
 ///
 /// `rec+0x288` holds one further optional block of the same type with no
@@ -381,17 +387,39 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// paths must produce the same yields or a session's numbers would depend on
 /// when the ini was last edited.
 mod parsed {
-    pub const MGR_COUNT: usize = 0x08;
-    pub const MGR_RECORDS: usize = 0x58;
+    // The manager pair itself is not here: `mgr+0x08` and `mgr+0x58` are
+    // `desert_core::manager`'s MGR_COUNT and MGR_RECORDS, which
+    // `desert_dispatch` reads the faction-node and dropset managers through as
+    // well. One definition, so a stride cannot be right in one subsystem and
+    // wrong in the other.
     pub const REC_KEY: usize = 0x08;
     pub const REC_LIST: usize = 0x278;
     pub const REC_COUNT: usize = 0x280;
-    /// Bytes per list entry, and the offset of the item key inside one.
+    /// Bytes per list entry.
     pub const ENTRY: usize = 16;
+    /// The list entry's own key field, which `FUN_1414a7cc0` reads as the four
+    /// bytes *after* each 64-byte block body — disk `+64`.
+    ///
+    /// **It is zero on every gather record**, measured over all 896 output
+    /// blocks in DMM's clean table body, so it identifies nothing and must not
+    /// be compared against an item id. It is still read, as a structural
+    /// canary: the 142 blocks in the table that do carry a nonzero value here
+    /// are chests, dig sites and dungeon loot, and a gather record growing one
+    /// means the record shape moved. See `docs/reference-internals.md` §16.
     pub const ENTRY_ITEM: usize = 8;
     pub const BLOCK_MIN: usize = 0x20;
     pub const BLOCK_MAX: usize = 0x28;
-    pub const BLOCK_ITEM: usize = 0x6C;
+    /// The block's item id.
+    ///
+    /// **Corrected 2026-09-12 from `0x6C`, which is always zero.** The block
+    /// parser's first read (`FUN_141a37180`) takes eight bytes from disk `+1`
+    /// into `block+0x68`, so the low dword at `0x68` is the item id (disk `+1`)
+    /// and the high dword at `0x6C` is disk `+5` — a pad that is zero on all
+    /// 1038 blocks in the table. §16 named `0x6C` the item id from the same
+    /// off-by-four reading that put the disk-side item at `+5` instead of `+1`;
+    /// both are fixed together, and neither can be tested natively because
+    /// these are offsets into memory the game parsed.
+    pub const BLOCK_ITEM: usize = 0x68;
 }
 
 /// What one [`reapply`] pass did, for the single summary line its caller logs.
@@ -435,7 +463,8 @@ pub struct Outcome {
 
     /// The list entry's block pointer is null (the disk flag byte was 0).
     pub block_null: usize,
-    /// The block's item id is not the one the raw block had.
+    /// The block's item id is not the one the raw block had, or the list
+    /// entry's key field is not the zero every gather record carries there.
     pub block_item: usize,
     /// A guarded read of the block failed.
     pub block_read: usize,
@@ -524,9 +553,12 @@ impl Outcome {
 /// through this before it is used as a base, so none of the `base + offset`
 /// expressions there can overflow — which `safe::read` would refuse anyway,
 /// but only after the addition had already happened.
-fn plausible(p: usize) -> bool {
-    (0x10000..0x7FFF_FFFF_0000).contains(&p)
-}
+///
+/// `desert_core::manager::plausible` under the name this file has always used.
+/// It was byte-identical to `desert_dispatch`'s copy, and a bound that differed
+/// between two subsystems walking the same managers would be a bug in whichever
+/// one was looser.
+use desert_core::manager::plausible;
 
 /// The multiplier a remembered record should be at right now: its family's
 /// live value, or 1 when `Enabled=0` or the key is not a gather record after
@@ -572,19 +604,17 @@ pub fn reapply() -> Outcome {
     let dry = LIVE.dry_run();
     let debug = LIVE.debug();
 
-    let (Some(count), Some(records)) =
-        (safe::read::<u32>(mgr + MGR_COUNT), safe::read_ptr(mgr + MGR_RECORDS))
-    else {
+    // `manager::view_of` is the same three steps this block used to spell out:
+    // read the `u32` count at MGR_COUNT, read the array pointer at MGR_RECORDS,
+    // and require it to be `plausible` - so `records + idx * 8`, with a `u16`
+    // index adding at most 0x7FFF8, cannot wrap. Every failure lands on the same
+    // `manager_unreadable` flag it did before. The one difference is that a
+    // count that will not read no longer attempts the array read beside it,
+    // which nothing can observe: `safe::read` has no effect but its answer.
+    let Some((count, records)) = manager::view_of(mgr) else {
         out.manager_unreadable = true;
         return out;
     };
-    // A remembered index is a `u16`, so `records + idx * 8` adds at most
-    // 0x7FFF8 to a pointer `plausible` has already capped well below the top
-    // of the address space: the arithmetic below cannot wrap.
-    if !plausible(records) {
-        out.manager_unreadable = true;
-        return out;
-    }
     let count = count as usize;
 
     for rec in remember::snapshot() {
@@ -595,23 +625,25 @@ pub fn reapply() -> Outcome {
             out.skip_index += 1;
             continue;
         }
-        let Some(obj) = safe::read::<usize>(records + idx * 8) else {
-            out.skipped += 1;
-            out.skip_read += 1;
-            continue;
+        // The same three readings this block used to spell out, in the same
+        // order - read, null, `plausible` - and charged to the same two
+        // counters. `manager::slot` is where `desert_dispatch` walks its two
+        // managers through as well.
+        let obj = match manager::slot(records, idx) {
+            manager::Slot::Loaded(p) => p,
+            manager::Slot::Empty => {
+                // The slot was never filled: the lazy loader will fill it
+                // through the hook, which applies the current multiplier itself.
+                out.skipped += 1;
+                out.skip_unloaded += 1;
+                continue;
+            }
+            manager::Slot::Unreadable => {
+                out.skipped += 1;
+                out.skip_read += 1;
+                continue;
+            }
         };
-        if obj == 0 {
-            // The slot was never filled: the lazy loader will fill it through
-            // the hook, which applies the current multiplier itself.
-            out.skipped += 1;
-            out.skip_unloaded += 1;
-            continue;
-        }
-        if !plausible(obj) {
-            out.skipped += 1;
-            out.skip_read += 1;
-            continue;
-        }
         match safe::read::<u32>(obj + REC_KEY) {
             Some(k) if k == rec.key => {}
             Some(_) => {
@@ -679,9 +711,15 @@ pub fn reapply() -> Outcome {
                 out.block_read += 1;
                 continue;
             };
-            // Both copies of the item id have to be the one the raw block
-            // carried, or this is not the block we remembered.
-            if entry_item != item || block_item != item {
+            // The block's item id has to be the one the raw block carried, or
+            // this is not the block we remembered. `entry_item` is not a second
+            // copy of it - it is the list entry's own key field, zero on every
+            // gather record (see `parsed::ENTRY_ITEM`) - so it is checked
+            // against the zero it should be rather than against `item`.
+            // Comparing it to `item` is what the pre-2026-09-12 code did, and
+            // it only ever passed because `item` was itself being read from a
+            // pad and was also zero.
+            if block_item != item || entry_item != 0 {
                 out.blocks_skipped += 1;
                 out.block_item += 1;
                 continue;
@@ -703,6 +741,13 @@ pub fn reapply() -> Outcome {
                 // Both writes are attempted: the pair was just read, so a
                 // refusal here means the page went away between the two, and
                 // half a block is still better reported than retried.
+                //
+                // `desert_dispatch::apply` counts its own min/max pair the same
+                // way (`usize::from(write(..)) + ..`, then `ok < 2`) and the
+                // idiom is deliberately not shared: that one is *ordered* by
+                // `node::amount_write_order` and stops on the first refusal,
+                // this one is unordered and attempts both, so a helper would
+                // take the difference as a parameter to save two lines.
                 let ok = usize::from(safe::write(block + BLOCK_MIN, want_min))
                     + usize::from(safe::write(block + BLOCK_MAX, want_max));
                 if ok < 2 {

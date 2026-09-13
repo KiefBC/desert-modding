@@ -10,19 +10,21 @@
 //! **hard-coded immediate in the handler** — there is no record to multiply
 //! (section 17.6). So this one lever is a patch on the game's own code.
 //!
-//! ## The site (build 25116796, section 17.3/17.4)
+//! ## The site (build 25246367, section 17.3/17.4)
 //!
-//! Inside `FUN_142a73c20(inventory, &err, actor, creature, &out_list, &mode)`:
+//! Inside `FUN_142a75360(inventory, &err, actor, creature, &out_list, &mode)`:
 //!
 //! ```text
-//! 0x142a74151  41 B8 01 00 00 00        mov  r8d,1              <- the count
-//! 0x142a74157  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
-//! 0x142a7415E  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
-//! 0x142a74165  E8 ...                   call FUN_14234f210      ; (out, &item_index, count)
+//! 0x142a75891  41 B8 01 00 00 00        mov  r8d,1              <- the count
+//! 0x142a75897  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
+//! 0x142a7589E  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
+//! 0x142a758A5  E8 ...                   call FUN_1423507b0      ; (out, &item_index, count)
 //! ```
 //!
 //! [`CATCH_SITE`] matches those 21 bytes and hits exactly once in the mapped
-//! image, so nothing here is hard-coded to an address. The hook steals the
+//! image, so nothing here is hard-coded to an address - the addresses above
+//! are 25246367's and are illustration only, all four having shifted 0x1740
+//! from 25116796 without a byte of the pattern changing. The hook steals the
 //! first **13** bytes — the whole `mov r8d,1` and the whole
 //! `lea rdx,[rbp+0x1d0]`, both position-independent — which is the 12 the
 //! `mov rax,<stub>; jmp rax` patch needs plus one `nop`. The stub does not
@@ -36,7 +38,7 @@
 //! reads), every volatile register is dead because the very next thing is a
 //! call whose only arguments — rcx, rdx, r8 — are all set after this point,
 //! and `rsp` is 16-byte aligned because that call is about to happen. The one
-//! branch that reaches this range (`je 0x2a74151` at `0x2a74031`) targets its
+//! branch that reaches this range (`je 0x2a75891` at `0x2a75771`) targets its
 //! first byte, not the middle of it.
 //!
 //! ## What the callback may and may not do

@@ -1,6 +1,6 @@
 [package]
 name = "desert-overlay"
-version = "0.2.0"
+version = "0.3.0"
 description = "Desert Overlay - the in-game settings menu subsystem of Desert Tooling"
 edition.workspace = true
 license.workspace = true

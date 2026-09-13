@@ -34,7 +34,9 @@ pub enum Role {
     TextDisabled,
     /// The window's background.
     WindowBg,
-    /// Child window background (unused today).
+    /// Child window background. The menu's tab body is one child window, and it
+    /// pushes this transparent while it draws so a theme that paints a panel
+    /// here does not put a second box inside the window.
     ChildBg,
     /// Popup and combo dropdown background.
     PopupBg,
@@ -76,7 +78,10 @@ pub enum Role {
     ButtonHovered,
     /// ... while pressed.
     ButtonActive,
-    /// Collapsing header bars (the "Desert Looter" / "Desert Gatherer" rows).
+    /// Collapsing header bars, tree nodes and selectable rows. The menu had one
+    /// collapsing header per subsystem until the tab bar replaced them, so
+    /// nothing in it paints with this today; the themes still name it, because
+    /// the alternative is a stock blue waiting for the first widget that does.
     Header,
     /// ... while hovered.
     HeaderHovered,
@@ -94,15 +99,15 @@ pub enum Role {
     ResizeGripHovered,
     /// ... while dragged.
     ResizeGripActive,
-    /// Tabs (unused today).
+    /// The menu's tabs at rest: Looter, Gatherer, Dispatch, Settings, Debug.
     Tab,
-    /// Tabs while hovered (unused today).
+    /// ... while hovered.
     TabHovered,
-    /// The active tab (unused today).
+    /// The tab whose page is showing.
     TabActive,
-    /// Tabs in an unfocused window (unused today).
+    /// Tabs while the menu is not the focused window.
     TabUnfocused,
-    /// The active tab in an unfocused window (unused today).
+    /// The showing tab while the menu is not the focused window.
     TabUnfocusedActive,
     /// Plot lines (unused today).
     PlotLines,
@@ -159,6 +164,11 @@ pub struct Theme {
     pub frame_rounding: f32,
     /// Corner rounding of slider knobs.
     pub grab_rounding: f32,
+    /// Corner rounding of the tabs along the top of the menu. Its own number
+    /// rather than [`Theme::frame_rounding`] because a square theme wants square
+    /// tabs even where it would tolerate a rounded button, and imgui's stock
+    /// value (4.0) is rounder than any of these.
+    pub tab_rounding: f32,
     /// Window border thickness; `0.0` for none.
     pub window_border: f32,
     /// Frame border thickness; `0.0` for none.
@@ -235,7 +245,7 @@ mod tests {
                     assert_ne!(a, b, "{}: {a:?} listed twice", t.name);
                 }
             }
-            for v in [t.window_rounding, t.frame_rounding, t.grab_rounding, t.window_border, t.frame_border] {
+            for v in [t.window_rounding, t.frame_rounding, t.grab_rounding, t.tab_rounding, t.window_border, t.frame_border] {
                 assert!((0.0..=32.0).contains(&v), "{}: style number {v} out of range", t.name);
             }
         }

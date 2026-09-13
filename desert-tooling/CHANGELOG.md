@@ -9,6 +9,445 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.6.0] - 2026-09-13
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted
+off, so an install that upgrades behaves exactly as it did, and a menu that is now a row of tabs
+instead of a stack of collapsing sections. Nothing in this release changes anything in the game:
+the one new key is a diagnostic that reads, and the menu change is where a setting is drawn plus
+two things the menu now tells you that it did not before - same sections, same keys, same
+defaults, same hotkeys.
+
+### Added
+
+- **A `DumpBuffs` key under `[Dispatch]`, and the `[buffs]` log tag: a read-only census of the
+  game's buff table and stat table.** With `DumpBuffs=1` the dispatch subsystem's existing watch
+  loop also walks the parsed `buffinfo` and `statusinfo` records and writes what it finds to the
+  log. It reports:
+
+  - every `buffinfo` entry whose `BuffData` object is one of ten classes -
+    `VaryCollectDropRate`, `VaryStaticStat`, `VaryStaticStatLevel`, `VaryStat`,
+    `VaryStaticStatRate`, `VaryStatRate`, `Loot`, `RegisterItemSellPriceRate`,
+    `RegisterCrimePriceRate` and `RegisterFactionOperationRewardRate` - decoded per class, with
+    the stat classes narrowed to the entries that reference a money or equipment-drop stat
+    (a vanilla table holds thousands of plain stat changes, and printing them all would bury the
+    handful that matter). Both are counted in full either way, seen against logged, so the log
+    says what it left out.
+  - every `statusinfo` row whose name is one of the 19 the game itself resolves by hash at
+    startup, `AddMoneyDropRate` above all - the row that name resolves to is what the census
+    exists to get - plus a histogram of the unnamed `_statType` byte over every loaded row, so
+    the log can say whether that byte is the same 19-value enum the names are.
+  - a class histogram, per-class counts, the counted skips, a per-pass line budget (`MaxLines`
+    covers it, as it covers every other line this section writes) and a verdict line saying
+    whether the layout still looks right at all.
+
+  **It edits nothing, and that is structural rather than a promise.** No hook, no patched code,
+  nothing written to the game, no call into a game function: the census is guarded reads and
+  `format!`. It is off by default because it is a diagnostic for one investigation over two of
+  the largest tables in the game, and its lines carry their own `[buffs]` tag rather than
+  `[dispatch]`, so one search finds all of it and none of the mission levers' output.
+
+  The class of a buff effect is read out of the object's own RTTI at runtime, because the kind
+  byte the game's constructor switch dispatches on comes off the stream and is not known to be
+  stored in the object at all.
+
+- **Two more tables resolved by content: `buffinfo` and `statusinfo`.** Both are found through
+  the same accessor template that already finds `gimmickinfo`, `iteminfo`, `FactionNode` and
+  `dropsetinfo`, and through the same single scan the dispatch subsystem already makes - so the
+  two extra lookups cost nothing measurable at startup and there is still not one bare image
+  address in the resolution path. On build 25246367 their manager slots are `0x6C367C8` and
+  `0x6C2E328`; `desert-core`'s `#[ignore]`d exe test now asserts both, and that each name is
+  still a unique NUL-delimited literal in the image.
+
+### Changed
+
+- **One tab per subsystem, plus Settings and Debug.** The menu used to be four collapsing headers
+  on one long page. It is now a tab bar: `Looter`, `Gatherer`, `Dispatch`, `Settings`, `Debug`,
+  each tab labelled with the same word as the `[Section]` it draws. A subsystem's tab holds that
+  subsystem's own settings and its presets; every page is far shorter than the old scroll, and the
+  window opens 700 px tall at scale 1.0 instead of 770.
+- **Every key you can bind is on the Settings tab, whichever subsystem owns it.** That is the
+  looter's four hotkeys (toggle auto gather, survey, gather nearest, record events) and the
+  overlay's menu key, grouped under the name of the subsystem they belong to, along with the rest
+  of how the menu looks: open at startup, scale, font size, theme, colour space, HDR paper white,
+  and the overlay's own `Enabled`. The overlay has no tab of its own any more, because everything
+  it declares is on one of the two shared tabs.
+- **Every logging switch is on the Debug tab**, grouped the same way, with one line at the top
+  saying that all of it goes to `DesertTooling.log` beside the game: the looter's `Debug`,
+  `LogReceived`, `BagTab` and `SurveyLines`, the gatherer's `DryRun` and `Debug`, the dispatch
+  subsystem's `LogRecords`, `MaxLines`, `DryRun`, `Debug`, `DumpRaw`, `DumpRewards` and the new
+  `DumpBuffs`, and the overlay's `Debug`. The `Diagnostics:` headings they used to sit under are
+  gone - on that tab the subsystem's name is the heading.
+- **The theme picker that sat at the top of the window is now the `Theme` setting on the Settings
+  tab.** It works the way the old picker did - the menu repaints as soon as you choose, listing the
+  themes by their full names with a line on each explaining itself - and, being a setting, it is
+  written to `Theme=` under `[Overlay]` at once, so the choice sticks. It follows the file the
+  other way too: edit `Theme=` by hand while the game runs and the menu repaints within a second.
+  There is no longer a picker and a key that could disagree.
+- **A tab is dimmed while its subsystem is switched off.** `Enabled=0` under `[Looter]` greys out
+  the word `Looter` in the tab bar, so the bar says what is running without opening anything.
+- **The footer says whether the ini is saved.** One row along the bottom, always in view: your
+  position on the left, as before, and on the right `DesertTooling.ini · saved`, or
+  `DesertTooling.ini · saving…` while an edit is still in the debounce. If a read or a write fails,
+  that turns red and says why - hovering shows the whole reason, the OS error included. It replaces
+  the red line that used to appear under whichever section noticed; every subsystem writes the same
+  file, so there was never more than one thing to say. The line "Changes are saved to the ini as
+  you make them." is gone with it: the footer says it better.
+- The themes name their own tab colours, so the bar is part of each look rather than Dear ImGui's
+  blend of it - which came out brown on Enhanced Banner. Enhanced Banner, Gilded Ash, Steel and Blood
+  and Crimson Splash were given tab colours (Parchment already had them; Classic keeps Dear ImGui's
+  stock ones, as it does for everything), and all six a corner rounding for them (square on
+  Enhanced Banner, matching each other theme's frames).
+- Library bookkeeping, nothing a player sees: `desert-core` 0.7.0 (a `Field` carries which tab it
+  is drawn on, and the two table accessors under *Added*) and `desert-overlay` 0.3.0 (the new window); `desert-looter` 0.3.1 and
+  `desert-gatherer` 0.3.1, each of which only says where its fields go (`desert-dispatch` 0.3.0 is
+  the `DumpBuffs` key above).
+
+### How to check it
+
+Press **Insert** in game. Expect five tabs, `Looter` first and `Debug` last, and the footer
+reading `DesertTooling.ini · saved`. Open Settings, change `Theme` - the menu repaints on the
+spot - and watch the footer go to `saving…` and back to `saved`; `DesertTooling.log` carries
+`[overlay] [menu] theme: <name> (Theme=<name> under [Overlay], already written to the ini)`, and
+`Theme=` under `[Overlay]` in the ini is the theme you picked. Then set `Enabled=0` under
+`[Looter]` in the ini by hand: within a second the word `Looter` in the tab bar goes dim.
+
+For the census, set `DumpBuffs=1` under `[Dispatch]` (the last switch on the Debug tab) and
+restart: the log gains a run of `[buffs]` lines, the last of them the verdict on whether the
+layout still holds. Set it back to 0 afterwards; the pass is the most expensive thing the
+section does.
+
+## [0.5.0] - 2026-09-13
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": two new ini keys, both
+defaulted so an install that upgrades behaves exactly as it did, and one label in the F11 survey
+that changes (under *Changed*). **Measured on this build on 2026-09-13, both halves:** three
+*vanilla* coin pickups paid 15, 14 and 15, and then, with 0.5.0 installed, one pickup at `Money=3`
+paid `[recv] item 1 x30` against a bag delta of exactly +30 between two F11 surveys. "A coin
+prop reads its block, and the multiplier reaches it" is CONFIRMED IN GAME; the check at the end
+of this entry is the one that was run.
+
+### Added
+
+- **A `Money` multiplier under `[Gatherer]`: the coins you find lying in the world, and nothing
+  else.** A fifth family, `Money`, beside Foraging, Logging, Mining and Ore, holding the three
+  records in the game's gather table that are placed money props:
+
+  | record | key | vanilla |
+  | --- | --- | --- |
+  | `gimmick_item_common_coin_0001` | 1000183 | 10..15 |
+  | `gimmick_item_common_coin_0002` | 1006419 | 100..150 |
+  | `gimmick_item_common_silverbar_0001` | 1000712 | 2500..2500 |
+
+  All three pay item `1`, which is the game's **one** money item: the bag names it `Money_Copper`,
+  and copper, silver and gold are display units over that one count (2500 copper reads as 25
+  silver). So the amount a prop pays *is* the denomination, and a multiplied pickup may show on
+  screen as a different denomination than the vanilla one did - that is the display threshold,
+  not a fault. The lever is nothing new: it is the same block edit the plugin makes for a bush,
+  applied to these three records, and the live re-apply pass reaches them the same way, so a
+  change in the menu counts from the next coin you pick up.
+
+  **Read this before raising it.** `Money` multiplies money *lying in the world* and nothing else.
+  It does **not** touch what enemies drop, what quests pay, what a coin pouch opens to, what a
+  chest holds, what anything sells for, or what a dispatch mission returns; all of those pay as
+  they did. And it is the first setting in this plugin that is a *balance* lever rather than a
+  convenience one - it changes how fast you accumulate money, not how many berries a bush gives -
+  which is why it ships at `1` on purpose and the ini says so in more words than the others get.
+
+  The evidence it rests on (`docs/findings-water-wells-2026-09-12.md` section 13.7): three hand
+  pickups of `coin_0001` on 2026-09-13 paid `[recv] item 1 x15`, `x14`, `x15` - every one inside
+  its `10..15` block, and varying - against a bag delta of exactly +44 between two F11 surveys.
+  Every prop that hands over a pre-built item instance has ever been seen to carry a count of 1, so
+  one prop paying 14 and then 15 is its block being rolled, which is the one thing a table edit
+  needs. The multiplied half, taken the same day: `Money` moved from 1 to 3 in the menu at 54 s
+  (`[live] re-applied ... Money=3: 3 records rewritten, 276 unchanged, 0 skipped; 6 scalars
+  written` - the three Money rows and nothing else), an F11 showed ten coin props as `Unarmed`
+  with `family=Money` and `Money_Copper x11889` in the bag, one hand pickup logged `[recv] item 1
+  x30`, and the next F11 showed the nearest coin gone and `x11919`: a roll of 10 on the `10..15`
+  block, times 3, delivered by the live re-apply pass since the table had loaded long before the
+  slider moved. The three `gimmick_box_donation_reward_coin_*` records also pay item 1 and are
+  deliberately **not** rows: the donation box is where you *give* items to the camp, and what
+  comes back is a token, not a payout from that block. A generated test keeps them out. The
+  silver-bar record is a row because it is a placed money record, but nobody on this project has
+  seen one placed and the player reports there are none; if one exists and ignores its block the
+  row is inert, not wrong.
+
+  The generator that owns `collect.rs` used to refuse *any* record paying item 1, so money could
+  never ride into `Foraging` by accident. That refusal is now two-way: every family except `Money`
+  still refuses item 1, and `Money` refuses anything *but* item 1, both checked against the stored
+  rows and again against DMM's clean table body. Neither half is shipped code; it is listed
+  because it is the guard rail on the one family that can move the economy.
+
+- **`GatherMoney` under `[Looter]`, default `0`.** The coin props surveyed as `Inert` until now
+  only because no family covered them - they carry neither an interaction object nor an item
+  instance, and a gimmick like that with a known family is what the looter calls `Unarmed`. With
+  `Money` a family, they are, and `GatherUnarmed=1` (the default) plus `GatherMoney=1` would
+  forge a pickup at one exactly as it does at an ore dropping. That has never been tried in game,
+  and `0` is also what keeps this upgrade behaviour-preserving, so it is off. It is only the
+  auto-loot switch: the amount is `[Gatherer]`'s `Money`, which applies to the coins you pick up
+  by hand whether or not this is on. No preset touches it.
+
+### Changed
+
+- **The F11 survey lists the placed coin props as `Unarmed` instead of `Inert`.** Same actors,
+  new label: they now print in the second group of the listing rather than last, and count under
+  `Unarmed` in the census line. Nothing is sent at them unless `GatherMoney=1`.
+- The `[gatherer] [ini]` and `[live] re-applied` lines carry `Money=` after `Ore=`, and the
+  `[looter] [ini]` line carries `GatherMoney=` after `GatherOre=`. Every other field is where it
+  was.
+- The record count is 279: the DMM pack's 275, the water well, and the three money records.
+- Library bookkeeping, nothing a player sees: `desert-core` 0.6.0 (a new `Family` variant is a
+  breaking change for anything matching on it), `desert-gatherer` 0.3.0 and `desert-looter`
+  0.3.0 (a new config field each).
+
+### How to check it
+
+This is the check that was run on 2026-09-13 and paid 30. Set `Money=3` under `[Gatherer]` and
+`LogReceived=1` under `[Looter]`, then pick up **one** common coin prop by hand. Expect one line
+`[looter] [recv] item 1 x30..45` (vanilla paid 15, 14 and 15). If the amount is inside `10..15`, the prop did not read its block and the row is inert;
+if it is outside `30..45`, something else paid. Either way the log also shows what was written:
+`[gatherer] [gimmick] gimmick_item_common_coin_0001 key=1000183 Money x3 blocks=1 applied 2/2:
+10->30/15->45` at load, or `[gatherer] [live] re-applied ... Money=3: 3 records rewritten ...`
+right after the ini change.
+
+## [0.4.1] - 2026-09-12
+
+Game build 25246367. The work below is dated 2026-09-12 and **was taken into the game the same
+day, on that build** - but not uniformly, and the difference is the point. The water well under
+*Added*, the live re-apply pass and the parsed-side offset correction under *Fixed* were exercised
+and are confirmed. The four families' plants, wood, rocks and ore are still unmeasured on this
+build. `Bugs` is: on 2026-09-13 the same insect item went `x1` at `Bugs=1` to `x3` at `Bugs=3`,
+twice (`1000583`, `1004880`), and the Firefly Colony's variable second item came in at `x5`
+against a `x3` first - the once-per-unit roll 0.2.0's changelog describes, not a fault.
+
+### Added
+
+- **`Foraging` now also multiplies the water you draw from a water well.** One new record in the
+  family, `gimmick_well_0001_parts01`, the filled bucket at the top of the well's crank sequence,
+  and the one record in the table the DMM pack never had. The well pays a fixed amount - its
+  block's minimum and maximum are both 5 - so unlike a bush there is no roll to widen and the
+  multiple is exact: at x3 a well pays **15** water where vanilla pays 5. Measured on 2026-09-13
+  under `Foraging`: the vanilla `x5` as a `[recv]` line, and the x3 as a bag delta of exactly +15
+  between two F11 surveys either side of the take (`Water x33` -> `x48`). The slider is read when
+  the water is **taken**, not when the bucket fills - a full bucket raised at 3 and taken at 6
+  paid 30 - because the live re-apply pass rewrites the parsed record and the game rolls the
+  amount at grant time.
+  Water from a well is gathered out of the world like everything else in `Foraging`, which is why
+  it lives there rather than under a key of its own; the `Foraging` help in the menu, the ini
+  comment and the README all say so, because "plants, fruit, berries, mushrooms, crops" would not
+  make a player guess it.
+
+  **What it does not reach, stated so nobody goes looking.** The breakable water pot
+  (`Background_Breakable_66`) and the goods sitting on market stalls (`gimmick_item_trade_*`) are
+  *not* multiplied, and are not in any family. They hand the player a **pre-made item instance**
+  that already carries its own count, and the game only rolls an amount out of a record's output
+  block when there is no such instance to hand over; the well has none, so it rolls its block, and
+  the pot has one, so its block is read by nobody. Measured the same day: the pot paid 5 at x3, 1 and
+  then 5 at x1 (a partial pickup, then a full sweep), 6 at x10 and 4 at x100 - flat, with no
+  relation to the multiplier - while its block read up to 500, and two patched pepper stalls logged
+  their `1 -> 3` edit and still granted `[recv] item 1000608 x1`. An unpatched pickup points the
+  same way: item `755015` has exactly two source records, both with a **vanilla** `2..2` block, and
+  it arrived as `x1` - so whichever prop it came from, the block was not the count (the receipt
+  names the item, not the prop, so this is corroboration rather than proof). Reaching those props needs a different lever
+  entirely; `TODO.md` carries it. The sixteen records are recorded, with the evidence, as
+  `records_not_enabled` in `tools/extra-families.json`, and a generated test keeps them out of the
+  table.
+
+- **Desert Looter's `GatherForaging` covers the well too**, since its record is a `Foraging` record
+  and the looter gates on the family. The well is a four-step sequence - lower the bucket, crank it
+  up, the water then sits in the bucket as its own interactable, take it - and the looter only ever
+  sends that final pickup, the same one it sends at a bush, so the player still does the cranking.
+  **Untested in game**: whether the filled-bucket record shows up as a gather node *before* the
+  bucket is raised is an open question in `TODO.md`, with the check that settles it.
+
+### Changed
+
+- `tools/gen-collect-names.py` now owns every row of `desert-core/src/collect.rs`, including the
+  hand-written parts it used to drop, so regenerating that file no longer silently loses content.
+  Its second input, `tools/extra-families.json`, is **record-keyed**: it names the well by record
+  key, stores the item ids the record pays as derived data, and the generator re-derives those from
+  DMM's clean table body on every run and refuses to write on any mismatch (or on a record that
+  pays item 1, which is money). An earlier item-keyed form of that file expanded water to both of
+  its source records and put the pot in the table, which is exactly the mistake the record keying
+  exists to prevent. `tools/items.py` is a new offline item cross-reference with a `--loose` mode.
+  None of this ships; it is listed because the generator overwriting `collect.rs` wholesale is a
+  hazard a future editor will meet.
+
+### Fixed
+
+- **The F11 survey no longer cuts the actors it exists to show.** Its listing was capped at a
+  hard-coded 64 lines and sorted by distance, so with a heap of smashed pottery underfoot it
+  printed 64 inert shards a metre away and dropped the gather nodes and items further out -
+  silently, with the census line at the foot still counting them. Three investigations on
+  2026-09-12 read that window as the world (the "5 cups for 5 water" and "36 new actors" figures
+  were withdrawn for exactly this). Now: the cap is a `[Looter]` setting, `SurveyLines`
+  (default **200**, 16..2000), the listing is ordered **kind-first** - gather nodes, then unarmed
+  nodes, items and equipment, interactables, catchables, characters, and scenery last, each by distance - so
+  raising the budget only ever adds the least interesting actors and cutting it only ever removes
+  them, and a final `[survey] listing capped at N lines ... M more not printed` line names what
+  was cut, by kind. A far-off inert prop that prints nothing outside `Debug=1` no longer spends a
+  line of the budget either. The kind census was never truncated and is unchanged. Exercised the
+  same day in a crowded area (`analysis/logs/DesertTooling-2026-09-13-survey-lines.log`): 192
+  actors in range, 192 lines printed in the order `Equipment 9, Item 22, Interactable 11, Catchable
+  24, Character 4, Inert 122`, matching the census exactly, no cap line because 192 < 200. And
+  once more at `ScanRange=165` in Hernand, 699 actors in range: every piece of equipment, every
+  item and every interactable printed (9 + 17 + 21), then 153 of 339 catchables to the cap, and
+  the line `listing capped at 200 lines ([Looter] SurveyLines): 499 more not printed -
+  Catchable=186 Character=39 Inert=274` - which is the whole fix in one line.
+- **The looter refuses the water well's bucket, by record key, before any family switch is
+  consulted.** Putting the well under `Foraging` made it a gather node in the looter's eyes too,
+  and the 0.4.1 draft shipped that as a QoL guess: "auto-gather saves you the last interact at a
+  well, untested". Tested on 2026-09-13 (`analysis/logs/DesertTooling-2026-09-13-well-coin-bugs.log`,
+  `t=197`): F9 at a well forged the pickup at `gimmick_well_0001_parts01`, the player received
+  `[recv] item 22008 x5` - the first well receipt ever logged, vanilla 5 at `Foraging=1`, in **one**
+  `x5` grant rather than five `x1`s - the bucket actor was gone 0.1 s later, and **the well never
+  produced another one**. The crank sequence is what respawns the bucket; a pickup from outside
+  it leaves the well permanently empty. That is a broken world object, not a duplication exploit.
+  `desert-looter/src/config.rs` now carries `WELL_BUCKET_RECORD_KEY` and `never_forge_pickup`,
+  `nearest_gather` checks it first, the F9 "nothing to gather" line says a well was refused, and
+  the `GatherForaging` help says the switch never covers it. The multiplier is untouched: draw the
+  water yourself and `Foraging` still scales it.
+- **The item id in a raw `gimmickinfo` output block was read four bytes too high.**
+  `desert_core::gimmick::ITEM_AT` and `ITEM_TAIL_AT` pointed at `+5` and `+64`, which are two
+  four-byte zero pads; the item id is at `+1` and echoed at `+60`. Confirmed over **all 896**
+  output blocks of DMM's clean table body: `u32@+1` is nonzero and equal to `u32@+60` on
+  896/896, and `u32@+5` and `u32@+64` are zero on 896/896. Nothing caught it because the unit
+  tests built their synthetic blocks at the same wrong offsets the code read them at, so the
+  code and its tests agreed with each other about a layout neither shared with the game.
+
+- **The same mistake on the parsed side**: `desert-gatherer`'s `BLOCK_ITEM` pointed at `0x6C`,
+  which is always zero, and is now `0x68`. The list entry's `ENTRY_ITEM` field is not a second
+  copy of the item id at all - it is the entry's own key, zero on every gather record - and the
+  live re-apply now checks it against the zero it should be instead of against an item id.
+
+- **What this did and did not break, stated plainly.** Load-time yields were never affected:
+  `multiply` only ever writes the two `u64` scalars at `+42` and `+50`, and those offsets were
+  right. The live re-apply was **not** broken either, but only by accident - every field
+  involved read zero, so its "is this the block I remembered" guard compared zero against zero
+  and passed trivially. That is the trap worth recording: correcting only the disk half would
+  have made `remember` store real item ids while `reapply` kept reading zeros, turning a
+  working feature into a silent no-op. Both halves move together for that reason.
+
+- The detected population is unchanged, and deliberately so. `block_ok` gained the real
+  item-id comparison and **kept** the old one as a pad-equality check, which is not redundant:
+  dropping it grows the detector from 573 lists / 896 blocks to 589 / 1038, and the 16 extra
+  lists are chests, dig sites and dungeon loot rather than gather nodes. So the correction
+  changes no yield anywhere. The DMM pack oracle still reproduces every edit exactly - 275
+  records, 587 blocks, 1174 offsets.
+
+- A new `#[ignore]`d test in `desert-core/tests/gimmick_real.rs` asserts the item offsets
+  against the real table: `peony_01`'s first block must read item 757006 at 4..=7 - a number
+  learned from the game's own pickup event, not from these bytes - and **no** block anywhere in
+  the body may have an item id of 0, which is what every one of them had before. It skips with
+  a banner when the clean body is absent, like the pack oracle beside it.
+
+- **The parsed-side offset is now verified in game.** It could never be tested natively - it is a
+  read into memory the game itself parsed - and the check named here was the `[gatherer] [live]
+  re-applied` line after changing a multiplier while playing. That line was produced **nine** times
+  over the session of 2026-09-12 on build 25246367, across nine slider changes, and reported
+  **`0 skipped` every time**, with no `[live] WARN` naming a block item id. **That confirms two
+  things and no more**: the live re-apply path works end to end, and `BLOCK_ITEM = 0x68` is right,
+  since a wrong one is exactly what would have surfaced as a jump in `skipped`. It says nothing
+  about whether any given family multiplies correctly in play - that is measured one record at a
+  time, and on this build only the water well has been (see *Added*). The disk-side
+  `ITEM_AT`/`ITEM_TAIL_AT` correction is carried by the 896/896 check against DMM's clean body,
+  which needs no running game at all.
+
+## [0.4.0] - 2026-09-11
+
+Game build 25116796.
+
+### Added
+
+- **A fourth subsystem, `[Dispatch]`.** It watches the dispatch missions ("faction
+  operations") the game parses, and the reward rows those missions name in the `dropsetinfo`
+  table, logs what is in them tagged `[dispatch]`, and edits five of their fields - four
+  settings over five fields, because the reward multiplier writes both ends of a min/max
+  pair - to whatever the ini asks for. It installs **no hook** and patches **no game code**:
+  everything runs on its own thread over records the game has already parsed.
+
+  It is on by default and costs a pointer read per record every two seconds. Set
+  `[Dispatch] Enabled=0` before launch and nothing in the game is read at all - and that holds
+  for the whole session: turning it back on mid-game, from the ini or from the menu, does nothing
+  until the next launch, because there is no pass left to wake up. (`Enabled=0` *while the game
+  runs* is the revert, and that does work both ways.) `LogRecords`, `MaxLines`, `Debug`,
+  `DumpRaw` and `DumpRewards` are the diagnostic half; `MaxLines` caps every line one pass
+  writes, raw hex dumps included, and a pass logs only the missions and reward rows it has not
+  logged before.
+
+- **Four settings that change dispatch missions**, all shipping at vanilla so a fresh install
+  changes nothing until you ask:
+
+  - `Speed` (1..100) divides every mission's duration. Vanilla runs 2h to 96h; `Speed=4` turns
+    a 16h mission into a 4h one. No mission ever goes below 6 minutes. It reaches missions
+    already under way: the game compares a mission's progress against the duration in the table
+    on every tick, so lowering the duration can finish a mission that is already out.
+  - `Rewards` (1..100) multiplies how much of each item a mission pays. Both ends of every
+    reward range are scaled together, so 2-3 becomes 6-9 at x3, and only the 219 reward rows
+    dispatch missions actually name are touched - never the game's wider drop table. It is not
+    subject to the game's 10x reward clamp, which sits further downstream. It applies to rewards
+    already waiting to be paid, because the game reads the amounts out of the table at the moment
+    the items land.
+  - `NoSkillRequirement` clears the skill a mission demands of an assigned worker, on the 147
+    missions that demand one. The bonus a mission pays for a *skilled* worker is a different
+    field two bytes away and is deliberately left alone.
+  - `AnyOperatorCount` lets every mission start with a single worker. 693 of the game's 936
+    missions already ask for one, so this changes the other 243.
+  - `DryRun` logs every change that would be made and writes nothing, exactly like the
+    `[Gatherer]` key of the same name.
+
+  A change takes effect within about a second. `NoSkillRequirement` and `AnyOperatorCount` are
+  checked when a mission *starts*, so a mission already out keeps running under the rules it
+  started with - except a **repeating** mission, which re-checks on every restart and so stops
+  with an error message at its next restart once the plugin is gone.
+
+  Turning a setting back - or `Enabled=0` while the game runs - puts every mission and reward
+  row back to the value it had before the plugin touched it: each one is remembered the first
+  time the pass sees it and never re-derived, so applying twice is applying once and reverting
+  is exact.
+
+- One line per mission carries its node, key, group, duration in tenths of an hour and in hours,
+  operator counts, combat power, step count, the skill it **requires**, the skill it pays a
+  **bonus** for, the reward rows it names and its condition keys. The pass ends with the counts,
+  a condition-key histogram, a skill census and a verdict saying whether the offsets still look
+  like the right ones at all.
+
+### Fixed
+
+- The static-info accessor scan in `desert-core` saw only one of the four encodings the compiler
+  emitted for the same template, reaching 111 of the game's 149 tables. All four are scanned now,
+  which is what makes `FactionNode` and `dropsetinfo` reachable by content rather than by
+  address.
+
+### Note on saves
+
+- **The `[Dispatch]` settings are not saved into your game.** The mission and reward tables are
+  read from the game's own files every launch, so setting everything back to 1 and 0 restores
+  vanilla, and removing the plugin leaves nothing to undo. `Rewards` banks nothing either: a
+  reward still waiting on you is worked out from the table at the moment it lands, so set it back
+  to 1, or remove the plugin, and what is waiting pays vanilla.
+
+- **Nor, on this game build, does anything else.** The game has code to bank a single percentage
+  figure for a finished mission in the save, and part of that figure is a bonus for sending more
+  workers than the mission needed - which is the one thing `AnyOperatorCount` could have
+  inflated, since it tells the game every mission needs only one worker. **Both of the switches
+  that code sits behind are off on build 25116796**, measured in game: no mission defers a
+  payout, and the figure ignores the worker count entirely. So nothing any `[Dispatch]` setting
+  does reaches your save on this build.
+
+  The plugin reads both switches at startup and prints them on the `[banking]` line of
+  `DesertTooling.log`. **That line is the check after a game update**, because these are the kind
+  of switch an update can flip, and it is the only thing that would tell you.
+
+  The warning is kept rather than dropped because the code path is real. If a future build turned
+  those switches on, finishing a mission with `AnyOperatorCount=1` would bank a bigger figure
+  than you earned, on the 142 of the game's 936 missions that can repeat, and it would pay out
+  later even with the plugin gone - bounded to the missions finished with the setting on,
+  clearing itself as those rewards landed, and not a corrupted save. `Speed` and
+  `NoSkillRequirement` are nowhere in that figure and leave nothing behind either way.
+  `DesertTooling.ini`, both READMEs and the in-game menu all say so, and
+  `docs/reference-internals.md` section 20.18 carries the measurement and its evidence level.
+
 ## [0.3.0] - 2026-09-08
 
 Game build 25116796.

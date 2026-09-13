@@ -100,6 +100,12 @@ logo:
 sigscan:
     {{nix}} python3 tools/sigscan.py
 
+# Re-export the Ghidra evidence tree into evidence/ (needs Ghidra running on
+# Windows with GhidraMCP listening). Resumable: existing files are not
+# re-fetched. `just evidence --depth 2` and any other flag is passed through.
+evidence *flags:
+    {{nix}} python3 tools/evidence.py {{flags}}
+
 # Build the release zips into dist/ (the plugin, the DMM pack, SHA256SUMS).
 # `just dist desert-tooling` builds only that package, as a release tag does.
 dist *packages:
