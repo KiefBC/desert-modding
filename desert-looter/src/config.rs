@@ -28,6 +28,12 @@ pub const STACK_LIMIT_RANGE: (u32, u32) = (10, 1_000_000);
 /// `SurveyLines`' accepted range. The floor is where a listing stops being
 /// one; the ceiling is a guard on the shared log, not a recommendation.
 pub const SURVEY_LINES_RANGE: (u32, u32) = (16, 2_000);
+/// `Hunting`'s range. Deliberately the same `1..=100` as every `[Gatherer]`
+/// multiplier: the two sections' sliders mean the same thing to a player, and
+/// a different ceiling here would only be a second number to remember. The
+/// floor is 1 rather than 0 for the same reason it is there - a 0 would zero
+/// out a carcass rather than leave it alone.
+pub const HUNTING_RANGE: (u32, u32) = (1, 100);
 
 /// The furthest `GatherRange` may reach. The parser accepts anything above 0
 /// up to this; the menu's slider starts at [`GATHER_RANGE_MENU_MIN`] because a
@@ -118,6 +124,26 @@ pub struct Config {
     /// has never been tried in game, and a MINOR may not change behaviour the
     /// player did not ask for.
     pub gather_carcass: bool,
+    /// Yield multiplier for looted carcasses, `1..=100`, `1` = vanilla.
+    ///
+    /// The one lever in this section that changes an *amount* rather than what
+    /// the looter aims at, and it lives here rather than under `[Gatherer]`
+    /// because what it multiplies is a corpse being looted, not a node being
+    /// gathered. It is also not a gather family and could not be one: carcass
+    /// loot is not in `gimmickinfo`, so there is no record for the gatherer's
+    /// table edit to reach (`docs/findings-hunting-multiplier-2026-09-15.md`).
+    ///
+    /// **Independent of [`Config::gather_carcass`]**, which is a targeting
+    /// switch and not a yield one. `crate::hunting` hooks the game's own loot
+    /// grant, so this reaches a carcass however it was looted - by the gather
+    /// key with `GatherCarcass=1`, or by skinning one by hand. The gate is the
+    /// loot method, not who asked: only a grant whose mask includes method 0,
+    /// the search/skin method, and only the rows inside it that carry that same
+    /// method bit.
+    ///
+    /// Default 1 for the `GatherMoney` reason: this changes how much the player
+    /// gets rather than saving them trips, which is theirs to decide.
+    pub hunting: u32,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -156,6 +182,7 @@ impl Default for Config {
             gather_bugs: true,
             gather_fish: true,
             gather_carcass: false,
+            hunting: 1,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -432,6 +459,25 @@ pub fn schema() -> Section {
                  a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
             )),
             f(
+                "Hunting",
+                "Hunting",
+                Kind::Int {
+                    default: i64::from(HUNTING_RANGE.0),
+                    min: i64::from(HUNTING_RANGE.0),
+                    max: i64::from(HUNTING_RANGE.1),
+                    step: 1,
+                    slider: true,
+                    format: Some("%dx".to_string()),
+                },
+                "How much a looted carcass gives, 1..100. 1 = vanilla. Works however you loot the \
+                 carcass - by the gather key with GatherCarcass=1, or by skinning one by hand - \
+                 because it hooks the game's own grant rather than this plugin's send. It scales \
+                 the amounts the game has already rolled for that one corpse, so nothing in any \
+                 table is edited and no other kind of loot in the game is touched. Like the \
+                 Gatherer's Money, it ships at 1 on purpose - it changes how much you get rather \
+                 than saving you trips.",
+            ),
+            f(
                 "ScanRange",
                 "Scan range",
                 Kind::Float {
@@ -615,6 +661,13 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gatherbugs" => cfg.gather_bugs = bool_of(v),
             "gatherfish" => cfg.gather_fish = bool_of(v),
             "gathercarcass" => cfg.gather_carcass = bool_of(v),
+            "hunting" => match v.parse::<u32>() {
+                Ok(n) if (HUNTING_RANGE.0..=HUNTING_RANGE.1).contains(&n) => cfg.hunting = n,
+                _ => warnings.push(format!(
+                    "Hunting: bad value {v:?} ({}..{}), keeping {}",
+                    HUNTING_RANGE.0, HUNTING_RANGE.1, cfg.hunting
+                )),
+            },
             "surveylines" => match v.parse::<u32>() {
                 Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => cfg.survey_lines = n,
                 _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", cfg.survey_lines)),
@@ -851,6 +904,63 @@ mod tests {
         let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=0\nGatherCarcass=1\n"));
         assert!(w.is_empty(), "{w:?}");
         assert!(!c.gather_bugs && !c.gather_fish && c.gather_carcass);
+    }
+
+    /// `Hunting` is the one key in this section that is an amount rather than
+    /// a switch, so it is held to the multiplier rules the `[Gatherer]`
+    /// sliders are: the same `1..=100`, a default of 1, and a bad value that
+    /// warns and keeps the default rather than replacing it.
+    #[test]
+    fn hunting_defaults_to_vanilla_and_refuses_a_value_outside_its_range() {
+        assert_eq!(Config::default().hunting, 1, "the default must be vanilla");
+        let (c, w) = parse(&sectioned("Hunting=5\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(c.hunting, 5);
+        // Both ends of the range are accepted.
+        for n in [HUNTING_RANGE.0, HUNTING_RANGE.1] {
+            let (c, w) = parse(&sectioned(&format!("Hunting={n}\n")));
+            assert!(w.is_empty(), "{w:?}");
+            assert_eq!(c.hunting, n);
+        }
+        // 0 would zero a carcass out rather than leave it alone, which is why
+        // the floor is 1 and not 0.
+        for bad in ["0", "101", "-1", "x", ""] {
+            let (c, w) = parse(&sectioned(&format!("Hunting={bad}\n")));
+            assert_eq!(c.hunting, 1, "{bad:?} must keep the default");
+            assert_eq!(w.len(), 1, "{bad:?} must warn: {w:?}");
+        }
+    }
+
+    /// The menu must offer `Hunting` over the range `parse` enforces - the
+    /// overlay writes this same ini, so a slider wider than the parser would
+    /// write values the parser then throws away - and no preset may name it,
+    /// for the reason no preset names `GatherMoney`: it is a balance lever,
+    /// and pressing a button must never raise how much the player is given.
+    #[test]
+    fn hunting_is_on_the_menu_over_the_range_parse_enforces_and_in_no_preset() {
+        let section = schema();
+        let field = section.field("Hunting").expect("the menu must offer Hunting");
+        match field.kind {
+            Kind::Int { min, max, default, slider, .. } => {
+                assert_eq!(min, i64::from(HUNTING_RANGE.0));
+                assert_eq!(max, i64::from(HUNTING_RANGE.1));
+                assert_eq!(default, i64::from(Config::default().hunting));
+                assert!(slider, "the other multipliers are sliders and so is this");
+            }
+            ref k => panic!("Hunting must be an Int, not {k:?}"),
+        }
+        for p in &section.presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "Hunting"), "{}", p.label);
+        }
+        // The help has to say the two things a player cannot infer: which key
+        // it does and does not depend on, and that it is not a table edit
+        // reaching the rest of the game's loot.
+        let help = field.help.clone().unwrap_or_default();
+        assert!(help.contains("GatherCarcass=1"), "{help}");
+        assert!(help.contains("nothing in any table is edited"), "{help}");
+        // It must not claim to need GatherCarcass: it does not, and a player
+        // who read that would leave the key at 1 believing it was inert.
+        assert!(!help.contains("Needs GatherCarcass"), "{help}");
     }
 
     // -----------------------------------------------------------------------

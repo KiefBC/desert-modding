@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.7.0**, for Crimson Desert Enhanced, Steam build **25246367**.
+**Version 0.8.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
@@ -150,7 +150,8 @@ from the menu.
 - **Skins animal carcasses** within the same range when `GatherCarcass=1`, off
   by default. The game's own "search the carcass" event is queued directly, so
   the loot arrives without the skinning animation. A carcass you have already
-  emptied is left alone.
+  emptied is left alone. `Hunting` multiplies what a carcass gives, 1..100, and
+  ships at 1 - it works whether the plugin skins the animal or you do.
 - **Catches insects and fish** within the same range, using the game's own
   "catch" event rather than a pickup. Fish within reach at the water's edge go
   the same way, with the very same event as an insect. The steal check applies
@@ -251,10 +252,17 @@ twenty fireflies. That is the game's own drop rule, not a bug in the patch.
 
 **The multipliers** do not touch enemy loot, chests, rod-and-line fishing, quests,
 Abyss objects, artifacts, gates or fast travel - and `Money` does not reach the
-money any of those pay, only the coins placed in the world. Nor do they reach
-what a skinned carcass gives: the looter can skin one for you (`GatherCarcass`
-above), but a carcass's drops come from a different table than the gather nodes
-these multipliers edit, and nothing here multiplies them.
+money any of those pay, only the coins placed in the world. They do not reach
+what a skinned carcass gives either: a carcass's drops come from a different
+table than the gather nodes these multipliers edit. **That one has its own key
+now** - `[Looter] Hunting` - and it works a different way: rather than editing a
+table, it hooks the game's own loot grant and scales the amounts the game rolled
+for that one corpse a moment before they reach your bag. So it works however the
+carcass was looted - by the gather key or by hand - and nothing else in the
+game's loot moves with it. Its gate is the game's own "loot method": method 0 is
+the one the game calls searching or skinning, which is the honest limit of the
+key, since the plugin can tell which method is in play but not what is lying on
+the ground.
 
 ### What to expect in game
 
@@ -334,6 +342,7 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `GatherCarcass` | 0 | 1 = also loot animal carcasses within `GatherRange`, without the skinning animation. A carcass already skinned gives nothing, and the classes known to be people are refused. 0 by default: opt in |
+| `Hunting` | 1 | 1..100, how much a looted carcass gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |

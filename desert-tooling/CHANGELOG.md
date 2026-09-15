@@ -9,6 +9,66 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.8.0] - 2026-09-15
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted to
+vanilla, so an install that upgrades behaves exactly as it did.
+
+### Added
+
+- **A `Hunting` key under `[Looter]`: how much a looted carcass gives, 1..100.** Ships at 1. It
+  does **not** need `GatherCarcass` - that key decides what the gather hotkey aims at, while this
+  one changes what a carcass pays however you loot it, by the gather key or by skinning one by hand.
+  Like `[Gatherer] Money`, it starts at 1 on purpose: it changes how much you get rather than how
+  many trips you make.
+
+  **It is not a table edit, and that is the point.** Carcass loot does not come from one table. It
+  comes from two arrays on the animal's own species record, and a species can use either: some
+  carry their drops directly, others carry a key into `dropsetinfo` - the game's general-purpose
+  reward table, which chests and dispatch missions read too. Editing that table to raise one
+  species' leather would have raised whatever else happened to share the row, and would have
+  collided with the `[Dispatch]` `Rewards` lever writing the same fields. So instead this waits
+  until the game has rolled that one corpse's drops and scales the amounts in place, a moment
+  before they reach your bag. Nothing static is edited, nothing has to be put back, and no
+  other loot in the game moves with it.
+
+  It is also why it lives under `[Looter]` rather than with the `[Gatherer]` multipliers: what it
+  scales is a corpse being looted, not a node being gathered, and carcass loot is not in the
+  `gimmickinfo` table `[Gatherer]` edits at all.
+
+  **Where it hooks, and why it had to be there.** The first build of this scaled the drops from the
+  plugin's own thread, just before it sent the skinning event - and it was wrong in exactly the way
+  this feature was investigated to avoid: it worked on the species that happened to be tested and
+  silently did nothing for the rest. The roll is lazy. Most species have nothing rolled at all while
+  they lie there dead (`cat=D9` and `cat=85` both read `0/0/0`); the game rolls and grants in one
+  call when the loot is taken. Only some species are pre-rolled when they die. So the multiply now
+  sits on the game's own grant, after every roll path, which is also what makes it work when you
+  skin by hand. Its gate is the loot method - method 0, the one the game calls searching or
+  skinning - and each row is checked against that same method bit before it is touched. That is the
+  honest limit of the key: it can tell which method is in play, not what is lying on the ground.
+
+  Being a code patch rather than a table edit, it is one of the first things a game update breaks.
+  The log says so once at startup and everything else keeps working.
+
+- **A `[hunting]` line per carcass, saying what it multiplied.** `[hunting] comp=0x... x3: 4 item
+  rows, 0 drop-set rows multiplied (0 not skinning's, 0 refused)`. A multiplier that silently does
+  nothing for some species is the exact failure this was built to avoid, so the log can tell
+  "multiplied 4 rows" from "found none to multiply".
+
+### Known
+
+- **Confirmed in game on build 25246367**, at `Hunting=44`: a `cat=85` carcass paid Large_Bone x44,
+  Chicken_Meat x176 and Feather x88 - every amount an exact multiple of 44, against 2/3/3 for the
+  same species at 1. That carcass went through the `dropsetinfo` half of the split (`0 item rows,
+  3 drop-set rows multiplied`), which was the half read only out of the decompile; the per-species
+  item-row half has not yet been measured in game, and the `[hunting]` line is what says which half
+  a given species used.
+- An inventory add that fails on a full bag puts the refused stacks back on the carcass at their
+  multiplied counts, and the carcass stays a target. A ring of the last 64 *multiplied* carcasses
+  stops the retry multiplying them a second time. The ring holds heap addresses, which the game
+  reuses, so a second carcass landing on a remembered address inside that window pays vanilla - it
+  says so in the log rather than passing in silence, which is the property that matters.
+
 ## [0.7.0] - 2026-09-15
 
 Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted

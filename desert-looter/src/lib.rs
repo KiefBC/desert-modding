@@ -35,6 +35,8 @@ pub mod game;
 #[cfg(windows)]
 pub mod gatherer;
 #[cfg(windows)]
+pub mod hunting;
+#[cfg(windows)]
 pub mod tables;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -59,7 +61,7 @@ mod entry {
     use crate::hotkey::Hotkey;
     use crate::module::MainModule;
     use crate::gatherer::Gatherer;
-    use crate::{actors, events, game, hook, log};
+    use crate::{actors, events, game, hook, hunting, log};
 
     /// The `area_sweep` signature hits 15 bytes into the function; the
     /// function starts with three 5-byte `mov [rsp+x],reg` spills, which are
@@ -371,10 +373,10 @@ mod entry {
     /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
     fn ini_summary(cfg: &Config) -> String {
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCarcass={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCarcass={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_carcass as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_carcass as u8, cfg.hunting,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )
@@ -394,6 +396,7 @@ mod entry {
         let (mut ini_seen, mut cfg) = load_config(&ini_path);
         crate::log!("[ini] {}", ini_summary(&cfg));
         events::set_log_received(cfg.enabled && cfg.log_received);
+        hunting::set_multiplier(if cfg.enabled { cfg.hunting } else { 1 });
         if !cfg.enabled {
             // This no longer returns: the two prologues can only be patched
             // here, while the game is still loading and no thread is executing
@@ -418,6 +421,11 @@ mod entry {
         );
         let hooked = install_sweep_hook(&module, &anchors);
         let recorder = install_enqueue_hook(&module, &anchors);
+        // The Hunting multiplier's hook, installed here for the same reason as
+        // the other two and regardless of what the key is set to: a prologue
+        // can only be patched while the game is still loading, and the callback
+        // reads the live value on every grant.
+        hunting::install(&module, &anchors);
         let api_ok = resolve_event_api(&module, &anchors);
         if let Some(m2) = MainModule::locate() {
             events::set_module(m2);
@@ -475,6 +483,7 @@ mod entry {
                             }
                             crate::log!("[ini] reloaded: {}", ini_summary(&cfg));
                             events::set_log_received(cfg.enabled && cfg.log_received);
+                            hunting::set_multiplier(if cfg.enabled { cfg.hunting } else { 1 });
                             gatherer.apply(&cfg);
                             // Rebuilt only when the binding actually moved: a new
                             // poller starts with "not held", which would fire once

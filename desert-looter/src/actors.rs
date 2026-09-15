@@ -1143,12 +1143,19 @@ pub struct DeadDrop {
     pub grantable_set_rows: u32,
 }
 
+/// `*(*(actor+0x68)+0xC8)`, the dead-drop component, or `None` if either read
+/// falls on an unmapped page. One definition, because three things now walk to
+/// it and a chain copied a third time is a chain that can be copied wrong.
+pub fn dead_drop_comp(actor: usize) -> Option<usize> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    safe::read_ptr(sub + DEAD_DROP_COMP_OFF)
+}
+
 /// Read the dead-drop component's state, or `None` when there is no readable
 /// component. Printed by the survey for every dead animal, which is what makes
 /// the two counts diagnosable from a log instead of guessable.
 pub fn dead_drop_state(actor: usize) -> Option<DeadDrop> {
-    let sub = safe::read_ptr(actor + 0x68)?;
-    let comp = safe::read_ptr(sub + DEAD_DROP_COMP_OFF)?;
+    let comp = dead_drop_comp(actor)?;
     let set_rows: u32 = safe::read(comp + DROP_ROWS_OFF)?;
     let mut grantable_set_rows = 0;
     if let Some(rows) = safe::read_ptr(comp + DROP_ROWS_PTR_OFF) {
@@ -1167,6 +1174,230 @@ pub fn dead_drop_state(actor: usize) -> Option<DeadDrop> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// `Hunting`: multiplying what a carcass is about to give
+// ---------------------------------------------------------------------------
+
+/// `comp+0x48`: the base of the 0x18-byte **item** rows whose live count is
+/// [`ITEM_ROWS_OFF`].
+pub const ITEM_ROWS_PTR_OFF: usize = 0x48;
+/// Stride of an item row.
+pub const ITEM_ROW_STRIDE: usize = 0x18;
+/// The loot-method mask at the head of a row, on **both** lists.
+///
+/// The drop-set rows have always been known to carry one - [`SKIN_METHOD_MASK`]
+/// documents the grant's `if ((*row & *mask) == 0)` skip. The item rows carry
+/// one too, at the same offset, and `FUN_142ab6f20` gates them on it
+/// identically (`if (((uint)*puVar14 & *param_2) != 0)`). `FUN_141e93920`
+/// writes a literal `1` there for every row it appends, so route A's output is
+/// method-0-only by construction and this test never refuses one in practice -
+/// it is here because reading the mask is what makes that a property of the
+/// code rather than of the data.
+pub const ROW_MASK_OFF: usize = 0x00;
+/// `item row + 0x10`: the `i64` count the grant hands the item-stack builder,
+/// `FUN_1423507b0(newObj, (u16 *)(row + 0x08), *(i64 *)(row + 0x10))`.
+pub const ITEM_ROW_COUNT_OFF: usize = 0x10;
+/// `drop-set row + 0x38`: the prebuilt item object for a kind-0 payload.
+///
+/// A drop-set row is `{u32 mask @+0x00, 0x38-byte payload @+0x08}`, and the
+/// payload's kind byte is its first. For kind 0 - an item stack, the only kind
+/// a carcass has been seen to carry - `FUN_141a375e0` stores the object it
+/// built at payload `+0x30`, so the object pointer sits at row `+0x38`.
+pub const SET_ROW_ITEM_OBJ_OFF: usize = 0x38;
+/// The payload kind byte, at the head of the payload (`row + 0x08`). Only kind
+/// 0 has an item object to scale; every other kind of the game's 18 is
+/// something else entirely and is left alone.
+pub const SET_ROW_KIND_OFF: usize = 0x08;
+/// The one payload kind that is a quantity of an item.
+pub const SET_ROW_KIND_ITEM: u8 = 0;
+/// `item object + 0x10`: where `FUN_1423507b0` stores its count argument
+/// (`param_1[2] = param_3`).
+pub const ITEM_OBJ_COUNT_OFF: usize = 0x10;
+/// How many item rows are worth walking, bounded for the same reason
+/// [`DROP_ROWS_MAX`] is: the count comes out of game memory.
+const ITEM_ROWS_MAX: u32 = 64;
+/// Ceiling on a scaled count, and the band a vanilla one has to be inside
+/// before it is touched at all.
+///
+/// Carcass amounts are single digits in vanilla, so at the `Hunting` ceiling of
+/// 100 this is never reached by an honest value - which is the point. A count
+/// outside `1..=MAX_DROP_COUNT` is not a count we recognise, and the row is
+/// left exactly as it was rather than multiplied on a guess.
+pub const MAX_DROP_COUNT: i64 = 100_000;
+
+/// What one pass of [`multiply_carcass_drops`] did.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Scaled {
+    /// Item rows (route A, `characterinfo rec+0x2B8`) whose count was raised.
+    pub item_rows: u32,
+    /// Drop-set rows (route B, `rec+0x280` -> `dropsetinfo`) whose item
+    /// object's count was raised.
+    pub set_rows: u32,
+    /// Rows left alone because their mask says skinning cannot take them.
+    pub not_ours: u32,
+    /// Rows left alone because something would not read, or because the value
+    /// there was not a plausible drop count. Every one of these is a place the
+    /// layout stopped matching, so they are counted and logged rather than
+    /// swallowed.
+    pub refused: u32,
+}
+
+impl Scaled {
+    /// Rows actually changed.
+    pub fn changed(&self) -> u32 {
+        self.item_rows + self.set_rows
+    }
+}
+
+/// What happened to one row.
+enum Row {
+    Scaled,
+    NotOurs,
+    Refused,
+}
+
+/// Multiply the `i64` at `count_at` by `mult`, if the row at `mask_at` is one
+/// skinning can take and the value looks like a drop count.
+fn scale_row(mask_at: usize, count_at: usize, mult: u32) -> Row {
+    let Some(mask) = safe::read::<u32>(mask_at) else { return Row::Refused };
+    if mask & SKIN_METHOD_MASK == 0 {
+        return Row::NotOurs;
+    }
+    let Some(old) = safe::read::<i64>(count_at) else { return Row::Refused };
+    if !(1..=MAX_DROP_COUNT).contains(&old) {
+        return Row::Refused;
+    }
+    // Saturating and then capped: `i64` cannot overflow at a multiplier of 100
+    // against a value this band has already bounded, and the cap is what makes
+    // that true of the code and not only of today's data. A negative would be
+    // the worst outcome of the three - `FUN_141e93920` *adds* a row's count
+    // into an existing one, so a wrapped value would shrink a stack.
+    let new = old.saturating_mul(i64::from(mult)).clamp(1, MAX_DROP_COUNT);
+    if !safe::write(count_at, new) {
+        return Row::Refused;
+    }
+    Row::Scaled
+}
+
+/// Multiply everything a dead-drop component is about to give by `mult`, in
+/// place.
+///
+/// # Why this is a memory write and not a table edit
+///
+/// Carcass loot does not come from one table. It comes from two arrays on the
+/// creature's `characterinfo` record, **both** rolled in one call by
+/// `FUN_141e93920`, and a species can have either one empty:
+///
+/// * `rec+0x2B8` - per-species item rows, private to that record. These
+///   produce the component's [`ITEM_ROWS_PTR_OFF`] list.
+/// * `rec+0x280` - keys into **`dropsetinfo`**, the game's general-purpose
+///   reward table. These produce the [`DROP_ROWS_PTR_OFF`] list.
+///
+/// The second is why the multiplier is not a table edit. `dropsetinfo` is
+/// reached from 35 call sites across the exe and a row is a shared reward
+/// definition with nothing marking one as a carcass's, so raising a row's
+/// amounts would raise it for every chest and mission that names it. Worse,
+/// `desert_dispatch::apply` already writes those exact fields for its own
+/// `Rewards` lever and remembers the value it first saw as vanilla; a second
+/// subsystem writing them first would make dispatch remember an already
+/// multiplied number and never be able to revert it.
+///
+/// So the scaling happens **downstream of both**, at the one place where the
+/// two routes have already been separated by loot method and are already
+/// private to one corpse: the dead-drop component, between the roll and the
+/// grant. Nothing static is edited, so there is nothing to remember and
+/// nothing to put back - uninstalling the plugin is the revert.
+///
+/// # Why it is called from the grant and not before the event
+///
+/// Because for most species there is nothing to multiply before the event. The
+/// roll is **lazy**: `FUN_142ab8140` rolls the two arrays only when it finds
+/// `comp+0x6C` still zero, and then grants in the same synchronous call, so a
+/// write from another thread beforehand has no rows to find. In the live
+/// 2026-09-15 log every `cat=D9` and `cat=85` corpse read `dd=0/0/0(0)` while
+/// dead and unlooted and skinned normally afterwards. Only some species are
+/// pre-rolled when they die (`cat=82` reads `1/0/4(4)`), which is exactly the
+/// shape a "works on the species I tested" bug has.
+///
+/// By the time [`crate::hunting`]'s hook has the component, every roll path has
+/// run and the rows are there.
+///
+/// # What it may and may not do
+///
+/// Runs on the game thread, inside the game's own grant. It reads and writes
+/// through [`desert_core::safe`] only, calls no game function and allocates
+/// nothing. **Every failure leaves vanilla behind**: an unreadable pointer, a
+/// count outside the plausible band, a row whose mask is not skinning's.
+///
+/// The caller is responsible for calling this **at most once per component**:
+/// the counts written here are read back by the grant that is about to run, and
+/// an inventory add that fails on a full bag puts the refused rows *back* on
+/// the component at their multiplied counts. A second pass over those would
+/// multiply twice. [`crate::hunting`] is where that guard lives.
+pub fn multiply_carcass_drops(comp: usize, mult: u32) -> Result<Scaled, String> {
+    let mut out = Scaled::default();
+    if mult <= 1 {
+        return Ok(out);
+    }
+
+    // Route A: the per-species item rows.
+    let item_rows: u32 = safe::read(comp + ITEM_ROWS_OFF).ok_or("comp+0x50 unreadable")?;
+    if let Some(base) = safe::read_ptr(comp + ITEM_ROWS_PTR_OFF) {
+        for i in 0..item_rows.min(ITEM_ROWS_MAX) {
+            let row = base + i as usize * ITEM_ROW_STRIDE;
+            match scale_row(row + ROW_MASK_OFF, row + ITEM_ROW_COUNT_OFF, mult) {
+                Row::Scaled => out.item_rows += 1,
+                Row::NotOurs => out.not_ours += 1,
+                Row::Refused => out.refused += 1,
+            }
+        }
+    }
+
+    // Route B: the rows rolled out of `dropsetinfo`. The count is not in the
+    // row - the row carries a prebuilt item object and the count is inside it.
+    let set_rows: u32 = safe::read(comp + DROP_ROWS_OFF).ok_or("comp+0x60 unreadable")?;
+    if let Some(base) = safe::read_ptr(comp + DROP_ROWS_PTR_OFF) {
+        for i in 0..set_rows.min(DROP_ROWS_MAX) {
+            let row = base + i as usize * DROP_ROW_STRIDE;
+            // The mask first, so a row some other loot method owns is never
+            // walked into at all.
+            match safe::read::<u32>(row + ROW_MASK_OFF) {
+                Some(m) if m & SKIN_METHOD_MASK != 0 => {}
+                Some(_) => {
+                    out.not_ours += 1;
+                    continue;
+                }
+                None => {
+                    out.refused += 1;
+                    continue;
+                }
+            }
+            // Only a kind-0 payload has an item object behind it. Anything
+            // else is not a quantity of an item and is not ours to scale.
+            match safe::read::<u8>(row + SET_ROW_KIND_OFF) {
+                Some(SET_ROW_KIND_ITEM) => {}
+                Some(_) => {
+                    out.not_ours += 1;
+                    continue;
+                }
+                None => {
+                    out.refused += 1;
+                    continue;
+                }
+            }
+            let Some(obj) = safe::read_ptr(row + SET_ROW_ITEM_OBJ_OFF) else {
+                out.refused += 1;
+                continue;
+            };
+            match scale_row(row + ROW_MASK_OFF, obj + ITEM_OBJ_COUNT_OFF, mult) {
+                Row::Scaled => out.set_rows += 1,
+                Row::NotOurs => out.not_ours += 1,
+                Row::Refused => out.refused += 1,
+            }
+        }
+    }
+    Ok(out)
+}
 
 /// The interaction category byte the game's own interaction handler switches
 /// on (`FUN_1429DB730`, build 25116796: `*(status + 0x5A)`), read off

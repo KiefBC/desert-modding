@@ -11,6 +11,22 @@ use crate::module::MainModule;
 use crate::pattern::{self, Found, Pattern};
 use crate::rtti;
 
+/// The name [`SIGNATURES`] gives the loot grant, `FUN_142ab6f20`, so
+/// [`crate::hunting`] and the table cannot come to spell it differently.
+pub const LOOT_GRANT_SIG: &str = "loot_grant";
+
+/// The loot grant's signature, named separately because `crate::hunting` holds
+/// the stolen bytes to being a literal prefix of it.
+///
+/// `FUN_142ab6f20(component, &mask, flag, &out)`: the function that walks a
+/// dead-drop component's two row lists and hands the matching ones to the
+/// inventory. The first 21 bytes are the register saves and pushes every
+/// large function in this image shares - they hit 152 places on their own - so
+/// the signature runs on into the frame setup, whose two displacements are
+/// wildcarded because a frame size is the first thing a rebuild moves. What is
+/// left hits **once** in the mapped image of build 25246367, at +0x2AB6F20.
+pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B F9 4C 8B E2 4C 8B E9";
+
 /// Signatures lifted from the reference mod. Names are ours; the comment says
 /// what the hit is.
 pub const SIGNATURES: &[(&str, &str)] = &[
@@ -22,6 +38,7 @@ pub const SIGNATURES: &[(&str, &str)] = &[
     ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25"),
     ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??"),
     ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 0F B6 F2 4C 8B F9"),
+    (LOOT_GRANT_SIG, LOOT_GRANT_PATTERN),
 ];
 
 pub const ACTOR_MANAGER_RTTI: &str = ".?AVClientActorManager@pa@@";
