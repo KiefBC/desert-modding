@@ -169,6 +169,28 @@ impl Gatherer {
     /// ([`Self::node_yields`]) and *every* item it can pay out is already in
     /// the bag as a real stack (count >= 2 proves it stacks) whose result
     /// stays under `StackLimit`.
+    ///
+    /// **`Skin` stays on the free-slot side of that line**, with ground items
+    /// and catches, and it is not a default - it is the only answer the
+    /// stacking test can be given. That test is `Gather`-only because it
+    /// needs [`Self::node_yields`], which reads the *gimmick* record's
+    /// declared output blocks; a carcass has `record: 0xFFFF` and no gimmick
+    /// record at all, because its drops are rows on its `characterinfo`
+    /// record (`docs/findings-skinning-2026-09-15.md` section 4), a different
+    /// table behind a different accessor that nothing here reads. With no
+    /// yields there is no margin to compute and the stacking argument cannot
+    /// even be attempted. It would also be a harder argument than a gather
+    /// node's if it could: a gather pays out **one** output block, while one
+    /// dead-drop grants every row at once - the live capture shows four
+    /// distinct item ids arriving within 3 ms of one event (section 1) - so
+    /// every one of them would have to stack, simultaneously.
+    ///
+    /// A full-bag skinning would in fact be *recoverable* in game: the grant
+    /// puts rows the inventory add refused back on the carcass rather than
+    /// losing them (section 2), so the corpse could be skinned again later.
+    /// That is a reason not to fear the case, not a reason to fire into it -
+    /// when the mod can tell the bag is full it declines, which is the same
+    /// rule every other mode follows and costs the player nothing.
     fn bag_has_room(&mut self, m: &MainModule, sc: &Scene, target: &game::GatherTarget, why: &str) -> bool {
         let Some(tabs) = sc.tabs.as_ref() else {
             if !self.bag_full_reported {
@@ -192,7 +214,7 @@ impl Gatherer {
         // Full: can it stack?
         let verdict: Result<String, String> = (|| {
             if target.mode != crate::payload::PickupMode::Gather {
-                return Err("ground items and creatures need a free slot".into());
+                return Err("ground items, creatures and carcasses need a free slot".into());
             }
             let yields = self.node_yields(m, target)?;
             let slots = actors::tab_slots(&bag).ok_or("bag slots unreadable")?;
@@ -267,17 +289,18 @@ impl Gatherer {
             // than index it: a miss just ends the review pass.
             let Some(d) = self.done.get(i) else { break };
             let age = d.sent.elapsed();
-            // The same candidate set `nearest_gather` builds: a caught insect
-            // leaves the world (or stops classifying as `Catchable`), which is
-            // what "gone after" measures.
+            // Literally the same candidate set `nearest_gather` builds, not a
+            // second copy of it: this used to repeat the `matches!` and the
+            // two had to be kept in step by hand, which is how a skinned
+            // carcass would have gone uncounted forever - a kind aimed at
+            // there and not recognised here is a target that is never done.
+            // `actors::Kind::is_gather_candidate` is the one definition and
+            // takes `GatherCarcass` for the same reason `nearest_gather`
+            // passes it: a caught insect leaves the world (or stops
+            // classifying as `Catchable`), and that going-away is what "gone
+            // after" measures.
             let still_gather = sc.actor(d.eid).is_some_and(|a| {
-                matches!(
-                    actors::classify(m, a, sc.player),
-                    actors::Kind::Gather
-                        | actors::Kind::Unarmed
-                        | actors::Kind::Item
-                        | actors::Kind::Catchable
-                )
+                actors::classify(m, a, sc.player).is_gather_candidate(self.cfg.gather_carcass)
             });
             if !still_gather {
                 self.gathered += 1;
@@ -319,6 +342,7 @@ impl Gatherer {
             player_eid: target.player_eid,
             route: target.route,
             flag: 0,
+            cat: target.cat,
         };
         if events::request(req) {
             self.sent += 1;
@@ -363,6 +387,10 @@ impl Gatherer {
     /// Called every loop iteration; does nothing unless auto mode is on and
     /// the interval has elapsed.
     pub fn tick(&mut self, m: &MainModule, w: &World) {
+        // Above the due checks on purpose: they early-return when nothing is
+        // pending, and the moment nothing is pending is exactly when the last
+        // carcass's window has closed and its line is still unprinted.
+        events::flush_skin_yield();
         let send_due = self.auto && !self.last_send.is_some_and(|t| t.elapsed() < self.interval());
         let review_due = !self.done.is_empty() && !self.last_review.is_some_and(|t| t.elapsed() < REVIEW_EVERY);
         if !send_due && !review_due {

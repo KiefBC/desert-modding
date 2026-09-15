@@ -9,6 +9,70 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.7.0] - 2026-09-15
+
+Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted
+off, so an install that upgrades behaves exactly as it did. It also carries two fixes that matter
+more than the feature does - the looter had been switching itself off part-way through every long
+session, and the event recorder had been unable to catch the rare events it exists to catch.
+
+### Added
+
+- **A `GatherCarcass` key under `[Looter]`: skinning animal carcasses without the animation.**
+  Off by default. With `GatherCarcass=1` the gather hotkey and auto mode also loot dead animals
+  within `GatherRange`, the same way they mine a vein - the game's own "search the carcass" event
+  is queued directly, so the loot arrives without the skinning animation playing. What you get is
+  what the animal would have given you by hand: this grants the carcass's own drops and does not
+  multiply them.
+
+  Two things worth knowing. Skinning does **not** ask the game's take-or-steal check, unlike every
+  other thing the looter picks up - a carcass cannot be stolen, and the game's own carcass path
+  does not ask it either. And an already-emptied carcass is left alone rather than fired at
+  repeatedly, so a corpse you have skinned stops being a target while still lying there.
+
+  It is animals only: the classes known to belong to people are refused, so this does not strip
+  bodies. That check is a blacklist of the four NPC classes on record, not a whitelist of animals,
+  because the species it works on are classes no catch has ever been recorded for - so a dead NPC
+  of some class nobody has surveyed yet could still be taken for an animal.
+
+- **A `[skin]` line per carcass, naming what it gave.** One line as each carcass finishes:
+  `[skin] carcass cat=D9 eid=B010022D gave (within 0.5s): Animal_Bone key=795009 x3; Short_Horn
+  key=1000663 x4; ...`, with names resolved the same way the survey's bag listing resolves them.
+  It is a **correlation, not attribution**: the game reports every item you receive through one
+  event whatever produced it, so anything picked up by hand inside the window lands in the line
+  too - which is why the line says how long a window it had rather than claiming the drops came
+  from that carcass. Over one run of 8 carcasses with `LogReceived=1` the lines accounted for all
+  78 items received, key for key.
+
+- **The survey prints the dead-drop state of every dead animal it lists**, as
+  `dd=<rolled>/<item rows>/<drop-set rows>`, or `dd=none` when the corpse carries no such
+  component. It is the difference between "skinning did nothing" and "there was nothing left to
+  skin".
+
+### Fixed
+
+- **The looter stopped working part-way through every long session, silently.** The entity-id map
+  it reads to find anything at all was rejected whenever one of its header words grew past 65536.
+  That word is the key hash's bucket count, it grows with how long the session has been running,
+  and nothing reads it - four presses about ninety minutes in read 74997, 75283, 78305 and 78942
+  while the actual entry count sat unchanged at 2394. Every gather, every survey and every
+  auto-gather tick went through that one check, and the auto path threw the error away without
+  logging it, so the only symptom was that F9 stopped doing anything and F11 printed a rejection.
+
+- **The event recorder could not catch a rare event.** `F7` logged everything the game queued
+  under a single 300-line cap, and one descriptor is most of that traffic - 1046 of the 1200 events
+  in the session this was found in, 87% - so the cap filled in about three seconds and one of the
+  four events actually being hunted was lost. Lines are now capped per event type as well as in
+  total (25 and 300), every event is still counted, and the census of what was seen is printed when
+  recording ends - **including when the cap ends it**, which it never was before. A later session
+  with the cap in place observed 2067 events, logged 53, and kept all eight of the rare ones.
+
+- **The gather hotkey could fire a "catch" event at a dead animal.** A corpse satisfied every test
+  the insect-and-fish path makes, so one was offered as catchable prey whenever its class was a
+  known one. Never seen happen - it needs the hotkey pressed beside a corpse of a catchable
+  species - but it was reachable. Dead animals are now their own thing, and a catch is never aimed
+  at one.
+
 ## [0.6.0] - 2026-09-13
 
 Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted

@@ -24,6 +24,7 @@ pub use desert_core::{hook, hotkey, module, safe};
 // so `cargo test` runs there.
 pub mod config;
 pub mod payload;
+pub mod recorder;
 
 #[cfg(windows)]
 pub mod actors;
@@ -240,6 +241,26 @@ mod entry {
                     }
                     Err(e) => crate::log!("[event] {}: {e}; bugs will not be caught", events::CATCH_DESCRIPTOR),
                 }
+                // The carcass-skinning event is optional on exactly the same
+                // terms: without it `GatherCarcass` is simply off and nothing
+                // else notices. Never a startup failure.
+                match events::find_descriptor(module, api, events::SKIN_DESCRIPTOR) {
+                    Ok(k) => {
+                        let note = if k.id == events::SKIN_ID_EXPECTED
+                            && k.payload_size as usize == events::SKIN_PAYLOAD_SIZE
+                        {
+                            "as expected"
+                        } else {
+                            "DIFFERS from the recorded 2024/7"
+                        };
+                        crate::log!(
+                            "[event] {} id={} payload={} dispatch={} ({note})",
+                            k.name, k.id, k.payload_size, k.dispatch
+                        );
+                        events::set_skin_descriptor(k);
+                    }
+                    Err(e) => crate::log!("[event] {}: {e}; carcasses will not be skinned", events::SKIN_DESCRIPTOR),
+                }
                 true
             }
             Err(e) => {
@@ -350,10 +371,10 @@ mod entry {
     /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
     fn ini_summary(cfg: &Config) -> String {
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCarcass={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_carcass as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )
@@ -525,7 +546,11 @@ mod entry {
                 if !recorder {
                     crate::log!("[record] enqueue hook not installed");
                 } else if events::toggle_recording() {
-                    crate::log!("[record] ON: logging every event the game queues (cap {})", events::RECORD_CAP);
+                    crate::log!(
+                        "[record] ON: logging what the game queues (cap {} lines, {} per descriptor)",
+                        crate::recorder::RECORD_CAP,
+                        crate::recorder::RECORD_PER_DESC
+                    );
                 }
             }
             if press_gather {

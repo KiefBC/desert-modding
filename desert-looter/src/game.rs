@@ -1,7 +1,7 @@
 //! Resolution of game-side anchors (byte signatures, RTTI vtables) and the
 //! read-only survey. Nothing here touches game state.
 
-use core::sync::atomic::{AtomicU64, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use desert_core::creature::{self, CatchClass};
 
@@ -122,9 +122,22 @@ fn survey_rank(k: actors::Kind) -> u8 {
         actors::Kind::Unarmed => 1,
         actors::Kind::Item | actors::Kind::Equipment => 2,
         actors::Kind::Interactable => 3,
-        actors::Kind::Catchable => 4,
-        actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 5,
-        actors::Kind::Inert => 6,
+        // A carcass is a loot target, so it prints with the targets - and
+        // ahead of `Catchable` rather than beside it. There are only ever a
+        // handful of corpses in range and every one is actionable, where
+        // `Catchable` also carries the birds in flight and the unidentified
+        // species that are never taken; sharing a rank would let a flock
+        // sort itself in front of the one corpse by distance and push it off
+        // the end of the `SurveyLines` budget, which is the failure this
+        // whole ordering exists to prevent.
+        actors::Kind::Carcass => 4,
+        // Prints, but below the actionable targets: an emptied carcass is
+        // still worth seeing in a survey, because it is the difference
+        // between "skinning did nothing" and "there was nothing to skin".
+        actors::Kind::CarcassEmpty => 5,
+        actors::Kind::Catchable => 6,
+        actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 7,
+        actors::Kind::Inert => 8,
     }
 }
 
@@ -149,12 +162,36 @@ fn catch_diagnostic_line(
         None => "?".to_string(),
     };
     let cat = category_text(m, a);
+    // The dead-drop component's state, for dead animals only. This is the one
+    // instrument that tells "skinning did nothing" apart from "there was
+    // nothing left to skin", and it is what makes two open questions about the
+    // carcass path answerable from a log instead of by guesswork - both since
+    // answered in game: the drops are *not* pre-rolled at spawn (every
+    // untouched carcass reads `0/0/0`), and the client actor does carry the
+    // component (no `dd=none` has ever been logged).
+    //
+    // `dd=rolled/item_rows/set_rows(grantable)`. The bracketed number is how
+    // many drop-set rows skinning can actually take; it is what decides, and
+    // the gap between it and `set_rows` is exactly the bug that switched
+    // auto-gather off - class 0x82 reads `1/0/4(0)` once emptied.
+    let dd = match kind {
+        actors::Kind::Carcass | actors::Kind::CarcassEmpty => {
+            match actors::dead_drop_state(a) {
+                Some(s) => format!(
+                    " dd={}/{}/{}({})",
+                    s.rolled, s.item_rows, s.set_rows, s.grantable_set_rows
+                ),
+                None => " dd=none".to_string(),
+            }
+        }
+        _ => String::new(),
+    };
     let comps: Vec<String> = actors::component_names(m, a)
         .into_iter()
         .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
         .collect();
     crate::log!(
-        "  {d:6.1} m  {kind:<9?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} status={st} comps=[{}]",
+        "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} status={st}{dd} comps=[{}]",
         pos.x, pos.y, pos.z, class_of(m, a), comps.join(" ")
     );
 }
@@ -323,7 +360,7 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
             // - `cat=` is the class byte that decides it. `Catchable` is
             // named here rather than left to `_` precisely because it is the
             // line that says whether the rule picked the right actor.
-            actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Other => {
+            actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Carcass | actors::Kind::Other => {
                 catch_diagnostic_line(m, *a, *d, *eid, pos, kind);
             }
             _ => {
@@ -799,6 +836,11 @@ pub struct GatherTarget {
     pub name: String,
     /// Gather family, or "Item" for a ground item.
     pub family: String,
+    /// `actors::interaction_category`, the species class byte, for a carcass;
+    /// 0 for everything else. Carried so the skin/`[recv]` pairing can say
+    /// which species a drop came from without re-reading the actor, which by
+    /// then may be gone.
+    pub cat: u8,
     pub mode: crate::payload::PickupMode,
     /// Carries the game's interaction object (`Gather`) rather than `Unarmed`.
     pub armed: bool,
@@ -871,14 +913,30 @@ fn first_sighting_of(c: u8) -> bool {
     }
 }
 
+/// Set the first time a skinnable carcass is passed over only because
+/// `GatherCarcass=0`, so the log says once per session that there is a switch
+/// for what the player just walked past.
+///
+/// One line, not one per tick: a corpse stays in the world for a while, the
+/// gather tick looks at it several times a second, and `GatherCarcass` is off
+/// by default - so anything chattier would be noise in every log of every
+/// player who has never asked for skinning. This is the same argument
+/// `UNKNOWN_CATCH_CATEGORIES` makes, and it needs no table behind it because
+/// there is nothing to say per carcass: the switch is the whole reason.
+static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+
 /// Nearest node within `GatherRange` metres that classifies as `Gather`
 /// (interaction object present and the gimmick record is a
 /// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
 /// true. Ground items (`GatherItems`) and catchable creatures (`GatherBugs`
 /// for insects, `GatherFish` for fish) are candidates too; a creature comes
 /// back with `mode: Catch`, which is a different game event entirely (see
-/// `payload::catch_payload`). `cfg` is the live config, so what counts as a
-/// candidate follows the ini without this having to be told twice. Read-only.
+/// `payload::catch_payload`). So are animal carcasses when `GatherCarcass=1`,
+/// with `mode: Skin` and a third event again (`payload::skin_payload`).
+/// `cfg` is the live config, so what counts as a candidate follows the ini
+/// without this having to be told twice - `actors::Kind::is_gather_candidate`
+/// is where that set is defined, once, for here and for
+/// `gatherer::Gatherer::review`. Read-only.
 pub fn nearest_gather(
     m: &MainModule,
     sc: &Scene,
@@ -899,25 +957,30 @@ pub fn nearest_gather(
             continue;
         }
         let kind = actors::classify(m, a, sc.player);
-        if matches!(
-            kind,
-            actors::Kind::Gather
-                | actors::Kind::Unarmed
-                | actors::Kind::Item
-                | actors::Kind::Catchable
-        ) {
-            // Shop goods, quest items, decoration: the reference mod's first
-            // rejection, and the difference between an ore chunk and a cup on
-            // a merchant's table (both are `item_basic_*`). Unreadable status
-            // counts as owned for items; nodes have no owner.
-            if kind == actors::Kind::Item {
-                match actors::status_bytes(m, a) {
-                    Some(st) if !actors::is_owned_or_special(st) => {}
-                    _ => continue,
-                }
+        // One shared definition of the candidate set, `actors::Kind`'s own,
+        // so this and `gatherer::Gatherer::review` cannot come to disagree
+        // about what the gatherer aims at - see `Kind::is_gather_candidate`.
+        if !kind.is_gather_candidate(cfg.gather_carcass) {
+            // A carcass in reach with the switch off is the one non-candidate
+            // worth a word, and it gets exactly one per session.
+            if kind == actors::Kind::Carcass && !CARCASS_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed) {
+                crate::log!(
+                    "[gather] a skinnable carcass is {d:.0} m away and GatherCarcass=0, so it is not a target; set [Looter] GatherCarcass=1 to skin carcasses (said once per session)"
+                );
             }
-            nodes.push((d, eid, a, pos, kind));
+            continue;
         }
+        // Shop goods, quest items, decoration: the reference mod's first
+        // rejection, and the difference between an ore chunk and a cup on a
+        // merchant's table (both are `item_basic_*`). Unreadable status
+        // counts as owned for items; nodes have no owner.
+        if kind == actors::Kind::Item {
+            match actors::status_bytes(m, a) {
+                Some(st) if !actors::is_owned_or_special(st) => {}
+                _ => continue,
+            }
+        }
+        nodes.push((d, eid, a, pos, kind));
     }
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
@@ -973,7 +1036,51 @@ pub fn nearest_gather(
                 dist: d,
                 name: format!("{what} cat={}", category_text(m, a)),
                 family: family.to_string(),
+                cat: 0,
                 mode: crate::payload::PickupMode::Catch,
+                armed: true,
+                player_eid: sc.player_eid,
+                route: sc.route,
+            });
+        }
+        // A carcass carries no gimmick record either, so like a catch it is
+        // decided before `node_identity` rather than after. Everything that
+        // decides *whether* has already been decided: `Kind::Carcass` means
+        // the type byte is an animal's and the dead flag is set
+        // (`actors::is_skinnable_carcass`), and `GatherCarcass` was consulted
+        // in the candidate filter above, so reaching here means the switch is
+        // on. There is deliberately no class table to consult and no
+        // `UNKNOWN_CATCH_CATEGORIES` equivalent: a `Catchable` needs its
+        // category byte to be one a recorded catch has shown, because that
+        // list is how birds in flight are kept out, but a corpse's category
+        // byte says nothing a dead-drop event cares about - the carcasses
+        // surveyed live read `cat=D9`, `82`, `13`, `44` and `23`, five values
+        // of which four are `Catchable::Unknown`, and all eight were skinned
+        // by hand with the same event
+        // (`docs/findings-skinning-2026-09-15.md` section 7). The byte is
+        // logged in the target name so a log can still say what species it
+        // was, and it gates nothing.
+        if kind == actors::Kind::Carcass {
+            if skip(eid) {
+                continue;
+            }
+            return Ok(GatherTarget {
+                eid,
+                // No gimmick record, the same as a catch, and for a stronger
+                // reason: a carcass's drops are rows on its `characterinfo`
+                // record (section 4), a different table this mod does not
+                // read. 0xFFFF is the game's own "none".
+                record: 0xFFFF,
+                actor: a,
+                player_actor: sc.player,
+                dist: d,
+                name: format!("carcass cat={}", category_text(m, a)),
+                cat: actors::interaction_category(m, a).unwrap_or(0),
+                family: "Carcass".to_string(),
+                mode: crate::payload::PickupMode::Skin,
+                // A carcass has no interaction object to be armed with; the
+                // word means "not an `Unarmed` twin" here, and nothing
+                // downstream reads it except the log's UNARMED note.
                 armed: true,
                 player_eid: sc.player_eid,
                 route: sc.route,
@@ -1027,6 +1134,8 @@ pub fn nearest_gather(
             dist: d,
             name,
             family,
+            // Not a carcass: this branch is the gimmick/ground-item path.
+            cat: 0,
             mode,
             armed: kind == actors::Kind::Gather,
             player_eid: sc.player_eid,

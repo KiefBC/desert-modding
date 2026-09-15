@@ -106,6 +106,18 @@ pub struct Config {
     /// byte (`actors::catch_class`), so it gets its own switch rather than
     /// riding on that one.
     pub gather_fish: bool,
+    /// Loot animal carcasses within `GatherRange`, and the third switch that
+    /// starts **off**. Skinning is a third game event again
+    /// (`TrocTrProcessLootingDeadDropOnceTimer`, a 7-byte payload carrying
+    /// only the carcass's entity id) whose handler grants the loot in the same
+    /// tick with no animation, no distance check and nothing to duplicate -
+    /// the granted rows are erased from the carcass, so a second event at the
+    /// same corpse gives nothing
+    /// (`docs/findings-skinning-2026-09-15.md` sections 2 and 3). It is off by
+    /// default for the `gather_money` reason and no other: forging this event
+    /// has never been tried in game, and a MINOR may not change behaviour the
+    /// player did not ask for.
+    pub gather_carcass: bool,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -143,6 +155,7 @@ impl Default for Config {
             gather_money: false,
             gather_bugs: true,
             gather_fish: true,
+            gather_carcass: false,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -410,6 +423,14 @@ pub fn schema() -> Section {
                 Kind::Bool { default: d.gather_fish },
                 "1 = catch fish within GatherRange by hand, the same event as insects; the steal check still applies.",
             )),
+            beside(f(
+                "GatherCarcass",
+                "Skin carcasses",
+                Kind::Bool { default: d.gather_carcass },
+                "0 by default. 1 = loot animal carcasses within GatherRange, without the skinning \
+                 animation. A third game event again, granting the same loot the animation would; \
+                 a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
+            )),
             f(
                 "ScanRange",
                 "Scan range",
@@ -490,7 +511,13 @@ pub fn schema() -> Section {
                     "Gather the nearest node: one node per press, whatever the auto state.")),
             on(Tab::Settings,
                 key("KeyRecord", "Record events (debug)", d.key_record,
-                    "Toggles recording of every event the game queues, capped at 300.")),
+                    &format!(
+                        "Toggles logging the events the game queues: up to {} lines per event type \
+                         and {} in all, then it stops by itself and writes a census of everything \
+                         it saw.",
+                        crate::recorder::RECORD_PER_DESC,
+                        crate::recorder::RECORD_CAP
+                    ))),
             // The diagnostics go to the shared Debug tab, where the section
             // title is the group header, so the "Diagnostics:" heading these
             // three used to sit under is gone.
@@ -587,6 +614,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "gathermoney" => cfg.gather_money = bool_of(v),
             "gatherbugs" => cfg.gather_bugs = bool_of(v),
             "gatherfish" => cfg.gather_fish = bool_of(v),
+            "gathercarcass" => cfg.gather_carcass = bool_of(v),
             "surveylines" => match v.parse::<u32>() {
                 Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => cfg.survey_lines = n,
                 _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", cfg.survey_lines)),
@@ -785,6 +813,44 @@ mod tests {
         let help = schema().field("GatherMoney").and_then(|f| f.help.clone()).unwrap_or_default();
         assert!(help.contains("Untested in game"), "{help}");
         assert!(help.contains("[Gatherer] Money multiplier"), "{help}");
+    }
+
+    /// `GatherCarcass` is the third switch that starts **off**, and it is
+    /// neither a gather family nor a catch: skinning is its own game event at
+    /// its own kind of actor (a dead one), so it has no `allows_family` arm
+    /// and no preset names it. The default is 0 for the `GatherMoney` reason -
+    /// forging this event has never been tried in game, and a MINOR may not
+    /// change behaviour - and the help has to say so, because the ini and the
+    /// menu are where a player finds that out.
+    #[test]
+    fn gather_carcass_defaults_off_and_parses_like_gather_money() {
+        assert!(!Config::default().gather_carcass);
+        let (c, w) = parse(&sectioned("GatherCarcass=1\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_carcass);
+        let (c, w) = parse(&sectioned("GatherCarcass=on\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.gather_carcass);
+        let (c, w) = parse(&sectioned("GatherCarcass=off\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_carcass);
+        assert!(schema().field("GatherCarcass").is_some(), "the menu must offer GatherCarcass");
+        // No preset names it, the same as GatherBugs, GatherFish and
+        // GatherMoney: a preset chooses node families and ground items, so an
+        // untested switch can never be turned on by pressing a button.
+        for p in &schema().presets {
+            assert!(!p.set.iter().any(|(k, _)| k == "GatherCarcass"), "{}", p.label);
+        }
+        // The help has to say what it does and that it starts off.
+        let help = schema().field("GatherCarcass").and_then(|f| f.help.clone()).unwrap_or_default();
+        assert!(help.contains("0 by default"), "{help}");
+        assert!(help.contains("carcasses within GatherRange"), "{help}");
+        assert!(help.contains("without the skinning animation"), "{help}");
+        // It says nothing about the other switches, and they say nothing about
+        // it: turning insects and fish off must not take skinning with them.
+        let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=0\nGatherCarcass=1\n"));
+        assert!(w.is_empty(), "{w:?}");
+        assert!(!c.gather_bugs && !c.gather_fish && c.gather_carcass);
     }
 
     // -----------------------------------------------------------------------

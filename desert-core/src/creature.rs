@@ -121,6 +121,29 @@ pub const BUG_CLASSES: &[u8] = &[0x80];
 /// Seven more taken by the plugin itself in the same session all read 0x23.
 pub const FISH_CLASSES: &[u8] = &[0x23, 0x83];
 
+/// Interaction category bytes seen on **NPCs** - people, not animals.
+///
+/// Recorded by the surveys behind [`CATCHABLE_TYPES`]: 0x21, 0x33, 0x66 and
+/// 0x71, every one of them on the type byte 3 that also carries the Firefly
+/// Colony. None is a catch class.
+///
+/// This list exists for the looter's carcass gate, which needs the one thing
+/// the catch path never has to ask: whether a **dead** type-3 actor is an
+/// animal or a person. The type byte cannot answer it - see
+/// [`CATCHABLE_TYPES`], "the type byte alone never decides anything" - and a
+/// whitelist of animal classes cannot either, because the carcasses actually
+/// skinned in game read 0xD9, 0x75, 0x44 and 0xD7, none of which any recorded
+/// catch has shown, so a whitelist would refuse the very species the feature
+/// works on. A blacklist of the classes known to be people is what is left. It
+/// is not airtight: a dead NPC whose class is not one of these four is still
+/// taken for an animal, and the honest fix for that is another survey.
+pub const NPC_CLASSES: &[u8] = &[0x21, 0x33, 0x66, 0x71];
+
+/// Whether an interaction category byte is one [`NPC_CLASSES`] names.
+pub fn is_npc_class(cat: u8) -> bool {
+    NPC_CLASSES.contains(&cat)
+}
+
 /// Classify a creature by its interaction category byte.
 ///
 /// `None` means "not a class we have ever watched being caught". Every caller
@@ -240,6 +263,25 @@ mod tests {
         }
         for t in [0u8, 1, 2, 4, 5, 7, 0xFF] {
             assert!(!CATCHABLE_TYPES.contains(&t), "type {t} must not be catchable");
+        }
+    }
+
+    /// The NPC classes are what keeps the looter's carcass gate off people, so
+    /// none of them may be a catch class - if one were, a species the mod
+    /// catches would also be one it refused to skin, and the two rules would be
+    /// answering the same byte differently.
+    #[test]
+    fn the_npc_classes_are_not_catch_classes() {
+        for &c in NPC_CLASSES {
+            assert!(is_npc_class(c), "0x{c:02X}");
+            assert!(!BUG_CLASSES.contains(&c), "0x{c:02X} is both an NPC and a bug class");
+            assert!(!FISH_CLASSES.contains(&c), "0x{c:02X} is both an NPC and a fish class");
+        }
+        // The classes the carcasses skinned in game on 2026-09-15 carried. If
+        // one of these ever lands on the NPC list, skinning silently stops
+        // working for that species, so the overlap is worth a test.
+        for c in [0xD9u8, 0x75, 0x44, 0xD7] {
+            assert!(!is_npc_class(c), "0x{c:02X} is a skinned carcass class, not an NPC class");
         }
     }
 
