@@ -216,10 +216,17 @@ pub mod parsed {
     /// be built on one until something varies. See the module header for the
     /// three corrections the capture forced.
     pub mod dropset {
-        /// `i32` claimed draw count, at `record+0x20`: how many entries one
-        /// roll pays. **UNCONFIRMED** - `0` on all 219 rows of the live
-        /// capture, and a table where every row draws nothing pays nothing, so
-        /// a wrong offset is the likelier reading of the two.
+        /// `i32` draw count, at `record+0x20`: how many entries one roll pays.
+        ///
+        /// **CONFIRMED by code 2026-09-15**, not by the capture. The dropset
+        /// roller `FUN_1422179c0` reads it as `thunk_FUN_14e070b60(ctx, actor,
+        /// *(int *)(rec + 0x20))`, and the result is the bound of the loop that
+        /// calls the weighted picker. The offset was right all along; it reads
+        /// `0` on all 219 rows of the live capture because the dispatch-mission
+        /// rows genuinely do not use it, which is what made it look wrong.
+        /// (`docs/findings-hunting-multiplier-2026-09-15.md` section 1.3, which
+        /// reached this table from the other end: carcass loot rolls through the
+        /// very same function.)
         pub const ROW_DRAWS: usize = 0x20;
         /// Pointer to an **array of entry pointers** at `record+0x28`, stride
         /// [`ENTRY_PTR_STRIDE`]. Not an array of inline entries: an entry is
@@ -248,8 +255,13 @@ pub mod parsed {
         /// construction - which is exactly why it is allowed to assert it.
         /// See `docs/reference-internals.md` section 20.22.
         pub const ROW_WEIGHT_SUM: usize = 0x48;
-        /// `i64` claimed "no drop" chance in parts per million, at
-        /// `record+0x50`. **UNCONFIRMED** - `0` on all 219 rows.
+        /// `i64` "no drop" chance in parts per million, at `record+0x50`.
+        ///
+        /// **CONFIRMED by code 2026-09-15**, same source as [`ROW_DRAWS`]:
+        /// `FUN_1422179c0` opens with `if (rand() % 1000000 < *(longlong *)
+        /// (rec + 0x50)) { *err = 0; return; }` - the whole row pays nothing.
+        /// `0` on all 219 captured rows means those rows always pay, not that
+        /// the offset is wrong.
         pub const ROW_NO_DROP_PPM: usize = 0x50;
         /// Bytes per element of the pointer array at [`ROW_ENTRIES`].
         pub const ENTRY_PTR_STRIDE: usize = 8;
