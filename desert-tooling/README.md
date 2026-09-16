@@ -728,9 +728,9 @@ handling and the logger all live in `desert-core`.
 ### Analysis tooling
 
 `just sigscan` checks the signatures against the exe after a game update; each
-must hit exactly once. `tools/dis.sh` disassembles an address range and
-`tools/xrefs.py` finds references. Decompilation goes through the Windows Ghidra
-over its MCP bridge.
+must hit exactly once. `dis` disassembles an address range and `xrefs` finds
+references; both are Rust binaries in `tools/`, built by `just tools`.
+Decompilation goes through the Windows Ghidra over its MCP bridge.
 
 ## Credits and licence
 

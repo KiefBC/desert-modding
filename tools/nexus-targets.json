@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "Which Nexus Mods file each release tag publishes to. Read by tools/nexus-target.py,",
+    "Which Nexus Mods file each release tag publishes to. Read by the nexus-target tool,",
     "which the `nexus` job in .github/workflows/release.yml runs.",
     "",
     "Both packages live on ONE mod page, crimsondesert/mods/3369, as its own file: the",

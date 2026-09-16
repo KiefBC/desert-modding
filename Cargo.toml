@@ -32,6 +32,14 @@ members = [
     "desert-tooling",
 ]
 
+# tools/ is its own workspace, not a member of this one. Everything here is
+# cross-compiled to Windows (see .cargo/config.toml); the tools are host
+# binaries that read the game exe and build the release zips, and pinning the
+# host target for them is tools/.cargo/config.toml's job. Excluding the
+# directory is what stops `cargo build` at the root from pulling them in and
+# trying to cross-compile them.
+exclude = ["tools"]
+
 [workspace.package]
 edition = "2021"
 license = "MIT"

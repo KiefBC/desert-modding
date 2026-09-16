@@ -1,7 +1,7 @@
 # Static-info type names, extracted from FUN_1424fef70 (the _invalid default-instance
 # initializer) on Steam build 25116796. See docs/reference-internals.md section 19.
 #
-# One name per line; '#' lines and blank lines are ignored. sigscan.py checks that each
+# One name per line; '#' lines and blank lines are ignored. `sigscan` checks that each
 # still occurs exactly once in the exe as a NUL-delimited literal. A name that goes
 # missing or gains a second hit after a game update means the type registry changed,
 # which is a much earlier warning than a byte signature going stale.

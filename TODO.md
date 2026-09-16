@@ -130,7 +130,7 @@ built rather than after.
   pointer, or remembering the vanilla value per instance the way `desert-gatherer`'s
   `remember` does per record, is most of the actual difficulty of the feature.
 - **`ItemInfo._maxStackCount` may clamp the result.** The field name is **CONFIRMED** in the
-  exe (`python3 tools/fieldnames.py --grep maxStack`; `ItemInfo._applyMaxStackCap` sits
+  exe (`fieldnames --grep maxStack`; `ItemInfo._applyMaxStackCap` sits
   beside it); that it clamps *this* path is **UNCONFIRMED**. A lever that silently tops out
   is worse than one that refuses.
 - **Owned props.** Most of the trade props are market-stall goods, so this lever raises the
@@ -226,7 +226,7 @@ matter for very different reasons:
 | `gimmick_box_donation_reward_coin_03` | `1005719` | `500..1000` | opened container |
 
 The denomination is the **quantity**, not a separate item, and this is **CONFIRMED from the
-exe's own field names** (`python3 tools/fieldnames.py --grep money`): `ItemInfo._moneyTypeDefine`
+exe's own field names** (`fieldnames --grep money`): `ItemInfo._moneyTypeDefine`
 → `MoneyTypeDefine._unitDataListMap` → `UnitData{_minimum, _itemName, _moneyIconPath}`. Copper,
 Silver and Gold are **display rows over one item**, selected by threshold. That answers the old
 "which items are money" question in the sense that mattered: there is one money item and looking
@@ -346,7 +346,7 @@ the coin props are the whole reachable currency surface.
 **So the shape of this feature is now known for the three placed coin props:** the lever is the
 block edit the gatherer already makes, reached live by `reapply`. What it needs is a family - call
 it `Money` or `Currency`, its own ini key and slider - and the generator's money refusal lifted
-**for that family only**. The refusal in `tools/gen-collect-names.py` exists so item `1` never
+**for that family only**. The refusal in the `gen-collect-names` tool exists so item `1` never
 rides into `Foraging` by accident; it must stay for every other family. The three donation boxes
 and the silver bar are bucket D and are not covered by this; they wait on the instance lever like
 everything else in that bucket. Write the ini warning - "this multiplies money you find lying
@@ -575,7 +575,7 @@ that did nothing for pepper would do nothing for jade. They remain worth enumera
 instance lever needs a list of records to gate on, and this is that list.
 
 **Item names below are inferred from the names of the records that yield them**
-(`tools/items.py`, `findings-water-wells` §3), not read from the game's string table. `strong`
+(the `items` tool, `findings-water-wells` §3), not read from the game's string table. `strong`
 means two or more records agree, `single` means one record names it and nothing contradicts,
 `guess` means a container named it.
 
@@ -653,7 +653,7 @@ population that would actually test the ceiling (see the unclassified-records en
 **CONFIRMED against the bytes, and deliberately attribution-independent**: all **397**
 header-shaped `collection_prop` names in DMM's clean table body, each spanned to the next
 header-shaped name anywhere in the body, contain **zero** 64-byte block-shaped structures.
-Not one `_dropInfoDataList` block, and not one free-standing block either. `tools/items.py`
+Not one `_dropInfoDataList` block, and not one free-standing block either. the `items` tool
 agrees from the other direction - neither the shipped detector nor `--loose` attributes a
 single output list to any of them. (The scan does not depend on the key-echo discriminator
 on purpose: only 164 of those 397 names pass it, so an echo-scoped answer would have been
@@ -677,7 +677,7 @@ That kills both of the cheap hypotheses:
   `0` on **573/573** lists, read directly at each list offset.
 
 **The best remaining lead is `GimmickInfo._convertItemInfo`, and it is PLAUSIBLE.** The
-field is in the exe (`python3 tools/fieldnames.py --grep convert`, so the *name* is
+field is in the exe (`fieldnames --grep convert`, so the *name* is
 CONFIRMED), and it is **scalar - no list, no min, no max**. Its sibling
 `CharacterInfo._convertItemInfo` is the same shape, and §17 already established how that one
 behaves: the record names the item and **the amount is a hard-coded immediate in code**, the
@@ -915,7 +915,7 @@ genuine repeat and a misparse are indistinguishable from the bytes alone.
 
 ### What already exists to work with
 
-`tools/items.py --loose` walks the 589/1038 population and writes
+`items --loose` walks the 589/1038 population and writes
 `analysis/items-loose.json` + `docs/reference-items-loose.md`, kept strictly separate from the
 default pair so a loose run cannot touch what the mod actually sees. Every item carries a
 `visibility` of `shipped` or `loose-only` (96 are loose-only), every block its `+64`, and the

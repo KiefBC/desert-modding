@@ -34,19 +34,24 @@
             mingw.stdenv.cc
 
             # Binary-analysis tooling for reverse-engineering the game and the
-            # reference mod: tools/sigscan.py, strings, objdump, file.
-            # Ghidra itself is NOT here any more - it runs on the Windows side
-            # and is driven through the GhidraMCP server; see README.md.
-            pkgs.python3
+            # reference mod, used BY HAND: strings, objdump, file. Nothing in
+            # tools/ calls them any more - sigscan, xrefs and dis are Rust and
+            # read the PE themselves - but they are what you reach for when a
+            # question does not fit an existing tool. Ghidra itself is NOT here:
+            # it runs on the Windows side and is driven through the GhidraMCP
+            # server; see README.md.
             pkgs.binutils
             pkgs.file
 
-            # desert-gatherer-dmm/rebase.py rewrites the DMM offset patches; jq is for
-            # eyeballing those JSONs without loading a 230 KB file into an editor.
-            pkgs.jq
+            # desert-gatherer-dmm/rebase.py is the one Python left in the repo,
+            # and it ships inside the DMM pack rather than living in tools/.
+            pkgs.python3
 
-            # tools/dist.sh builds the release zips (zip -X for reproducible
-            # archives) and prints their listing back with unzip -l.
+            # Hand tools, not called by anything: jq for eyeballing a 230 KB
+            # pack JSON without opening an editor, zip/unzip for looking inside
+            # a release archive. The `dist` tool builds the zips itself now
+            # through the zip crate, so nothing in the repo shells out to these.
+            pkgs.jq
             pkgs.zip
             pkgs.unzip
 

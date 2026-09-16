@@ -1,8 +1,12 @@
 # Crimson Desert mods - task runner. `just` (or `just --list`) shows the recipes.
 #
 # Every recipe works from inside `nix develop` and from a plain shell: outside
-# the dev shell each cargo/python/zip command is re-run through
-# `nix develop --command`, so `just build` is enough either way.
+# the dev shell each cargo command is re-run through `nix develop --command`,
+# so `just build` is enough either way.
+#
+# Nothing here shells out to python3, objdump, zip or sha256sum any more. Every
+# support script in tools/ is a Rust binary built by `just tools`, and the dev
+# shell is now needed only for the Rust toolchain and the mingw linker.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -22,6 +26,11 @@ appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
 
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
+
+# Where `just tools` puts the support binaries. Everything in tools/ is Rust
+# now: there are no .py or .sh files left there, and no recipe shells out to
+# python3, objdump, zip or sha256sum any more.
+tools_bin := "tools/target/" + native + "/release"
 
 # Every DLL DesertTooling.asi is allowed to import. All of these ship WITH
 # Windows, so an .asi that imports only these loads in bin64 with nothing
@@ -52,6 +61,33 @@ default:
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
 
+# tools/ is its OWN cargo workspace, excluded from this one, because everything
+# here cross-compiles to Windows and none of the tools do.
+#
+# CARGO_BUILD_TARGET is not decoration. tools/.cargo/config.toml pins the host
+# target, but cargo discovers config by walking up from the CURRENT DIRECTORY,
+# not from --manifest-path - so run from the repo root, the tools pick up the
+# ROOT config instead and try to cross-compile themselves to Windows, failing
+# with "can't find crate for core". Setting the target in the environment wins
+# over both config files, which lets every recipe below stay in the repo root,
+# where a relative path handed to a tool still means what it says.
+
+# Build the support tools in tools/ (host binaries, their own workspace).
+tools:
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo build --release --manifest-path tools/Cargo.toml
+
+# Clippy and unit tests for the tools (host target only; nothing here ships).
+tools-check:
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo clippy --manifest-path tools/Cargo.toml --all-targets -- -D warnings
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path tools/Cargo.toml
+
+# Separate from `tools-check` for the same reason `test-game` is separate from
+# `test`: a CI runner has no game, no DMM table and no Ghidra.
+
+# The tools' tests needing the game exe, DMM's table or a built plugin.
+tools-check-game: tools
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path tools/Cargo.toml -- --ignored
+
 # Unit tests on both targets: native Linux, then the Windows binaries via WSL interop.
 test: test-native test-win
 
@@ -78,38 +114,44 @@ audit:
     {{nix}} cargo audit
 
 # Everything a commit should pass: clippy, tests, audit, doc versions, imports.
-ci: clippy test audit check-versions check-imports
+ci: clippy test tools-check audit check-versions check-imports
 
 # Fail if a built plugin imports a DLL that is not part of Windows. Part of `just ci`.
-check-imports: build
-    {{nix}} tools/check-imports.sh {{allowed_imports}}
+check-imports: build tools
+    {{tools_bin}}/check-imports {{allowed_imports}}
 
 # Rewrite the version tables in README.md / VERSIONING.md from the Cargo.toml versions.
-sync-versions:
-    {{nix}} python3 tools/sync-versions.py
+sync-versions: tools
+    {{tools_bin}}/sync-versions
 
 # Fail if those docs have drifted from the Cargo.toml versions. Part of `just ci`.
-check-versions:
-    {{nix}} python3 tools/sync-versions.py --check
+check-versions: tools
+    {{tools_bin}}/sync-versions --check
 
 # Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
-logo:
-    {{nix}} python3 tools/logo-to-rgba.py
+logo: tools
+    {{tools_bin}}/logo-to-rgba
 
 # Re-check every byte signature against the game exe (each must hit once).
-sigscan:
-    {{nix}} python3 tools/sigscan.py
+sigscan: tools
+    {{tools_bin}}/sigscan
 
 # Re-export the Ghidra evidence tree into evidence/ (needs Ghidra running on
 # Windows with GhidraMCP listening). Resumable: existing files are not
 # re-fetched. `just evidence --depth 2` and any other flag is passed through.
-evidence *flags:
-    {{nix}} python3 tools/evidence.py {{flags}}
+evidence *flags: tools
+    {{tools_bin}}/evidence {{flags}}
 
 # Build the release zips into dist/ (the plugin, the DMM pack, SHA256SUMS).
+#
+# The {{nix}} prefix is still needed here, unlike the other tool recipes: `dist`
+# itself spawns `cargo build --release` for the Windows target, which needs the
+# mingw linker from the dev shell. The tool no longer shells out to zip, unzip
+# or sha256sum - cargo is the only external program it runs.
+
 # `just dist desert-tooling` builds only that package, as a release tag does.
-dist *packages:
-    {{nix}} tools/dist.sh {{packages}}
+dist *packages: tools
+    {{nix}} {{tools_bin}}/dist {{packages}}
 
 # Copy the built plugin into the game's bin64 as DesertTooling.asi. Refuses while the game runs.
 install: build
@@ -141,6 +183,7 @@ yields:
 # Remove build output and dist/.
 clean:
     {{nix}} cargo clean
+    {{nix}} cargo clean --manifest-path tools/Cargo.toml
     rm -rf dist
 
 # --- DMM pack (desert-gatherer-dmm/) --------------------------------------

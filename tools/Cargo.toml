@@ -1,0 +1,58 @@
+# tools/ - the workspace's support scripts, in Rust.
+#
+# This is a SEPARATE cargo workspace from the repo root, deliberately. The root
+# `.cargo/config.toml` sets `build.target = x86_64-pc-windows-gnu`, because
+# everything the root workspace builds is a Windows plugin. Nothing here is:
+# these are host binaries that read the game exe, rewrite docs and build the
+# release zips. `tools/.cargo/config.toml` pins the host target back, and the
+# root `Cargo.toml` excludes this directory so `cargo build` at the root does
+# not try to cross-compile them.
+#
+# The root workspace's never-panic lints do not apply here either. A tool that
+# panics prints a backtrace to a terminal; a plugin that panics crashes the
+# game. Tools still return errors rather than panicking wherever the error is
+# something a user can act on, but `unwrap` on an invariant is allowed.
+[workspace]
+resolver = "2"
+members = ["."]
+
+[package]
+name = "desert-tools"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "desert_tools"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+regex = "1"
+memchr = "2"
+object = { version = "0.37", default-features = false, features = ["read", "std", "pe"] }
+iced-x86 = { version = "1", default-features = false, features = ["std", "decoder", "intel", "instr_info"] }
+zip = { version = "2", default-features = false, features = ["deflate", "time"] }
+# Already in the tree as zip's deflate backend, so naming it directly costs
+# nothing: it is what lets logo-to-rgba's --png preview be a real compressed
+# PNG rather than a stored-zlib one seventy times the size.
+flate2 = "1"
+# No TLS, deliberately. `evidence` is the only user and it talks to a GhidraMCP
+# server on 127.0.0.1 or the WSL default gateway over plain HTTP - it can never
+# reach an https:// URL. ureq's default features pull rustls and with it ring,
+# whose assembly failed to LINK inside the nix dev shell (undefined
+# ring_core_*_sha256_block_data_order_hw and friends), which broke `just tools`
+# and therefore `just ci` for every tool, not just this one. Nothing here needs
+# a certificate store, so the honest fix is not to build one.
+ureq = { version = "2", default-features = false, features = ["json"] }
+rayon = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 2

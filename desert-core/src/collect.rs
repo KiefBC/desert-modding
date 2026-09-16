@@ -1,7 +1,7 @@
 //! Gather-node records of Crimson Desert build 25116796, generated from the
 //! Desert Gatherer DMM pack (gimmickinfo records patched by that pack) plus
 //! tools/extra-families.json (the records DMM has no module for).
-//! `(record key, record name, family)`. Regenerate with tools/gen-collect-names.py.
+//! `(record key, record name, family)`. Regenerate with tools/target/x86_64-unknown-linux-gnu/release/gen-collect-names.
 //!
 //! That generator rewrites this whole file and it is now safe to run straight
 //! over it: it owns the enum, the rows, both lookups AND the tests below,
@@ -14,7 +14,7 @@ pub enum Family {
     /// Also the water drawn from a WATER WELL: `gimmick_well_0001_parts01` (key
     /// 1001081, item 22008, a fixed 5..5), the one record in this table that is
     /// not from the DMM pack. It comes from tools/extra-families.json, which
-    /// tools/gen-collect-names.py verifies against DMM's clean gimmickinfo
+    /// the gen-collect-names tool verifies against DMM's clean gimmickinfo
     /// table body on every run. Water from a well is gathered out of the world
     /// like everything else here, so it lives here rather than in a family of
     /// its own. The other water source, the breakable pot
@@ -42,7 +42,7 @@ pub enum Family {
     /// on build 25246367) - so the same block edit that multiplies a bush
     /// multiplies them, and `hook::reapply` is what reached them live. This is
     /// the ONLY family allowed to pay item 1, and every record in it must pay
-    /// item 1 and nothing else; tools/gen-collect-names.py enforces both
+    /// item 1 and nothing else; the gen-collect-names tool enforces both
     /// halves. What it reaches is money lying in the world and nothing else:
     /// not enemy drops, not quest rewards, not coin pouches, not chests, not
     /// shop prices, not dispatch rewards. The three donation-box coin records

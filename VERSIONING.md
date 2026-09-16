@@ -194,8 +194,8 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    be generated, and the release notes are built from it.
 4. Build the packages:
    ```bash
-   nix develop --command tools/dist.sh                   # both packages
-   nix develop --command tools/dist.sh desert-tooling    # just the one you are releasing
+   just dist                   # both packages
+   just dist desert-tooling    # just the one you are releasing
    ```
    You get `dist/DesertTooling-<version>.zip`, `dist/DesertGatherer-DMM-<version>.zip` and
    `dist/SHA256SUMS`. The plugin zip holds `DesertTooling.asi`, `DesertTooling.ini`, the README, the
@@ -215,12 +215,12 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks
    that the tagged commit is on `main` and that the tag's version equals the one in the source,
-   re-runs the doc, clippy and test checks, builds **that package** with `tools/dist.sh` on a clean
+   re-runs the doc, clippy and test checks, builds **that package** with the `dist` tool on a clean
    runner, and publishes a GitHub release named for the tag with its zip and `SHA256SUMS` attached.
    Only the tagged package: the two are versioned separately, so rebuilding both for every tag would
    eventually attach an untagged package's old version number to new bytes, and two release pages
    would disagree about what one version contains. The notes are the CHANGELOG entry for that version
-   (`tools/release-notes.py`, which you can run locally to preview them). Any gate failing means
+   (the `release-notes` tool, which you can run locally to preview them). Any gate failing means
    nothing is published; fix and re-tag.
 8. The same push then publishes to Nexus Mods, with no further action: the `nexus` job downloads
    the assets from the release it just made, checks them against `SHA256SUMS`, and adds that zip to

@@ -1,6 +1,6 @@
 //! The menu's logo: `assets/logo.svg` as raw pixels, embedded in the DLL.
 //!
-//! The bytes in `logo.rgba` are produced by `tools/logo-to-rgba.py` (or
+//! The bytes in `logo.rgba` are produced by the `logo-to-rgba` tool (or
 //! `just logo`) from `assets/logo.svg`, a 64 x 64 pixel-art goblin. The
 //! script rasterises it with nearest-neighbour at 2x, so what is embedded
 //! here is [`WIDTH`] x [`HEIGHT`] pixels of straight (non-premultiplied)

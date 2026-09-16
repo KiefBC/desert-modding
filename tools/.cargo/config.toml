@@ -1,0 +1,7 @@
+# The root .cargo/config.toml sets build.target to the Windows GNU triple,
+# because everything the root workspace builds is a plugin for the game. Cargo
+# merges config from every ancestor directory, nearest first, so this file is
+# what puts the host target back for the tools. Without it, `cargo run --bin
+# sigscan` inside tools/ would build a Windows .exe and then fail to run it.
+[build]
+target = "x86_64-unknown-linux-gnu"

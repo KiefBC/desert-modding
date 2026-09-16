@@ -3,7 +3,7 @@
 # One tag, one package, one release. `git push origin desert-tooling-v0.3.0`
 # builds THAT package from the tagged commit and publishes its zip plus
 # SHA256SUMS under a release named for the tag. The notes are the package's
-# CHANGELOG entry for the version, then the checksums (tools/release-notes.py).
+# CHANGELOG entry for the version, then the checksums (the `release-notes` tool).
 #
 # Two packages ship: DesertTooling.asi (the one plugin, from desert-tooling) and
 # the DMM offset-patch pack. Only the tagged one is built, deliberately. They are
@@ -63,9 +63,6 @@ jobs:
             exit 1
           fi
 
-      - name: Tag matches the version in the source
-        run: python3 tools/release-notes.py "$GITHUB_REF_NAME" --title
-
       - name: Install Nix
         uses: cachix/install-nix-action@v30
         with:
@@ -79,11 +76,36 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'tools/Cargo.lock', 'flake.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # The tag/version gate and the packaging both live in tools/ now, which is
+      # a separate cargo workspace of host binaries. It used to be stdlib-only
+      # Python and ran as the very first step, before Nix existed; it needs the
+      # toolchain now, so it moved down here. It is still ahead of every step
+      # that produces or publishes anything.
+      - name: Build the tools
+        run: nix develop --command just tools
+
+      # The `nexus` job needs two of these and runs on a bare runner with no Nix
+      # and no cargo cache. Uploading them here means they are built ONCE, with
+      # the toolchain flake.lock pins, rather than a second time against
+      # whatever Rust the runner image happens to ship.
+      - name: Keep the tools for the nexus job
+        uses: actions/upload-artifact@v4
+        with:
+          name: tools
+          path: |
+            tools/target/x86_64-unknown-linux-gnu/release/nexus-target
+            tools/target/x86_64-unknown-linux-gnu/release/release-notes
+          retention-days: 1
+          if-no-files-found: error
+
+      - name: Tag matches the version in the source
+        run: nix develop --command tools/target/x86_64-unknown-linux-gnu/release/release-notes "$GITHUB_REF_NAME" --title
+
       - name: Docs match Cargo.toml
-        run: python3 tools/sync-versions.py --check
+        run: nix develop --command just check-versions
 
       - name: Clippy (Windows + native, warnings are errors)
         run: nix develop --command just clippy
@@ -91,17 +113,20 @@ jobs:
       - name: Tests (native)
         run: nix develop --command just test-native
 
-      # Just this tag's package. dist.sh with no argument still builds both,
+      # Just this tag's package. `dist` with no argument still builds both,
       # which is what `just dist` and a local build want.
       - name: Build the package
-        run: nix develop --command tools/dist.sh "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --package)"
+        run: |
+          tools=tools/target/x86_64-unknown-linux-gnu/release
+          nix develop --command "$tools/dist" "$("$tools/release-notes" "$GITHUB_REF_NAME" --package)"
 
       - name: Checksums verify
         run: cd dist && sha256sum --check --strict SHA256SUMS
 
       - name: Release notes
         run: |
-          python3 tools/release-notes.py "$GITHUB_REF_NAME" --sums dist/SHA256SUMS > "$RUNNER_TEMP/notes.md"
+          tools/target/x86_64-unknown-linux-gnu/release/release-notes \
+            "$GITHUB_REF_NAME" --sums dist/SHA256SUMS > "$RUNNER_TEMP/notes.md"
           echo "::group::notes.md"; cat "$RUNNER_TEMP/notes.md"; echo "::endgroup::"
 
       # gh is preinstalled on the GitHub-hosted runners. --verify-tag refuses to
@@ -113,7 +138,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
-            --title "$(python3 tools/release-notes.py "$GITHUB_REF_NAME" --title)" \
+            --title "$(tools/target/x86_64-unknown-linux-gnu/release/release-notes "$GITHUB_REF_NAME" --title)" \
             --notes-file "$RUNNER_TEMP/notes.md" \
             dist/*.zip dist/SHA256SUMS
 
@@ -130,7 +155,8 @@ jobs:
   #
   # The Upload API only adds a VERSION to a file that already exists. It cannot
   # create a mod page, or the first file on one; those are done by hand, once,
-  # and the two numbers they produce go in tools/nexus-targets.json. A package
+  # and the two numbers they produce go in tools/nexus-targets.json (still JSON;
+  # only the script that reads it became Rust). A package
   # with no entry there is skipped, and its tag still cuts a GitHub release.
   #
   # Needs one secret: NEXUS_API_KEY, a personal API key from
@@ -145,12 +171,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Built by the `release` job with the pinned toolchain; this runner has no
+      # Nix and no cargo cache, so it does not rebuild them.
+      - name: Fetch the tools
+        uses: actions/download-artifact@v4
+        with:
+          name: tools
+          path: tools-bin
+      - run: chmod +x tools-bin/*
+
       # Which of the two zips this tag is for, and which Nexus file it updates.
       # Also validates the version and display name against what the API accepts,
       # so a bad name is caught here and not after the bytes are uploaded.
       - name: Which Nexus file this tag publishes to
         id: target
-        run: python3 tools/nexus-target.py "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+        run: ./tools-bin/nexus-target "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
 
       # From the release, not from a rebuild: the bytes that go to Nexus are the
       # ones SHA256SUMS was computed over and the ones GitHub is serving.
@@ -192,7 +227,7 @@ jobs:
         run: |
           {
             echo "text<<NEXUS_CHANGELOG_EOF"
-            python3 tools/release-notes.py "$GITHUB_REF_NAME" --changelog
+            ./tools-bin/release-notes "$GITHUB_REF_NAME" --changelog
             echo "NEXUS_CHANGELOG_EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -211,7 +246,7 @@ jobs:
           display_name: ${{ steps.target.outputs.display_name }}
           category: ${{ steps.target.outputs.category }}
           # Two files on one page, so at most one of them may own the page's
-          # version field; nexus-target.py refuses a config where two do.
+          # version field; `nexus-target` refuses a config where two do.
           update_mod_version: ${{ steps.target.outputs.update_mod_version }}
           # The version this replaces goes to the archive rather than sitting
           # beside it as a second file under the same heading.

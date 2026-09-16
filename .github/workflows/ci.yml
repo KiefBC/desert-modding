@@ -41,11 +41,22 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'flake.lock') }}
+            tools/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'tools/Cargo.lock', 'flake.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
+      # tools/ is a separate cargo workspace of host binaries, and the version
+      # check below is one of them. This step is where a tools build breaks, so
+      # that a failure there does not read as a docs-drift failure.
+      #
+      # It also has to come AFTER the Nix install, which is new: the version
+      # check used to be the very first step because it was stdlib-only Python
+      # and needed nothing. It is a Rust binary now and needs the toolchain.
+      - name: Tools build, clippy clean, tests green
+        run: nix develop --command just tools-check
+
       - name: Docs match Cargo.toml
-        run: python3 tools/sync-versions.py --check
+        run: nix develop --command just check-versions
 
       - name: Clippy (Windows + native, warnings are errors)
         run: nix develop --command just clippy
