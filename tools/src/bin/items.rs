@@ -26,7 +26,7 @@
 //! `desert-core/src/collect.rs` for the current `Family` of each record.
 //!
 //! Method, and its limits, because the doc states them and this is where they
-//! are implemented (`docs/findings-water-wells-2026-09-12.md` sections 3, 5, 7
+//! are implemented (`docs/findings/2026-09-12-water-wells.md` sections 3, 5, 7
 //! and 8):
 //!
 //!   * Blocks are found by the detector `desert_core::gimmick::output_lists`

@@ -47,7 +47,7 @@
 //! [`multiply`] — which writes only the two scalars — was never wrong; what was
 //! wrong is [`OutputBlock::item`], always read as 0, and so every item id
 //! `desert-gatherer`'s `remember` stored and `hook::reapply` cross-checks
-//! against. See `docs/findings-water-wells-2026-09-12.md` section 5.
+//! against. See `docs/findings/2026-09-12-water-wells.md` section 5.
 //!
 //! That signature (count 1..=64, every block valid, `1 <= min <= max <=`
 //! [`MAX_QTY`]) was cross-checked offline against the whole 22 MB table: inside
@@ -171,11 +171,14 @@ pub const ITEM_AT: usize = 1;
 /// Offset of the block's second copy of the item id, four bytes after the
 /// `FF FF`. The signature demands the two copies agree, which is what makes
 /// either of them usable as an identity check against a parsed block object
-/// later (`docs/reference-internals.md` sections 16 and 16.1: the parsed block
-/// carries the item id at `block+0x68`, and the parsed list entry's
-/// `entry+0x08` is *not* a second copy of it — that field is the raw block's
-/// [`PAD_TAIL_AT`], `DropInfoData._dropTagNameHash`, which reads zero on every
-/// gather block and nonzero on the 16 lists `block_ok` excludes).
+/// later (`docs/reference-internals.md` section 16: the parsed block carries
+/// the item id at `block+0x68`, and the parsed list entry's `entry+0x08` is
+/// *not* a second copy of it — that field is the raw block's [`PAD_TAIL_AT`],
+/// which reads zero on every gather block and nonzero on the 16 lists
+/// `block_ok` excludes). What that field *is* has no name: section 16.1 called
+/// it `DropInfoData._dropTagNameHash`, and that was wrong - the tag hash is at
+/// raw block +22, parsed `block+0x0C` (`docs/findings/2026-09-13-buff-stat-census.md`
+/// section 4.1, nonzero on 606 of 606 gather blocks).
 pub const ITEM_TAIL_AT: usize = 60;
 /// The two four-byte zero pads, one after each copy of the item id. Both read
 /// `0` on all 896 blocks of the clean body and the signature only requires them
@@ -398,7 +401,7 @@ fn block_ok(rec: &[u8], at: usize) -> bool {
     // record start finds them because nested string fields use the same
     // `u32 len, bytes, NUL` shape as a record name. `player` is preceded by the
     // `u32` 1 and `UnnamedTrigger_0` by 0x01000000, neither a record key. See
-    // `docs/findings-water-wells-2026-09-12.md` section 7.)
+    // `docs/findings/2026-09-12-water-wells.md` section 7.)
     // Whether they are gatherable outputs this mod
     // ought to multiply is an open question and deliberately not answered here:
     // this clause is what keeps the population exactly what it has always been,

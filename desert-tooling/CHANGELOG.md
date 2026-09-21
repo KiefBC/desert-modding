@@ -278,7 +278,7 @@ of this entry is the one that was run.
   convenience one - it changes how fast you accumulate money, not how many berries a bush gives -
   which is why it ships at `1` on purpose and the ini says so in more words than the others get.
 
-  The evidence it rests on (`docs/findings-water-wells-2026-09-12.md` section 13.7): three hand
+  The evidence it rests on (`docs/findings/2026-09-12-water-wells.md` section 13.7): three hand
   pickups of `coin_0001` on 2026-09-13 paid `[recv] item 1 x15`, `x14`, `x15` - every one inside
   its `10..15` block, and varying - against a bag delta of exactly +44 between two F11 surveys.
   Every prop that hands over a pre-built item instance has ever been seen to carry a count of 1, so

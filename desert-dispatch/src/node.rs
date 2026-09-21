@@ -8,7 +8,7 @@
 //! on Linux, which is the whole reason the judgement about whether the layout
 //! looks right lives here rather than in `scan.rs`.
 //!
-//! Every offset comes from `docs/findings-dispatch-2026-09-10.md`, which
+//! Every offset comes from `docs/findings/2026-09-10-dispatch.md`, which
 //! recovered them from the field-by-field record copy in `FUN_140ee53d0` and
 //! corroborated them in the validator and the UI. They are **parsed-object**
 //! offsets - the objects the game's record loader produced - not offsets into
@@ -77,7 +77,14 @@ pub mod parsed {
     /// in this crate still resolves.
     pub use desert_core::manager::{MGR_COUNT, MGR_RECORDS};
 
-    /// `u32` FactionNodeKey, at `record+0x08`.
+    /// `u32` at `record+0x08`. **Not** the FactionNodeKey, whatever this
+    /// comment used to say: a vanilla dump reads 2115 distinct values over 2808
+    /// records, all 8-aligned and different between two passes, which is the
+    /// low half of a heap pointer (`docs/reference-internals.md` section 20.19).
+    /// It is still read and printed as `node key=` / `node=` in the dispatch
+    /// log, and the dedupe of already-logged missions pairs it with the
+    /// operation key, so the lines stay greppable; nothing keys on it - the
+    /// remembered missions use `entry+0x60` and the dropset row.
     pub const REC_KEY: usize = 0x08;
     /// Pointer to the record's operation entries, at `record+0xA0`.
     pub const REC_OPS: usize = 0xA0;
@@ -103,7 +110,7 @@ pub mod parsed {
     /// a per-state duration and calling it a summed "cost" is what hid the
     /// meaning for a session.
     ///
-    /// Decompilation called this a cost (`docs/findings-dispatch-2026-09-10.md`,
+    /// Decompilation called this a cost (`docs/findings/2026-09-10-dispatch.md`,
     /// and section 20.4 of the reference, where the tick subtracts it from an
     /// accumulator). It is a duration: see the module header for the DMM
     /// cross-check that settles it.
@@ -114,7 +121,10 @@ pub mod parsed {
 
     /// `u32` FactionOperationKey, at `entry+0x60`.
     pub const OP_KEY: usize = 0x60;
-    /// `u32` FactionOperationGroupKey, at `entry+0x90`.
+    /// `u16` FactionOperationGroupKey, at `entry+0x90`. Two bytes, not four:
+    /// reading a `u32` here picks up `+0x92`'s stale bytes and turns the nine
+    /// distinct vanilla groups into 592 (`docs/reference-internals.md`
+    /// section 20.19). The decoder widens it to `u32` for the log line.
     pub const OP_GROUP: usize = 0x90;
     /// `u32` at `entry+0xC0`, meaning unknown. **Not the duration.**
     ///
@@ -224,7 +234,7 @@ pub mod parsed {
         /// calls the weighted picker. The offset was right all along; it reads
         /// `0` on all 219 rows of the live capture because the dispatch-mission
         /// rows genuinely do not use it, which is what made it look wrong.
-        /// (`docs/findings-hunting-multiplier-2026-09-15.md` section 1.3, which
+        /// (`docs/findings/2026-09-15-hunting-multiplier.md` section 1.3, which
         /// reached this table from the other end: carcass loot rolls through the
         /// very same function.)
         pub const ROW_DRAWS: usize = 0x20;
@@ -358,6 +368,12 @@ pub mod parsed {
 /// zeroes it before the game runs, see section 20.18), so neither value is safe
 /// to assume. They stay read, and the `[banking]` line is how a game update
 /// that flips one gets noticed.
+///
+/// Both RVAs here were measured on build **25116796** and have not been
+/// re-derived on 25246367; they are the one place this subsystem names an
+/// address instead of finding it by content, and the `[banking]` line they
+/// feed is a diagnostic, never a write. Re-derive them after a game update
+/// (`docs/reference-internals.md` section 20.18 records how they were found).
 pub mod globals {
     /// `DAT_146BC6AA8`, tested as `cmp byte ptr [0x146bc6aa8],0` at RVA
     /// `0x2781B08`, whose `je` skips the deferred-reward branch entirely.
@@ -906,7 +922,7 @@ fn le_i64(b: &[u8], off: usize) -> Option<i64> {
 pub fn decode_operation(b: &[u8]) -> Option<OpFields> {
     Some(OpFields {
         key: le_u32(b, parsed::OP_KEY)?,
-        group: le_u32(b, parsed::OP_GROUP)?,
+        group: u32::from(le_u16(b, parsed::OP_GROUP)?),
         flag_c0: le_u32(b, parsed::OP_UNKNOWN_C0)?,
         min_operators: le_u32(b, parsed::OP_MIN_OPERATORS)?,
         max_operators: le_u32(b, parsed::OP_MAX_OPERATORS)?,
@@ -1081,7 +1097,7 @@ const MAX_SAMPLES: usize = 65_536;
 
 /// Everything one pass learned, accumulated one [`Operation`] at a time.
 ///
-/// The condition histogram is the valuable part: `docs/findings-dispatch-2026-09-10.md`
+/// The condition histogram is the valuable part: `docs/findings/2026-09-10-dispatch.md`
 /// says which `conditioninfo` records actually appear "is polymorphic and
 /// opaque statically - that needs a runtime logging pass, and it is the one
 /// thing static analysis cannot settle here". This is that pass's answer.

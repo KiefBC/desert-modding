@@ -561,7 +561,7 @@ fn u32_at(b: &[u8], o: usize) -> Option<u32> {
 /// The two tables that are reachable only through the **indirect** accessor
 /// template (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
 /// `gimmick::resolve_manager_slot_based`. RVAs from the offline census in
-/// `docs/findings-dispatch-2026-09-10.md`; `FactionNode` is the one
+/// `docs/findings/2026-09-10-dispatch.md`; `FactionNode` is the one
 /// `desert-dispatch` walks.
 const PTR_TEMPLATE_SLOTS: &[(&[u8], usize)] =
     &[(gimmick::FACTION_NODE_TABLE, 0x6C30308), (b"Skill", 0x6C2E330)];

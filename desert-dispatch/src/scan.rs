@@ -316,7 +316,7 @@ fn read_steps(entry: usize) -> (usize, u32) {
 }
 
 /// The entry's condition list. **This is the output the whole subsystem is
-/// for**: `docs/findings-dispatch-2026-09-10.md` could not settle which
+/// for**: `docs/findings/2026-09-10-dispatch.md` could not settle which
 /// `conditioninfo` records appear here from the exe alone.
 fn read_conditions(entry: usize, sum: &mut Summary) -> Vec<Cond> {
     let mut conds = Vec::new();

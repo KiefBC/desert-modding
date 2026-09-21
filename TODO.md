@@ -10,7 +10,7 @@ shipped as `DesertTooling.asi` in `desert-tooling` 0.3.0 and the argument lives 
 0.3.0 changelog entry and in `VERSIONING.md`. Do not reopen it from memory.
 
 Most of what follows came out of the `water-wells` investigation;
-`docs/findings-water-wells-2026-09-12.md` is its record, with the evidence, the
+`docs/findings/2026-09-12-water-wells.md` is its record, with the evidence, the
 confidence labels and the file:line references. Entries cite it by section rather than
 restating it - and they keep its confidence labels, so **do not promote a PLAUSIBLE or
 UNCONFIRMED claim to fact while acting on one of these**. That doc's section 9 is the
@@ -26,7 +26,7 @@ below is where all of those refutations converge, and it is the one to read firs
 **Raised** 2026-09-12. **Status: OPEN, untested.** Nothing has been written and nothing has
 been measured. Do not read anything below as known to work.
 
-**Read `docs/design-instance-lever-2026-09-12.md` before acting on this entry.** It is the
+**Read `docs/findings/2026-09-12-design-instance-lever.md` before acting on this entry.** It is the
 costed design and it carries two blockers this entry's hazard list does not:
 **§2.5** - `reference-internals` §9.2's live read of `instance+0x08` gives `1 @8`, which does
 not reconcile with `+0x08` being an `iteminfo` row index, so "`comp+0xC0` points at the object
@@ -391,7 +391,7 @@ about money *dropped* (PLAUSIBLE from the name); the coin-prop slider stays the 
 ## The water well is a `Foraging` record; the 16 inert records are the instance lever's payload
 
 **Raised** 2026-09-12 as "the `Ingredients` family". **Status: DECIDED and LANDED, released in 0.4.1 on 2026-09-12.**
-On branch `water-wells`. `docs/findings-water-wells-2026-09-12.md` §3 is the design as it was
+On branch `water-wells`. `docs/findings/2026-09-12-water-wells.md` §3 is the design as it was
 first written and §11 is the mechanism that narrowed it; this entry records what was done about
 it. Every other entry in this file was written before that decision landed; they were audited
 against it on 2026-09-12 and now name `Ingredients` only where they describe what was measured
@@ -980,7 +980,7 @@ not touch that: they name individual items, never a category or a group.
 
 **Raised** 2026-09-12 as "`GimmickEventHandlerData_SetAdditionalCollectDropRate`, OPEN lead,
 unexplored". **Status: the original lead is CLOSED; a larger one it uncovered is OPEN and
-cheap.** Explored 2026-09-13 - `docs/findings-drop-rate-levers-2026-09-13.md` is the record,
+cheap.** Explored 2026-09-13 - `docs/findings/2026-09-13-drop-rate-levers.md` is the record,
 with the addresses, the decompilation and the commands.
 
 ### The original lead, closed
@@ -1052,7 +1052,7 @@ paid for itself twice, and it carries the same near-zero risk: reads only, no ho
 
 ### Built, 2026-09-13: `[Dispatch] DumpBuffs=1`, log tag `[buffs]` - awaiting one launch
 
-`docs/findings-buff-stat-census-2026-09-13.md` is the record. Two corrections to the section
+`docs/findings/2026-09-13-buff-stat-census.md` is the record. Two corrections to the section
 above on the way in: the kind enum has **122** values (0-121; 124 was the reserve), and the
 19-name table is **not** `_statType`'s value table - it is the list of well-known `statusinfo`
 **record names** the game resolves to row indices at startup (`FUN_14250b680`), so

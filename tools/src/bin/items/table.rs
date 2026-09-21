@@ -2,7 +2,7 @@
 //!
 //! Everything here is a port of `tools/items.py`'s `Table` class and the
 //! constants above it, and the reasoning in those comments is the part worth
-//! keeping. `docs/findings-water-wells-2026-09-12.md` sections 5, 7 and 8 are
+//! keeping. `docs/findings/2026-09-12-water-wells.md` sections 5, 7 and 8 are
 //! the source; two of the facts recorded below each cost an earlier
 //! investigation a wrong answer.
 
@@ -81,7 +81,7 @@ const BAD_NAME_CHARS: &[u8] = b"/.\\ <>=\"'\t";
 /// a record key. The claim came from a comment in `desert-core/src/gimmick.rs`
 /// that has since been corrected; the key-echo discriminator in
 /// [`Table::records`] is what rules such headers out. See
-/// `docs/findings-water-wells-2026-09-12.md` section 7.)
+/// `docs/findings/2026-09-12-water-wells.md` section 7.)
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Detector {
     Shipped,

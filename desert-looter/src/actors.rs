@@ -714,8 +714,27 @@ pub fn is_basic_item_record(name: &str) -> bool {
 /// Dropped gear (`item_basic_equip_*`, e.g. a sword lying in the grass).
 /// Outside the gathering scope; taken only when `GatherGear=1`.
 pub fn is_gear_item_record(name: &str) -> bool {
-    name.starts_with("item_basic_equip")
+    GEAR_RECORD_PREFIXES.iter().any(|p| name.starts_with(p))
 }
+
+/// The `item_basic_*` carrier records that hand over armour or jewellery, by
+/// prefix. `item_basic_equip` and `_equip_offset` were the only two matched
+/// until 2026-09-21; the other thirteen (`_fabric_*`, `_leather_*`, `_steel_*`
+/// armour/boots/gloves, and the four jewellery pieces) carried gear past
+/// `GatherGear=0` unnoticed. The list is the `catch_equip`-tagged rows of
+/// `docs/findings/2026-09-12-drop-carriers.md` section 1; weapons
+/// (`item_basic_onehand`, `_twohand`) and horse tack are deliberately not here,
+/// they were never "gear" in the ini's sense.
+pub const GEAR_RECORD_PREFIXES: [&str; 8] = [
+    "item_basic_equip",
+    "item_basic_fabric_",
+    "item_basic_leather_",
+    "item_basic_steel_",
+    "item_basic_necklace",
+    "item_basic_ring",
+    "item_basic_earring",
+    "item_basic_belt",
+];
 
 /// Compact view of the +0xE0 interaction object: words 0..5 as hex.
 pub fn interaction_words(m: &MainModule, actor: usize) -> String {
@@ -975,7 +994,7 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
 /// `ClientStatusActorComponent` flag byte at [`STATUS_FLAG_OFF`] (`+0x273`)
 /// is 1. **That flag is the alive/dead bit: 0 alive, 1 dead.**
 ///
-/// Established live on build 25246367 (`docs/findings-skinning-2026-09-15.md`
+/// Established live on build 25246367 (`docs/findings/2026-09-15-skinning.md`
 /// section 7), from three F11 surveys at 224 s / 266 s / 288 s with eight
 /// carcasses skinned by hand between 234 s and 283 s. Actor `B01003D9` is the
 /// one surveyed on both sides of its own death: it reads `status=00/00` at
@@ -1417,6 +1436,27 @@ pub fn interaction_category(m: &MainModule, actor: usize) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `GatherGear=0` is a promise about every armour and jewellery carrier,
+    /// not just the two `item_basic_equip*` records it used to match.
+    #[test]
+    fn gather_gear_covers_every_armour_and_jewellery_carrier() {
+        for gear in [
+            "item_basic_equip", "item_basic_equip_offset",
+            "item_basic_fabric_armor", "item_basic_fabric_boots", "item_basic_fabric_gloves",
+            "item_basic_leather_armor", "item_basic_leather_boots", "item_basic_leather_gloves",
+            "item_basic_steel_armor", "item_basic_steel_boots", "item_basic_steel_gloves",
+            "item_basic_necklace", "item_basic_ring", "item_basic_earring", "item_basic_belt",
+        ] {
+            assert!(is_gear_item_record(gear), "{gear}");
+        }
+        for not_gear in [
+            "item_basic_onehand", "item_basic_twohand", "item_basic_arrow", "item_basic_dish",
+            "item_basic_horse_armor", "item_basic_backpack", "item_basic_kuku_money", "item_basic_metal",
+        ] {
+            assert!(!is_gear_item_record(not_gear), "{not_gear}");
+        }
+    }
 
     /// What the *shared* class bytes are, and that no other byte maps to one,
     /// is asserted in `desert_core::creature` next to the lists themselves.

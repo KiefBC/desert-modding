@@ -28,7 +28,7 @@
 //! a convenience. The same item (water, 22008) comes from two records, and only
 //! one of them - the well - ever reads its record's output block; the other,
 //! the breakable pot, hands the player a pre-built item instance and the table
-//! is never consulted (docs/findings-water-wells-2026-09-12.md section 11). So
+//! is never consulted (docs/findings/2026-09-12-water-wells.md section 11). So
 //! which RECORD a row names is what decides whether the multiplier reaches
 //! anything, and the item is only what it pays. An earlier item-keyed form of
 //! this file expanded 22008 to both records and shipped a pot row that did

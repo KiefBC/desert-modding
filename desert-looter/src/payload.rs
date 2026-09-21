@@ -28,7 +28,7 @@ pub const CATCH_TAIL: u8 = 3;
 /// seven bytes (`FUN_142a00290`, `local_28 = 0x7e8` then the eid out of
 /// `carcassActor+0x60`, verified by decompile on build 25246367), and two
 /// carcasses skinned by hand were recorded coming off the event queue in two
-/// separate sessions (`docs/findings-skinning-2026-09-15.md` sections 1 and 3):
+/// separate sessions (`docs/findings/2026-09-15-skinning.md` sections 1 and 3):
 ///
 /// ```text
 /// E8 07 FF AF 21 30 B0     session 1, eid 0xB03021AF
@@ -151,7 +151,7 @@ mod tests {
     }
 
     /// The two carcasses recorded coming off the game's own event queue, one
-    /// per session (`docs/findings-skinning-2026-09-15.md` section 1). These
+    /// per session (`docs/findings/2026-09-15-skinning.md` section 1). These
     /// are the game's bytes, not a guess.
     #[test]
     fn skin_payload_matches_what_the_game_queued() {

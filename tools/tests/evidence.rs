@@ -557,6 +557,14 @@ fn fake_repo() -> tempfile::TempDir {
         "FUN_140385000 again, plus FUN_1402d1c40.\n",
     )
     .expect("writing a doc");
+    // A dated record one level down: docs/findings/ and docs/archive/ are
+    // where the session records live, and they must still feed the anchors.
+    std::fs::create_dir(root.join("docs/findings")).expect("creating docs/findings");
+    std::fs::write(
+        root.join("docs/findings/2026-09-12-sub.md"),
+        "FUN_1405ab000 is named only here.\n",
+    )
+    .expect("writing a nested doc");
     std::fs::write(
         root.join("analysis/dump.c"),
         "// ==== FUN_1406aa000 ====\n\
@@ -579,7 +587,7 @@ fn default_anchors_come_from_docs_and_analysis_headers_only() {
     assert_eq!(
         String::from_utf8_lossy(&o.stdout),
         // Sorted, de-duplicated, in-module only.
-        "1402d1c40\n140385000\n1404f0000\n1406aa000\n"
+        "1402d1c40\n140385000\n1404f0000\n1405ab000\n1406aa000\n"
     );
     // FUN_140999000 is a callee inside a decompiled body, not a header: taking
     // those as anchors is what turned 100 anchors into 600.

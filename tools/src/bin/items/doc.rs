@@ -207,7 +207,7 @@ pub fn render_doc(d: &Value) -> String {
     l.a("names live in the `.paz` archives and nothing extracts them. What this");
     l.a("does instead is read the name of the *record that yields the item*:");
     l.a("`gimmick_item_trade_salt_02` yields `1000648`, so `1000648` is salt");
-    l.a("(`docs/findings-water-wells-2026-09-12.md` section 3). It works because");
+    l.a("(`docs/findings/2026-09-12-water-wells.md` section 3). It works because");
     l.a("most items are placed by several independent props whose names agree,");
     l.a("and the `confidence` column says how much agreement there was. Treat a");
     l.a("`guess` as a hypothesis and nothing more.");
@@ -489,16 +489,16 @@ pub fn render_doc(d: &Value) -> String {
     }
     l.a("");
     l.a("**A single-item list is the norm, so multiplying a record usually");
-    l.a("multiplies exactly one item.** Where a record's list mixes items the");
+    l.a("multiplies exactly one item.** Where a record's list mixes items, the");
     l.a(format!(
-        "`sources` entries in {} carry `list_items` so you can",
+        "`sources` entries in {} name the record and its list but not the",
         if loose {
             "`analysis/items-loose.json`"
         } else {
             "`analysis/items.json`"
         }
     ));
-    l.a("see it.");
+    l.a("sibling items; `--record <name>` prints everything that record pays.");
     l.a("");
 
     if loose {

@@ -213,7 +213,7 @@ fn render_extra_tests(spec: &[FamilySpec], rows: &Rows) -> Vec<String> {
                 "    /// `records_not_enabled` in tools/extra-families.json: records a table",
                 "    /// edit was measured or argued not to reach - they hand the player a",
                 "    /// pre-built item instance and never read their output block (see",
-                "    /// docs/findings-water-wells-2026-09-12.md section 11), or they are",
+                "    /// docs/findings/2026-09-12-water-wells.md section 11), or they are",
                 "    /// not pickups at all; each record's `why` in that file says which.",
                 "    /// They must stay OUT of the table, not sit in it inert: a row here",
                 "    /// would be an edit the log reports and the player never sees.",

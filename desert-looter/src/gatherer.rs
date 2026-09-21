@@ -176,7 +176,7 @@ impl Gatherer {
     /// needs [`Self::node_yields`], which reads the *gimmick* record's
     /// declared output blocks; a carcass has `record: 0xFFFF` and no gimmick
     /// record at all, because its drops are rows on its `characterinfo`
-    /// record (`docs/findings-skinning-2026-09-15.md` section 4), a different
+    /// record (`docs/findings/2026-09-15-skinning.md` section 4), a different
     /// table behind a different accessor that nothing here reads. With no
     /// yields there is no margin to compute and the stacking argument cannot
     /// even be attempted. It would also be a harder argument than a gather

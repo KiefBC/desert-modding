@@ -376,7 +376,9 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// rec+0x278   ptr   output list data: entries of 16 bytes
 /// rec+0x280   u32   entry count
 /// entry+0x00  ptr   block object (0x70 bytes), null when the disk flag was 0
-/// entry+0x08  u32   _dropTagNameHash (raw block +64); ZERO on gather records
+/// entry+0x08  u32   unnamed (raw block +64); ZERO on gather records
+/// block+0x0C  u32   DropInfoData._dropTagNameHash (raw block +22); the
+///                   collect-drop-rate tag, nonzero on every gather block
 /// block+0x20  u64   MIN   (raw block +42)
 /// block+0x28  u64   MAX   (raw block +50)
 /// block+0x68  u32   item id (raw block +1, echoed at +60)

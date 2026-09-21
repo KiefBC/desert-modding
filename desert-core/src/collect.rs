@@ -22,7 +22,7 @@ pub enum Family {
     /// pre-built item instance and never read their record, so a table edit
     /// cannot reach them; they are listed as `records_not_enabled` in the same
     /// file and the `foraging_records_not_enabled_stay_out` test below keeps
-    /// them out. See docs/findings-water-wells-2026-09-12.md section 11.
+    /// them out. See docs/findings/2026-09-12-water-wells.md section 11.
     Foraging,
 
     Logging,
@@ -38,7 +38,7 @@ pub enum Family {
     /// `gimmick_item_common_coin_0001` on 2026-09-13, build 25246367, paid x15,
     /// x14, x15 inside its 10..15 block, and one pickup at Money=3 the same day
     /// paid x30 against a bag delta of exactly +30
-    /// (docs/findings-water-wells-2026-09-12.md section 13.7; CONFIRMED IN GAME
+    /// (docs/findings/2026-09-12-water-wells.md section 13.7; CONFIRMED IN GAME
     /// on build 25246367) - so the same block edit that multiplies a bush
     /// multiplies them, and `hook::reapply` is what reached them live. This is
     /// the ONLY family allowed to pay item 1, and every record in it must pay
@@ -386,7 +386,7 @@ mod tests {
     /// `records_not_enabled` in tools/extra-families.json: records a table
     /// edit was measured or argued not to reach - they hand the player a
     /// pre-built item instance and never read their output block (see
-    /// docs/findings-water-wells-2026-09-12.md section 11), or they are
+    /// docs/findings/2026-09-12-water-wells.md section 11), or they are
     /// not pickups at all; each record's `why` in that file says which.
     /// They must stay OUT of the table, not sit in it inert: a row here
     /// would be an edit the log reports and the player never sees.
@@ -438,7 +438,7 @@ mod tests {
     /// `records_not_enabled` in tools/extra-families.json: records a table
     /// edit was measured or argued not to reach - they hand the player a
     /// pre-built item instance and never read their output block (see
-    /// docs/findings-water-wells-2026-09-12.md section 11), or they are
+    /// docs/findings/2026-09-12-water-wells.md section 11), or they are
     /// not pickups at all; each record's `why` in that file says which.
     /// They must stay OUT of the table, not sit in it inert: a row here
     /// would be an edit the log reports and the player never sees.

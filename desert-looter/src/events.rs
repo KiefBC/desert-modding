@@ -727,7 +727,7 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     let api = API.get().ok_or("event api not resolved")?;
     // Three descriptors, three payload layouts: neither a catch nor a skinning
     // is a `PickUpItem` with a different mode byte, each is its own event
-    // (section 15, and `docs/findings-skinning-2026-09-15.md` section 3).
+    // (section 15, and `docs/findings/2026-09-15-skinning.md` section 3).
     let (desc, want) = match r.mode {
         PickupMode::Catch => (
             CATCH_DESCRIPTOR_SLOT.get().ok_or("catch descriptor not resolved")?,
@@ -753,7 +753,7 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
     // **`Skin` deliberately does not ask it.** This is the one behavioural
     // divergence between skinning and the other three modes, it was decided
     // rather than defaulted, and there are three reasons for it
-    // (`docs/findings-skinning-2026-09-15.md` sections 3 and 7):
+    // (`docs/findings/2026-09-15-skinning.md` sections 3 and 7):
     //
     // 1. A carcass cannot be stolen in game. Skinning is not a take-or-steal
     //    interaction and no ownership prompt is ever shown at one, so there is

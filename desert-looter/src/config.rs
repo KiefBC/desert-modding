@@ -119,7 +119,7 @@ pub struct Config {
     /// tick with no animation, no distance check and nothing to duplicate -
     /// the granted rows are erased from the carcass, so a second event at the
     /// same corpse gives nothing
-    /// (`docs/findings-skinning-2026-09-15.md` sections 2 and 3). It is off by
+    /// (`docs/findings/2026-09-15-skinning.md` sections 2 and 3). It is off by
     /// default for the `gather_money` reason and no other: forging this event
     /// has never been tried in game, and a MINOR may not change behaviour the
     /// player did not ask for.
@@ -131,7 +131,7 @@ pub struct Config {
     /// because what it multiplies is a corpse being looted, not a node being
     /// gathered. It is also not a gather family and could not be one: carcass
     /// loot is not in `gimmickinfo`, so there is no record for the gatherer's
-    /// table edit to reach (`docs/findings-hunting-multiplier-2026-09-15.md`).
+    /// table edit to reach (`docs/findings/2026-09-15-hunting-multiplier.md`).
     ///
     /// **Independent of [`Config::gather_carcass`]**, which is a targeting
     /// switch and not a yield one. `crate::hunting` hooks the game's own loot

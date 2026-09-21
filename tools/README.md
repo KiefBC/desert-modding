@@ -545,7 +545,7 @@ it is `shipped`-visible or `LOOSE-ONLY`, and a loose-only record also
 carries its `+64` value.
 
 **Two things it does are load-bearing and easy to get wrong.** Both are
-recorded in `docs/findings-water-wells-2026-09-12.md` sections 5, 7 and 8,
+recorded in `docs/findings/2026-09-12-water-wells.md` sections 5, 7 and 8,
 and both cost an earlier investigation a wrong answer:
 
 * The item id is at **`block+1`**, echoed at `+60`. Both `+5` and `+64`

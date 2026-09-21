@@ -42,9 +42,9 @@ pub const CURATED: &[(u64, &str, &str)] = &[
          gimmick_item_common_silverbar_0001 gives 2500..2500 of the same id: \
          this is currency, not an item. The bag names it Money_Copper; silver \
          and gold are denominations of the one count, not items (there is no \
-         silver bar in the world, whatever silverbar_0001 is named). A \
-         currency multiplier is planned separately and this id must stay out \
-         of any gather family",
+         silver bar in the world, whatever silverbar_0001 is named). The \
+         currency multiplier shipped as the `Money` family in 0.5.0, so this id \
+         belongs in `Money` only, and `Money` pays nothing else",
     ),
     (
         53,

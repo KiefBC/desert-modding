@@ -187,15 +187,28 @@ pub fn default_anchors(root: &Path) -> Vec<u64> {
     found
 }
 
+/// Every `*.ext` file under `dir`, subdirectories included, in path order.
+///
+/// Recursive because `docs/` keeps its dated session records in `docs/findings/`
+/// and retired hand-off prompts in `docs/archive/`; a function named only in
+/// one of those must still become an anchor.
 fn sorted_files(dir: &Path, ext: &str) -> Vec<std::path::PathBuf> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
-        return Vec::new();
-    };
-    let mut out: Vec<_> = rd
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == ext))
-        .collect();
+    let mut out = Vec::new();
+    collect_files(dir, ext, &mut out);
     out.sort();
     out
+}
+
+fn collect_files(dir: &Path, ext: &str, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.filter_map(Result::ok) {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, ext, out);
+        } else if path.extension().is_some_and(|e| e == ext) {
+            out.push(path);
+        }
+    }
 }

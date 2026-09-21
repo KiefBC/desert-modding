@@ -89,7 +89,7 @@
 //!
 //! # Why it exists
 //!
-//! `docs/findings-dispatch-2026-09-10.md` is a static-analysis study of the
+//! `docs/findings/2026-09-10-dispatch.md` is a static-analysis study of the
 //! game's "dispatch missions" - **FactionOperation** internally. A dispatch
 //! mission is not its own table: it is a 0x120-byte sub-record inside a
 //! `FactionNodeInfo` record, and the study recovered its field offsets from

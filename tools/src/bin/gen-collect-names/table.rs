@@ -15,7 +15,7 @@
 //! The walk re-implements `desert_core::gimmick::output_lists` + `block_ok`
 //! (greedy, non-overlapping, item id at block+1) and attributes each list to its
 //! record with the echo discriminator from
-//! `docs/findings-water-wells-2026-09-12.md` sections 7 and 8: nested string
+//! `docs/findings/2026-09-12-water-wells.md` sections 7 and 8: nested string
 //! fields use the same `u32 len, bytes, NUL` shape as record names, so a
 //! backwards scan for a header finds false positives freely, and the test that
 //! works is that a real record echoes its own `u32` key immediately before a
@@ -228,7 +228,7 @@ pub fn walk(buf: &[u8]) -> Result<Walk> {
             bail!(
                 "calibration failed: {got} {what}, expected {want}. The table \
                  changed or the walk broke; do not trust the walk. See \
-                 docs/findings-water-wells-2026-09-12.md section 8."
+                 docs/findings/2026-09-12-water-wells.md section 8."
             );
         }
     }

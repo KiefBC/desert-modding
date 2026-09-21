@@ -40,7 +40,7 @@
 //! `lea rdx,[rec+OFF]; mov rcx,rdi; call <reader>; test al,al; jne ok;
 //! lea rax,[msg]` shape, where OFF sits 0x12-0x20 bytes above the message load.
 //! That procedure is written down in
-//! `docs/findings-water-wells-2026-09-12.md` section 7 and the method itself in
+//! `docs/findings/2026-09-12-water-wells.md` section 7 and the method itself in
 //! `docs/reference-internals.md` section 19.9; it is how that investigation's
 //! `ItemInfo` offsets were obtained.
 //!

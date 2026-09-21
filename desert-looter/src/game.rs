@@ -1074,7 +1074,7 @@ pub fn nearest_gather(
         // surveyed live read `cat=D9`, `82`, `13`, `44` and `23`, five values
         // of which four are `Catchable::Unknown`, and all eight were skinned
         // by hand with the same event
-        // (`docs/findings-skinning-2026-09-15.md` section 7). The byte is
+        // (`docs/findings/2026-09-15-skinning.md` section 7). The byte is
         // logged in the target name so a log can still say what species it
         // was, and it gates nothing.
         if kind == actors::Kind::Carcass {
