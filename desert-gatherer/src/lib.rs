@@ -51,6 +51,7 @@ pub use desert_core::{module, safe};
 // #[cfg(windows)], the rest links natively on Linux so `cargo test
 // --target x86_64-unknown-linux-gnu` runs the unit tests here.
 pub mod config;
+pub mod dump;
 pub mod remember;
 
 #[cfg(windows)]

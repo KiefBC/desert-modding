@@ -53,24 +53,39 @@
 //! game has not read yet, so every step of it is checked against what was
 //! remembered before anything is written.
 //!
+//! ## The table dump
+//!
+//! `[Gatherer] DumpTable=1` (with `DryRun=1`) has the first call copy the
+//! whole buffer - the table body, `size` bytes from `+0x10` - and hand it to
+//! the plugin's own thread, which writes it beside the log as
+//! [`crate::dump::FILE_NAME`]. The offline tools read that file in place of
+//! DMM's backup copy. The copy has to be taken here for the same reason the
+//! patch does: the buffer is gone a couple of seconds after the last load.
+//! The decision itself is [`crate::dump::dump_decision`], pure and tested
+//! natively; see [`PENDING_DUMP`] for the hand-off.
+//!
 //! ## Thread safety
 //!
 //! The hook runs on whichever game thread loads records, and several threads
 //! may be inside it at once for different indices. There is no shared mutable
-//! state here beyond atomics: the counters below, the manager pointer, the
+//! state here beyond atomics - the counters below, the manager pointer, the
 //! lock-free table in `crate::remember` this writes and the plugin thread
 //! reads, and, in `crate::config`, the
 //! [`LiveConfig`](crate::config::LiveConfig) the ini-reload loop on the
-//! plugin's main thread publishes to and this hook only ever reads. Every
-//! write from the callback lands in the heap-buffer bytes of the record this
-//! call was handed, through `safe::write`. No game function is ever called,
-//! from the callback or from [`reapply`].
+//! plugin's main thread publishes to and this hook only ever reads - with one
+//! deliberate exception: [`PENDING_DUMP`], a `Mutex` the hook touches at most
+//! once per process and only with `try_lock`; its doc comment says why that is
+//! not the lock the rule is about. Every write from the callback lands in the
+//! heap-buffer bytes of the record this call was handed, through
+//! `safe::write`. No game function is ever called, from the callback or from
+//! [`reapply`].
 //!
 //! Every foreign read goes through `desert_core::safe`, so an unmapped page
 //! is a `None` and a silent return, never a fault. A failure at any step
 //! leaves the record vanilla; that is always the correct fallback.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use desert_core::collect::{self, Family};
 use desert_core::gimmick::{self, Edit};
@@ -78,6 +93,7 @@ use desert_core::manager;
 use desert_core::safe;
 
 use crate::config::LIVE;
+use crate::dump::{self, DumpDecision};
 use crate::remember;
 
 // Re-exported so `crate::hook::` names both the installer and the callback,
@@ -119,6 +135,89 @@ static BAD_END_LOGGED: AtomicBool = AtomicBool::new(false);
 static FIRST_CALL_LOGGED: AtomicBool = AtomicBool::new(false);
 /// Non-gather `Debug` lines emitted so far.
 static DEBUG_LINES: AtomicU32 = AtomicU32::new(0);
+
+/// The table body the first call copied under `DumpTable=1`, waiting for the
+/// plugin's own thread to write it out ([`take_pending_dump`], polled from
+/// `entry.rs`'s ~1 s reload tick). The file write cannot happen here: 22 MB
+/// of disk IO on a game thread in the middle of the loading screen is exactly
+/// the stall this hook is built never to cause.
+///
+/// **Why a `Mutex` here, when the rule in this file is no locks on a game
+/// thread.** The rule exists because a lock a game thread can *wait on* turns
+/// the plugin thread's scheduling into a hitch in the game, and a lock taken
+/// per record would be contended by the several threads loading records at
+/// once. Neither applies to this one:
+///
+/// - the hook touches it **at most once per process**: only from the
+///   first-call block of [`record_bytes`], which `FIRST_CALL_LOGGED` lets
+///   exactly one call into, and only when a dump was decided on;
+/// - both sides take it with **`try_lock`** only, so neither ever waits. If
+///   the plugin thread happened to be holding it in that instant - an empty
+///   check that lasts nanoseconds, once a second - the hook drops the copy and
+///   logs it rather than blocking, and the cost is one launch without a file;
+/// - there is nothing to be lock-free *about*: a hand-off of one `Vec` from
+///   one producer to one consumer, once. An atomic pointer would need a
+///   `Box::into_raw` and a matching `from_raw` on the other thread for no gain.
+///
+/// The log line the hook writes a moment earlier already takes the log's own
+/// `Mutex`, so this is not the first lock a game thread sees in this file; it
+/// is the only one this file adds.
+static PENDING_DUMP: Mutex<Option<Vec<u8>>> = Mutex::new(None);
+
+/// The dumped table body, if the hook has copied one the plugin thread has not
+/// collected yet. Never blocks: `None` both when there is nothing and in the
+/// one instant the hook might be storing into the slot, which the next tick
+/// picks up instead.
+pub fn take_pending_dump() -> Option<Vec<u8>> {
+    PENDING_DUMP.try_lock().ok()?.take()
+}
+
+/// `DumpTable=1`: copy the whole table body out of the stream buffer and park
+/// it in [`PENDING_DUMP`]. Called once, from the first-call block of
+/// [`record_bytes`], on a game thread.
+///
+/// Reads the live `DumpTable` and `DryRun` rather than the startup ones: the
+/// ini can change in the ~9 s between launch and the first load, and what
+/// matters is whether the hook is writing *now*. That is also why the
+/// "ignored: needs DryRun=1" line is logged again here although the startup
+/// summary already said it - this one is the decision actually taken, printed
+/// beside the `first call` line whose size it was taken for.
+///
+/// Only the first call copies. Under `DryRun=1` every call leaves the buffer
+/// vanilla, so any call's copy would do, but the first is the one moment the
+/// buffer is certain to hold the table the game has just read, and taking the
+/// copy there keeps `DumpTable` off the per-record path entirely: after the
+/// first call nothing here is so much as loaded.
+fn take_dump(buf: usize, size: usize) {
+    match dump::dump_decision(LIVE.dump_table(), LIVE.dry_run(), size) {
+        DumpDecision::Skip => {}
+        DumpDecision::Refuse(why) => crate::log!("[dump] {why}"),
+        DumpDecision::Take => {
+            // `try_reserve_exact` rather than `vec![0; size]`: an allocation
+            // failure there is an abort (panic = "abort"), on a game thread,
+            // for a diagnostic. Here it is a log line.
+            let mut bytes = Vec::new();
+            if bytes.try_reserve_exact(size).is_err() {
+                crate::log!("[dump] table NOT dumped: could not allocate {size} bytes");
+                return;
+            }
+            bytes.resize(size, 0);
+            if !safe::read_into(buf, &mut bytes) {
+                crate::log!(
+                    "[dump] table NOT dumped: the guarded read of 0x{size:X} bytes at 0x{buf:X} failed"
+                );
+                return;
+            }
+            match PENDING_DUMP.try_lock() {
+                Ok(mut slot) => *slot = Some(bytes),
+                Err(_) => crate::log!(
+                    "[dump] table NOT dumped: the hand-off to the plugin thread was busy; \
+                     try again next launch"
+                ),
+            }
+        }
+    }
+}
 
 /// Keys already warned about for a name mismatch. A fixed table of atomics
 /// rather than a `Mutex<HashSet>`: the callback must not take a lock a game
@@ -195,6 +294,7 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     // both change what happens here. Only the two strides are shared.
     let count = safe::read::<u32>(mgr + manager::MGR_COUNT)? as usize;
     if !FIRST_CALL_LOGGED.swap(true, Ordering::Relaxed) {
+        let buf = safe::read_ptr(stream + 0x10).unwrap_or(0);
         let size = safe::read::<u32>(stream + 0x18).unwrap_or(0);
         let cursor = safe::read::<u32>(stream + 0x1C).unwrap_or(0);
         let entry = safe::read_ptr(mgr + 0x28)
@@ -202,9 +302,12 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
             .unwrap_or(0);
         crate::log!(
             "[gimmick] first call: mgr=0x{mgr:X} count={count} idx={idx} stream=0x{stream:X} \
-             buf=0x{:X} size=0x{size:X} cursor=0x{cursor:X} table[idx]=0x{entry:X}",
-            safe::read_ptr(stream + 0x10).unwrap_or(0)
+             buf=0x{buf:X} size=0x{size:X} cursor=0x{cursor:X} table[idx]=0x{entry:X}"
         );
+        // A size that would not read is the 0 above, which the decision
+        // refuses, and a buffer pointer that would not read is a 0 that
+        // `safe::read_into` refuses: neither guesses.
+        take_dump(buf, size as usize);
     }
     if idx >= count {
         return None;

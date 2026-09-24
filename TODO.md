@@ -1096,3 +1096,103 @@ needed).** Layout verdict LOOKS RIGHT, 2811/2811 entries resolved. Answers, with
   writable shapes are the buff's `+0x98` (dispatch-shaped, a parsed field, effective only while
   the player wears the socket) and the character's applied static stat (direct, actor memory,
   not located). The kind byte is stored at `BuffData+0x08` - CONFIRMED over kinds 2 and 3.
+
+## Two tagged, block-carrying records the tag census says belong in `Logging`
+
+**Raised** 2026-09-17 by the loot taxonomy (`docs/findings/2026-09-12-loot-taxonomy.md` §2.2, §4A)
+and carried in `docs/reference-ledger.md`'s open questions; picked up 2026-09-24. **Status: DECIDED
+to add, NOT DONE.** Blocked on one thing: the tools' walk calibration is pinned to build 25246367
+and refuses the build-25477059 table (the `Build 25477059 re-target` brief), and the rule here is
+that no extra record enters `collect.rs` without the generator verifying it against the bytes.
+
+**The facts, CONFIRMED-STATIC.** §2.2 cross-tabulated the game's own `collect_<class>` tag against
+`collect.rs` over every echo-validated record: all 275 DMM-derived rows carry the tag their `Family`
+predicts, and every record that carries a `collect*` tag **and** an output block is a row - except
+exactly two:
+
+| record | key | tags | block | belongs in |
+| --- | --- | --- | --- | --- |
+| `log_bamboo_1001` | `1000669` | `collect`, `collect_log` | item `1002124` (bamboo), `1..1` | `Logging` |
+| `gimmick_wood_firewood_0001` | `1010558` | bare `collect`, no class | item `710001`, `1..1` | `Logging` - the same item `firewood_0001` pays |
+
+Both are bucket A (§3, §4A: gather payout node, `D-block`, the bucket the whole shipped mod is),
+measured on 25246367, and the 2026-09-24 record-by-record diff of the old walk against the
+build-25477059 dump found every surviving block-carrying record unchanged (only `itembox_11` lost
+its block), so both still hold on the current build. Bamboo is the **only** `collect_log` record
+with a block; the other 59 `log_*` records are felled-tree chunks that pay nothing themselves, which
+is why treating the `log_` prefix as Logging was rejected on 2026-09-06 (`collect.rs`,
+`family_by_name`'s note). Adding `log_bamboo_1001` by exact name does not reopen that: the prefix
+rule stays wrong in both directions, and the stay-out test should say so.
+
+**Mechanism, already established - do not hand-edit `collect.rs`.** `tools/extra-families.json` gains
+a `Logging` block with the two records under `records` (`name`, `items`, `why`). The generator
+(`tools/src/bin/gen-collect-names.rs`) already merges an extras entry that names an existing DMM
+family into it and appends the block's `note` to the variant's doc comment - `Foraging` plus the
+well is the precedent - so no generator extension is needed. The one generator edit is in
+`render.rs`'s hand-written `HAND_TEST` (`non_gather_records_stay_out`): add
+`assert_eq!(family_by_name("log_bamboo_1001"), Some(Family::Logging))` beside the
+`log_1002_index07 -> None` line. Regeneration then emits the two rows, a
+`logging_extra_records_are_present` test with the family count at 143, and
+`COLLECT_RECORDS.len() == 281`. Diff the output before accepting it (CLAUDE.md, analysis tooling).
+Then: the `Logging` help text in `desert-gatherer/src/config.rs` and the README key row say "141
+records" - make them 143; `docs/findings/2026-09-12-loot-taxonomy.md` gets a "Corrections" note that
+the two are in; the ledger rows for both records and the `collect.rs` count rows (279 -> 281);
+`docs/README.md`'s "Still open" bullet.
+
+**The hazard, and the in-game check that settles it.** Bucket A membership is the tag-plus-block
+test; it is not a measurement that the block is read. The water well and the pot are the lesson
+(`docs/findings/2026-09-12-water-wells.md` §11): a record whose actor holds an item instance at
+`comp+0xC0` never reads its block, and a row for it is inert - work the log reports and the player
+never sees. So each record stays **CONFIRMED-STATIC** until one pickup is logged:
+
+- **Firewood pile.** The record is a placed `gimmick_wood_*` prop, *not* a felled tree. The felled
+  tree pays Timber through its `firewood_*` chunk records, Logging rows since 0.1 - the 2026-09-24
+  log's `[recv] item 710001 x3` / `x1` pairs at `Logging=3` / `1` were exactly those, and prove
+  nothing about this record. Find a pile: stand by stacked firewood and press F11; the survey prints
+  one line per actor, `grep 'name=gimmick_wood_firewood_0001'`. Today it shows `family=-`; after the
+  change, `family=Logging`. Pick it up with `[Gatherer] Logging=3` and `[Looter] LogReceived=1` and
+  expect `[recv] item 710001 x3`. A `x1` means the instance path, and the record moves to
+  `records_not_enabled` with that log as its `why`.
+- **Bamboo.** Expect `[recv] item 1002124 x3`. The player had no access to bamboo as of
+  2026-09-24; the row goes in on the static evidence, like every DMM row did, and the ledger keeps
+  it at CONFIRMED-STATIC until a stalk is cut.
+- Either way the re-apply line should read `143 records rewritten` where it reads `141` today.
+
+## An item display-name table: what the game calls the things the walk only infers
+
+**Raised** 2026-09-24. **Status: DECIDED, design agreed, nothing built.** Wanted by the player as
+the seed of "a table of items and their in-game names". Build it after the build-25477059
+re-target, because the `items` tool it extends refuses the current table until then.
+
+**Why a new input and not an edit.** `docs/reference-items.md` is generated by `tools/src/bin/items`
+and its header says what its names are: **inferred** from the names of the records that yield an
+item (`gimmick_item_trade_salt_02` yields `1000648`, so `1000648` is "salt"). The game's own
+strings live in the `.paz` archives and nothing extracts them - that is the entry above,
+"Extracting item names and the category triple from the `.paz` archives", deliberately deferred.
+The looter's `[survey] bag:` line prints the *internal* `iteminfo` name (`Water key=22008`,
+`Money_Copper key=1`, `Trade_Pepper_02 key=1000608` - 77 pairs so far, session summary §4 item 8),
+which is a third naming again and is not what the HUD shows. Display names come only from the
+screen, so they have to be collected by hand and carry their provenance; and anything typed into the
+generated doc dies on the next `items` run, so they need an input file the tool merges.
+
+**First two rows, CONFIRMED-GAME 2026-09-24, build 25477059.** Felling two trees at `Logging=3` and
+then `Logging=1` logged three pairs of `[recv] item 710001 x3` + `[recv] item 1000081 x3` and three
+pairs at `x1`; the player read the pickups as **Timber** and **Fine Timber**. `reference-items.md`
+has them as `firewood` (49 records, `firewood_*`) and `firewood_fine` (48 records, `firewood_*_Fine`),
+so the inferred names are right about the thing and wrong about the word the player sees.
+
+**Design.** `tools/item-display-names.json`, keyed by item id:
+`{"710001": {"display": "Timber", "internal": null, "seen": "2026-09-24 build 25477059, pickup toast matched to [recv] item 710001 x3"}}`.
+`internal` is filled from a `[survey] bag:` line when one has shown the id, never guessed. The
+`items` tool reads the file, adds a **Display name** column to `docs/reference-items.md` and a field
+to `analysis/items.json`, blank where nothing is known, and fails on an id the walk does not know
+(a typo, or an item that is not a gather yield - the file is for the 215 the walk sees). The
+inferred name stays as it is: this is a second column, not a correction, and the doc's method
+paragraph should say which column came from where. Item `1` gets a note rather than a name: copper,
+silver and gold are display units over one count (`docs/findings/2026-09-12-water-wells.md` §13.7),
+so its "display name" depends on the amount.
+
+**Rule for adding rows.** Write the name exactly as the HUD shows it, with the `[recv]` line it
+was matched to and the build; a row with no `seen` is refused. The `.paz` entry, if it is ever
+done, is the bulk source that would fill the column in one pass and check every hand-collected
+row against it; until then this file is the whole of what is known.

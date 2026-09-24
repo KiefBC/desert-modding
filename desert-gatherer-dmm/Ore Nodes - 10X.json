@@ -1,16 +1,16 @@
 {
   "name": "Ore Nodes - 10X",
-  "version": "1.1",
+  "version": "1.2",
   "author": "KiefBC",
   "description": "Multiplies ore nodes node minimum and maximum yields by 10. Select no more than one Ore Nodes rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "25116796",
+  "game_build": "25477059",
   "multiplier": 10,
   "category": "Ore Nodes",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Ore Nodes - 10X",
-    "version": "1.1",
+    "version": "1.2",
     "author": "KiefBC",
     "description": "10x yields for ore nodes nodes.",
     "allow_partial_apply": true
@@ -25,7 +25,7 @@
       "game_file": "gamedata/gimmickinfo.pabgb",
       "changes": [
         {
-          "offset": 13262710,
+          "offset": 13341574,
           "record_key": 17080001,
           "record_rel_offset": 1675,
           "entry": "ore_RedStone_01",
@@ -35,7 +35,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13262718,
+          "offset": 13341582,
           "record_key": 17080001,
           "record_rel_offset": 1683,
           "entry": "ore_RedStone_01",
@@ -45,7 +45,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13264913,
+          "offset": 13343780,
           "record_key": 17080002,
           "record_rel_offset": 1679,
           "entry": "ore_GreenStone_01",
@@ -55,7 +55,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13264921,
+          "offset": 13343788,
           "record_key": 17080002,
           "record_rel_offset": 1687,
           "entry": "ore_GreenStone_01",
@@ -65,7 +65,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13267114,
+          "offset": 13345984,
           "record_key": 17080003,
           "record_rel_offset": 1677,
           "entry": "ore_BlueStone_01",
@@ -75,7 +75,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13267122,
+          "offset": 13345992,
           "record_key": 17080003,
           "record_rel_offset": 1685,
           "entry": "ore_BlueStone_01",
@@ -85,7 +85,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13269317,
+          "offset": 13348190,
           "record_key": 17080004,
           "record_rel_offset": 1679,
           "entry": "ore_WhiteStone_01",
@@ -95,7 +95,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13269325,
+          "offset": 13348198,
           "record_key": 17080004,
           "record_rel_offset": 1687,
           "entry": "ore_WhiteStone_01",
@@ -105,7 +105,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13271512,
+          "offset": 13350388,
           "record_key": 17080005,
           "record_rel_offset": 1671,
           "entry": "ore_copper_01",
@@ -115,7 +115,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13271520,
+          "offset": 13350396,
           "record_key": 17080005,
           "record_rel_offset": 1679,
           "entry": "ore_copper_01",
@@ -125,7 +125,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13273709,
+          "offset": 13352588,
           "record_key": 17080006,
           "record_rel_offset": 1673,
           "entry": "ore_diamond_01",
@@ -135,7 +135,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13273717,
+          "offset": 13352596,
           "record_key": 17080006,
           "record_rel_offset": 1681,
           "entry": "ore_diamond_01",
@@ -145,7 +145,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13275900,
+          "offset": 13354782,
           "record_key": 17080007,
           "record_rel_offset": 1667,
           "entry": "ore_gold_01",
@@ -155,7 +155,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13275908,
+          "offset": 13354790,
           "record_key": 17080007,
           "record_rel_offset": 1675,
           "entry": "ore_gold_01",
@@ -165,7 +165,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13278091,
+          "offset": 13356976,
           "record_key": 17080009,
           "record_rel_offset": 1667,
           "entry": "ore_ruby_01",
@@ -175,7 +175,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13278099,
+          "offset": 13356984,
           "record_key": 17080009,
           "record_rel_offset": 1675,
           "entry": "ore_ruby_01",
@@ -185,7 +185,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13280286,
+          "offset": 13359174,
           "record_key": 170800011,
           "record_rel_offset": 1671,
           "entry": "ore_bismuth_01",
@@ -195,7 +195,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13280294,
+          "offset": 13359182,
           "record_key": 170800011,
           "record_rel_offset": 1679,
           "entry": "ore_bismuth_01",
@@ -205,7 +205,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13282496,
+          "offset": 13361387,
           "record_key": 17070001,
           "record_rel_offset": 1686,
           "entry": "ore_iron_01",
@@ -215,7 +215,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13282504,
+          "offset": 13361395,
           "record_key": 17070001,
           "record_rel_offset": 1694,
           "entry": "ore_iron_01",
@@ -225,7 +225,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13284708,
+          "offset": 13363602,
           "record_key": 1001256,
           "record_rel_offset": 1688,
           "entry": "ore_stone_01",
@@ -235,7 +235,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13284716,
+          "offset": 13363610,
           "record_key": 1001256,
           "record_rel_offset": 1696,
           "entry": "ore_stone_01",
@@ -245,7 +245,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13286920,
+          "offset": 13365817,
           "record_key": 1001728,
           "record_rel_offset": 1688,
           "entry": "ore_stone_02",
@@ -255,7 +255,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13286928,
+          "offset": 13365825,
           "record_key": 1001728,
           "record_rel_offset": 1696,
           "entry": "ore_stone_02",
@@ -265,7 +265,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13289132,
+          "offset": 13368032,
           "record_key": 1001739,
           "record_rel_offset": 1688,
           "entry": "ore_stone_03",
@@ -275,7 +275,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13289140,
+          "offset": 13368040,
           "record_key": 1001739,
           "record_rel_offset": 1696,
           "entry": "ore_stone_03",
@@ -285,7 +285,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13291392,
+          "offset": 13370295,
           "record_key": 1000889,
           "record_rel_offset": 1736,
           "entry": "ore_sulfurstone_01",
@@ -295,7 +295,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13291400,
+          "offset": 13370303,
           "record_key": 1000889,
           "record_rel_offset": 1744,
           "entry": "ore_sulfurstone_01",
@@ -305,7 +305,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13293653,
+          "offset": 13372559,
           "record_key": 170800010,
           "record_rel_offset": 1737,
           "entry": "ore_silver_01",
@@ -315,7 +315,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13293661,
+          "offset": 13372567,
           "record_key": 170800010,
           "record_rel_offset": 1745,
           "entry": "ore_silver_01",
@@ -325,7 +325,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13295876,
+          "offset": 13374785,
           "record_key": 1004936,
           "record_rel_offset": 1699,
           "entry": "Rare_Collect_Stalactites",
@@ -335,7 +335,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13295884,
+          "offset": 13374793,
           "record_key": 1004936,
           "record_rel_offset": 1707,
           "entry": "Rare_Collect_Stalactites",

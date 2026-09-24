@@ -9,6 +9,52 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.9.0] - 2026-09-24
+
+Built against an install on game build 25477059 (0.8.0 was 25246367). The plugin resolved
+everything it needs at runtime on that build in the 2026-09-24 log - the record loader hook, the
+catch site, all nine looter signatures and the manager slots - and multiplied yields as before.
+`just test-game` still carries six expectations pinned to 25246367 (the record loader and catch
+site addresses, the manager slots, the accessor census) that fail on this build; they are stale
+pins, not a break, and need a re-target pass before this version is tagged. A MINOR by
+`VERSIONING.md`'s "what bumps what": one new ini key, defaulted off, so an install that upgrades
+behaves exactly as it did.
+
+### Added
+
+- **A `DumpTable` key under `[Gatherer]`: write the game's gimmickinfo table to a file, once.**
+  Ships at 0. With `DumpTable=1` **and** `DryRun=1`, the next launch copies the whole gimmickinfo
+  table body - the raw bytes of every gimmick record, about 22 MB - and writes it beside the log as
+  `DesertTooling.gimmickinfo.bin`. Once per session: the copy is taken on the record loader's first
+  call and never again, so a change to the key mid-session waits for the next launch. It sits on
+  the menu's Debug tab, on the same row as `DryRun`.
+
+  **Why it needs `DryRun=1`.** The copy comes out of the same buffer the gatherer multiplies
+  records in, and several game threads load records at once - so with the multipliers live, some
+  records in the copy could already be multiplied, and nothing in the bytes would say which. Under
+  `DryRun=1` the hook writes nothing at all, so every byte is the one the game read off disk.
+  Without it the key is ignored, and the log says so twice: at startup under `[ini]`, and again as
+  `[dump]` at the moment the copy would have been taken, because the ini can change in between.
+
+  **Why it exists.** The offline tools that check the gatherer's record list against the real
+  table (`items`, `gen-collect-names`) read that table from the backup copy DMM keeps of it - and
+  DMM deletes that copy from its backups folder at will, so a tool run could find it gone. The
+  game itself parks the identical bytes in the record loader's stream buffer while it loads the
+  table, and frees them a couple of seconds later; the plugin already hooks that loader, so it
+  copies them once, on a game thread, and writes the file from its own thread a second later. The
+  tools and the justfile now prefer this file when it exists: `CD_DMM_TABLE` if it is set, else
+  `DesertTooling.gimmickinfo.bin` in `bin64`, else DMM's copy.
+
+- **`[dump]` log lines.** `[dump] gimmickinfo table body: <n> bytes -> <path>` when the file is
+  written, `[dump] write FAILED: <path>: <error>` when it is not, and a `[dump]` line naming the
+  reason whenever a requested copy was not taken: `DryRun` off, a stream size of 0 or over 256 MiB
+  (the stream layout this relies on no longer holds on that game build, so nothing is guessed), or a read or
+  allocation that failed.
+
+### Changed
+
+- The `[gatherer] [ini]` summary line gained `DumpTable=`, right after `Debug=`.
+
 ## [0.8.0] - 2026-09-15
 
 Game build 25246367. A MINOR by `VERSIONING.md`'s "what bumps what": one new ini key, defaulted to

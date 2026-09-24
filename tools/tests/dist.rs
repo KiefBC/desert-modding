@@ -149,9 +149,10 @@ fn the_pack_zip_has_the_layout_dmm_needs() {
     // pack card showing the folder name instead.
     assert_eq!(names[0], "dmm_pack.json");
     assert!(names.iter().all(|n| !n.contains('/')), "not flat: {names:?}");
-    assert_eq!(names.len(), 16, "{names:?}");
-    // Twelve modules in byte order, then the docs and the rebaser.
-    assert_eq!(&names[13..], ["README.md", "VERIFICATION.txt", "rebase.py"]);
+    assert_eq!(names.len(), 15, "{names:?}");
+    // Twelve modules in byte order, then the docs. No rebaser any more: that
+    // is `dmm-rebase` in tools/, not a file in the pack.
+    assert_eq!(&names[13..], ["README.md", "VERIFICATION.txt"]);
     let modules = &names[1..13];
     assert!(modules.windows(2).all(|w| w[0] < w[1]), "modules out of order: {modules:?}");
 

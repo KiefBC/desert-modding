@@ -13,7 +13,8 @@ Two kinds of thing live here, and the difference matters:
 
 These were thirteen Python and bash scripts until the port. They are thirteen
 Rust binaries now, in one package (`desert-tools`), and the `.py`/`.sh`
-originals are gone. What that bought, in the order it matters:
+originals are gone. A fourteenth, `dmm-rebase`, replaced the last Python in
+the repo, the DMM pack's own `rebase.py`. What that bought, in the order it matters:
 
 * **The dev shell is needed for far less.** No tool shells out to `objdump`,
   `zip`, `unzip`, `sha256sum` or `python3` any more. The only external program
@@ -162,6 +163,59 @@ It also **checks** one thing it cannot write: that each shipping crate's
 exit 0 on a bump whose entry nobody has written yet. Without it, a missing entry
 goes unnoticed until the release workflow builds the notes - which is after the
 tag has been pushed, and a tag is the release.
+
+### `dmm-rebase` (`just dmm-rebase`)
+Rebases the DMM pack's twelve module files onto a new game build, and
+regenerates `desert-gatherer-dmm/VERIFICATION.txt`. Run it after a game update,
+once `just test-game`'s pack oracle (`multiply_reproduces_the_dmm_pack_edits`)
+has passed; `desert-gatherer-dmm/README.md` has the whole procedure. Not part
+of `just ci`: it only has work to do when the game changes.
+
+```
+just dmm-rebase                        defaults for both inputs
+just dmm-rebase <table> <build>        either or both given positionally
+just dmm-rebase --dry-run              verify and print the report, write nothing
+```
+
+Two inputs. The clean `gimmickinfo` table body comes from
+`paths::dmm_table()` - the plugin's own dump
+`<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
+`[Gatherer] DumpTable=1` and `DryRun=1`, unless `CD_DMM_TABLE` names another
+copy (DMM's backup is the last resort). The build id comes from the Steam
+appmanifest (`CD_APPMANIFEST`); with neither a `--build` nor a manifest it
+refuses rather than stamp the pack with a guess. The first line it prints is
+the table's size, SHA-256 and the build, so a run on the wrong table shows
+itself immediately.
+
+Each change is found again by record key and name, then by the 68-byte output
+block's signature within `SEARCH_WINDOW` (1024 bytes) of where its list used to
+sit in the record, and the vanilla bytes are checked at the new offset before
+`offset`, `record_rel_offset` and `rel_offset` are rewritten. Per module it
+prints how many output lists stayed put inside their record and how many
+shifted.
+
+**All or nothing.** Every module is verified, and the whole report built,
+before anything is written; then every file goes to a temporary sibling and is
+renamed into place. The Python this replaces wrote module by module, so a
+record it could not resolve in module seven left a pack half on one build and
+half on the other. An overlap between two categories' offsets is a failure too
+(the Python wrote `"result": "FAIL"` and exited 0).
+
+**Output fidelity.** The module files are CRLF in git and are written back
+CRLF, formatted exactly as Python's `json.dumps(obj, indent=2,
+ensure_ascii=False)` - which serde_json's pretty printer matches once
+`preserve_order` keeps every key where it was. So a rebase diff is the offset
+lines and `game_build`, nothing else. That is not taken on trust: a unit test
+round-trips every committed module and `VERIFICATION.txt` byte for byte, and the
+first real run (build 25477059) produced output identical, all thirteen files,
+to `rebase.py` run on the same table. `tests/dmm_rebase.rs` covers a rebase, a
+dry run, a failure part way through that must leave every file untouched, and
+(ignored, needs the table) that rebasing the committed pack onto its own table
+changes nothing.
+
+It uses `desert_tools::sha256`, the library's dependency-free SHA-256 that
+`dist` uses for `SHA256SUMS`, for the table digest and the simulated
+patched-table digests in the report.
 
 ### `nexus-target` + `nexus-targets.json` (release workflow only)
 Maps a tag to the Nexus Mods file it updates, and emits `key=value` lines for
@@ -473,11 +527,16 @@ it they give, and which `Family` (if any) covers it today. This is the
 answer to "the gatherer multiplies yields by record and there is no way
 to look up what an item id *is*".
 
-It walks the clean `gimmickinfo` table body DMM writes out
-(`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`, `--table` overrides),
-which carries record-relative offsets only and so needs no rebasing for
-a game update, and reads `desert-core/src/collect.rs` for the current
-family of each record. Offline, about a sixth of a second - a full rebuild
+It walks the clean `gimmickinfo` table body (`--table` overrides). The
+preferred source is the plugin's own dump,
+`<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
+`[Gatherer] DumpTable=1` and `DryRun=1`; DMM's copy
+(`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`) is the fallback when
+there is no dump, and `CD_DMM_TABLE` beats both. The bytes are identical -
+the dump is preferred because DMM deletes its backups at will. The body
+carries record-relative offsets only and so needs no rebasing for a game
+update. It also reads `desert-core/src/collect.rs` for the current family
+of each record. Offline, about a sixth of a second - a full rebuild
 of both outputs is now cheaper than the old tool's startup.
 
 With no arguments it writes both outputs and prints its self-checks:
@@ -618,7 +677,8 @@ pays stored as derived data. Item 1 is money and the rule on it is two-way:
 every family but `Money` refuses a record that pays it, and `Money` refuses a
 record that pays anything else - so a yield slider can never become an economy
 lever by accident, and the economy lever can never pick up a material. When
-DMM's clean table body is present the generator re-derives those from the bytes
+the clean table body is present (the plugin's dump or DMM's copy, chosen as
+`items` chooses) the generator re-derives those from the bytes
 and refuses to write on any mismatch; when it is absent it prints a banner
 saying the rows were not verified. Records measured to be unreachable by a
 table edit are kept in the same file as `records_not_enabled`, verified the

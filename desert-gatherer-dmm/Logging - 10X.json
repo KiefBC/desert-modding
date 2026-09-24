@@ -1,16 +1,16 @@
 {
   "name": "Logging - 10X",
-  "version": "1.1",
+  "version": "1.2",
   "author": "KiefBC",
   "description": "Multiplies logging node minimum and maximum yields by 10. Select no more than one Logging rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "25116796",
+  "game_build": "25477059",
   "multiplier": 10,
   "category": "Logging",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Logging - 10X",
-    "version": "1.1",
+    "version": "1.2",
     "author": "KiefBC",
     "description": "10x yields for logging nodes.",
     "allow_partial_apply": true
@@ -25,7 +25,7 @@
       "game_file": "gamedata/gimmickinfo.pabgb",
       "changes": [
         {
-          "offset": 12835490,
+          "offset": 12913811,
           "record_key": 1003241,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_index01",
@@ -35,7 +35,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12835498,
+          "offset": 12913819,
           "record_key": 1003241,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_index01",
@@ -45,7 +45,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12838085,
+          "offset": 12916409,
           "record_key": 1006736,
           "record_rel_offset": 2071,
           "entry": "firewood_0001_index01_Fine",
@@ -55,7 +55,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12838093,
+          "offset": 12916417,
           "record_key": 1006736,
           "record_rel_offset": 2079,
           "entry": "firewood_0001_index01_Fine",
@@ -65,7 +65,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12840686,
+          "offset": 12919013,
           "record_key": 1006737,
           "record_rel_offset": 2077,
           "entry": "firewood_0001_index01_Premium",
@@ -75,7 +75,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12840694,
+          "offset": 12919021,
           "record_key": 1006737,
           "record_rel_offset": 2085,
           "entry": "firewood_0001_index01_Premium",
@@ -85,7 +85,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12843255,
+          "offset": 12921585,
           "record_key": 1002971,
           "record_rel_offset": 2045,
           "entry": "firewood_0001",
@@ -95,7 +95,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12843263,
+          "offset": 12921593,
           "record_key": 1002971,
           "record_rel_offset": 2053,
           "entry": "firewood_0001",
@@ -105,7 +105,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12845834,
+          "offset": 12924167,
           "record_key": 1006738,
           "record_rel_offset": 2055,
           "entry": "firewood_0001_Fine",
@@ -115,7 +115,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12845842,
+          "offset": 12924175,
           "record_key": 1006738,
           "record_rel_offset": 2063,
           "entry": "firewood_0001_Fine",
@@ -125,7 +125,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12848419,
+          "offset": 12926755,
           "record_key": 1006739,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_Premium",
@@ -135,7 +135,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12848427,
+          "offset": 12926763,
           "record_key": 1006739,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_Premium",
@@ -145,7 +145,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12851004,
+          "offset": 12929343,
           "record_key": 1003243,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_index03",
@@ -155,7 +155,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12851012,
+          "offset": 12929351,
           "record_key": 1003243,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_index03",
@@ -165,7 +165,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12853599,
+          "offset": 12931941,
           "record_key": 1006740,
           "record_rel_offset": 2071,
           "entry": "firewood_0001_index03_Fine",
@@ -175,7 +175,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12853607,
+          "offset": 12931949,
           "record_key": 1006740,
           "record_rel_offset": 2079,
           "entry": "firewood_0001_index03_Fine",
@@ -185,7 +185,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12856200,
+          "offset": 12934545,
           "record_key": 1006741,
           "record_rel_offset": 2077,
           "entry": "firewood_0001_index03_Premium",
@@ -195,7 +195,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12856208,
+          "offset": 12934553,
           "record_key": 1006741,
           "record_rel_offset": 2085,
           "entry": "firewood_0001_index03_Premium",
@@ -205,7 +205,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12858785,
+          "offset": 12937133,
           "record_key": 1010009,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_index04",
@@ -215,7 +215,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12858793,
+          "offset": 12937141,
           "record_key": 1010009,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_index04",
@@ -225,7 +225,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12861380,
+          "offset": 12939731,
           "record_key": 1010010,
           "record_rel_offset": 2071,
           "entry": "firewood_0001_index04_Fine",
@@ -235,7 +235,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12861388,
+          "offset": 12939739,
           "record_key": 1010010,
           "record_rel_offset": 2079,
           "entry": "firewood_0001_index04_Fine",
@@ -245,7 +245,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12863981,
+          "offset": 12942335,
           "record_key": 1010011,
           "record_rel_offset": 2077,
           "entry": "firewood_0001_index04_Premium",
@@ -255,7 +255,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12863989,
+          "offset": 12942343,
           "record_key": 1010011,
           "record_rel_offset": 2085,
           "entry": "firewood_0001_index04_Premium",
@@ -265,7 +265,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12866566,
+          "offset": 12944923,
           "record_key": 1010268,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_index05",
@@ -275,7 +275,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12866574,
+          "offset": 12944931,
           "record_key": 1010268,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_index05",
@@ -285,7 +285,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12869161,
+          "offset": 12947521,
           "record_key": 1010269,
           "record_rel_offset": 2071,
           "entry": "firewood_0001_index05_Fine",
@@ -295,7 +295,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12869169,
+          "offset": 12947529,
           "record_key": 1010269,
           "record_rel_offset": 2079,
           "entry": "firewood_0001_index05_Fine",
@@ -305,7 +305,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12871762,
+          "offset": 12950125,
           "record_key": 1010270,
           "record_rel_offset": 2077,
           "entry": "firewood_0001_index05_Premium",
@@ -315,7 +315,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12871770,
+          "offset": 12950133,
           "record_key": 1010270,
           "record_rel_offset": 2085,
           "entry": "firewood_0001_index05_Premium",
@@ -325,7 +325,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12874347,
+          "offset": 12952713,
           "record_key": 1010271,
           "record_rel_offset": 2061,
           "entry": "firewood_0001_index06",
@@ -335,7 +335,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12874355,
+          "offset": 12952721,
           "record_key": 1010271,
           "record_rel_offset": 2069,
           "entry": "firewood_0001_index06",
@@ -345,7 +345,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12876942,
+          "offset": 12955311,
           "record_key": 1010272,
           "record_rel_offset": 2071,
           "entry": "firewood_0001_index06_Fine",
@@ -355,7 +355,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12876950,
+          "offset": 12955319,
           "record_key": 1010272,
           "record_rel_offset": 2079,
           "entry": "firewood_0001_index06_Fine",
@@ -365,7 +365,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12879543,
+          "offset": 12957915,
           "record_key": 1010273,
           "record_rel_offset": 2077,
           "entry": "firewood_0001_index06_Premium",
@@ -375,7 +375,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12879551,
+          "offset": 12957923,
           "record_key": 1010273,
           "record_rel_offset": 2085,
           "entry": "firewood_0001_index06_Premium",
@@ -385,7 +385,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12882125,
+          "offset": 12960500,
           "record_key": 1003242,
           "record_rel_offset": 2058,
           "entry": "firewood_0001_index02",
@@ -395,7 +395,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12882133,
+          "offset": 12960508,
           "record_key": 1003242,
           "record_rel_offset": 2066,
           "entry": "firewood_0001_index02",
@@ -405,7 +405,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12884717,
+          "offset": 12963095,
           "record_key": 1006742,
           "record_rel_offset": 2068,
           "entry": "firewood_0001_index02_Fine",
@@ -415,7 +415,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12884725,
+          "offset": 12963103,
           "record_key": 1006742,
           "record_rel_offset": 2076,
           "entry": "firewood_0001_index02_Fine",
@@ -425,7 +425,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12887315,
+          "offset": 12965696,
           "record_key": 1006743,
           "record_rel_offset": 2074,
           "entry": "firewood_0001_index02_Premium",
@@ -435,7 +435,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12887323,
+          "offset": 12965704,
           "record_key": 1006743,
           "record_rel_offset": 2082,
           "entry": "firewood_0001_index02_Premium",
@@ -445,7 +445,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12892889,
+          "offset": 12971276,
           "record_key": 1003244,
           "record_rel_offset": 2063,
           "entry": "firewood_0002",
@@ -455,7 +455,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12892897,
+          "offset": 12971284,
           "record_key": 1003244,
           "record_rel_offset": 2071,
           "entry": "firewood_0002",
@@ -465,7 +465,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12895524,
+          "offset": 12973914,
           "record_key": 1006744,
           "record_rel_offset": 2111,
           "entry": "firewood_0002_Fine",
@@ -475,7 +475,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12895532,
+          "offset": 12973922,
           "record_key": 1006744,
           "record_rel_offset": 2119,
           "entry": "firewood_0002_Fine",
@@ -485,7 +485,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12898165,
+          "offset": 12976558,
           "record_key": 1006745,
           "record_rel_offset": 2117,
           "entry": "firewood_0002_Premium",
@@ -495,7 +495,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12898173,
+          "offset": 12976566,
           "record_key": 1006745,
           "record_rel_offset": 2125,
           "entry": "firewood_0002_Premium",
@@ -505,7 +505,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12900768,
+          "offset": 12979164,
           "record_key": 1003245,
           "record_rel_offset": 2079,
           "entry": "firewood_0002_index01",
@@ -515,7 +515,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12900776,
+          "offset": 12979172,
           "record_key": 1003245,
           "record_rel_offset": 2087,
           "entry": "firewood_0002_index01",
@@ -525,7 +525,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12903381,
+          "offset": 12981780,
           "record_key": 1006746,
           "record_rel_offset": 2089,
           "entry": "firewood_0002_index01_Fine",
@@ -535,7 +535,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12903389,
+          "offset": 12981788,
           "record_key": 1006746,
           "record_rel_offset": 2097,
           "entry": "firewood_0002_index01_Fine",
@@ -545,7 +545,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12906000,
+          "offset": 12984402,
           "record_key": 1006747,
           "record_rel_offset": 2095,
           "entry": "firewood_0002_index01_Premium",
@@ -555,7 +555,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12906008,
+          "offset": 12984410,
           "record_key": 1006747,
           "record_rel_offset": 2103,
           "entry": "firewood_0002_index01_Premium",
@@ -565,7 +565,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12908587,
+          "offset": 12986992,
           "record_key": 1003247,
           "record_rel_offset": 2063,
           "entry": "firewood_0003",
@@ -575,7 +575,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12908595,
+          "offset": 12987000,
           "record_key": 1003247,
           "record_rel_offset": 2071,
           "entry": "firewood_0003",
@@ -585,7 +585,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12911184,
+          "offset": 12989592,
           "record_key": 1006748,
           "record_rel_offset": 2073,
           "entry": "firewood_0003_Fine",
@@ -595,7 +595,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12911192,
+          "offset": 12989600,
           "record_key": 1006748,
           "record_rel_offset": 2081,
           "entry": "firewood_0003_Fine",
@@ -605,7 +605,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12913787,
+          "offset": 12992198,
           "record_key": 1006749,
           "record_rel_offset": 2079,
           "entry": "firewood_0003_Premium",
@@ -615,7 +615,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12913795,
+          "offset": 12992206,
           "record_key": 1006749,
           "record_rel_offset": 2087,
           "entry": "firewood_0003_Premium",
@@ -625,7 +625,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12916390,
+          "offset": 12994804,
           "record_key": 1003248,
           "record_rel_offset": 2079,
           "entry": "firewood_0003_index01",
@@ -635,7 +635,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12916398,
+          "offset": 12994812,
           "record_key": 1003248,
           "record_rel_offset": 2087,
           "entry": "firewood_0003_index01",
@@ -645,7 +645,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12919003,
+          "offset": 12997420,
           "record_key": 1006750,
           "record_rel_offset": 2089,
           "entry": "firewood_0003_index01_Fine",
@@ -655,7 +655,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12919011,
+          "offset": 12997428,
           "record_key": 1006750,
           "record_rel_offset": 2097,
           "entry": "firewood_0003_index01_Fine",
@@ -665,7 +665,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12921622,
+          "offset": 13000042,
           "record_key": 1006751,
           "record_rel_offset": 2095,
           "entry": "firewood_0003_index01_Premium",
@@ -675,7 +675,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12921630,
+          "offset": 13000050,
           "record_key": 1006751,
           "record_rel_offset": 2103,
           "entry": "firewood_0003_index01_Premium",
@@ -685,7 +685,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12924209,
+          "offset": 13002632,
           "record_key": 1003206,
           "record_rel_offset": 2063,
           "entry": "firewood_1002",
@@ -695,7 +695,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12924217,
+          "offset": 13002640,
           "record_key": 1003206,
           "record_rel_offset": 2071,
           "entry": "firewood_1002",
@@ -705,7 +705,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12926806,
+          "offset": 13005232,
           "record_key": 1006752,
           "record_rel_offset": 2073,
           "entry": "firewood_1002_Fine",
@@ -715,7 +715,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12926814,
+          "offset": 13005240,
           "record_key": 1006752,
           "record_rel_offset": 2081,
           "entry": "firewood_1002_Fine",
@@ -725,7 +725,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12929409,
+          "offset": 13007838,
           "record_key": 1006753,
           "record_rel_offset": 2079,
           "entry": "firewood_1002_Premium",
@@ -735,7 +735,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12929417,
+          "offset": 13007846,
           "record_key": 1006753,
           "record_rel_offset": 2087,
           "entry": "firewood_1002_Premium",
@@ -745,7 +745,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12932009,
+          "offset": 13010441,
           "record_key": 1003250,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index01",
@@ -755,7 +755,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12932017,
+          "offset": 13010449,
           "record_key": 1003250,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index01",
@@ -765,7 +765,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12934619,
+          "offset": 13013054,
           "record_key": 1006754,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index01_Fine",
@@ -775,7 +775,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12934627,
+          "offset": 13013062,
           "record_key": 1006754,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index01_Fine",
@@ -785,7 +785,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12937235,
+          "offset": 13015673,
           "record_key": 1006755,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index01_Premium",
@@ -795,7 +795,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12937243,
+          "offset": 13015681,
           "record_key": 1006755,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index01_Premium",
@@ -805,7 +805,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12939835,
+          "offset": 13018276,
           "record_key": 1003251,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index02",
@@ -815,7 +815,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12939843,
+          "offset": 13018284,
           "record_key": 1003251,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index02",
@@ -825,7 +825,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12942445,
+          "offset": 13020889,
           "record_key": 1006756,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index02_Fine",
@@ -835,7 +835,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12942453,
+          "offset": 13020897,
           "record_key": 1006756,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index02_Fine",
@@ -845,7 +845,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12945061,
+          "offset": 13023508,
           "record_key": 1006757,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index02_Premium",
@@ -855,7 +855,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12945069,
+          "offset": 13023516,
           "record_key": 1006757,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index02_Premium",
@@ -865,7 +865,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12947674,
+          "offset": 13026124,
           "record_key": 1009163,
           "record_rel_offset": 2089,
           "entry": "firewood_1002_index03",
@@ -875,7 +875,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12947682,
+          "offset": 13026132,
           "record_key": 1009163,
           "record_rel_offset": 2097,
           "entry": "firewood_1002_index03",
@@ -885,7 +885,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12950297,
+          "offset": 13028750,
           "record_key": 1006758,
           "record_rel_offset": 2099,
           "entry": "firewood_1002_index03_Fine",
@@ -895,7 +895,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12950305,
+          "offset": 13028758,
           "record_key": 1006758,
           "record_rel_offset": 2107,
           "entry": "firewood_1002_index03_Fine",
@@ -905,7 +905,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12952926,
+          "offset": 13031382,
           "record_key": 1006759,
           "record_rel_offset": 2105,
           "entry": "firewood_1002_index03_Premium",
@@ -915,7 +915,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12952934,
+          "offset": 13031390,
           "record_key": 1006759,
           "record_rel_offset": 2113,
           "entry": "firewood_1002_index03_Premium",
@@ -925,7 +925,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12955529,
+          "offset": 13033988,
           "record_key": 1007827,
           "record_rel_offset": 2079,
           "entry": "firewood_1002_index04",
@@ -935,7 +935,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12955537,
+          "offset": 13033996,
           "record_key": 1007827,
           "record_rel_offset": 2087,
           "entry": "firewood_1002_index04",
@@ -945,7 +945,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12958142,
+          "offset": 13036604,
           "record_key": 1007828,
           "record_rel_offset": 2089,
           "entry": "firewood_1002_index04_Fine",
@@ -955,7 +955,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12958150,
+          "offset": 13036612,
           "record_key": 1007828,
           "record_rel_offset": 2097,
           "entry": "firewood_1002_index04_Fine",
@@ -965,7 +965,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12960761,
+          "offset": 13039226,
           "record_key": 1007829,
           "record_rel_offset": 2095,
           "entry": "firewood_1002_index04_Premium",
@@ -975,7 +975,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12960769,
+          "offset": 13039234,
           "record_key": 1007829,
           "record_rel_offset": 2103,
           "entry": "firewood_1002_index04_Premium",
@@ -985,7 +985,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12963361,
+          "offset": 13041829,
           "record_key": 1010012,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index05",
@@ -995,7 +995,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12963369,
+          "offset": 13041837,
           "record_key": 1010012,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index05",
@@ -1005,7 +1005,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12965971,
+          "offset": 13044442,
           "record_key": 1010013,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index05_Fine",
@@ -1015,7 +1015,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12965979,
+          "offset": 13044450,
           "record_key": 1010013,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index05_Fine",
@@ -1025,7 +1025,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12968587,
+          "offset": 13047061,
           "record_key": 1010014,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index05_Premium",
@@ -1035,7 +1035,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12968595,
+          "offset": 13047069,
           "record_key": 1010014,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index05_Premium",
@@ -1045,7 +1045,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12971187,
+          "offset": 13049664,
           "record_key": 1010068,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index06",
@@ -1055,7 +1055,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12971195,
+          "offset": 13049672,
           "record_key": 1010068,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index06",
@@ -1065,7 +1065,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12973797,
+          "offset": 13052277,
           "record_key": 1010069,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index06_Fine",
@@ -1075,7 +1075,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12973805,
+          "offset": 13052285,
           "record_key": 1010069,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index06_Fine",
@@ -1085,7 +1085,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12976413,
+          "offset": 13054896,
           "record_key": 1010070,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index06_Premium",
@@ -1095,7 +1095,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12976421,
+          "offset": 13054904,
           "record_key": 1010070,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index06_Premium",
@@ -1105,7 +1105,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12979013,
+          "offset": 13057499,
           "record_key": 1010071,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index07",
@@ -1115,7 +1115,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12979021,
+          "offset": 13057507,
           "record_key": 1010071,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index07",
@@ -1125,7 +1125,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12981623,
+          "offset": 13060112,
           "record_key": 1010072,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index07_Fine",
@@ -1135,7 +1135,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12981631,
+          "offset": 13060120,
           "record_key": 1010072,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index07_Fine",
@@ -1145,7 +1145,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12984239,
+          "offset": 13062731,
           "record_key": 1010073,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index07_Premium",
@@ -1155,7 +1155,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12984247,
+          "offset": 13062739,
           "record_key": 1010073,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index07_Premium",
@@ -1165,7 +1165,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12986839,
+          "offset": 13065334,
           "record_key": 1010074,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index08",
@@ -1175,7 +1175,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12986847,
+          "offset": 13065342,
           "record_key": 1010074,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index08",
@@ -1185,7 +1185,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12989449,
+          "offset": 13067947,
           "record_key": 1010075,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index08_Fine",
@@ -1195,7 +1195,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12989457,
+          "offset": 13067955,
           "record_key": 1010075,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index08_Fine",
@@ -1205,7 +1205,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12992065,
+          "offset": 13070566,
           "record_key": 1010076,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index08_Premium",
@@ -1215,7 +1215,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12992073,
+          "offset": 13070574,
           "record_key": 1010076,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index08_Premium",
@@ -1225,7 +1225,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12994665,
+          "offset": 13073169,
           "record_key": 1010274,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index09",
@@ -1235,7 +1235,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12994673,
+          "offset": 13073177,
           "record_key": 1010274,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index09",
@@ -1245,7 +1245,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12997275,
+          "offset": 13075782,
           "record_key": 1010275,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index09_Fine",
@@ -1255,7 +1255,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12997283,
+          "offset": 13075790,
           "record_key": 1010275,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index09_Fine",
@@ -1265,7 +1265,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12999891,
+          "offset": 13078401,
           "record_key": 1010276,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index09_Premium",
@@ -1275,7 +1275,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 12999899,
+          "offset": 13078409,
           "record_key": 1010276,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index09_Premium",
@@ -1285,7 +1285,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13002491,
+          "offset": 13081004,
           "record_key": 1010277,
           "record_rel_offset": 2076,
           "entry": "firewood_1002_index10",
@@ -1295,7 +1295,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13002499,
+          "offset": 13081012,
           "record_key": 1010277,
           "record_rel_offset": 2084,
           "entry": "firewood_1002_index10",
@@ -1305,7 +1305,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13005101,
+          "offset": 13083617,
           "record_key": 1010278,
           "record_rel_offset": 2086,
           "entry": "firewood_1002_index10_Fine",
@@ -1315,7 +1315,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13005109,
+          "offset": 13083625,
           "record_key": 1010278,
           "record_rel_offset": 2094,
           "entry": "firewood_1002_index10_Fine",
@@ -1325,7 +1325,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13007717,
+          "offset": 13086236,
           "record_key": 1010279,
           "record_rel_offset": 2092,
           "entry": "firewood_1002_index10_Premium",
@@ -1335,7 +1335,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13007725,
+          "offset": 13086244,
           "record_key": 1010279,
           "record_rel_offset": 2100,
           "entry": "firewood_1002_index10_Premium",
@@ -1345,7 +1345,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13010304,
+          "offset": 13088826,
           "record_key": 1010015,
           "record_rel_offset": 2063,
           "entry": "firewood_2001",
@@ -1355,7 +1355,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13010312,
+          "offset": 13088834,
           "record_key": 1010015,
           "record_rel_offset": 2071,
           "entry": "firewood_2001",
@@ -1365,7 +1365,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13012901,
+          "offset": 13091426,
           "record_key": 1010016,
           "record_rel_offset": 2073,
           "entry": "firewood_2001_Fine",
@@ -1375,7 +1375,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13012909,
+          "offset": 13091434,
           "record_key": 1010016,
           "record_rel_offset": 2081,
           "entry": "firewood_2001_Fine",
@@ -1385,7 +1385,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13015504,
+          "offset": 13094032,
           "record_key": 1010017,
           "record_rel_offset": 2079,
           "entry": "firewood_2001_Premium",
@@ -1395,7 +1395,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13015512,
+          "offset": 13094040,
           "record_key": 1010017,
           "record_rel_offset": 2087,
           "entry": "firewood_2001_Premium",
@@ -1405,7 +1405,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13018107,
+          "offset": 13096638,
           "record_key": 1010018,
           "record_rel_offset": 2079,
           "entry": "firewood_2001_index01",
@@ -1415,7 +1415,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13018115,
+          "offset": 13096646,
           "record_key": 1010018,
           "record_rel_offset": 2087,
           "entry": "firewood_2001_index01",
@@ -1425,7 +1425,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13020720,
+          "offset": 13099254,
           "record_key": 1010019,
           "record_rel_offset": 2089,
           "entry": "firewood_2001_index01_Fine",
@@ -1435,7 +1435,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13020728,
+          "offset": 13099262,
           "record_key": 1010019,
           "record_rel_offset": 2097,
           "entry": "firewood_2001_index01_Fine",
@@ -1445,7 +1445,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13023339,
+          "offset": 13101876,
           "record_key": 1010020,
           "record_rel_offset": 2095,
           "entry": "firewood_2001_index01_Premium",
@@ -1455,7 +1455,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13023347,
+          "offset": 13101884,
           "record_key": 1010020,
           "record_rel_offset": 2103,
           "entry": "firewood_2001_index01_Premium",
@@ -1465,7 +1465,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13025942,
+          "offset": 13104482,
           "record_key": 1010021,
           "record_rel_offset": 2079,
           "entry": "firewood_2001_index02",
@@ -1475,7 +1475,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13025950,
+          "offset": 13104490,
           "record_key": 1010021,
           "record_rel_offset": 2087,
           "entry": "firewood_2001_index02",
@@ -1485,7 +1485,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13028555,
+          "offset": 13107098,
           "record_key": 1010022,
           "record_rel_offset": 2089,
           "entry": "firewood_2001_index02_Fine",
@@ -1495,7 +1495,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13028563,
+          "offset": 13107106,
           "record_key": 1010022,
           "record_rel_offset": 2097,
           "entry": "firewood_2001_index02_Fine",
@@ -1505,7 +1505,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13031174,
+          "offset": 13109720,
           "record_key": 1010023,
           "record_rel_offset": 2095,
           "entry": "firewood_2001_index02_Premium",
@@ -1515,7 +1515,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13031182,
+          "offset": 13109728,
           "record_key": 1010023,
           "record_rel_offset": 2103,
           "entry": "firewood_2001_index02_Premium",
@@ -1525,7 +1525,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13033777,
+          "offset": 13112326,
           "record_key": 1010280,
           "record_rel_offset": 2079,
           "entry": "firewood_2001_index03",
@@ -1535,7 +1535,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13033785,
+          "offset": 13112334,
           "record_key": 1010280,
           "record_rel_offset": 2087,
           "entry": "firewood_2001_index03",
@@ -1545,7 +1545,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13036390,
+          "offset": 13114942,
           "record_key": 1010281,
           "record_rel_offset": 2089,
           "entry": "firewood_2001_index03_Fine",
@@ -1555,7 +1555,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13036398,
+          "offset": 13114950,
           "record_key": 1010281,
           "record_rel_offset": 2097,
           "entry": "firewood_2001_index03_Fine",
@@ -1565,7 +1565,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13039009,
+          "offset": 13117564,
           "record_key": 1010282,
           "record_rel_offset": 2095,
           "entry": "firewood_2001_index03_Premium",
@@ -1575,7 +1575,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13039017,
+          "offset": 13117572,
           "record_key": 1010282,
           "record_rel_offset": 2103,
           "entry": "firewood_2001_index03_Premium",
@@ -1585,7 +1585,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13041602,
+          "offset": 13120160,
           "record_key": 1003252,
           "record_rel_offset": 2069,
           "entry": "firewood_2002",
@@ -1595,7 +1595,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13041610,
+          "offset": 13120168,
           "record_key": 1003252,
           "record_rel_offset": 2077,
           "entry": "firewood_2002",
@@ -1605,7 +1605,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13044205,
+          "offset": 13122766,
           "record_key": 1006760,
           "record_rel_offset": 2079,
           "entry": "firewood_2002_Fine",
@@ -1615,7 +1615,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13044213,
+          "offset": 13122774,
           "record_key": 1006760,
           "record_rel_offset": 2087,
           "entry": "firewood_2002_Fine",
@@ -1625,7 +1625,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13046814,
+          "offset": 13125378,
           "record_key": 1006761,
           "record_rel_offset": 2085,
           "entry": "firewood_2002_Premium",
@@ -1635,7 +1635,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13046822,
+          "offset": 13125386,
           "record_key": 1006761,
           "record_rel_offset": 2093,
           "entry": "firewood_2002_Premium",
@@ -1645,7 +1645,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13049414,
+          "offset": 13127981,
           "record_key": 1003253,
           "record_rel_offset": 2076,
           "entry": "firewood_2002_index01",
@@ -1655,7 +1655,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13049422,
+          "offset": 13127989,
           "record_key": 1003253,
           "record_rel_offset": 2084,
           "entry": "firewood_2002_index01",
@@ -1665,7 +1665,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13052024,
+          "offset": 13130594,
           "record_key": 1006762,
           "record_rel_offset": 2086,
           "entry": "firewood_2002_index01_Fine",
@@ -1675,7 +1675,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13052032,
+          "offset": 13130602,
           "record_key": 1006762,
           "record_rel_offset": 2094,
           "entry": "firewood_2002_index01_Fine",
@@ -1685,7 +1685,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13054640,
+          "offset": 13133213,
           "record_key": 1006763,
           "record_rel_offset": 2092,
           "entry": "firewood_2002_index01_Premium",
@@ -1695,7 +1695,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13054648,
+          "offset": 13133221,
           "record_key": 1006763,
           "record_rel_offset": 2100,
           "entry": "firewood_2002_index01_Premium",
@@ -1705,7 +1705,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13057243,
+          "offset": 13135819,
           "record_key": 1010024,
           "record_rel_offset": 2079,
           "entry": "firewood_2002_index02",
@@ -1715,7 +1715,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13057251,
+          "offset": 13135827,
           "record_key": 1010024,
           "record_rel_offset": 2087,
           "entry": "firewood_2002_index02",
@@ -1725,7 +1725,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13059856,
+          "offset": 13138435,
           "record_key": 1010025,
           "record_rel_offset": 2089,
           "entry": "firewood_2002_index02_Fine",
@@ -1735,7 +1735,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13059864,
+          "offset": 13138443,
           "record_key": 1010025,
           "record_rel_offset": 2097,
           "entry": "firewood_2002_index02_Fine",
@@ -1745,7 +1745,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13062475,
+          "offset": 13141057,
           "record_key": 1010026,
           "record_rel_offset": 2095,
           "entry": "firewood_2002_index02_Premium",
@@ -1755,7 +1755,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13062483,
+          "offset": 13141065,
           "record_key": 1010026,
           "record_rel_offset": 2103,
           "entry": "firewood_2002_index02_Premium",
@@ -1765,7 +1765,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13065082,
+          "offset": 13143667,
           "record_key": 1010077,
           "record_rel_offset": 2083,
           "entry": "firewood_2002_index03",
@@ -1775,7 +1775,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13065090,
+          "offset": 13143675,
           "record_key": 1010077,
           "record_rel_offset": 2091,
           "entry": "firewood_2002_index03",
@@ -1785,7 +1785,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13067699,
+          "offset": 13146287,
           "record_key": 1010078,
           "record_rel_offset": 2093,
           "entry": "firewood_2002_index03_Fine",
@@ -1795,7 +1795,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13067707,
+          "offset": 13146295,
           "record_key": 1010078,
           "record_rel_offset": 2101,
           "entry": "firewood_2002_index03_Fine",
@@ -1805,7 +1805,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13070322,
+          "offset": 13148913,
           "record_key": 1010079,
           "record_rel_offset": 2099,
           "entry": "firewood_2002_index03_Premium",
@@ -1815,7 +1815,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13070330,
+          "offset": 13148921,
           "record_key": 1010079,
           "record_rel_offset": 2107,
           "entry": "firewood_2002_index03_Premium",
@@ -1825,7 +1825,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13072922,
+          "offset": 13151516,
           "record_key": 1003246,
           "record_rel_offset": 2076,
           "entry": "firewood_0002_index02",
@@ -1835,7 +1835,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13072930,
+          "offset": 13151524,
           "record_key": 1003246,
           "record_rel_offset": 2084,
           "entry": "firewood_0002_index02",
@@ -1845,7 +1845,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13075532,
+          "offset": 13154129,
           "record_key": 1006764,
           "record_rel_offset": 2086,
           "entry": "firewood_0002_index02_Fine",
@@ -1855,7 +1855,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13075540,
+          "offset": 13154137,
           "record_key": 1006764,
           "record_rel_offset": 2094,
           "entry": "firewood_0002_index02_Fine",
@@ -1865,7 +1865,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13078148,
+          "offset": 13156748,
           "record_key": 1006765,
           "record_rel_offset": 2092,
           "entry": "firewood_0002_index02_Premium",
@@ -1875,7 +1875,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13078156,
+          "offset": 13156756,
           "record_key": 1006765,
           "record_rel_offset": 2100,
           "entry": "firewood_0002_index02_Premium",
@@ -1885,7 +1885,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13080754,
+          "offset": 13159357,
           "record_key": 1010027,
           "record_rel_offset": 2082,
           "entry": "firewood_0002_index03",
@@ -1895,7 +1895,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13080762,
+          "offset": 13159365,
           "record_key": 1010027,
           "record_rel_offset": 2090,
           "entry": "firewood_0002_index03",
@@ -1905,7 +1905,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13083370,
+          "offset": 13161976,
           "record_key": 1010028,
           "record_rel_offset": 2092,
           "entry": "firewood_0002_index03_Fine",
@@ -1915,7 +1915,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13083378,
+          "offset": 13161984,
           "record_key": 1010028,
           "record_rel_offset": 2100,
           "entry": "firewood_0002_index03_Fine",
@@ -1925,7 +1925,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13085992,
+          "offset": 13164601,
           "record_key": 1010029,
           "record_rel_offset": 2098,
           "entry": "firewood_0002_index03_Premium",
@@ -1935,7 +1935,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13086000,
+          "offset": 13164609,
           "record_key": 1010029,
           "record_rel_offset": 2106,
           "entry": "firewood_0002_index03_Premium",
@@ -1945,7 +1945,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13088595,
+          "offset": 13167207,
           "record_key": 1010030,
           "record_rel_offset": 2079,
           "entry": "firewood_0002_index04",
@@ -1955,7 +1955,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13088603,
+          "offset": 13167215,
           "record_key": 1010030,
           "record_rel_offset": 2087,
           "entry": "firewood_0002_index04",
@@ -1965,7 +1965,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13091208,
+          "offset": 13169823,
           "record_key": 1010031,
           "record_rel_offset": 2089,
           "entry": "firewood_0002_index04_Fine",
@@ -1975,7 +1975,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13091216,
+          "offset": 13169831,
           "record_key": 1010031,
           "record_rel_offset": 2097,
           "entry": "firewood_0002_index04_Fine",
@@ -1985,7 +1985,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13093827,
+          "offset": 13172445,
           "record_key": 1010032,
           "record_rel_offset": 2095,
           "entry": "firewood_0002_index04_Premium",
@@ -1995,7 +1995,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13093835,
+          "offset": 13172453,
           "record_key": 1010032,
           "record_rel_offset": 2103,
           "entry": "firewood_0002_index04_Premium",
@@ -2005,7 +2005,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13096430,
+          "offset": 13175051,
           "record_key": 1010033,
           "record_rel_offset": 2079,
           "entry": "firewood_0002_index05",
@@ -2015,7 +2015,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13096438,
+          "offset": 13175059,
           "record_key": 1010033,
           "record_rel_offset": 2087,
           "entry": "firewood_0002_index05",
@@ -2025,7 +2025,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13099043,
+          "offset": 13177667,
           "record_key": 1010034,
           "record_rel_offset": 2089,
           "entry": "firewood_0002_index05_Fine",
@@ -2035,7 +2035,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13099051,
+          "offset": 13177675,
           "record_key": 1010034,
           "record_rel_offset": 2097,
           "entry": "firewood_0002_index05_Fine",
@@ -2045,7 +2045,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13101662,
+          "offset": 13180289,
           "record_key": 1010035,
           "record_rel_offset": 2095,
           "entry": "firewood_0002_index05_Premium",
@@ -2055,7 +2055,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13101670,
+          "offset": 13180297,
           "record_key": 1010035,
           "record_rel_offset": 2103,
           "entry": "firewood_0002_index05_Premium",
@@ -2065,7 +2065,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13104262,
+          "offset": 13182892,
           "record_key": 1010080,
           "record_rel_offset": 2076,
           "entry": "firewood_0002_index06",
@@ -2075,7 +2075,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13104270,
+          "offset": 13182900,
           "record_key": 1010080,
           "record_rel_offset": 2084,
           "entry": "firewood_0002_index06",
@@ -2085,7 +2085,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13106872,
+          "offset": 13185505,
           "record_key": 1010081,
           "record_rel_offset": 2086,
           "entry": "firewood_0002_index06_Fine",
@@ -2095,7 +2095,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13106880,
+          "offset": 13185513,
           "record_key": 1010081,
           "record_rel_offset": 2094,
           "entry": "firewood_0002_index06_Fine",
@@ -2105,7 +2105,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13109488,
+          "offset": 13188124,
           "record_key": 1010082,
           "record_rel_offset": 2092,
           "entry": "firewood_0002_index06_Premium",
@@ -2115,7 +2115,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13109496,
+          "offset": 13188132,
           "record_key": 1010082,
           "record_rel_offset": 2100,
           "entry": "firewood_0002_index06_Premium",
@@ -2125,7 +2125,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13112088,
+          "offset": 13190727,
           "record_key": 1010083,
           "record_rel_offset": 2076,
           "entry": "firewood_0002_index07",
@@ -2135,7 +2135,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13112096,
+          "offset": 13190735,
           "record_key": 1010083,
           "record_rel_offset": 2084,
           "entry": "firewood_0002_index07",
@@ -2145,7 +2145,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13114698,
+          "offset": 13193340,
           "record_key": 1010084,
           "record_rel_offset": 2086,
           "entry": "firewood_0002_index07_Fine",
@@ -2155,7 +2155,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13114706,
+          "offset": 13193348,
           "record_key": 1010084,
           "record_rel_offset": 2094,
           "entry": "firewood_0002_index07_Fine",
@@ -2165,7 +2165,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13117314,
+          "offset": 13195959,
           "record_key": 1010085,
           "record_rel_offset": 2092,
           "entry": "firewood_0002_index07_Premium",
@@ -2175,7 +2175,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13117322,
+          "offset": 13195967,
           "record_key": 1010085,
           "record_rel_offset": 2100,
           "entry": "firewood_0002_index07_Premium",
@@ -2185,7 +2185,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13119914,
+          "offset": 13198562,
           "record_key": 1010123,
           "record_rel_offset": 2076,
           "entry": "firewood_0002_index08",
@@ -2195,7 +2195,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13119922,
+          "offset": 13198570,
           "record_key": 1010123,
           "record_rel_offset": 2084,
           "entry": "firewood_0002_index08",
@@ -2205,7 +2205,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13122524,
+          "offset": 13201175,
           "record_key": 1010124,
           "record_rel_offset": 2086,
           "entry": "firewood_0002_index08_Fine",
@@ -2215,7 +2215,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13122532,
+          "offset": 13201183,
           "record_key": 1010124,
           "record_rel_offset": 2094,
           "entry": "firewood_0002_index08_Fine",
@@ -2225,7 +2225,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13125140,
+          "offset": 13203794,
           "record_key": 1010125,
           "record_rel_offset": 2092,
           "entry": "firewood_0002_index08_Premium",
@@ -2235,7 +2235,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13125148,
+          "offset": 13203802,
           "record_key": 1010125,
           "record_rel_offset": 2100,
           "entry": "firewood_0002_index08_Premium",
@@ -2245,7 +2245,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13127740,
+          "offset": 13206397,
           "record_key": 1003249,
           "record_rel_offset": 2076,
           "entry": "firewood_0003_index02",
@@ -2255,7 +2255,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13127748,
+          "offset": 13206405,
           "record_key": 1003249,
           "record_rel_offset": 2084,
           "entry": "firewood_0003_index02",
@@ -2265,7 +2265,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13130350,
+          "offset": 13209010,
           "record_key": 1006766,
           "record_rel_offset": 2086,
           "entry": "firewood_0003_index02_Fine",
@@ -2275,7 +2275,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13130358,
+          "offset": 13209018,
           "record_key": 1006766,
           "record_rel_offset": 2094,
           "entry": "firewood_0003_index02_Fine",
@@ -2285,7 +2285,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13132966,
+          "offset": 13211629,
           "record_key": 1006767,
           "record_rel_offset": 2092,
           "entry": "firewood_0003_index02_Premium",
@@ -2295,7 +2295,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13132974,
+          "offset": 13211637,
           "record_key": 1006767,
           "record_rel_offset": 2100,
           "entry": "firewood_0003_index02_Premium",
@@ -2305,7 +2305,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13135566,
+          "offset": 13214232,
           "record_key": 1010086,
           "record_rel_offset": 2076,
           "entry": "firewood_0003_index03",
@@ -2315,7 +2315,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13135574,
+          "offset": 13214240,
           "record_key": 1010086,
           "record_rel_offset": 2084,
           "entry": "firewood_0003_index03",
@@ -2325,7 +2325,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13138176,
+          "offset": 13216845,
           "record_key": 1010087,
           "record_rel_offset": 2086,
           "entry": "firewood_0003_index03_Fine",
@@ -2335,7 +2335,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13138184,
+          "offset": 13216853,
           "record_key": 1010087,
           "record_rel_offset": 2094,
           "entry": "firewood_0003_index03_Fine",
@@ -2345,7 +2345,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13140792,
+          "offset": 13219464,
           "record_key": 1010088,
           "record_rel_offset": 2092,
           "entry": "firewood_0003_index03_Premium",
@@ -2355,7 +2355,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13140800,
+          "offset": 13219472,
           "record_key": 1010088,
           "record_rel_offset": 2100,
           "entry": "firewood_0003_index03_Premium",
@@ -2365,7 +2365,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13143388,
+          "offset": 13222063,
           "record_key": 1003254,
           "record_rel_offset": 2072,
           "entry": "firewood_2003",
@@ -2375,7 +2375,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13143396,
+          "offset": 13222071,
           "record_key": 1003254,
           "record_rel_offset": 2080,
           "entry": "firewood_2003",
@@ -2385,7 +2385,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13145994,
+          "offset": 13224672,
           "record_key": 1006768,
           "record_rel_offset": 2082,
           "entry": "firewood_2003_Fine",
@@ -2395,7 +2395,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13146002,
+          "offset": 13224680,
           "record_key": 1006768,
           "record_rel_offset": 2090,
           "entry": "firewood_2003_Fine",
@@ -2405,7 +2405,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13148606,
+          "offset": 13227287,
           "record_key": 1006769,
           "record_rel_offset": 2088,
           "entry": "firewood_2003_Premium",
@@ -2415,7 +2415,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13148614,
+          "offset": 13227295,
           "record_key": 1006769,
           "record_rel_offset": 2096,
           "entry": "firewood_2003_Premium",
@@ -2425,7 +2425,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13151193,
+          "offset": 13229877,
           "record_key": 1009553,
           "record_rel_offset": 2063,
           "entry": "firewood_1003",
@@ -2435,7 +2435,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13151201,
+          "offset": 13229885,
           "record_key": 1009553,
           "record_rel_offset": 2071,
           "entry": "firewood_1003",
@@ -2445,7 +2445,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13153790,
+          "offset": 13232477,
           "record_key": 1009554,
           "record_rel_offset": 2073,
           "entry": "firewood_1003_Fine",
@@ -2455,7 +2455,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13153798,
+          "offset": 13232485,
           "record_key": 1009554,
           "record_rel_offset": 2081,
           "entry": "firewood_1003_Fine",
@@ -2465,7 +2465,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13156393,
+          "offset": 13235083,
           "record_key": 1009555,
           "record_rel_offset": 2079,
           "entry": "firewood_1003_Premium",
@@ -2475,7 +2475,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13156401,
+          "offset": 13235091,
           "record_key": 1009555,
           "record_rel_offset": 2087,
           "entry": "firewood_1003_Premium",
@@ -2485,7 +2485,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13158996,
+          "offset": 13237689,
           "record_key": 1010283,
           "record_rel_offset": 2079,
           "entry": "firewood_1003_index01",
@@ -2495,7 +2495,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13159004,
+          "offset": 13237697,
           "record_key": 1010283,
           "record_rel_offset": 2087,
           "entry": "firewood_1003_index01",
@@ -2505,7 +2505,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13161609,
+          "offset": 13240305,
           "record_key": 1010284,
           "record_rel_offset": 2089,
           "entry": "firewood_1003_index01_Fine",
@@ -2515,7 +2515,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13161617,
+          "offset": 13240313,
           "record_key": 1010284,
           "record_rel_offset": 2097,
           "entry": "firewood_1003_index01_Fine",
@@ -2525,7 +2525,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13164228,
+          "offset": 13242927,
           "record_key": 1010285,
           "record_rel_offset": 2095,
           "entry": "firewood_1003_index01_Premium",
@@ -2535,7 +2535,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13164236,
+          "offset": 13242935,
           "record_key": 1010285,
           "record_rel_offset": 2103,
           "entry": "firewood_1003_index01_Premium",
@@ -2545,7 +2545,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13166819,
+          "offset": 13245521,
           "record_key": 1000674,
           "record_rel_offset": 2067,
           "entry": "firewood_1001",
@@ -2555,7 +2555,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13166827,
+          "offset": 13245529,
           "record_key": 1000674,
           "record_rel_offset": 2075,
           "entry": "firewood_1001",
@@ -2565,7 +2565,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13169420,
+          "offset": 13248125,
           "record_key": 1000877,
           "record_rel_offset": 2077,
           "entry": "firewood_1001_Fine",
@@ -2575,7 +2575,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13169428,
+          "offset": 13248133,
           "record_key": 1000877,
           "record_rel_offset": 2085,
           "entry": "firewood_1001_Fine",
@@ -2585,7 +2585,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13172027,
+          "offset": 13250735,
           "record_key": 1000973,
           "record_rel_offset": 2083,
           "entry": "firewood_1001_Premium",
@@ -2595,7 +2595,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13172035,
+          "offset": 13250743,
           "record_key": 1000973,
           "record_rel_offset": 2091,
           "entry": "firewood_1001_Premium",
@@ -2605,7 +2605,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13174630,
+          "offset": 13253341,
           "record_key": 1010036,
           "record_rel_offset": 2079,
           "entry": "firewood_1001_index01",
@@ -2615,7 +2615,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13174638,
+          "offset": 13253349,
           "record_key": 1010036,
           "record_rel_offset": 2087,
           "entry": "firewood_1001_index01",
@@ -2625,7 +2625,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13177243,
+          "offset": 13255957,
           "record_key": 1010037,
           "record_rel_offset": 2089,
           "entry": "firewood_1001_index01_Fine",
@@ -2635,7 +2635,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13177251,
+          "offset": 13255965,
           "record_key": 1010037,
           "record_rel_offset": 2097,
           "entry": "firewood_1001_index01_Fine",
@@ -2645,7 +2645,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13179862,
+          "offset": 13258579,
           "record_key": 1010038,
           "record_rel_offset": 2095,
           "entry": "firewood_1001_index01_Premium",
@@ -2655,7 +2655,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13179870,
+          "offset": 13258587,
           "record_key": 1010038,
           "record_rel_offset": 2103,
           "entry": "firewood_1001_index01_Premium",
@@ -2665,7 +2665,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13182465,
+          "offset": 13261185,
           "record_key": 1010126,
           "record_rel_offset": 2079,
           "entry": "firewood_1001_index02",
@@ -2675,7 +2675,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13182473,
+          "offset": 13261193,
           "record_key": 1010126,
           "record_rel_offset": 2087,
           "entry": "firewood_1001_index02",
@@ -2685,7 +2685,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13185078,
+          "offset": 13263801,
           "record_key": 1010127,
           "record_rel_offset": 2089,
           "entry": "firewood_1001_index02_Fine",
@@ -2695,7 +2695,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13185086,
+          "offset": 13263809,
           "record_key": 1010127,
           "record_rel_offset": 2097,
           "entry": "firewood_1001_index02_Fine",
@@ -2705,7 +2705,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13187697,
+          "offset": 13266423,
           "record_key": 1010128,
           "record_rel_offset": 2095,
           "entry": "firewood_1001_index02_Premium",
@@ -2715,7 +2715,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13187705,
+          "offset": 13266431,
           "record_key": 1010128,
           "record_rel_offset": 2103,
           "entry": "firewood_1001_index02_Premium",
@@ -2725,7 +2725,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13190300,
+          "offset": 13269029,
           "record_key": 1010286,
           "record_rel_offset": 2079,
           "entry": "firewood_1001_index03",
@@ -2735,7 +2735,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13190308,
+          "offset": 13269037,
           "record_key": 1010286,
           "record_rel_offset": 2087,
           "entry": "firewood_1001_index03",
@@ -2745,7 +2745,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13192913,
+          "offset": 13271645,
           "record_key": 1010287,
           "record_rel_offset": 2089,
           "entry": "firewood_1001_index03_Fine",
@@ -2755,7 +2755,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13192921,
+          "offset": 13271653,
           "record_key": 1010287,
           "record_rel_offset": 2097,
           "entry": "firewood_1001_index03_Fine",
@@ -2765,7 +2765,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13195532,
+          "offset": 13274267,
           "record_key": 1010288,
           "record_rel_offset": 2095,
           "entry": "firewood_1001_index03_Premium",
@@ -2775,7 +2775,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13195540,
+          "offset": 13274275,
           "record_key": 1010288,
           "record_rel_offset": 2103,
           "entry": "firewood_1001_index03_Premium",
@@ -2785,7 +2785,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13198135,
+          "offset": 13276873,
           "record_key": 1010289,
           "record_rel_offset": 2079,
           "entry": "firewood_1001_index04",
@@ -2795,7 +2795,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13198143,
+          "offset": 13276881,
           "record_key": 1010289,
           "record_rel_offset": 2087,
           "entry": "firewood_1001_index04",
@@ -2805,7 +2805,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13200748,
+          "offset": 13279489,
           "record_key": 1010290,
           "record_rel_offset": 2089,
           "entry": "firewood_1001_index04_Fine",
@@ -2815,7 +2815,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13200756,
+          "offset": 13279497,
           "record_key": 1010290,
           "record_rel_offset": 2097,
           "entry": "firewood_1001_index04_Fine",
@@ -2825,7 +2825,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13203367,
+          "offset": 13282111,
           "record_key": 1010291,
           "record_rel_offset": 2095,
           "entry": "firewood_1001_index04_Premium",
@@ -2835,7 +2835,7 @@
           "patched": "0a00000000000000"
         },
         {
-          "offset": 13203375,
+          "offset": 13282119,
           "record_key": 1010291,
           "record_rel_offset": 2103,
           "entry": "firewood_1001_index04_Premium",

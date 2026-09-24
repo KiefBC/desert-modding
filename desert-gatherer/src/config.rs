@@ -59,6 +59,16 @@ pub struct Config {
     /// 1 = also log every record the loader hands us that is not a gather
     /// record (13,600 of them), capped by the hook so the log stays finite.
     pub debug: bool,
+    /// 1 = on the loader's first call, copy the whole gimmickinfo table body
+    /// out of its stream buffer and write it to
+    /// [`crate::dump::FILE_NAME`] beside the log, once per session. The
+    /// offline tools read it in place of DMM's backup copy, which DMM deletes
+    /// at will. **Needs `dry_run`**: several game threads multiply records
+    /// in that same buffer while the copy is read, so only a hook that writes
+    /// nothing guarantees the file is vanilla; without `DryRun=1` this is
+    /// logged as ignored and nothing is copied. Read once, at the first
+    /// load, so a change after that waits for the next launch.
+    pub dump_table: bool,
     /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms,
     /// crops, and the water drawn from a water well - `gimmick_well_0001_parts01`,
     /// the one record in the family the DMM pack never had. Its block is a fixed
@@ -107,6 +117,7 @@ impl Default for Config {
             enabled: true,
             dry_run: false,
             debug: false,
+            dump_table: false,
             foraging: 1,
             logging: 1,
             mining: 1,
@@ -175,6 +186,7 @@ pub struct LiveConfig {
     enabled: AtomicBool,
     dry_run: AtomicBool,
     debug: AtomicBool,
+    dump_table: AtomicBool,
     foraging: AtomicU32,
     logging: AtomicU32,
     mining: AtomicU32,
@@ -192,6 +204,7 @@ impl LiveConfig {
             enabled: AtomicBool::new(true),
             dry_run: AtomicBool::new(false),
             debug: AtomicBool::new(false),
+            dump_table: AtomicBool::new(false),
             foraging: AtomicU32::new(1),
             logging: AtomicU32::new(1),
             mining: AtomicU32::new(1),
@@ -209,6 +222,7 @@ impl LiveConfig {
         self.enabled.store(cfg.enabled, Ordering::Relaxed);
         self.dry_run.store(cfg.dry_run, Ordering::Relaxed);
         self.debug.store(cfg.debug, Ordering::Relaxed);
+        self.dump_table.store(cfg.dump_table, Ordering::Relaxed);
         self.foraging.store(cfg.foraging, Ordering::Relaxed);
         self.logging.store(cfg.logging, Ordering::Relaxed);
         self.mining.store(cfg.mining, Ordering::Relaxed);
@@ -224,6 +238,7 @@ impl LiveConfig {
             enabled: self.enabled.load(Ordering::Relaxed),
             dry_run: self.dry_run.load(Ordering::Relaxed),
             debug: self.debug.load(Ordering::Relaxed),
+            dump_table: self.dump_table.load(Ordering::Relaxed),
             foraging: self.foraging.load(Ordering::Relaxed),
             logging: self.logging.load(Ordering::Relaxed),
             mining: self.mining.load(Ordering::Relaxed),
@@ -248,6 +263,13 @@ impl LiveConfig {
     /// `true` = also log non-gather records, capped by the hook.
     pub fn debug(&self) -> bool {
         self.debug.load(Ordering::Relaxed)
+    }
+
+    /// `true` = copy the table body on the loader's first call, if `DryRun`
+    /// is on too. Read by the hook exactly once, inside its first-call block,
+    /// so it costs the per-record path nothing at all.
+    pub fn dump_table(&self) -> bool {
+        self.dump_table.load(Ordering::Relaxed)
     }
 
     /// The live multiplier for a gather family. Safe to call from the hook on
@@ -351,7 +373,9 @@ fn mult(key: &str, help: &str) -> Field {
 /// It and `DryRun` are both marked [`Tab::Debug`], so the menu draws them on
 /// its shared Debug tab under this section's title rather than anywhere on this
 /// page: whichever subsystem a player is chasing, the switches a bug report
-/// needs are in one place.
+/// needs are in one place. `DumpTable` joins them there for the same reason:
+/// it is a one-launch tool for whoever runs the offline tools, not a setting a
+/// player plays with, and it only works with `DryRun` ticked beside it.
 ///
 /// Every default is `Config::default()` (vanilla yields, which the shipped
 /// template now matches) and the multiplier range is
@@ -442,6 +466,23 @@ pub fn schema() -> Section {
                     )
                 },
             ),
+            // The third switch on the DryRun row, the same shape as
+            // `[Dispatch]`'s `DryRun | Debug | Dump raw bytes` row, which fits
+            // the window's default width with a longer label than this one.
+            // Beside DryRun is also where it belongs: it does nothing unless
+            // that box is ticked too, and the help says so.
+            on(
+                Tab::Debug,
+                Field {
+                    same_line: true,
+                    ..f(
+                        "DumpTable",
+                        "Dump table",
+                        Kind::Bool { default: d.dump_table },
+                        "Write the game's vanilla gimmickinfo table body to DesertTooling.gimmickinfo.bin beside the log on the next launch. Needs DryRun=1, so nothing in the copy is multiplied; without it this is ignored. About 22 MB, written once per session. The offline tools read it (CD_DMM_TABLE) in place of DMM's backup copy.",
+                    )
+                },
+            ),
         ],
     }
 }
@@ -468,6 +509,7 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
             "enabled" => cfg.enabled = ini::parse_bool(v),
             "dryrun" => cfg.dry_run = ini::parse_bool(v),
             "debug" => cfg.debug = ini::parse_bool(v),
+            "dumptable" => cfg.dump_table = ini::parse_bool(v),
             "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" => {
                 let slot: &mut u32 = match k.to_ascii_lowercase().as_str() {
                     "foraging" => &mut cfg.foraging,
@@ -501,6 +543,7 @@ mod tests {
         assert!(c.enabled);
         assert!(!c.dry_run);
         assert!(!c.debug);
+        assert!(!c.dump_table, "a 22 MB file is written only when asked for");
         assert!(c.all_vanilla());
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(c.multiplier(f), 1);
@@ -513,12 +556,13 @@ mod tests {
     #[test]
     fn parses_every_key() {
         let (c, w) = parse(
-            "; comment\n[Gatherer]\nEnabled=1\nDryRun=yes\nDebug=on\n\
+            "; comment\n[Gatherer]\nEnabled=1\nDryRun=yes\nDebug=on\nDumpTable=true\n\
              Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\n",
         );
         assert!(c.enabled);
         assert!(c.dry_run);
         assert!(c.debug);
+        assert!(c.dump_table);
         assert_eq!(c.multiplier(Family::Foraging), 10);
         assert_eq!(c.multiplier(Family::Logging), 2);
         assert_eq!(c.multiplier(Family::Mining), 5);
@@ -572,8 +616,9 @@ mod tests {
 
     #[test]
     fn case_insensitive_keys() {
-        let (c, w) = parse("[gAtHeReR]\nENABLED=0\nforaging=3\nOrE=4\n");
+        let (c, w) = parse("[gAtHeReR]\nENABLED=0\nforaging=3\nOrE=4\ndUmPtAbLe=1\n");
         assert!(!c.enabled);
+        assert!(c.dump_table);
         assert_eq!(c.foraging, 3);
         assert_eq!(c.ore, 4);
         assert!(w.is_empty(), "{w:?}");
@@ -616,6 +661,7 @@ mod tests {
         assert!(live.enabled());
         assert!(!live.dry_run());
         assert!(!live.debug());
+        assert!(!live.dump_table());
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(live.multiplier(f), 1);
         }
@@ -628,8 +674,8 @@ mod tests {
     fn live_config_publish_round_trips() {
         let live = LiveConfig::new();
         let (cfg, w) = parse(
-            "[Gatherer]\nEnabled=0\nDryRun=1\nDebug=1\nForaging=10\nLogging=2\nMining=5\n\
-             Ore=100\nMoney=7\nBugs=4\nFish=9\n",
+            "[Gatherer]\nEnabled=0\nDryRun=1\nDebug=1\nDumpTable=1\nForaging=10\nLogging=2\n\
+             Mining=5\nOre=100\nMoney=7\nBugs=4\nFish=9\n",
         );
         assert!(w.is_empty(), "{w:?}");
         live.publish(&cfg);
@@ -637,6 +683,7 @@ mod tests {
         assert!(!live.enabled());
         assert!(live.dry_run());
         assert!(live.debug());
+        assert!(live.dump_table());
         assert_eq!(live.multiplier(Family::Foraging), 10);
         assert_eq!(live.multiplier(Family::Logging), 2);
         assert_eq!(live.multiplier(Family::Mining), 5);
@@ -649,8 +696,16 @@ mod tests {
     #[test]
     fn live_config_publish_overwrites_previous_values() {
         let live = LiveConfig::new();
-        live.publish(&Config { enabled: false, dry_run: true, debug: true, foraging: 50, ..Config::default() });
+        live.publish(&Config {
+            enabled: false,
+            dry_run: true,
+            debug: true,
+            dump_table: true,
+            foraging: 50,
+            ..Config::default()
+        });
         assert!(!live.enabled());
+        assert!(live.dump_table());
         assert_eq!(live.multiplier(Family::Foraging), 50);
 
         // A later publish fully replaces the previous snapshot, which is what
@@ -766,7 +821,6 @@ mod tests {
         assert_eq!(debug.heading, None, "the section title is the group header there");
         assert_eq!(debug.kind, Kind::Bool { default: false });
         assert_eq!(debug.kind.default_text(), "0");
-        assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("Debug"));
 
         // `DryRun` moves with it, and leads the pair: it no longer sits beside
         // Enabled, because Enabled is not on that tab.
@@ -777,10 +831,29 @@ mod tests {
         assert!(debug.same_line, "Debug is drawn beside DryRun");
         assert_eq!(s.fields.iter().position(|f| f.key == "DryRun"), Some(1));
 
+        // `DumpTable` is the third switch on that row and the last field of
+        // the section: it only works with DryRun ticked, so it sits beside it,
+        // and its help has to say so, name the file, and say it is once per
+        // launch - a player who ticks it mid-session gets nothing until then.
+        let dump = s.field("DumpTable").unwrap_or_else(|| panic!("the menu must offer DumpTable"));
+        assert_eq!(dump.tab, Tab::Debug);
+        assert_eq!(dump.heading, None);
+        assert_eq!(dump.kind, Kind::Bool { default: false });
+        assert_eq!(dump.kind.default_text(), "0");
+        assert!(dump.same_line, "DumpTable is drawn on the DryRun row");
+        assert_eq!(s.fields.last().map(|f| f.key.as_str()), Some("DumpTable"));
+        let at = |key: &str| s.fields.iter().position(|f| f.key == key);
+        assert_eq!(at("DumpTable"), at("Debug").map(|i| i + 1), "right after Debug");
+        let help = dump.help.clone().unwrap_or_default();
+        for needed in ["DryRun=1", "DesertTooling.gimmickinfo.bin", "next launch", "once per session"] {
+            assert!(help.contains(needed), "the help must say {needed:?}: {help}");
+        }
+        assert!(help.contains(crate::dump::FILE_NAME), "{help}");
+
         // Everything else is this section's own page, which is what keeps the
         // Gatherer tab in the bar at all.
         for field in &s.fields {
-            if matches!(field.key.as_str(), "Debug" | "DryRun") {
+            if matches!(field.key.as_str(), "Debug" | "DryRun" | "DumpTable") {
                 continue;
             }
             assert_eq!(field.tab, Tab::Section, "{} belongs on the Gatherer tab", field.key);
@@ -792,6 +865,10 @@ mod tests {
         let (c, w) = parse("[Gatherer]\nDebug=1\n");
         assert!(w.is_empty(), "{w:?}");
         assert!(c.debug);
+        let (c, w) = parse("[Gatherer]\nDumpTable=1\n");
+        assert!(w.is_empty(), "{w:?}");
+        assert!(c.dump_table);
+        assert!(!c.dry_run, "DumpTable does not turn DryRun on by itself");
     }
 
     #[test]
@@ -810,7 +887,8 @@ mod tests {
                 "Money",
                 "Bugs",
                 "Fish",
-                "Debug"
+                "Debug",
+                "DumpTable"
             ]
         );
         // Under the same heading as the four families: the menu shows one

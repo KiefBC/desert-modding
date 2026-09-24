@@ -6,3 +6,4 @@
 
 pub mod paths;
 pub mod pe;
+pub mod sha256;

@@ -1,16 +1,16 @@
 {
   "name": "Mining - 2X",
-  "version": "1.1",
+  "version": "1.2",
   "author": "KiefBC",
   "description": "Multiplies mining node minimum and maximum yields by 2. Select no more than one Mining rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "25116796",
+  "game_build": "25477059",
   "multiplier": 2,
   "category": "Mining",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Mining - 2X",
-    "version": "1.1",
+    "version": "1.2",
     "author": "KiefBC",
     "description": "2x yields for mining nodes.",
     "allow_partial_apply": true
@@ -25,7 +25,7 @@
       "game_file": "gamedata/gimmickinfo.pabgb",
       "changes": [
         {
-          "offset": 13204711,
+          "offset": 13283458,
           "record_key": 17030001,
           "record_rel_offset": 820,
           "entry": "mine_bluestone",
@@ -35,7 +35,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13204719,
+          "offset": 13283466,
           "record_key": 17030001,
           "record_rel_offset": 828,
           "entry": "mine_bluestone",
@@ -45,7 +45,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13204779,
+          "offset": 13283526,
           "record_key": 17030001,
           "record_rel_offset": 888,
           "entry": "mine_bluestone",
@@ -55,7 +55,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13204787,
+          "offset": 13283534,
           "record_key": 17030001,
           "record_rel_offset": 896,
           "entry": "mine_bluestone",
@@ -65,7 +65,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13204847,
+          "offset": 13283594,
           "record_key": 17030001,
           "record_rel_offset": 956,
           "entry": "mine_bluestone",
@@ -75,7 +75,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13204855,
+          "offset": 13283602,
           "record_key": 17030001,
           "record_rel_offset": 964,
           "entry": "mine_bluestone",
@@ -85,7 +85,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206201,
+          "offset": 13284951,
           "record_key": 17030021,
           "record_rel_offset": 830,
           "entry": "mine_bluestone_cave",
@@ -95,7 +95,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206209,
+          "offset": 13284959,
           "record_key": 17030021,
           "record_rel_offset": 838,
           "entry": "mine_bluestone_cave",
@@ -105,7 +105,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206269,
+          "offset": 13285019,
           "record_key": 17030021,
           "record_rel_offset": 898,
           "entry": "mine_bluestone_cave",
@@ -115,7 +115,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206277,
+          "offset": 13285027,
           "record_key": 17030021,
           "record_rel_offset": 906,
           "entry": "mine_bluestone_cave",
@@ -125,7 +125,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206337,
+          "offset": 13285087,
           "record_key": 17030021,
           "record_rel_offset": 966,
           "entry": "mine_bluestone_cave",
@@ -135,7 +135,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13206345,
+          "offset": 13285095,
           "record_key": 17030021,
           "record_rel_offset": 974,
           "entry": "mine_bluestone_cave",
@@ -145,7 +145,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207680,
+          "offset": 13286433,
           "record_key": 17030002,
           "record_rel_offset": 819,
           "entry": "mine_copper",
@@ -155,7 +155,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207688,
+          "offset": 13286441,
           "record_key": 17030002,
           "record_rel_offset": 827,
           "entry": "mine_copper",
@@ -165,7 +165,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207748,
+          "offset": 13286501,
           "record_key": 17030002,
           "record_rel_offset": 887,
           "entry": "mine_copper",
@@ -175,7 +175,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207756,
+          "offset": 13286509,
           "record_key": 17030002,
           "record_rel_offset": 895,
           "entry": "mine_copper",
@@ -185,7 +185,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207816,
+          "offset": 13286569,
           "record_key": 17030002,
           "record_rel_offset": 955,
           "entry": "mine_copper",
@@ -195,7 +195,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13207824,
+          "offset": 13286577,
           "record_key": 17030002,
           "record_rel_offset": 963,
           "entry": "mine_copper",
@@ -205,7 +205,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209169,
+          "offset": 13287925,
           "record_key": 17030020,
           "record_rel_offset": 829,
           "entry": "mine_copper_cave",
@@ -215,7 +215,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209177,
+          "offset": 13287933,
           "record_key": 17030020,
           "record_rel_offset": 837,
           "entry": "mine_copper_cave",
@@ -225,7 +225,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209237,
+          "offset": 13287993,
           "record_key": 17030020,
           "record_rel_offset": 897,
           "entry": "mine_copper_cave",
@@ -235,7 +235,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209245,
+          "offset": 13288001,
           "record_key": 17030020,
           "record_rel_offset": 905,
           "entry": "mine_copper_cave",
@@ -245,7 +245,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209305,
+          "offset": 13288061,
           "record_key": 17030020,
           "record_rel_offset": 965,
           "entry": "mine_copper_cave",
@@ -255,7 +255,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13209313,
+          "offset": 13288069,
           "record_key": 17030020,
           "record_rel_offset": 973,
           "entry": "mine_copper_cave",
@@ -265,7 +265,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210645,
+          "offset": 13289404,
           "record_key": 17030003,
           "record_rel_offset": 816,
           "entry": "mine_diamond",
@@ -275,7 +275,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210653,
+          "offset": 13289412,
           "record_key": 17030003,
           "record_rel_offset": 824,
           "entry": "mine_diamond",
@@ -285,7 +285,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210713,
+          "offset": 13289472,
           "record_key": 17030003,
           "record_rel_offset": 884,
           "entry": "mine_diamond",
@@ -295,7 +295,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210721,
+          "offset": 13289480,
           "record_key": 17030003,
           "record_rel_offset": 892,
           "entry": "mine_diamond",
@@ -305,7 +305,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210781,
+          "offset": 13289540,
           "record_key": 17030003,
           "record_rel_offset": 952,
           "entry": "mine_diamond",
@@ -315,7 +315,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13210789,
+          "offset": 13289548,
           "record_key": 17030003,
           "record_rel_offset": 960,
           "entry": "mine_diamond",
@@ -325,7 +325,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212131,
+          "offset": 13290893,
           "record_key": 17030019,
           "record_rel_offset": 826,
           "entry": "mine_diamond_cave",
@@ -335,7 +335,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212139,
+          "offset": 13290901,
           "record_key": 17030019,
           "record_rel_offset": 834,
           "entry": "mine_diamond_cave",
@@ -345,7 +345,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212199,
+          "offset": 13290961,
           "record_key": 17030019,
           "record_rel_offset": 894,
           "entry": "mine_diamond_cave",
@@ -355,7 +355,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212207,
+          "offset": 13290969,
           "record_key": 17030019,
           "record_rel_offset": 902,
           "entry": "mine_diamond_cave",
@@ -365,7 +365,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212267,
+          "offset": 13291029,
           "record_key": 17030019,
           "record_rel_offset": 962,
           "entry": "mine_diamond_cave",
@@ -375,7 +375,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13212275,
+          "offset": 13291037,
           "record_key": 17030019,
           "record_rel_offset": 970,
           "entry": "mine_diamond_cave",
@@ -385,7 +385,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213614,
+          "offset": 13292379,
           "record_key": 1000445,
           "record_rel_offset": 823,
           "entry": "mine_diamond_attach",
@@ -395,7 +395,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213622,
+          "offset": 13292387,
           "record_key": 1000445,
           "record_rel_offset": 831,
           "entry": "mine_diamond_attach",
@@ -405,7 +405,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213682,
+          "offset": 13292447,
           "record_key": 1000445,
           "record_rel_offset": 891,
           "entry": "mine_diamond_attach",
@@ -415,7 +415,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213690,
+          "offset": 13292455,
           "record_key": 1000445,
           "record_rel_offset": 899,
           "entry": "mine_diamond_attach",
@@ -425,7 +425,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213750,
+          "offset": 13292515,
           "record_key": 1000445,
           "record_rel_offset": 959,
           "entry": "mine_diamond_attach",
@@ -435,7 +435,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13213758,
+          "offset": 13292523,
           "record_key": 1000445,
           "record_rel_offset": 967,
           "entry": "mine_diamond_attach",
@@ -445,7 +445,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215096,
+          "offset": 13293864,
           "record_key": 17030005,
           "record_rel_offset": 822,
           "entry": "mine_greenstone",
@@ -455,7 +455,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215104,
+          "offset": 13293872,
           "record_key": 17030005,
           "record_rel_offset": 830,
           "entry": "mine_greenstone",
@@ -465,7 +465,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215164,
+          "offset": 13293932,
           "record_key": 17030005,
           "record_rel_offset": 890,
           "entry": "mine_greenstone",
@@ -475,7 +475,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215172,
+          "offset": 13293940,
           "record_key": 17030005,
           "record_rel_offset": 898,
           "entry": "mine_greenstone",
@@ -485,7 +485,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215232,
+          "offset": 13294000,
           "record_key": 17030005,
           "record_rel_offset": 958,
           "entry": "mine_greenstone",
@@ -495,7 +495,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13215240,
+          "offset": 13294008,
           "record_key": 17030005,
           "record_rel_offset": 966,
           "entry": "mine_greenstone",
@@ -505,7 +505,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216588,
+          "offset": 13295359,
           "record_key": 17030017,
           "record_rel_offset": 832,
           "entry": "mine_greenstone_cave",
@@ -515,7 +515,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216596,
+          "offset": 13295367,
           "record_key": 17030017,
           "record_rel_offset": 840,
           "entry": "mine_greenstone_cave",
@@ -525,7 +525,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216656,
+          "offset": 13295427,
           "record_key": 17030017,
           "record_rel_offset": 900,
           "entry": "mine_greenstone_cave",
@@ -535,7 +535,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216664,
+          "offset": 13295435,
           "record_key": 17030017,
           "record_rel_offset": 908,
           "entry": "mine_greenstone_cave",
@@ -545,7 +545,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216724,
+          "offset": 13295495,
           "record_key": 17030017,
           "record_rel_offset": 968,
           "entry": "mine_greenstone_cave",
@@ -555,7 +555,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13216732,
+          "offset": 13295503,
           "record_key": 17030017,
           "record_rel_offset": 976,
           "entry": "mine_greenstone_cave",
@@ -565,7 +565,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218063,
+          "offset": 13296837,
           "record_key": 17030006,
           "record_rel_offset": 815,
           "entry": "mine_iron",
@@ -575,7 +575,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218071,
+          "offset": 13296845,
           "record_key": 17030006,
           "record_rel_offset": 823,
           "entry": "mine_iron",
@@ -585,7 +585,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218131,
+          "offset": 13296905,
           "record_key": 17030006,
           "record_rel_offset": 883,
           "entry": "mine_iron",
@@ -595,7 +595,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218139,
+          "offset": 13296913,
           "record_key": 17030006,
           "record_rel_offset": 891,
           "entry": "mine_iron",
@@ -605,7 +605,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218199,
+          "offset": 13296973,
           "record_key": 17030006,
           "record_rel_offset": 951,
           "entry": "mine_iron",
@@ -615,7 +615,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13218207,
+          "offset": 13296981,
           "record_key": 17030006,
           "record_rel_offset": 959,
           "entry": "mine_iron",
@@ -625,7 +625,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219545,
+          "offset": 13298322,
           "record_key": 1000446,
           "record_rel_offset": 822,
           "entry": "mine_iron_attach",
@@ -635,7 +635,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219553,
+          "offset": 13298330,
           "record_key": 1000446,
           "record_rel_offset": 830,
           "entry": "mine_iron_attach",
@@ -645,7 +645,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219613,
+          "offset": 13298390,
           "record_key": 1000446,
           "record_rel_offset": 890,
           "entry": "mine_iron_attach",
@@ -655,7 +655,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219621,
+          "offset": 13298398,
           "record_key": 1000446,
           "record_rel_offset": 898,
           "entry": "mine_iron_attach",
@@ -665,7 +665,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219681,
+          "offset": 13298458,
           "record_key": 1000446,
           "record_rel_offset": 958,
           "entry": "mine_iron_attach",
@@ -675,7 +675,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13219689,
+          "offset": 13298466,
           "record_key": 1000446,
           "record_rel_offset": 966,
           "entry": "mine_iron_attach",
@@ -685,7 +685,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221030,
+          "offset": 13299810,
           "record_key": 17030016,
           "record_rel_offset": 825,
           "entry": "mine_iron_cave",
@@ -695,7 +695,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221038,
+          "offset": 13299818,
           "record_key": 17030016,
           "record_rel_offset": 833,
           "entry": "mine_iron_cave",
@@ -705,7 +705,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221098,
+          "offset": 13299878,
           "record_key": 17030016,
           "record_rel_offset": 893,
           "entry": "mine_iron_cave",
@@ -715,7 +715,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221106,
+          "offset": 13299886,
           "record_key": 17030016,
           "record_rel_offset": 901,
           "entry": "mine_iron_cave",
@@ -725,7 +725,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221166,
+          "offset": 13299946,
           "record_key": 17030016,
           "record_rel_offset": 961,
           "entry": "mine_iron_cave",
@@ -735,7 +735,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13221174,
+          "offset": 13299954,
           "record_key": 17030016,
           "record_rel_offset": 969,
           "entry": "mine_iron_cave",
@@ -745,7 +745,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222508,
+          "offset": 13301291,
           "record_key": 17030007,
           "record_rel_offset": 818,
           "entry": "mine_redstone",
@@ -755,7 +755,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222516,
+          "offset": 13301299,
           "record_key": 17030007,
           "record_rel_offset": 826,
           "entry": "mine_redstone",
@@ -765,7 +765,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222576,
+          "offset": 13301359,
           "record_key": 17030007,
           "record_rel_offset": 886,
           "entry": "mine_redstone",
@@ -775,7 +775,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222584,
+          "offset": 13301367,
           "record_key": 17030007,
           "record_rel_offset": 894,
           "entry": "mine_redstone",
@@ -785,7 +785,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222644,
+          "offset": 13301427,
           "record_key": 17030007,
           "record_rel_offset": 954,
           "entry": "mine_redstone",
@@ -795,7 +795,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13222652,
+          "offset": 13301435,
           "record_key": 17030007,
           "record_rel_offset": 962,
           "entry": "mine_redstone",
@@ -805,7 +805,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13223993,
+          "offset": 13302779,
           "record_key": 1000447,
           "record_rel_offset": 825,
           "entry": "mine_redstone_attach",
@@ -815,7 +815,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13224001,
+          "offset": 13302787,
           "record_key": 1000447,
           "record_rel_offset": 833,
           "entry": "mine_redstone_attach",
@@ -825,7 +825,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13224061,
+          "offset": 13302847,
           "record_key": 1000447,
           "record_rel_offset": 893,
           "entry": "mine_redstone_attach",
@@ -835,7 +835,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13224069,
+          "offset": 13302855,
           "record_key": 1000447,
           "record_rel_offset": 901,
           "entry": "mine_redstone_attach",
@@ -845,7 +845,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13224129,
+          "offset": 13302915,
           "record_key": 1000447,
           "record_rel_offset": 961,
           "entry": "mine_redstone_attach",
@@ -855,7 +855,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13224137,
+          "offset": 13302923,
           "record_key": 1000447,
           "record_rel_offset": 969,
           "entry": "mine_redstone_attach",
@@ -865,7 +865,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225481,
+          "offset": 13304270,
           "record_key": 17030015,
           "record_rel_offset": 828,
           "entry": "mine_redstone_cave",
@@ -875,7 +875,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225489,
+          "offset": 13304278,
           "record_key": 17030015,
           "record_rel_offset": 836,
           "entry": "mine_redstone_cave",
@@ -885,7 +885,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225549,
+          "offset": 13304338,
           "record_key": 17030015,
           "record_rel_offset": 896,
           "entry": "mine_redstone_cave",
@@ -895,7 +895,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225557,
+          "offset": 13304346,
           "record_key": 17030015,
           "record_rel_offset": 904,
           "entry": "mine_redstone_cave",
@@ -905,7 +905,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225617,
+          "offset": 13304406,
           "record_key": 17030015,
           "record_rel_offset": 964,
           "entry": "mine_redstone_cave",
@@ -915,7 +915,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13225625,
+          "offset": 13304414,
           "record_key": 17030015,
           "record_rel_offset": 972,
           "entry": "mine_redstone_cave",
@@ -925,7 +925,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13226951,
+          "offset": 13305743,
           "record_key": 17030008,
           "record_rel_offset": 810,
           "entry": "mine_ruby",
@@ -935,7 +935,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13226959,
+          "offset": 13305751,
           "record_key": 17030008,
           "record_rel_offset": 818,
           "entry": "mine_ruby",
@@ -945,7 +945,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13227019,
+          "offset": 13305811,
           "record_key": 17030008,
           "record_rel_offset": 878,
           "entry": "mine_ruby",
@@ -955,7 +955,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13227027,
+          "offset": 13305819,
           "record_key": 17030008,
           "record_rel_offset": 886,
           "entry": "mine_ruby",
@@ -965,7 +965,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13227087,
+          "offset": 13305879,
           "record_key": 17030008,
           "record_rel_offset": 946,
           "entry": "mine_ruby",
@@ -975,7 +975,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13227095,
+          "offset": 13305887,
           "record_key": 17030008,
           "record_rel_offset": 954,
           "entry": "mine_ruby",
@@ -985,7 +985,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228431,
+          "offset": 13307226,
           "record_key": 17030014,
           "record_rel_offset": 820,
           "entry": "mine_ruby_cave",
@@ -995,7 +995,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228439,
+          "offset": 13307234,
           "record_key": 17030014,
           "record_rel_offset": 828,
           "entry": "mine_ruby_cave",
@@ -1005,7 +1005,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228499,
+          "offset": 13307294,
           "record_key": 17030014,
           "record_rel_offset": 888,
           "entry": "mine_ruby_cave",
@@ -1015,7 +1015,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228507,
+          "offset": 13307302,
           "record_key": 17030014,
           "record_rel_offset": 896,
           "entry": "mine_ruby_cave",
@@ -1025,7 +1025,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228567,
+          "offset": 13307362,
           "record_key": 17030014,
           "record_rel_offset": 956,
           "entry": "mine_ruby_cave",
@@ -1035,7 +1035,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13228575,
+          "offset": 13307370,
           "record_key": 17030014,
           "record_rel_offset": 964,
           "entry": "mine_ruby_cave",
@@ -1045,7 +1045,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13229913,
+          "offset": 13308711,
           "record_key": 17030010,
           "record_rel_offset": 822,
           "entry": "mine_whitestone",
@@ -1055,7 +1055,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13229921,
+          "offset": 13308719,
           "record_key": 17030010,
           "record_rel_offset": 830,
           "entry": "mine_whitestone",
@@ -1065,7 +1065,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13229981,
+          "offset": 13308779,
           "record_key": 17030010,
           "record_rel_offset": 890,
           "entry": "mine_whitestone",
@@ -1075,7 +1075,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13229989,
+          "offset": 13308787,
           "record_key": 17030010,
           "record_rel_offset": 898,
           "entry": "mine_whitestone",
@@ -1085,7 +1085,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13230049,
+          "offset": 13308847,
           "record_key": 17030010,
           "record_rel_offset": 958,
           "entry": "mine_whitestone",
@@ -1095,7 +1095,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13230057,
+          "offset": 13308855,
           "record_key": 17030010,
           "record_rel_offset": 966,
           "entry": "mine_whitestone",
@@ -1105,7 +1105,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231405,
+          "offset": 13310206,
           "record_key": 17030012,
           "record_rel_offset": 832,
           "entry": "mine_whitestone_cave",
@@ -1115,7 +1115,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231413,
+          "offset": 13310214,
           "record_key": 17030012,
           "record_rel_offset": 840,
           "entry": "mine_whitestone_cave",
@@ -1125,7 +1125,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231473,
+          "offset": 13310274,
           "record_key": 17030012,
           "record_rel_offset": 900,
           "entry": "mine_whitestone_cave",
@@ -1135,7 +1135,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231481,
+          "offset": 13310282,
           "record_key": 17030012,
           "record_rel_offset": 908,
           "entry": "mine_whitestone_cave",
@@ -1145,7 +1145,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231541,
+          "offset": 13310342,
           "record_key": 17030012,
           "record_rel_offset": 968,
           "entry": "mine_whitestone_cave",
@@ -1155,7 +1155,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13231549,
+          "offset": 13310350,
           "record_key": 17030012,
           "record_rel_offset": 976,
           "entry": "mine_whitestone_cave",
@@ -1165,7 +1165,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13232895,
+          "offset": 13311699,
           "record_key": 1002637,
           "record_rel_offset": 830,
           "entry": "mine_rock_01",
@@ -1175,7 +1175,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13232903,
+          "offset": 13311707,
           "record_key": 1002637,
           "record_rel_offset": 838,
           "entry": "mine_rock_01",
@@ -1185,7 +1185,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13232963,
+          "offset": 13311767,
           "record_key": 1002637,
           "record_rel_offset": 898,
           "entry": "mine_rock_01",
@@ -1195,7 +1195,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13232971,
+          "offset": 13311775,
           "record_key": 1002637,
           "record_rel_offset": 906,
           "entry": "mine_rock_01",
@@ -1205,7 +1205,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13233031,
+          "offset": 13311835,
           "record_key": 1002637,
           "record_rel_offset": 966,
           "entry": "mine_rock_01",
@@ -1215,7 +1215,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13233039,
+          "offset": 13311843,
           "record_key": 1002637,
           "record_rel_offset": 974,
           "entry": "mine_rock_01",
@@ -1225,7 +1225,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234385,
+          "offset": 13313192,
           "record_key": 1002638,
           "record_rel_offset": 830,
           "entry": "mine_rock_02",
@@ -1235,7 +1235,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234393,
+          "offset": 13313200,
           "record_key": 1002638,
           "record_rel_offset": 838,
           "entry": "mine_rock_02",
@@ -1245,7 +1245,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234453,
+          "offset": 13313260,
           "record_key": 1002638,
           "record_rel_offset": 898,
           "entry": "mine_rock_02",
@@ -1255,7 +1255,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234461,
+          "offset": 13313268,
           "record_key": 1002638,
           "record_rel_offset": 906,
           "entry": "mine_rock_02",
@@ -1265,7 +1265,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234521,
+          "offset": 13313328,
           "record_key": 1002638,
           "record_rel_offset": 966,
           "entry": "mine_rock_02",
@@ -1275,7 +1275,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13234529,
+          "offset": 13313336,
           "record_key": 1002638,
           "record_rel_offset": 974,
           "entry": "mine_rock_02",
@@ -1285,7 +1285,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13235875,
+          "offset": 13314685,
           "record_key": 1002639,
           "record_rel_offset": 830,
           "entry": "mine_rock_03",
@@ -1295,7 +1295,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13235883,
+          "offset": 13314693,
           "record_key": 1002639,
           "record_rel_offset": 838,
           "entry": "mine_rock_03",
@@ -1305,7 +1305,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13235943,
+          "offset": 13314753,
           "record_key": 1002639,
           "record_rel_offset": 898,
           "entry": "mine_rock_03",
@@ -1315,7 +1315,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13235951,
+          "offset": 13314761,
           "record_key": 1002639,
           "record_rel_offset": 906,
           "entry": "mine_rock_03",
@@ -1325,7 +1325,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13236011,
+          "offset": 13314821,
           "record_key": 1002639,
           "record_rel_offset": 966,
           "entry": "mine_rock_03",
@@ -1335,7 +1335,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13236019,
+          "offset": 13314829,
           "record_key": 1002639,
           "record_rel_offset": 974,
           "entry": "mine_rock_03",
@@ -1345,7 +1345,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237365,
+          "offset": 13316178,
           "record_key": 1001350,
           "record_rel_offset": 830,
           "entry": "mine_rock_04",
@@ -1355,7 +1355,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237373,
+          "offset": 13316186,
           "record_key": 1001350,
           "record_rel_offset": 838,
           "entry": "mine_rock_04",
@@ -1365,7 +1365,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237433,
+          "offset": 13316246,
           "record_key": 1001350,
           "record_rel_offset": 898,
           "entry": "mine_rock_04",
@@ -1375,7 +1375,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237441,
+          "offset": 13316254,
           "record_key": 1001350,
           "record_rel_offset": 906,
           "entry": "mine_rock_04",
@@ -1385,7 +1385,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237501,
+          "offset": 13316314,
           "record_key": 1001350,
           "record_rel_offset": 966,
           "entry": "mine_rock_04",
@@ -1395,7 +1395,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13237509,
+          "offset": 13316322,
           "record_key": 1001350,
           "record_rel_offset": 974,
           "entry": "mine_rock_04",
@@ -1405,7 +1405,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238855,
+          "offset": 13317671,
           "record_key": 1001351,
           "record_rel_offset": 830,
           "entry": "mine_rock_05",
@@ -1415,7 +1415,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238863,
+          "offset": 13317679,
           "record_key": 1001351,
           "record_rel_offset": 838,
           "entry": "mine_rock_05",
@@ -1425,7 +1425,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238923,
+          "offset": 13317739,
           "record_key": 1001351,
           "record_rel_offset": 898,
           "entry": "mine_rock_05",
@@ -1435,7 +1435,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238931,
+          "offset": 13317747,
           "record_key": 1001351,
           "record_rel_offset": 906,
           "entry": "mine_rock_05",
@@ -1445,7 +1445,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238991,
+          "offset": 13317807,
           "record_key": 1001351,
           "record_rel_offset": 966,
           "entry": "mine_rock_05",
@@ -1455,7 +1455,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13238999,
+          "offset": 13317815,
           "record_key": 1001351,
           "record_rel_offset": 974,
           "entry": "mine_rock_05",
@@ -1465,7 +1465,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240345,
+          "offset": 13319164,
           "record_key": 1001352,
           "record_rel_offset": 830,
           "entry": "mine_rock_06",
@@ -1475,7 +1475,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240353,
+          "offset": 13319172,
           "record_key": 1001352,
           "record_rel_offset": 838,
           "entry": "mine_rock_06",
@@ -1485,7 +1485,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240413,
+          "offset": 13319232,
           "record_key": 1001352,
           "record_rel_offset": 898,
           "entry": "mine_rock_06",
@@ -1495,7 +1495,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240421,
+          "offset": 13319240,
           "record_key": 1001352,
           "record_rel_offset": 906,
           "entry": "mine_rock_06",
@@ -1505,7 +1505,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240481,
+          "offset": 13319300,
           "record_key": 1001352,
           "record_rel_offset": 966,
           "entry": "mine_rock_06",
@@ -1515,7 +1515,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13240489,
+          "offset": 13319308,
           "record_key": 1001352,
           "record_rel_offset": 974,
           "entry": "mine_rock_06",
@@ -1525,7 +1525,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241838,
+          "offset": 13320660,
           "record_key": 1001353,
           "record_rel_offset": 833,
           "entry": "mine_rock_07",
@@ -1535,7 +1535,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241846,
+          "offset": 13320668,
           "record_key": 1001353,
           "record_rel_offset": 841,
           "entry": "mine_rock_07",
@@ -1545,7 +1545,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241906,
+          "offset": 13320728,
           "record_key": 1001353,
           "record_rel_offset": 901,
           "entry": "mine_rock_07",
@@ -1555,7 +1555,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241914,
+          "offset": 13320736,
           "record_key": 1001353,
           "record_rel_offset": 909,
           "entry": "mine_rock_07",
@@ -1565,7 +1565,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241974,
+          "offset": 13320796,
           "record_key": 1001353,
           "record_rel_offset": 969,
           "entry": "mine_rock_07",
@@ -1575,7 +1575,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13241982,
+          "offset": 13320804,
           "record_key": 1001353,
           "record_rel_offset": 977,
           "entry": "mine_rock_07",
@@ -1585,7 +1585,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243331,
+          "offset": 13322156,
           "record_key": 1001354,
           "record_rel_offset": 833,
           "entry": "mine_rock_08",
@@ -1595,7 +1595,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243339,
+          "offset": 13322164,
           "record_key": 1001354,
           "record_rel_offset": 841,
           "entry": "mine_rock_08",
@@ -1605,7 +1605,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243399,
+          "offset": 13322224,
           "record_key": 1001354,
           "record_rel_offset": 901,
           "entry": "mine_rock_08",
@@ -1615,7 +1615,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243407,
+          "offset": 13322232,
           "record_key": 1001354,
           "record_rel_offset": 909,
           "entry": "mine_rock_08",
@@ -1625,7 +1625,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243467,
+          "offset": 13322292,
           "record_key": 1001354,
           "record_rel_offset": 969,
           "entry": "mine_rock_08",
@@ -1635,7 +1635,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13243475,
+          "offset": 13322300,
           "record_key": 1001354,
           "record_rel_offset": 977,
           "entry": "mine_rock_08",
@@ -1645,7 +1645,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244824,
+          "offset": 13323652,
           "record_key": 1001482,
           "record_rel_offset": 833,
           "entry": "mine_rock_09",
@@ -1655,7 +1655,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244832,
+          "offset": 13323660,
           "record_key": 1001482,
           "record_rel_offset": 841,
           "entry": "mine_rock_09",
@@ -1665,7 +1665,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244892,
+          "offset": 13323720,
           "record_key": 1001482,
           "record_rel_offset": 901,
           "entry": "mine_rock_09",
@@ -1675,7 +1675,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244900,
+          "offset": 13323728,
           "record_key": 1001482,
           "record_rel_offset": 909,
           "entry": "mine_rock_09",
@@ -1685,7 +1685,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244960,
+          "offset": 13323788,
           "record_key": 1001482,
           "record_rel_offset": 969,
           "entry": "mine_rock_09",
@@ -1695,7 +1695,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13244968,
+          "offset": 13323796,
           "record_key": 1001482,
           "record_rel_offset": 977,
           "entry": "mine_rock_09",
@@ -1705,7 +1705,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246333,
+          "offset": 13325164,
           "record_key": 1001255,
           "record_rel_offset": 849,
           "entry": "mine_stone_01",
@@ -1715,7 +1715,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246341,
+          "offset": 13325172,
           "record_key": 1001255,
           "record_rel_offset": 857,
           "entry": "mine_stone_01",
@@ -1725,7 +1725,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246401,
+          "offset": 13325232,
           "record_key": 1001255,
           "record_rel_offset": 917,
           "entry": "mine_stone_01",
@@ -1735,7 +1735,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246409,
+          "offset": 13325240,
           "record_key": 1001255,
           "record_rel_offset": 925,
           "entry": "mine_stone_01",
@@ -1745,7 +1745,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246469,
+          "offset": 13325300,
           "record_key": 1001255,
           "record_rel_offset": 985,
           "entry": "mine_stone_01",
@@ -1755,7 +1755,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13246477,
+          "offset": 13325308,
           "record_key": 1001255,
           "record_rel_offset": 993,
           "entry": "mine_stone_01",
@@ -1765,7 +1765,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247808,
+          "offset": 13326642,
           "record_key": 17030004,
           "record_rel_offset": 815,
           "entry": "mine_gold",
@@ -1775,7 +1775,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247816,
+          "offset": 13326650,
           "record_key": 17030004,
           "record_rel_offset": 823,
           "entry": "mine_gold",
@@ -1785,7 +1785,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247876,
+          "offset": 13326710,
           "record_key": 17030004,
           "record_rel_offset": 883,
           "entry": "mine_gold",
@@ -1795,7 +1795,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247884,
+          "offset": 13326718,
           "record_key": 17030004,
           "record_rel_offset": 891,
           "entry": "mine_gold",
@@ -1805,7 +1805,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247944,
+          "offset": 13326778,
           "record_key": 17030004,
           "record_rel_offset": 951,
           "entry": "mine_gold",
@@ -1815,7 +1815,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13247952,
+          "offset": 13326786,
           "record_key": 17030004,
           "record_rel_offset": 959,
           "entry": "mine_gold",
@@ -1825,7 +1825,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249293,
+          "offset": 13328130,
           "record_key": 17030018,
           "record_rel_offset": 825,
           "entry": "mine_gold_cave",
@@ -1835,7 +1835,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249301,
+          "offset": 13328138,
           "record_key": 17030018,
           "record_rel_offset": 833,
           "entry": "mine_gold_cave",
@@ -1845,7 +1845,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249361,
+          "offset": 13328198,
           "record_key": 17030018,
           "record_rel_offset": 893,
           "entry": "mine_gold_cave",
@@ -1855,7 +1855,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249369,
+          "offset": 13328206,
           "record_key": 17030018,
           "record_rel_offset": 901,
           "entry": "mine_gold_cave",
@@ -1865,7 +1865,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249429,
+          "offset": 13328266,
           "record_key": 17030018,
           "record_rel_offset": 961,
           "entry": "mine_gold_cave",
@@ -1875,7 +1875,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13249437,
+          "offset": 13328274,
           "record_key": 17030018,
           "record_rel_offset": 969,
           "entry": "mine_gold_cave",
@@ -1885,7 +1885,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250772,
+          "offset": 13329612,
           "record_key": 17030009,
           "record_rel_offset": 819,
           "entry": "mine_silver",
@@ -1895,7 +1895,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250780,
+          "offset": 13329620,
           "record_key": 17030009,
           "record_rel_offset": 827,
           "entry": "mine_silver",
@@ -1905,7 +1905,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250840,
+          "offset": 13329680,
           "record_key": 17030009,
           "record_rel_offset": 887,
           "entry": "mine_silver",
@@ -1915,7 +1915,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250848,
+          "offset": 13329688,
           "record_key": 17030009,
           "record_rel_offset": 895,
           "entry": "mine_silver",
@@ -1925,7 +1925,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250908,
+          "offset": 13329748,
           "record_key": 17030009,
           "record_rel_offset": 955,
           "entry": "mine_silver",
@@ -1935,7 +1935,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13250916,
+          "offset": 13329756,
           "record_key": 17030009,
           "record_rel_offset": 963,
           "entry": "mine_silver",
@@ -1945,7 +1945,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252261,
+          "offset": 13331104,
           "record_key": 17030013,
           "record_rel_offset": 829,
           "entry": "mine_silver_cave",
@@ -1955,7 +1955,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252269,
+          "offset": 13331112,
           "record_key": 17030013,
           "record_rel_offset": 837,
           "entry": "mine_silver_cave",
@@ -1965,7 +1965,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252329,
+          "offset": 13331172,
           "record_key": 17030013,
           "record_rel_offset": 897,
           "entry": "mine_silver_cave",
@@ -1975,7 +1975,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252337,
+          "offset": 13331180,
           "record_key": 17030013,
           "record_rel_offset": 905,
           "entry": "mine_silver_cave",
@@ -1985,7 +1985,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252397,
+          "offset": 13331240,
           "record_key": 17030013,
           "record_rel_offset": 965,
           "entry": "mine_silver_cave",
@@ -1995,7 +1995,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13252405,
+          "offset": 13331248,
           "record_key": 17030013,
           "record_rel_offset": 973,
           "entry": "mine_silver_cave",
@@ -2005,7 +2005,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253704,
+          "offset": 13332550,
           "record_key": 2530061,
           "record_rel_offset": 783,
           "entry": "cave_break_stalac_02",
@@ -2015,7 +2015,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253712,
+          "offset": 13332558,
           "record_key": 2530061,
           "record_rel_offset": 791,
           "entry": "cave_break_stalac_02",
@@ -2025,7 +2025,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253772,
+          "offset": 13332618,
           "record_key": 2530061,
           "record_rel_offset": 851,
           "entry": "cave_break_stalac_02",
@@ -2035,7 +2035,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253780,
+          "offset": 13332626,
           "record_key": 2530061,
           "record_rel_offset": 859,
           "entry": "cave_break_stalac_02",
@@ -2045,7 +2045,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253840,
+          "offset": 13332686,
           "record_key": 2530061,
           "record_rel_offset": 919,
           "entry": "cave_break_stalac_02",
@@ -2055,7 +2055,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13253848,
+          "offset": 13332694,
           "record_key": 2530061,
           "record_rel_offset": 927,
           "entry": "cave_break_stalac_02",
@@ -2065,7 +2065,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255139,
+          "offset": 13333988,
           "record_key": 1004924,
           "record_rel_offset": 775,
           "entry": "gimmick_stalactite_0003",
@@ -2075,7 +2075,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255147,
+          "offset": 13333996,
           "record_key": 1004924,
           "record_rel_offset": 783,
           "entry": "gimmick_stalactite_0003",
@@ -2085,7 +2085,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255207,
+          "offset": 13334056,
           "record_key": 1004924,
           "record_rel_offset": 843,
           "entry": "gimmick_stalactite_0003",
@@ -2095,7 +2095,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255215,
+          "offset": 13334064,
           "record_key": 1004924,
           "record_rel_offset": 851,
           "entry": "gimmick_stalactite_0003",
@@ -2105,7 +2105,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255275,
+          "offset": 13334124,
           "record_key": 1004924,
           "record_rel_offset": 911,
           "entry": "gimmick_stalactite_0003",
@@ -2115,7 +2115,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13255283,
+          "offset": 13334132,
           "record_key": 1004924,
           "record_rel_offset": 919,
           "entry": "gimmick_stalactite_0003",
@@ -2125,7 +2125,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256574,
+          "offset": 13335426,
           "record_key": 1004925,
           "record_rel_offset": 775,
           "entry": "gimmick_stalactite_0004",
@@ -2135,7 +2135,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256582,
+          "offset": 13335434,
           "record_key": 1004925,
           "record_rel_offset": 783,
           "entry": "gimmick_stalactite_0004",
@@ -2145,7 +2145,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256642,
+          "offset": 13335494,
           "record_key": 1004925,
           "record_rel_offset": 843,
           "entry": "gimmick_stalactite_0004",
@@ -2155,7 +2155,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256650,
+          "offset": 13335502,
           "record_key": 1004925,
           "record_rel_offset": 851,
           "entry": "gimmick_stalactite_0004",
@@ -2165,7 +2165,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256710,
+          "offset": 13335562,
           "record_key": 1004925,
           "record_rel_offset": 911,
           "entry": "gimmick_stalactite_0004",
@@ -2175,7 +2175,7 @@
           "patched": "0200000000000000"
         },
         {
-          "offset": 13256718,
+          "offset": 13335570,
           "record_key": 1004925,
           "record_rel_offset": 919,
           "entry": "gimmick_stalactite_0004",

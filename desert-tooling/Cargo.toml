@@ -1,6 +1,6 @@
 [package]
 name = "desert-tooling"
-version = "0.8.0"
+version = "0.9.0"
 description = "Desert Tooling - Crimson Desert auto-loot, gathering yields and in-game menu (ASI plugin)"
 edition.workspace = true
 license.workspace = true

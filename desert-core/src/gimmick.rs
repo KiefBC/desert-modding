@@ -53,7 +53,8 @@
 //! [`MAX_QTY`]) was cross-checked offline against the whole 22 MB table: inside
 //! the 275 gather records the DMM pack edits it finds exactly the 587 blocks the
 //! pack touches, and nothing else — no false positives.
-//! `desert-gatherer-dmm/rebase.py` is the original locator this ports.
+//! This ports the pack's original locator, `desert-gatherer-dmm/rebase.py`,
+//! which is now the Rust `dmm-rebase` in `tools/src/bin/dmm-rebase.rs`.
 //!
 //! # The loader
 //!

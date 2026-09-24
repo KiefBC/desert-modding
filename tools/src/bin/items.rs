@@ -20,10 +20,13 @@
 //! docs/reference-items-loose.md   loose run can never clobber the default)
 //! ```
 //!
-//! Reads the clean `gimmickinfo` table body DMM writes out
-//! (`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`), which carries
-//! record-relative offsets only and so needs no rebasing for a game update, and
-//! `desert-core/src/collect.rs` for the current `Family` of each record.
+//! Reads the clean `gimmickinfo` table body - the plugin's own dump
+//! (`<bin64>/DesertTooling.gimmickinfo.bin`, written under `[Gatherer]
+//! DumpTable=1`) when it exists, else the copy DMM writes out
+//! (`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`); `paths::dmm_table` has
+//! the rule. It carries record-relative offsets only and so needs no rebasing
+//! for a game update. Also reads `desert-core/src/collect.rs` for the current
+//! `Family` of each record.
 //!
 //! Method, and its limits, because the doc states them and this is where they
 //! are implemented (`docs/findings/2026-09-12-water-wells.md` sections 3, 5, 7
@@ -130,7 +133,8 @@ pub struct Args {
     /// re-walk the table instead of reading the cache for the detector in use
     #[arg(long)]
     pub rescan: bool,
-    /// clean gimmickinfo body
+    /// clean gimmickinfo body ($CD_DMM_TABLE, else the plugin's dump in
+    /// bin64 if present, else DMM's backup copy)
     #[arg(long, default_value_os_t = desert_tools::paths::dmm_table())]
     pub table: PathBuf,
     #[arg(long = "json")]

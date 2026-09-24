@@ -1,7 +1,13 @@
-//! SHA-256, because `dist` publishes checksums and nothing else here needs one.
+//! SHA-256, for the two tools that publish a digest: `dist` (the release
+//! checksums) and `dmm-rebase` (the clean table a pack was built from, and
+//! the simulated result of every module, in `VERIFICATION.txt`).
 //!
-//! The shell version piped the zips through `sha256sum`, which is one more
-//! thing that has to be on PATH for a release to build. There is no hash crate
+//! It lived in `src/bin/dist/` while `dist` was its only user; the second
+//! user is what moved it into the library, as `lib.rs` says it should.
+//!
+//! The shell version of `dist` piped the zips through `sha256sum`, which is
+//! one more thing that has to be on PATH for a release to build, and the
+//! Python `rebase.py` used `hashlib`. There is no hash crate
 //! in `tools/Cargo.toml` and this is why: FIPS 180-4 is sixty lines, it never
 //! changes, and the alternative is a dependency (plus its transitive tree) in
 //! the supply chain of the artefacts people download. The tests below check it
@@ -171,14 +177,21 @@ pub fn hex(digest: &[u8; 32]) -> String {
     s
 }
 
+/// One-shot lowercase hex digest of a buffer already in memory, which is what
+/// `dmm-rebase` has: the whole table body, and each simulated patch of it.
+pub fn hex_digest(data: &[u8]) -> String {
+    let mut h = Sha256::new();
+    h.update(data);
+    hex(&h.finish())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // Through the one-shot helper, so the vectors cover it as well.
     fn digest(data: &[u8]) -> String {
-        let mut h = Sha256::new();
-        h.update(data);
-        hex(&h.finish())
+        hex_digest(data)
     }
 
     /// The vectors from FIPS 180-4's appendix and NIST's byte-oriented test

@@ -18,11 +18,11 @@ nix := if env("IN_NIX_SHELL", "") == "" { "nix develop --command" } else { "" }
 # Where the game lives; override with CD_BIN64=/path/to/bin64.
 bin64 := env("CD_BIN64", "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64")
 
-# DMM's extracted clean gimmickinfo table; override with CD_DMM_TABLE.
-dmm_table := env("CD_DMM_TABLE", "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin")
-
-# Steam appmanifest holding the build id; override with CD_APPMANIFEST.
-appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
+# The clean gimmickinfo table body and the Steam appmanifest are not named
+# here: the only recipe that needs them, `dmm-rebase`, hands the choice to the
+# tool, which applies tools/src/paths.rs's rule (CD_DMM_TABLE, else the
+# plugin's dump in bin64, else DMM's backup copy; CD_APPMANIFEST for the build
+# id). One rule in one place, instead of a copy here that could drift from it.
 
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
@@ -188,21 +188,38 @@ clean:
 
 # --- DMM pack (desert-gatherer-dmm/) --------------------------------------
 # Not part of build/test/ci: it rewrites the packaged patch offsets, which only
-# needs doing after a game update. Run `just test-game` first to confirm the
-# record loader and output-block signature still match this build.
+# needs doing after a game update. Run `just test-game` first: its pack oracle,
+# `multiply_reproduces_the_dmm_pack_edits`, confirms the output-block signature
+# still matches this build.
 
-# The table comes from DMM's backups (CD_DMM_TABLE) and the build id from the
-# Steam appmanifest (CD_APPMANIFEST). Either can be passed positionally instead:
-# `just dmm-rebase /path/to/clean.bin 25116796`.
+# The table is the plugin's own dump, <bin64>/DesertTooling.gimmickinfo.bin,
+# written by one launch with `[Gatherer] DumpTable=1` and `DryRun=1`
+# (CD_DMM_TABLE overrides it; DMM's backup copy is the last resort), and the
+# build id is the Steam appmanifest's (CD_APPMANIFEST). The tool resolves both
+# itself - tools/src/paths.rs - so they are passed on only when given here,
+# positionally: `just dmm-rebase /path/to/clean.bin 25477059`. Anything
+# starting with `-` goes to the tool as a flag, in any position, so
+# `just dmm-rebase --dry-run` verifies and prints the report without writing.
+# `[positional-arguments]` is what keeps a table path with spaces in it (the
+# default one has one) a single argument on its way through.
 
-# Rebase desert-gatherer-dmm/*.json onto the current game build. Takes no arguments.
-dmm-rebase table=dmm_table build="":
-    @test -f "{{table}}" || { echo "dmm-rebase: {{table}} not found (set CD_DMM_TABLE)" >&2; exit 1; }
-    @build="{{build}}"; \
-    if [ -z "$build" ]; then \
-        test -f "{{appmanifest}}" || { echo "dmm-rebase: {{appmanifest}} not found (set CD_APPMANIFEST, or pass the build id)" >&2; exit 1; }; \
-        build=$(sed -n 's/.*"buildid"[^"]*"\([0-9][0-9]*\)".*/\1/p' "{{appmanifest}}" | head -1); \
-        test -n "$build" || { echo "dmm-rebase: no buildid in {{appmanifest}}" >&2; exit 1; }; \
-    fi; \
-    echo "dmm-rebase: {{table}} -> build $build"; \
-    {{nix}} python3 desert-gatherer-dmm/rebase.py "{{table}}" "$build"
+# Rebase desert-gatherer-dmm/*.json onto the current game build. `--dry-run` writes nothing.
+[positional-arguments]
+dmm-rebase table="" build="" *flags: tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    flags=(); positional=()
+    for arg in "$@"; do
+        case "$arg" in
+            "") ;;
+            -*) flags+=("$arg") ;;
+            *) positional+=("$arg") ;;
+        esac
+    done
+    if [ "${#positional[@]}" -gt 2 ]; then
+        echo "dmm-rebase: at most a table and a build id, got: ${positional[*]}" >&2; exit 1
+    fi
+    args=()
+    if [ "${#positional[@]}" -ge 1 ]; then args+=(--table "${positional[0]}"); fi
+    if [ "${#positional[@]}" -ge 2 ]; then args+=(--build "${positional[1]}"); fi
+    exec {{tools_bin}}/dmm-rebase "${args[@]}" "${flags[@]}"

@@ -11,7 +11,7 @@
 use crate::config::{self, Config};
 use crate::gimmick;
 use crate::module::MainModule;
-use crate::{catch, hook, log, safe};
+use crate::{catch, dump, hook, log, safe};
 
 /// Seconds between two counter summaries in the log, and only when a
 /// counter moved since the last one. Record loading is a burst at level
@@ -44,11 +44,12 @@ fn load_config(path: &std::path::Path) -> Config {
 /// the reload loop's `[ini] reloaded: ...` line so both read the same way.
 fn ini_summary(cfg: &Config) -> String {
     format!(
-        "Enabled={} DryRun={} Debug={} Foraging={} Logging={} Mining={} Ore={} Money={} \
-         Bugs={} Fish={}",
+        "Enabled={} DryRun={} Debug={} DumpTable={} Foraging={} Logging={} Mining={} Ore={} \
+         Money={} Bugs={} Fish={}",
         cfg.enabled as u8,
         cfg.dry_run as u8,
         cfg.debug as u8,
+        cfg.dump_table as u8,
         cfg.foraging,
         cfg.logging,
         cfg.mining,
@@ -71,6 +72,31 @@ fn live_summary(cfg: &Config) -> String {
         "Foraging={} Logging={} Mining={} Ore={} Money={}",
         cfg.foraging, cfg.logging, cfg.mining, cfg.ore, cfg.money
     )
+}
+
+/// `DesertTooling.gimmickinfo.bin` beside the log, where `DumpTable=1` writes
+/// the table body and where the justfile and `tools/src/paths.rs` look for it
+/// first. The same `exe_dir()` the log and the looter's yields cache use.
+fn dump_path() -> std::path::PathBuf {
+    log::exe_dir().join(dump::FILE_NAME)
+}
+
+/// Write the table body the hook copied, if it has copied one since the last
+/// tick. On this thread, never on the game thread that took the copy: 22 MB of
+/// disk IO is not something to do in the middle of the game's loading.
+///
+/// `std::fs::write` truncates, so a file from an earlier launch is replaced
+/// whole rather than appended to - and the copy is taken once per session, so
+/// this runs at most once per launch.
+fn write_pending_dump() {
+    let Some(bytes) = hook::take_pending_dump() else { return };
+    let path = dump_path();
+    match std::fs::write(&path, &bytes) {
+        Ok(()) => {
+            crate::log!("[dump] gimmickinfo table body: {} bytes -> {}", bytes.len(), path.display())
+        }
+        Err(e) => crate::log!("[dump] write FAILED: {}: {e}", path.display()),
+    }
 }
 
 /// The ini's last-modified time, or `None` if it cannot be stat'd (missing,
@@ -248,6 +274,18 @@ pub fn start() {
     if cfg.dry_run {
         crate::log!("[ini] DryRun=1: the log shows what would change, nothing is written");
     }
+    // Said here as well as by the hook when it decides: this line is at the
+    // top of the log where the ini is summarised, the hook's is ~9 s later
+    // beside the stream size it decided on - and the ini can change between
+    // the two, so the hook reads the live values again rather than trusting
+    // this one.
+    if cfg.dump_table && cfg.dry_run {
+        crate::log!(
+            "[ini] DumpTable=1: the gimmickinfo table body will be written beside the log on first load"
+        );
+    } else if cfg.dump_table {
+        crate::log!("[ini] DumpTable=1 ignored: needs DryRun=1 so the copy is vanilla");
+    }
     // The hook reads this; publish before the hook can possibly fire.
     config::LIVE.publish(&cfg);
 
@@ -272,11 +310,12 @@ pub fn start() {
         return;
     }
 
-    // From here the thread does two things on a ~1s tick, forever: watch
+    // From here the thread does three things on a ~1s tick, forever: watch
     // the ini for a modified time change (the overlay's write) and
-    // re-publish it live, and print a counters summary every
-    // `SUMMARY_SECS`. All the per-record work still happens on the game
-    // threads; this thread never touches game memory.
+    // re-publish it live, write out the table body if the hook copied one
+    // (`DumpTable=1`), and print a counters summary every `SUMMARY_SECS`.
+    // All the per-record work still happens on the game threads; this
+    // thread never touches game memory.
     let mut last_ini_mtime = ini_mtime(&ini_path);
     // What `LIVE` is already publishing. The modified time says the *file*
     // changed; this says whether **this subsystem's section** did.
@@ -285,6 +324,10 @@ pub fn start() {
     let mut last_counts = (0u64, 0u64, 0u64);
     loop {
         std::thread::sleep(std::time::Duration::from_secs(RELOAD_POLL_SECS));
+
+        // First in the tick: the copy is 22 MB of heap held until this runs,
+        // and the log line is what says the file is there.
+        write_pending_dump();
 
         let mtime = ini_mtime(&ini_path);
         if mtime.is_some() && mtime != last_ini_mtime {

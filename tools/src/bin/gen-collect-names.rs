@@ -68,9 +68,10 @@ struct Cli {
     /// Where to write [default: <repo>/desert-core/src/collect.rs]
     #[arg(long, value_name = "FILE")]
     out: Option<PathBuf>,
-    /// DMM's clean gimmickinfo table body; pointing this at a path that does
+    /// The clean gimmickinfo table body; pointing this at a path that does
     /// not exist is how the unverified branch gets exercised deliberately
-    /// [default: $CD_DMM_TABLE]
+    /// [default: $CD_DMM_TABLE, else <bin64>/DesertTooling.gimmickinfo.bin if
+    /// the plugin has dumped it, else DMM's backup copy]
     #[arg(long, value_name = "FILE")]
     table: Option<PathBuf>,
 }

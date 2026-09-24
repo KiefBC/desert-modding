@@ -43,10 +43,6 @@
             pkgs.binutils
             pkgs.file
 
-            # desert-gatherer-dmm/rebase.py is the one Python left in the repo,
-            # and it ships inside the DMM pack rather than living in tools/.
-            pkgs.python3
-
             # Hand tools, not called by anything: jq for eyeballing a 230 KB
             # pack JSON without opening an editor, zip/unzip for looking inside
             # a release archive. The `dist` tool builds the zips itself now

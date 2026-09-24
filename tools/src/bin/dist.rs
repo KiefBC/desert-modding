@@ -51,14 +51,13 @@
 
 // `src/bin/<name>.rs` is a crate root but NOT a module directory root: rustc
 // looks for `mod archive` at `src/bin/archive.rs`, which would be a second
-// binary. `#[path]` puts the parts in `src/bin/dist/` where they belong, the
-// way `gen-collect-names` does. They live here rather than in the library
-// because nothing else needs them - `lib.rs` says only what more than one tool
-// uses belongs there.
+// binary. `#[path]` puts it in `src/bin/dist/` where it belongs, the way
+// `gen-collect-names` does. It lives here rather than in the library because
+// nothing else needs it - `lib.rs` says only what more than one tool uses
+// belongs there. The SHA-256 that used to sit beside it is in the library now
+// (`desert_tools::sha256`), because `dmm-rebase` became its second user.
 #[path = "dist/archive.rs"]
 mod archive;
-#[path = "dist/sha256.rs"]
-mod sha256;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -68,9 +67,9 @@ use anyhow::{bail, Context, Result};
 use clap::Parser;
 
 use desert_tools::paths;
+use desert_tools::sha256::{hex, Sha256};
 
 use archive::Entry;
-use sha256::{hex, Sha256};
 
 /// Package names are the release-tag prefixes (VERSIONING.md step 6), so the
 /// workflow can pass through what `release-notes --package` printed.
@@ -254,8 +253,10 @@ fn package_dmm(root: &Path, dist: &Path, stamp: zip::DateTime) -> Result<PathBuf
         .to_string();
 
     // Fixed order: the manifest, then the twelve modules by name (byte order,
-    // so the order does not drift with the locale), then the docs and the
-    // rebaser.
+    // so the order does not drift with the locale), then the docs. Up to 1.1
+    // the zip also carried the pack's rebaser, `rebase.py`. Its replacement
+    // is the `dmm-rebase` binary in tools/, which is built with the rest of
+    // this repo and has no business in a download for DMM users.
     let modules = pack_modules(&src)?;
     if modules.len() != 12 {
         bail!("expected 12 pack modules, got {}", modules.len());
@@ -263,7 +264,7 @@ fn package_dmm(root: &Path, dist: &Path, stamp: zip::DateTime) -> Result<PathBuf
 
     let mut names = vec!["dmm_pack.json".to_string()];
     names.extend(modules);
-    names.extend(["README.md", "VERIFICATION.txt", "rebase.py"].map(String::from));
+    names.extend(["README.md", "VERIFICATION.txt"].map(String::from));
 
     let entries: Vec<Entry> = names
         .into_iter()

@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.8.0**, for Crimson Desert Enhanced, Steam build **25246367**.
+**Version 0.9.0**, for Crimson Desert Enhanced, Steam build **25246367**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
@@ -368,6 +368,7 @@ rather than pretending nothing was there.
 | `Enabled` | 1 | 0 = the record-loader hook still reads every record to keep its own remembered table current, but writes nothing as records load, and the re-apply pass (see below) writes vanilla numbers back into whatever is already parsed. Flipping it back to 1 re-applies the multipliers the same way |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
 | `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
+| `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. For the offline tools (`CD_DMM_TABLE`); nothing in the game needs it |
 | `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
