@@ -198,8 +198,10 @@ fn sha256sums_is_what_coreutils_and_the_release_workflow_expect() {
 
     // And the digests are right, checked against the implementation everyone
     // else's `sha256sum --check` will use.
+    // The pack's name comes from `dmm_pack.json`, as `dist` itself reads it;
+    // this line said `DesertGatherer-DMM-1.1.zip` until the pack went to 1.2.
     let out = Command::new("sha256sum")
-        .arg("DesertGatherer-DMM-1.1.zip")
+        .arg(pack_zip().file_name().unwrap())
         .current_dir(&dist)
         .output()
         .expect("coreutils sha256sum");

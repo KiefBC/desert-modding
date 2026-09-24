@@ -59,22 +59,24 @@ const VERIFICATION: &str =
 /// when it does fail, whether they diverged is the first thing a reader needs.
 const APPMANIFEST: &str = "/mnt/f/SteamLibrary/steamapps/appmanifest_3321460.acf";
 
-/// RVA of the `gimmickinfo` record loader on Steam build 25246367
-/// (`FUN_1403856b0` on the build before it; the function is the same, the
+/// RVA of the `gimmickinfo` record loader on Steam build 25477059
+/// (`FUN_14038ba40`; was `0x385CD0`, `FUN_140385cd0`, on 25246367 and
+/// `FUN_1403856b0` on the build before that; the function is the same, the
 /// address is not).
-const LOADER_RVA: usize = 0x385cd0;
+const LOADER_RVA: usize = 0x38BA40;
 
-/// RVAs of the two `*InfoManager` global pointer slots on Steam build 25246367.
+/// RVAs of the two `*InfoManager` global pointer slots on Steam build 25477059
+/// (were `0x6C2E2E8` and `0x6C2E308` on 25246367).
 /// These are the oracle for `gimmick::resolve_manager_slot`, and are the values
 /// `desert-looter/src/tables.rs` used to carry as hard-coded constants before
 /// the slots were resolved by content at startup.
-const ITEM_INFO_SLOT_RVA: usize = 0x6C2E2E8;
-const GIMMICK_INFO_SLOT_RVA: usize = 0x6C2E308;
+const ITEM_INFO_SLOT_RVA: usize = 0x6D69AA8;
+const GIMMICK_INFO_SLOT_RVA: usize = 0x6D69AC8;
 
 /// RVA of the `mov r8d,1` inside the catch-count function on Steam build
-/// 25246367 (`FUN_142a73c20` on the build before it;
-/// `docs/reference-internals.md` section 17.4).
-const CATCH_RVA: usize = 0x2a75891;
+/// 25477059 (was `0x2A75891` on 25246367, inside `FUN_142a73c20` on the build
+/// before that; `docs/reference-internals.md` section 17.4).
+const CATCH_RVA: usize = 0x2B42FB1;
 
 #[test]
 #[ignore]
@@ -582,11 +584,12 @@ fn u32_at(b: &[u8], o: usize) -> Option<u32> {
 
 /// The two tables that are reachable only through the **indirect** accessor
 /// template (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
-/// `gimmick::resolve_manager_slot_based`. RVAs from the offline census in
-/// `docs/findings/2026-09-10-dispatch.md`; `FactionNode` is the one
-/// `desert-dispatch` walks.
+/// `gimmick::resolve_manager_slot_based`. `FactionNode` is the one
+/// `desert-dispatch` walks. RVAs on build 25477059; on 25246367 they were
+/// `0x6C30308` and `0x6C2E330`, the values the offline census in
+/// `docs/findings/2026-09-10-dispatch.md` records.
 const PTR_TEMPLATE_SLOTS: &[(&[u8], usize)] =
-    &[(gimmick::FACTION_NODE_TABLE, 0x6C30308), (b"Skill", 0x6C2E330)];
+    &[(gimmick::FACTION_NODE_TABLE, 0x6D6BE70), (b"Skill", 0x6D69AF0)];
 
 #[test]
 #[ignore]
@@ -626,7 +629,8 @@ fn indirect_template_tables_resolve_uniquely() {
 }
 
 /// The accessor template in all four encodings the compiler emitted, with the
-/// copy count each has in build 25246367. `desert_core::gimmick` carries the
+/// copy count each has in build 25477059 (unchanged from 25246367).
+/// `desert_core::gimmick` carries the
 /// same four privately; they are spelled out again here on purpose, so this
 /// test is an oracle for that scan rather than a mirror of it.
 ///
@@ -652,9 +656,11 @@ const STATIC_INFO_TYPES: usize = 149;
 /// [`STATIC_INFO_TYPES`] and never did: the template only fixes which arguments
 /// reach the call, not how the compiler schedules the instructions that set
 /// them up, so a copy whose run-up was ordered differently is simply not
-/// matched. 118 of the 149 accessors are covered here on build 25246367 and 120
-/// were on 25116796 — the `48 89 D9` encoding lost two sites, all of its
-/// remaining 28 living in the cold-code region above `+0x8000000`.
+/// matched. 120 of the 149 accessors are covered here on build 25477059
+/// (`48 8B CB` 90, `48 89 D9` 30), 118 were on 25246367 (90 and 28) and 120 on
+/// 25116796 — the `48 89 D9` encoding lost two sites on 25246367 and got two
+/// back on 25477059, all of its copies living in the cold-code region above
+/// `+0x8000000` on both builds.
 ///
 /// **That drop was investigated, not waved through** (2026-09-11, build
 /// 25246367). It is instruction scheduling, not a deleted code path: all 149
@@ -672,21 +678,26 @@ const STATIC_INFO_TYPES: usize = 149;
 /// only when it moves *a lot*.
 const LOADER_CALL_ENCODINGS: &[(&str, &str, usize)] = &[
     ("48 8B CB", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8", 90),
-    ("48 89 D9", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 89 D9 E8", 28),
+    ("48 89 D9", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 89 D9 E8", 30),
 ];
 
 /// `(table, manager slot RVA, record loader RVA)` for every table the workspace
 /// resolves by name, one per accessor encoding and then some. `dropsetinfo` is
 /// the dispatch-mission reward table and a `45 31 C9 + lea` copy — the encoding
 /// the scan was blind to before 2026-09-10.
+///
+/// Values are build 25477059's. On 25246367 the rows read, in the same order:
+/// `(0x6C2E308, 0x385CD0)`, `(0x6C2E2E8, 0x385100)`, `(0x6C30308, 0x3C1F30)`,
+/// `(0x6C2E330, 0x3871C0)`, `(0x6C328A8, 0x437E70)`, `(0x6C367C8, 0x5FE880)`,
+/// `(0x6C2E328, 0x512A30)`.
 const TABLES: &[(&[u8], usize, usize)] = &[
-    (gimmick::GIMMICK_TABLE, 0x6C2E308, 0x385CD0),
-    (gimmick::ITEM_TABLE, 0x6C2E2E8, 0x385100),
-    (gimmick::FACTION_NODE_TABLE, 0x6C30308, 0x3C1F30),
-    (b"Skill", 0x6C2E330, 0x3871C0),
-    (gimmick::DROPSET_TABLE, 0x6C328A8, 0x437E70),
-    (gimmick::BUFF_TABLE, 0x6C367C8, 0x5FE880),
-    (gimmick::STATUS_TABLE, 0x6C2E328, 0x512A30),
+    (gimmick::GIMMICK_TABLE, 0x6D69AC8, 0x38BA40),
+    (gimmick::ITEM_TABLE, 0x6D69AA8, 0x38AE70),
+    (gimmick::FACTION_NODE_TABLE, 0x6D6BE70, 0x433880),
+    (b"Skill", 0x6D69AF0, 0x38CF30),
+    (gimmick::DROPSET_TABLE, 0x6D6E428, 0x4A6760),
+    (gimmick::BUFF_TABLE, 0x6D71E60, 0x671370),
+    (gimmick::STATUS_TABLE, 0x6D69AE8, 0x584C70),
 ];
 
 #[test]
@@ -713,7 +724,8 @@ fn accessor_census_covers_every_static_info_type() {
         assert_eq!(n, *want, "{label}");
         calls += n;
     }
-    assert_eq!(calls, 118);
+    // 118 on 25246367.
+    assert_eq!(calls, 120);
 }
 
 #[test]
@@ -756,9 +768,11 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
     }
 
     // The gatherer's table-less entry point is unchanged by the widening.
-    assert_eq!(gimmick::resolve_record_loader(&img, base), Ok(base + 0x385CD0));
+    // Build 25477059 values; on 25246367 they were 0x385CD0, 0x6C2E308,
+    // 0x6C2E2E8 and 0x6C328A8.
+    assert_eq!(gimmick::resolve_record_loader(&img, base), Ok(base + 0x38BA40));
     // And so are the two slots Desert Looter resolves without an image base.
-    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::GIMMICK_TABLE), Ok(0x6C2E308));
-    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::ITEM_TABLE), Ok(0x6C2E2E8));
-    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x6C328A8));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::GIMMICK_TABLE), Ok(0x6D69AC8));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::ITEM_TABLE), Ok(0x6D69AA8));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x6D6E428));
 }

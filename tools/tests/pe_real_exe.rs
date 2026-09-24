@@ -35,17 +35,47 @@ fn headers_are_the_expected_shape() {
     assert_eq!(pe.image_base, 0x1_4000_0000);
     assert_eq!(pe.sections.len(), 12);
 
-    // DO NOT look for `.text` here. This exe's section names are scrambled:
-    // the twelve are `.idata .arch .debug$P .tls$ .shared .xcode .00cfg .sbss
-    // .text1 .trace .xtls .link`, and the 80 MB first one holding the code is
-    // the one called `.idata`. An earlier version of this test asserted a
-    // `.text` section existed and failed against the real game.
+    // DO NOT select a section by its name. This exe's section names are
+    // scrambled, and scrambled differently on every build. Build 25477059:
+    //
+    //   .rsrc .xdata .rdata .00cfg .tls$ .tls .xtext .xtls .text .shared
+    //   .impdata .trace
+    //
+    // and the 82 MB first one holding the code is the one called `.rsrc`.
+    // There IS a `.text` again, but it is a 1.8 MB section near the end of the
+    // image (RVA 0x16F10000, CODE|READ and not even EXECUTE) that the import
+    // directory points into; it is not where the functions are. The exception
+    // directory (data directory 3) is the whole of `.trace` on this build.
+    //
+    // Build 25246367 was `.idata .arch .debug$P .tls$ .shared .xcode .00cfg
+    // .sbss .text1 .trace .xtls .link`, code in `.idata`, no `.text` at all,
+    // and the exception directory in `.link` with `.trace` a 560-byte stub. An
+    // earlier version of this test asserted a `.text` section existed and
+    // failed against that build; asserting one did NOT exist failed against
+    // this one.
     //
     // The lesson generalises past this assert: nothing in tools/ may select a
     // section by NAME. Match on the address range, which is what the section
     // table actually means.
-    assert!(pe.sections.iter().all(|s| s.name != ".text"));
-    assert_eq!(pe.sections.first().map(|s| s.name.as_str()), Some(".idata"));
+    let names: Vec<&str> = pe.sections.iter().map(|s| s.name.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            ".rsrc", ".xdata", ".rdata", ".00cfg", ".tls$", ".tls", ".xtext", ".xtls", ".text",
+            ".shared", ".impdata", ".trace",
+        ],
+        "the section names moved again - a game update, not a parser bug"
+    );
+    // `get_pos` (RVA 0x17FA220 on 25477059, see tests/dis_cli.rs) is code, and
+    // the section that holds it is not the one named `.text`.
+    let get_pos = 0x17F_A220;
+    let holding = pe
+        .sections
+        .iter()
+        .find(|s| s.virtual_address <= get_pos && get_pos < s.virtual_address + s.virtual_size)
+        .expect("get_pos is in no section");
+    assert_eq!(holding.name, ".rsrc");
+    assert_eq!(holding.virtual_address, 0x1000);
     assert!(pe.size_of_image as usize > data.len() / 2);
 }
 

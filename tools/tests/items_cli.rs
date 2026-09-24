@@ -1,8 +1,8 @@
 //! End-to-end checks on the `items` binary.
 //!
 //! The offline ones build a tiny synthetic table body, so a bare `cargo test`
-//! passes on a machine that has never seen DMM. The ones that need the real
-//! 22 MB body are `#[ignore]`d and say so; run them with
+//! passes on a machine that has never dumped the table. The ones that need the
+//! real 22 MB body are `#[ignore]`d and say so; run them with
 //! `cargo test -- --ignored`.
 //!
 //! Every run here passes `--json`/`--doc` into a temporary directory. Nothing
@@ -163,19 +163,20 @@ fn a_missing_table_is_reported_not_panicked() {
     assert!(err.contains("--table"), "{err}");
 }
 
-// ----------------------------------------------- needs DMM's real table body
+// ------------------------------------------------- needs the real table body
 
 fn real_table() -> Option<String> {
     let p = desert_tools::paths::dmm_table();
     p.is_file().then(|| p.to_str().unwrap().to_string())
 }
 
-/// The five numbers findings section 9 confirmed three independent ways. A
+/// The five numbers findings section 9 confirmed three independent ways, as
+/// re-measured on build 25477059 (573 / 896 / 215 / 13412 on 25246367). A
 /// `FAIL` here means the table or the walk moved and nothing downstream should
 /// be trusted until it is explained.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo body"]
-fn the_shipped_walk_still_finds_573_896_215() {
+#[ignore = "needs the clean gimmickinfo body"]
+fn the_shipped_walk_still_finds_572_895_215() {
     let Some(t) = real_table() else { return };
     let dir = tempfile::tempdir().unwrap();
     let j = dir.path().join("items.json");
@@ -187,16 +188,16 @@ fn the_shipped_walk_still_finds_573_896_215() {
     let out = stdout(&o);
     assert!(!out.contains("FAIL"), "{out}");
     let d = read_json(&j);
-    assert_eq!(d["totals"]["output_lists"], 573);
-    assert_eq!(d["totals"]["blocks"], 896);
+    assert_eq!(d["totals"]["output_lists"], 572);
+    assert_eq!(d["totals"]["blocks"], 895);
     assert_eq!(d["totals"]["distinct_items"], 215);
-    assert_eq!(d["totals"]["records_in_table"], 13412);
+    assert_eq!(d["totals"]["records_in_table"], 13447);
 }
 
 /// The loose walk is a *superset*, not a different answer: its own three counts
 /// plus the relations that tie it to the shipped one.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo body"]
+#[ignore = "needs the clean gimmickinfo body"]
 fn the_loose_walk_is_a_superset_of_the_shipped_one() {
     let Some(t) = real_table() else { return };
     let dir = tempfile::tempdir().unwrap();
@@ -210,10 +211,10 @@ fn the_loose_walk_is_a_superset_of_the_shipped_one() {
     let out = stdout(&o);
     assert!(!out.contains("FAIL"), "{out}");
     let d = read_json(&j);
-    assert_eq!(d["totals"]["output_lists"], 589);
-    assert_eq!(d["totals"]["blocks"], 1038);
+    assert_eq!(d["totals"]["output_lists"], 588);
+    assert_eq!(d["totals"]["blocks"], 1037);
     assert_eq!(d["totals"]["distinct_items"], 311);
-    assert_eq!(d["totals"]["shipped_lists"], 573);
+    assert_eq!(d["totals"]["shipped_lists"], 572);
     assert_eq!(d["totals"]["loose_only_lists"], 16);
     assert_eq!(d["totals"]["loose_only_blocks"], 142);
     assert_eq!(d["totals"]["items_loose_only"], 96);
@@ -229,7 +230,7 @@ fn the_loose_walk_is_a_superset_of_the_shipped_one() {
 /// Item `1` is money and `22008` is water, both by evidence the name inference
 /// cannot see, and both keep their reason in the output.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo body"]
+#[ignore = "needs the clean gimmickinfo body"]
 fn the_curated_ids_keep_their_names_and_reasons() {
     let Some(t) = real_table() else { return };
     let o = items(&["--table", &t, "--rescan", "22008"]);
@@ -239,5 +240,5 @@ fn the_curated_ids_keep_their_names_and_reasons() {
     let o = items(&["--table", &t, "--rescan", "1"]);
     let out = stdout(&o);
     assert!(out.starts_with("item 1  money   [curated]"), "{out}");
-    assert!(out.contains("must stay out of any gather family"), "{out}");
+    assert!(out.contains("belongs in `Money` only"), "{out}");
 }

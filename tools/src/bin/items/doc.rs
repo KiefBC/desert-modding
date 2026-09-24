@@ -10,7 +10,12 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use super::checks::{EXPECT_LOOSE_ONLY_BLOCKS, EXPECT_SHARED_IDS, IMPLAUSIBLE_HOME};
+use desert_tools::paths::{CALIBRATED_BUILD, TABLE_DUMP_NAME};
+
+use super::checks::{
+    EXPECT_BLOCKS, EXPECT_ITEMS, EXPECT_LISTS, EXPECT_LOOSE_BLOCKS, EXPECT_LOOSE_LISTS,
+    EXPECT_LOOSE_ONLY_BLOCKS, EXPECT_SHARED_IDS, IMPLAUSIBLE_HOME,
+};
 use super::infer::CONFIDENCE_DOC;
 use super::table::MAX_PLAUSIBLE_ITEM_ID;
 use super::{av, bv, commas, fams_of, sv, truthy, uv, GENERATOR};
@@ -187,13 +192,26 @@ pub fn render_doc(d: &Value) -> String {
         l.a("and `analysis/`.");
         l.a("");
     }
+    // Name what the body is by what was actually read: the plugin's dump is
+    // the default, but `--table` / `$CD_DMM_TABLE` can point anywhere.
+    let source = d["source"].as_str().unwrap();
+    let is_dump = std::path::Path::new(source)
+        .file_name()
+        .is_some_and(|n| n == TABLE_DUMP_NAME);
     l.a(format!(
-        "Source: `{}` ({} bytes), the clean",
-        d["source"].as_str().unwrap(),
-        commas(d["source_bytes"].as_u64().unwrap())
+        "Source: `{source}` ({} bytes), {}",
+        commas(d["source_bytes"].as_u64().unwrap()),
+        if is_dump { "the plugin's" } else { "a" }
     ));
-    l.a("`gimmickinfo` table body DMM writes out. Record-relative offsets only,");
-    l.a("so this needs no rebasing for a game update.");
+    l.a(if is_dump {
+        "DumpTable dump of the clean `gimmickinfo` table body. The self-checks"
+    } else {
+        "clean `gimmickinfo` table body. The self-checks"
+    });
+    l.a(format!(
+        "are calibrated on build {CALIBRATED_BUILD}. Record-relative offsets only, so"
+    ));
+    l.a("this needs no rebasing for a game update.");
     l.a("");
     l.a("## What this is, and what it is not");
     l.a("");
@@ -222,17 +240,21 @@ pub fn render_doc(d: &Value) -> String {
         l.a("  required to match its copy at `+60`. The shipped detector also");
         l.a("  requires `+5` to equal `+64`. Dropping that one clause takes the");
         l.a(format!(
-            "  walk from 573 lists / 896 blocks / 215 items to **{} /",
+            "  walk from {EXPECT_LISTS} lists / {EXPECT_BLOCKS} blocks / {EXPECT_ITEMS} items to **{} /",
             uv(tot, "output_lists")
         ));
         l.a(format!(
-            "  {} / {}**, and the 573 stay a strict subset.",
+            "  {} / {}**, and the {EXPECT_LISTS} stay a strict subset.",
             uv(tot, "blocks"),
             uv(tot, "distinct_items")
         ));
-        l.a("* **`+64` is not a pad.** `+5` is zero on all 1038 blocks of both");
+        l.a(format!(
+            "* **`+64` is not a pad.** `+5` is zero on all {EXPECT_LOOSE_BLOCKS} blocks of both"
+        ));
         l.a("  populations, so that half of the clause is vacuous; `+64` is zero");
-        l.a("  on all 896 shipped blocks and **nonzero on all 142 extras** (95");
+        l.a(format!(
+            "  on all {EXPECT_BLOCKS} shipped blocks and **nonzero on all {EXPECT_LOOSE_ONLY_BLOCKS} extras** (95"
+        ));
         l.a("  distinct values). The deserialiser settles what it is:");
         l.a("  `FUN_141a37180`, the block parser, consumes exactly `+0..+63` and");
         l.a("  never reads these four bytes, while `FUN_1414a7cc0`, the list");
@@ -251,9 +273,13 @@ pub fn render_doc(d: &Value) -> String {
         l.a("  (`desert_core::gimmick::output_lists`): a `u32 count` then `count`");
         l.a("  68-byte blocks, walked greedily and non-overlapping. The item id is");
         l.a("  read at **`block+1`**, echoed at `+60` - not `+5`/`+64`, which are");
-        l.a("  zero padding on all 896 blocks (findings section 5). Both of the");
+        l.a(format!(
+            "  zero padding on all {EXPECT_BLOCKS} blocks (findings section 5). Both of the"
+        ));
         l.a("  detector's equality clauses are kept, the pad one included: without it");
-        l.a("  the population grows to 589 lists / 1038 blocks, which is where an");
+        l.a(format!(
+            "  the population grows to {EXPECT_LOOSE_LISTS} lists / {EXPECT_LOOSE_BLOCKS} blocks, which is where an"
+        ));
         l.a("  earlier overcount came from.");
     }
     l.a("* A block is attributed to its record by the **key echo**: a real record");

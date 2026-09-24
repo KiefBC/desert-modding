@@ -58,7 +58,8 @@
 //!
 //! # The loader
 //!
-//! The record loader is `FUN_140385cd0` (RVA `0x385cd0`). Its own prologue bytes
+//! The record loader is `FUN_140385cd0` (RVA `0x385cd0`) on build 25246367 and
+//! `FUN_14038ba40` (RVA `0x38ba40`) on 25477059. Its own prologue bytes
 //! occur 263 times in the exe — every static-info table has a loader built from
 //! the same template — so it cannot be signature-scanned directly.
 //! [`resolve_record_loader_for`] instead goes through its caller, the accessor
@@ -66,9 +67,10 @@
 //! copy for `gimmickinfo` is the one whose `lea r8,[rip+disp]` points at the C
 //! string `"gimmickinfo\0"` (that string occurs exactly once in the exe).
 //!
-//! Every address quoted in this module is build 25246367's, and is here to be
-//! read beside a disassembly rather than relied on: all of them moved when the
-//! game updated, and nothing in this file resolves anything by address.
+//! Every other address quoted in this module is build 25246367's, and is here
+//! to be read beside a disassembly rather than relied on: all of them moved
+//! when the game updated, and nothing in this file resolves anything by
+//! address.
 //!
 //! ```text
 //! 1403828af: 45 33 C9              xor    r9d,r9d          <- the accessor site

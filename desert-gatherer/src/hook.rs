@@ -3,7 +3,8 @@
 //!
 //! ## The game side (build 25246367, from Ghidra)
 //!
-//! `FUN_140385cd0(mgr, status, idx, stream)` — RVA resolved at runtime by
+//! `FUN_140385cd0(mgr, status, idx, stream)` (`FUN_14038ba40`, `+0x38BA40`,
+//! on build 25477059) — RVA resolved at runtime by
 //! `desert_core::gimmick::resolve_record_loader`, never hard-coded. Two
 //! callers reach it (the per-record accessor and a load-everything path) and
 //! both only call it when the record is *not* loaded yet

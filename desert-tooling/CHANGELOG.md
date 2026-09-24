@@ -14,11 +14,13 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 Built against an install on game build 25477059 (0.8.0 was 25246367). The plugin resolved
 everything it needs at runtime on that build in the 2026-09-24 log - the record loader hook, the
 catch site, all nine looter signatures and the manager slots - and multiplied yields as before.
-`just test-game` still carries six expectations pinned to 25246367 (the record loader and catch
-site addresses, the manager slots, the accessor census) that fail on this build; they are stale
-pins, not a break, and need a re-target pass before this version is tagged. A MINOR by
-`VERSIONING.md`'s "what bumps what": one new ini key, defaulted off, so an install that upgrades
-behaves exactly as it did.
+**The re-target landed in this commit.** `just test-game`'s six pins (the record loader and catch
+site addresses, the manager slots, the accessor census) are re-derived against 25477059 and green
+again, and the offline tools' calibration anchors moved with them. Still 0.9.0, not a separate
+entry: `VERSIONING.md`'s "what bumps what" calls re-targeting a build with no interface change a
+PATCH, and a PATCH that lands before the MINOR it follows is tagged folds into that MINOR rather
+than earning its own number. The MINOR itself is unchanged: one new ini key, defaulted off, so an install that
+upgrades behaves exactly as it did.
 
 ### Added
 

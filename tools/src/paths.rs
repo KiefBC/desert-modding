@@ -74,6 +74,11 @@ pub fn appmanifest() -> PathBuf {
     }
 }
 
+/// The game build whose `gimmickinfo` table body the walk calibrations were
+/// measured on: `gen-collect-names`' `CALIBRATION` and `items`' expected
+/// counts and anchors. Both move together, so both name this one constant.
+pub const CALIBRATED_BUILD: &str = "25477059";
+
 /// The game build id read out of the appmanifest, if it is there.
 pub fn build_id() -> Option<String> {
     let text = std::fs::read_to_string(appmanifest()).ok()?;

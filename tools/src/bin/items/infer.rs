@@ -33,7 +33,7 @@ pub const CURATED: &[(u64, &str, &str)] = &[
         "water",
         "the yielding record carries GIMMICK_WATER_PICKUP and lives under \
          /well/; the other source is a water pot \
-         (findings-water-wells-2026-09-12.md section 1)",
+         (docs/findings/2026-09-12-water-wells.md section 1)",
     ),
     (
         1,

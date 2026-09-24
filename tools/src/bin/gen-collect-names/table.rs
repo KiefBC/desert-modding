@@ -1,7 +1,7 @@
 //! The clean-body walk: re-derive every stored `items` list from the bytes.
 //!
 //! `items` in `extra-families.json` is derived data, and this module verifies it
-//! rather than trusting it. When DMM's clean table body is present, every record
+//! rather than trusting it. When the clean table body is present, every record
 //! in `records` and `records_not_enabled` is looked up by key in the record
 //! walk: its name must match, the item ids across the output blocks it owns must
 //! equal the stored `items`, and a record in `records` must own at least one
@@ -39,13 +39,17 @@ const MAX_QTY: u64 = 100_000;
 
 /// Table-wide totals and three (list offset -> record, record-relative offset)
 /// anchors the record walk must reproduce. `firewood_0001` is the load-bearing
-/// one: DMM patches file offset 12843255 = 12841210 + 1999 + 4 + MIN_AT, so a
-/// walk that puts this list anywhere else is not calibrated. Without the echo
-/// test the first two resolve to `NatureBuffTrigger` and `UnnamedTrigger_0`,
-/// both with the bogus key 16777216. The well and the pot are anchors because
-/// they are the two records the walk was first proved on; that the pot is no
-/// longer a row changes nothing about whether the walk resolves it.
+/// one: on build 25477059 the Logging pack (1.2) patches file offset 12921585
+/// = 12919540 + 1999 + 4 + MIN_AT, so a walk that puts this list anywhere else
+/// is not calibrated (on build 25246367 it was 12843255 = 12841210 + 1999 + 4 +
+/// MIN_AT). Without the echo test the first two resolve to `NatureBuffTrigger`
+/// and `UnnamedTrigger_0`, both with the bogus key 16777216. The well and the
+/// pot are anchors because they are the two records the walk was first proved
+/// on; that the pot is no longer a row changes nothing about whether the walk
+/// resolves it.
 pub struct Calibration {
+    /// The game build whose table body these numbers were taken on.
+    pub build: &'static str,
     pub lists: usize,
     pub blocks: usize,
     pub records: usize,
@@ -53,16 +57,36 @@ pub struct Calibration {
     pub anchors: &'static [(usize, u32, &'static str, usize)],
 }
 
+/// One calibration, not one per build. The calibration belongs to the table
+/// body, not the exe: the old body no longer exists anywhere to walk, so an
+/// old entry could never be exercised, and keying on the appmanifest would
+/// pick the wrong entry whenever `CD_DMM_TABLE` points at an archived body.
+/// After an update, re-measure and replace these numbers.
+///
+/// Build 25246367 was 573 lists / 896 blocks / 13412 records, anchors at
+/// 12843209, 4373870 and 1049316 (same keys, same relative offsets). 25477059
+/// added 35 records, none with blocks, and `itembox_11` (key 1012375, never a
+/// row) lost its only output block.
 pub const CALIBRATION: Calibration = Calibration {
-    lists: 573,
-    blocks: 896,
-    records: 13412,
+    build: desert_tools::paths::CALIBRATED_BUILD,
+    lists: 572,
+    blocks: 895,
+    records: 13447,
     anchors: &[
-        (12843209, 1002971, "firewood_0001", 1999),
-        (4373870, 1001081, "gimmick_well_0001_parts01", 965),
-        (1049316, 21030076, "Background_Breakable_66", 1600),
+        (12921539, 1002971, "firewood_0001", 1999),
+        (4382086, 1001081, "gimmick_well_0001_parts01", 965),
+        (1051437, 21030076, "Background_Breakable_66", 1600),
     ],
 };
+
+/// Which build the calibration was taken on, and the installed one if the
+/// appmanifest says, for the refusal message.
+fn builds() -> String {
+    match desert_tools::paths::build_id() {
+        Some(b) => format!("calibrated on build {}, installed build is {b}", CALIBRATION.build),
+        None => format!("calibrated on build {}, installed build unknown", CALIBRATION.build),
+    }
+}
 
 fn u32_at(buf: &[u8], o: usize) -> u32 {
     u32::from_le_bytes(buf[o..o + 4].try_into().expect("4 bytes"))
@@ -226,9 +250,10 @@ pub fn walk(buf: &[u8]) -> Result<Walk> {
     ] {
         if got != want {
             bail!(
-                "calibration failed: {got} {what}, expected {want}. The table \
-                 changed or the walk broke; do not trust the walk. See \
-                 docs/findings/2026-09-12-water-wells.md section 8."
+                "calibration failed: {got} {what}, expected {want} ({}). The \
+                 table changed or the walk broke; do not trust the walk. See \
+                 docs/findings/2026-09-12-water-wells.md section 8.",
+                builds()
             );
         }
     }
@@ -239,11 +264,12 @@ pub fn walk(buf: &[u8]) -> Result<Walk> {
         if (h.key, h.name.as_str(), off - h.off) != (key, name, rel) {
             bail!(
                 "calibration anchor {off} resolved to {} (key {}, rel +{}), \
-                 expected {} (key {key}, rel +{rel})",
+                 expected {} (key {key}, rel +{rel}) ({})",
                 q(&h.name),
                 h.key,
                 off - h.off,
-                q(name)
+                q(name),
+                builds()
             );
         }
     }

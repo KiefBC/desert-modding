@@ -3,7 +3,7 @@
 # Crimson Desert mods
 
 Cargo workspace for my [Crimson Desert
-Enhanced](https://store.steampowered.com/) mods (Steam build 25246367). They
+Enhanced](https://store.steampowered.com/) mods (Steam build 25477059). They
 load as one `.asi` plugin through [Ultimate ASI
 Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (`winmm.dll` in the
 game's `bin64`).

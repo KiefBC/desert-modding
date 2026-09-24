@@ -48,7 +48,8 @@
 //!   * There are **two detectors** and the choice is named, never implied (see
 //!     `Detector`). `shipped` is the plugin's own, both equality clauses
 //!     included, and is the default; `--loose` drops the pad clause and finds
-//!     589 lists / 1038 blocks / 311 items instead of 573 / 896 / 215. The
+//!     588 lists / 1037 blocks / 311 items instead of 572 / 895 / 215 (build
+//!     25477059). The
 //!     extra content is real - chests, dig sites, dungeon loot - but it is
 //!     **invisible to the mod**, and it is not uniformly trustworthy: read the
 //!     caveats at the top of `docs/reference-items-loose.md` before using an
@@ -123,8 +124,8 @@ pub struct Args {
     /// one line per item
     #[arg(long)]
     pub list: bool,
-    /// use the loose detector (item-id clause only, no pad clause): 589 lists /
-    /// 1038 blocks / 311 items instead of 573 / 896 / 215. Reads and writes its
+    /// use the loose detector (item-id clause only, no pad clause): 588 lists /
+    /// 1037 blocks / 311 items instead of 572 / 895 / 215. Reads and writes its
     /// OWN files, analysis/items-loose.json and docs/reference-items-loose.md,
     /// and marks everything the mod cannot see. Less trustworthy than the
     /// default - read the caveats it prints.

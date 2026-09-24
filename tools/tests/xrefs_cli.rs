@@ -3,18 +3,32 @@
 //! Ignored by default; the game is not on a CI runner. The scanners themselves
 //! are unit-tested offline over hand-built fixtures in `src/bin/xrefs/scan.rs`,
 //! including the rel32 and RIP-relative arithmetic where an off-by-one hides.
-//! These are the known answers on the real binary, recorded on build 25246367
+//! These are the known answers on the real binary, recorded on build 25477059
 //! so that a game update that moves them says so out loud.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
-/// Addresses on build 25246367, chosen to cover every branch of the report.
-const CODE_XREFS: &str = "1764420"; // a function entry: six calls, no cells
-const MANY_XREFS: &str = "13aaa80"; // a hot allocator-ish entry: 65 calls
-const ONE_XREF: &str = "3796520"; // reached exactly once
-const NEITHER: &str = "2a73c20"; // a real function with neither - see below
-const POINTER_ONLY: &str = "569C7C0"; // `SetAdditionalCollectDropRate`
+/// Addresses on build 25477059, chosen to cover every branch of the report.
+///
+/// Re-derived from 25246367 by what each one IS, not by where it was: the
+/// functions through their `reference-signatures.txt` signatures (`sigscan`),
+/// the literal through its bytes, and `NEITHER` from the exception directory.
+/// Every count came out the same as on 25246367. Only `NEITHER` is a fresh
+/// pick: its old address was no named function there was anything to follow.
+const CODE_XREFS: &str = "17fa220"; // `get_pos`: six calls, no cells (25246367: 1764420)
+const MANY_XREFS: &str = "1439060"; // `alloc_event`, hot: 65 calls (25246367: 13aaa80)
+const ONE_XREF: &str = "387bda0"; // `area_sweep`, reached exactly once (25246367: 3796520)
+/// A real function with neither - see below. 25246367 used 2a73c20, which on
+/// 25477059 is inside the body of the function at 0x2A73AC0 (`.pdata`
+/// 0x2A73AC0..0x2A73D39). This one is a `.pdata` function start
+/// (0x2AFFBF0..0x2AFFF48) behind int3 padding with a full prologue, and the
+/// only int3-padded start in 0x2A00000..0x2C00000 that no rel32, RIP-relative
+/// operand or 8-byte VA anywhere in the image reaches (a numpy pass over the
+/// loaded image, then this tool and its `--selfcheck` to confirm).
+const NEITHER: &str = "2affbf0";
+/// `SetAdditionalCollectDropRate`, the short-name literal (25246367: 569C7C0).
+const POINTER_ONLY: &str = "57AFC28";
 
 fn exe() -> PathBuf {
     match std::env::var_os("EXE") {
@@ -36,7 +50,7 @@ fn stdout(args: &[&str]) -> String {
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
 
-/// Every known answer on build 25246367, in ONE test.
+/// Every known answer on build 25477059, in ONE test.
 ///
 /// Deliberately not six tests: each run holds the 385 MB image, and six of them
 /// in parallel is enough to take this machine into ENOMEM while anything else
@@ -49,9 +63,11 @@ fn the_known_answers_on_this_build() {
 
     // A function entry: six calls reach it and nothing holds its address.
     let s = stdout(&[CODE_XREFS]);
-    assert!(s.contains("6 code reference(s) and 0 pointer cell(s) to +0x1764420"), "{s}");
+    // The caller at get_pos-0x117 is the same site on both builds: +0x1764309
+    // on 25246367, +0x17FA109 on 25477059.
+    assert!(s.contains("6 code reference(s) and 0 pointer cell(s) to +0x17FA220"), "{s}");
     assert_eq!(s.lines().filter(|l| l.starts_with("call ")).count(), 6);
-    assert!(s.contains("call           at +0x1764309"), "{s}");
+    assert!(s.contains("call           at +0x17FA109"), "{s}");
 
     // The rest of the spread: many, exactly one, and none at all.
     assert!(stdout(&[MANY_XREFS]).contains("65 code reference(s) and 0 pointer cell(s)"));
@@ -61,19 +77,20 @@ fn the_known_answers_on_this_build() {
     // summary line is always printed, because "nothing" is an answer.
     assert_eq!(
         stdout(&[NEITHER]),
-        "0 code reference(s) and 0 pointer cell(s) to +0x2A73C20\n"
+        "0 code reference(s) and 0 pointer cell(s) to +0x2AFFBF0\n"
     );
 
     // `SetAdditionalCollectDropRate`, the worked example in tools/README.md.
     // A scanner that reported only code references would print two coincidental
     // `lea`s into the middle of a string and nothing that identifies the
-    // address at all. The pointer cell is the whole answer.
+    // address at all. The pointer cell is the whole answer. Build 25477059;
+    // on 25246367 the cell was +0x5861BF8 holding VA 0x14569C7C0.
     let s = stdout(&[POINTER_ONLY]);
     assert!(
-        s.contains("ptr cell       at +0x5861BF8  (holds VA 0x14569C7C0)"),
+        s.contains("ptr cell       at +0x59792A8  (holds VA 0x1457AFC28)"),
         "the pointer cell is gone:\n{s}"
     );
-    assert!(s.contains("and 1 pointer cell(s) to +0x569C7C0"), "{s}");
+    assert!(s.contains("2 code reference(s) and 1 pointer cell(s) to +0x57AFC28"), "{s}");
 
     // An explicit exe path is accepted, and a flag is never mistaken for one:
     // `xrefs <rva> --selfcheck` must not try to open a file called

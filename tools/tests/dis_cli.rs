@@ -6,9 +6,14 @@
 //! `dis` is the one tool in this directory allowed to differ from the script it
 //! replaced, because it swapped `objdump` for `iced-x86`. Operand SPELLING may
 //! differ. Instruction BOUNDARIES may not, in code, and that is what these
-//! check: known first bytes at known RVAs on build 25246367, and the property
+//! check: known first bytes at known RVAs on build 25477059, and the property
 //! that every line's address is the previous one plus that instruction's
 //! length with nothing skipped.
+//!
+//! Every address here was re-derived for 25477059 by content, not by guess:
+//! the functions through the byte signatures in `reference-signatures.txt`
+//! (`sigscan`), and the data through the string it holds. The 25246367 value
+//! sits beside each one.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -38,16 +43,17 @@ fn stdout(args: &[&str]) -> String {
 fn a_known_function_prologue_decodes_to_the_expected_lines() {
     assert!(exe().is_file(), "CrimsonDesert.exe not found at {}", exe().display());
     // `get_pos` from reference-signatures.txt, converted from its file offset
-    // 0x1763820 to an RVA. This is also the worked example of that conversion:
-    // the two numbers differ by 0xC00 here and by something else in every
-    // other section.
-    let s = stdout(&["1764420", "1764500"]);
+    // 0x17F9620 to an RVA (build 25477059; it was file 0x1763820, RVA
+    // 0x1764420 on 25246367). This is also the worked example of that
+    // conversion: the two numbers differ by 0xC00 here and by something else
+    // in every other section.
+    let s = stdout(&["17fa220", "17fa300"]);
     let lines: Vec<&str> = s.lines().collect();
-    assert_eq!(lines[0], "+1764420 push rbx");
-    assert_eq!(lines[1], "+1764422 sub rsp,0x50");
-    assert_eq!(lines[2], "+1764426 mov rax,QWORD PTR [rcx+0x68]");
-    assert_eq!(lines[3], "+176442a mov rcx,QWORD PTR [rax+0x1a0]");
-    assert_eq!(lines[4], "+1764431 mov rax,QWORD PTR [rcx]");
+    assert_eq!(lines[0], "+17fa220 push rbx");
+    assert_eq!(lines[1], "+17fa222 sub rsp,0x50");
+    assert_eq!(lines[2], "+17fa226 mov rax,QWORD PTR [rcx+0x68]");
+    assert_eq!(lines[3], "+17fa22a mov rcx,QWORD PTR [rax+0x1a0]");
+    assert_eq!(lines[4], "+17fa231 mov rax,QWORD PTR [rcx]");
     // The signature comment says this one walks [rcx+0x68] -> [+0x1A0] ->
     // vtbl+0x140; the call through the vtable is the last of those.
     assert!(s.contains("call QWORD PTR [rax+0x140]"), "{s}");
@@ -60,11 +66,14 @@ fn every_address_is_covered_exactly_once_with_no_gap_and_no_overlap() {
     // strictly increasing, start at the requested RVA, and the last one is
     // inside the range. A gap means bytes were skipped; a repeat means the
     // window was rebuilt mid-run.
+    //
+    // Function entries on 25477059, the same four `xrefs_cli.rs` pins; on
+    // 25246367 they were 1764420, 13aaa80, 2a73c20 and 3796520.
     for (start, end) in [
-        ("1764420", "1764500"),
-        ("13aaa80", "13aab40"),
-        ("2a73c20", "2a73d00"),
-        ("3796520", "3796600"),
+        ("17fa220", "17fa300"), // get_pos
+        ("1439060", "1439120"), // alloc_event
+        ("2affbf0", "2affcd0"), // a function nothing references
+        ("387bda0", "387be80"), // area_sweep
     ] {
         let s = stdout(&[start, end]);
         let addrs: Vec<u64> = s
@@ -83,12 +92,12 @@ fn every_address_is_covered_exactly_once_with_no_gap_and_no_overlap() {
 #[test]
 #[ignore = "needs the installed CrimsonDesert.exe"]
 fn an_instruction_straddling_the_end_address_still_decodes_whole() {
-    // 0x1764422 is `sub rsp,0x50`, four bytes. Asking for a range that ends
-    // one byte into it must print it whole, not a truncated `(bad)` - the
-    // decoder is given 15 bytes of slack past the end for this. `objdump
-    // --stop-address` behaves the same way.
-    let s = stdout(&["1764422", "1764423"]);
-    assert_eq!(s, "+1764422 sub rsp,0x50\n");
+    // 0x17FA222 (build 25477059; 0x1764422 on 25246367) is `sub rsp,0x50`,
+    // four bytes. Asking for a range that ends one byte into it must print it
+    // whole, not a truncated `(bad)` - the decoder is given 15 bytes of slack
+    // past the end for this. `objdump --stop-address` behaves the same way.
+    let s = stdout(&["17fa222", "17fa223"]);
+    assert_eq!(s, "+17fa222 sub rsp,0x50\n");
 }
 
 #[test]
@@ -97,15 +106,20 @@ fn rip_relative_operands_resolve_to_rvas() {
     // Only true because the decoder's IP is the RVA. If a future change
     // decoded a bare buffer from 0, every one of these would silently become
     // an offset into that buffer - still plausible-looking, still wrong.
-    let s = stdout(&["176445f", "1764466"]);
-    assert_eq!(s, "+176445f lea rax,[0x57fc990]\n");
+    //
+    // `get_pos`+0x3F. Build 25477059; on 25246367 it was
+    // `+176445f lea rax,[0x57fc990]`.
+    let s = stdout(&["17fa25f", "17fa266"]);
+    assert_eq!(s, "+17fa25f lea rax,[0x5912e60]\n");
 }
 
 #[test]
 #[ignore = "needs the installed CrimsonDesert.exe"]
 fn no_line_is_wider_than_a_hundred_columns() {
-    // A wall of prefixes in data can format to hundreds of characters.
-    let s = stdout(&["569c7c0", "569c800"]);
+    // A wall of prefixes in data can format to hundreds of characters. The
+    // `SetAdditionalCollectDropRate` literal, which is data decoded as code:
+    // RVA 0x57AFC28 on build 25477059, 0x569C7C0 on 25246367.
+    let s = stdout(&["57afc28", "57afc68"]);
     assert!(s.lines().all(|l| l.chars().count() <= 100));
     assert!(!s.is_empty());
 }
@@ -118,7 +132,7 @@ fn nothing_is_written_to_a_temporary_directory() {
     // This port keeps no cache; that is a behaviour, so it gets a test.
     let tmp = tempfile::tempdir().unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_dis"))
-        .args(["1764420", "1764500"])
+        .args(["17fa220", "17fa300"])
         .env("TMPDIR", tmp.path())
         .output()
         .unwrap();

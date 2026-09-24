@@ -2,10 +2,10 @@
 //!
 //! `desert-core/src/collect.rs` is committed and kept in sync, so the honest
 //! test of this tool is that it reproduces that file byte for byte. Both paths
-//! are tested: with DMM's clean table body, where every stored `items` list is
+//! are tested: with the clean table body, where every stored `items` list is
 //! re-derived from the bytes first, and without it, where the banner says so.
 //! Everything that needs the body is `#[ignore]`d, because a bare `cargo test`
-//! has to pass on a machine that has never run DMM.
+//! has to pass on a machine that has never run the game with `DumpTable=1`.
 
 use std::fs;
 use std::path::PathBuf;
@@ -33,7 +33,7 @@ fn clean_body() -> PathBuf {
 }
 
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo table body"]
+#[ignore = "needs the clean gimmickinfo table body"]
 fn the_verified_path_regenerates_collect_rs_byte_for_byte() {
     let (_, committed) = committed_collect_rs();
     let tmp = tempfile::tempdir().unwrap();
@@ -75,16 +75,17 @@ fn the_unverified_path_still_regenerates_and_says_so() {
 /// exactly what this is here to catch, and half-rewriting `collect.rs` from
 /// rows nobody has checked is the outcome worth avoiding.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo table body"]
+#[ignore = "needs the clean gimmickinfo table body"]
 fn a_body_that_disagrees_refuses_to_write() {
     let tmp = tempfile::tempdir().unwrap();
     let table = tmp.path().join("corrupt.bin");
     let mut body = fs::read(clean_body()).unwrap();
-    // The water well's output list is at 4373870 (the CALIBRATION anchor) and
-    // the item id sits at +4 for the count, +1 for ITEM_AT. Changing it makes
+    // The water well's output list is at 4382086 on build 25477059 (the
+    // CALIBRATION anchor; 4373870 on 25246367) and the item id sits at +4 for
+    // the count, +1 for ITEM_AT. Changing it makes
     // the body say the well pays something the json does not claim, without
     // disturbing the block flags the walk calibrates on.
-    let item = 4373870 + 4 + 1;
+    let item = 4382086 + 4 + 1;
     assert_eq!(u32::from_le_bytes(body[item..item + 4].try_into().unwrap()), 22008);
     body[item..item + 4].copy_from_slice(&48879u32.to_le_bytes());
     fs::write(&table, &body).unwrap();
@@ -105,12 +106,12 @@ fn a_body_that_disagrees_refuses_to_write() {
 /// rather than against the json: a record that starts paying item 1 must not
 /// quietly become a Foraging row, or a yield slider becomes an economy lever.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo table body"]
+#[ignore = "needs the clean gimmickinfo table body"]
 fn money_in_the_body_cannot_ride_into_a_gathering_family() {
     let tmp = tempfile::tempdir().unwrap();
     let table = tmp.path().join("money.bin");
     let mut body = fs::read(clean_body()).unwrap();
-    let item = 4373870 + 4 + 1;
+    let item = 4382086 + 4 + 1;
     body[item..item + 4].copy_from_slice(&1u32.to_le_bytes());
     fs::write(&table, &body).unwrap();
 
@@ -130,7 +131,7 @@ fn money_in_the_body_cannot_ride_into_a_gathering_family() {
 /// record walk mis-spans boundaries silently, which is the failure mode the
 /// whole method exists to avoid.
 #[test]
-#[ignore = "needs DMM's clean gimmickinfo table body"]
+#[ignore = "needs the clean gimmickinfo table body"]
 fn a_body_that_does_not_calibrate_refuses_to_write() {
     let tmp = tempfile::tempdir().unwrap();
     let table = tmp.path().join("short.bin");
@@ -145,6 +146,10 @@ fn a_body_that_does_not_calibrate_refuses_to_write() {
     assert!(!run.status.success());
     let stderr = String::from_utf8_lossy(&run.stderr);
     assert!(stderr.contains("calibration failed:"), "{stderr}");
+    // The refusal names the build it was calibrated on, so after an update it
+    // says which side moved.
+    let calibrated = format!("calibrated on build {}", paths::CALIBRATED_BUILD);
+    assert!(stderr.contains(&calibrated), "{stderr}");
     assert!(!out.exists());
 }
 

@@ -34,7 +34,7 @@ pub const MAX_QTY: u64 = 100_000;
 /// every gather record, populated on the records only `--loose` can see. It is
 /// not a pad, not the high half of a wide item id, and not the variant tag at
 /// `+9` (both populations carry tags 0 and 4). `PAD_AT` (`+5`) really is zero
-/// on all 1038 blocks of both populations, so that half of the clause is the
+/// on all 1037 blocks of both populations, so that half of the clause is the
 /// vacuous one.
 pub const ENTRY_KEY_AT: usize = PAD_TAIL_AT;
 
@@ -65,12 +65,13 @@ const BAD_NAME_CHARS: &[u8] = b"/.\\ <>=\"'\t";
 ///   plugin sees**, and the only one whose yields the gatherer multiplies.
 /// * `Loose` drops that clause and keeps everything else.
 ///
-/// Dropping it grows the walk from 573 lists / 896 blocks / 215 items to
-/// 589 / 1038 / 311. The 573 are a strict subset of the 589; the 16 extra
-/// lists differ only in carrying a nonzero `u32` at `PAD_TAIL_AT`, which the
-/// deserialiser says is the list entry's key field (see [`ENTRY_KEY_AT`])
-/// rather than a pad. **None of the 16 is one of the 275 gather records the
-/// DMM pack edits** - they are chests, dig sites and dungeon loot:
+/// Dropping it grows the walk from 572 lists / 895 blocks / 215 items to
+/// 588 / 1037 / 311 on build 25477059 (573 / 896 and 589 / 1038 on 25246367).
+/// The 572 are a strict subset of the 588; the 16 extra lists differ only in
+/// carrying a nonzero `u32` at `PAD_TAIL_AT`, which the deserialiser says is
+/// the list entry's key field (see [`ENTRY_KEY_AT`]) rather than a pad.
+/// **None of the 16 is one of the 275 gather records the DMM pack edits** -
+/// they are chests, dig sites and dungeon loot:
 /// `Temple_Chest_01`, `dff_chest_24`, `gimmick_item_dropset_treasurebox_01`,
 /// `clawmachine_capsule_01`, `Action_dig_01`, `gimmick_Dig_land_0001`, the
 /// `gimmick_abyssone_bridge_gate_*` set and `gimmick_marni_teleportation_*`.
@@ -134,8 +135,8 @@ impl Table {
         let b = std::fs::read(path).map_err(|e| {
             anyhow!(
                 "cannot read the clean table body {}: {e}\n  \
-                 DMM writes it out when it first patches gimmickinfo; \
-                 pass --table if it lives elsewhere.",
+                 the plugin writes it to bin64 under [Gatherer] DumpTable=1 \
+                 and DryRun=1; pass --table if it lives elsewhere.",
                 path.display()
             )
         })?;

@@ -12,16 +12,22 @@ use super::dataset::LooseList;
 use super::table::{Detector, Table, BLOCK, PAD_AT};
 
 // Expected results. The scan prints a FAIL line for any of these that moves;
-// all five were confirmed three independent ways in findings section 9.
-pub const EXPECT_LISTS: usize = 573;
-pub const EXPECT_BLOCKS: u64 = 896;
+// all five were confirmed three independent ways in findings section 9, on
+// build 25246367. Measured again on `paths::CALIBRATED_BUILD` (25477059), the
+// body `gen-collect-names`' CALIBRATION is taken on: 573 / 896 / 13412 became
+// 572 / 895 / 13447 (`itembox_11`, key 1012375, lost its only block; 35
+// records were added, none with blocks). The item count did not move.
+pub const EXPECT_LISTS: usize = 572;
+pub const EXPECT_BLOCKS: u64 = 895;
 pub const EXPECT_ITEMS: usize = 215;
-pub const EXPECT_RECORDS: usize = 13412;
+pub const EXPECT_RECORDS: usize = 13447;
 // The same three for the loose walk, plus what must stay true *between* the two
 // populations: every shipped list is also a loose list, and the extras are
-// exactly the blocks with a nonzero entry key.
-pub const EXPECT_LOOSE_LISTS: usize = 589;
-pub const EXPECT_LOOSE_BLOCKS: u64 = 1038;
+// exactly the blocks with a nonzero entry key. Build 25246367 was 589 / 1038;
+// the lost `itembox_11` block was in both populations, so the loose-only
+// counts below did not move.
+pub const EXPECT_LOOSE_LISTS: usize = 588;
+pub const EXPECT_LOOSE_BLOCKS: u64 = 1037;
 pub const EXPECT_LOOSE_ITEMS: usize = 311;
 pub const EXPECT_LOOSE_ONLY_LISTS: usize = EXPECT_LOOSE_LISTS - EXPECT_LISTS; // 16
 pub const EXPECT_LOOSE_ONLY_BLOCKS: u64 = EXPECT_LOOSE_BLOCKS - EXPECT_BLOCKS; // 142
@@ -40,11 +46,13 @@ pub const EXPECT_LOOSE_ONLY_ITEMS: usize = 96;
 pub const EXPECT_SHARED_IDS: &[u64] = &[1, 53, 75001, 1001597, 1001957];
 
 /// `(list offset, record name, record-relative offset)`, three anchors the
-/// attribution has to keep hitting. The first matches DMM's own patch offset.
+/// attribution has to keep hitting. The first matches the Logging pack's own
+/// patch offset (12921585 = list + 4 + 42). Build 25246367 had the lists at
+/// 12843209, 4373870 and 1049316; the relative offsets have not moved.
 pub const ANCHORS: &[(usize, &str, usize)] = &[
-    (12843209, "firewood_0001", 1999),
-    (4373870, "gimmick_well_0001_parts01", 965),
-    (1049316, "Background_Breakable_66", 1600),
+    (12921539, "firewood_0001", 1999),
+    (4382086, "gimmick_well_0001_parts01", 965),
+    (1051437, "Background_Breakable_66", 1600),
 ];
 
 /// Item id -> the inferred name the doc confirmed by two agreeing records each.

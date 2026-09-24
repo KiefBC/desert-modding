@@ -449,12 +449,14 @@ that printed "0 references" and stopped there is how that lead stayed
 unexplored.
 
 That is the class-name literal at `+0x56A5EB0`. The *short* name literal at
-`+0x569C7C0` is the same story told the other way, and it is the example to
-reach for when explaining the counting defect below: `xrefs 569C7C0` reports
-"2 code reference(s)" and one pointer cell at `+0x5861BF8` (entry 193 of a
-separate 206-name array), but the two code hits are one instruction - the
-`4C 8D 05` at `+0x1529527`, reported once at the REX byte as `lea` and once at
-the opcode as `lea32`.
+`+0x569C7C0` (build 25246367) is the same story told the other way, and it is
+the example to reach for when explaining the counting defect below: `xrefs
+569C7C0` reported "2 code reference(s)" and one pointer cell at `+0x5861BF8`
+(entry 193 of a separate 206-name array), but the two code hits are one
+instruction - the `4C 8D 05` at `+0x1529527`, reported once at the REX byte as
+`lea` and once at the opcode as `lea32`. On build 25477059 the literal is at
+`+0x57AFC28`, the cell at `+0x59792A8`, and the one instruction reads as `lea`
+at `+0x15BBA17` and `lea32` at `+0x15BBA18` (`tests/xrefs_cli.rs` pins it).
 
 **It takes an RVA. `sigscan` prints file offsets.** The two are not directly
 composable: feeding a `sigscan` offset to `xrefs` will usually report zero
@@ -463,8 +465,9 @@ table (`desert_tools::pe`) first.
 
 ### `fieldnames`
 Recovers the **field names of every static-info record class** from the
-shipped exe - 4675 `(class, field)` pairs across 536 classes on build
-25246367 - and writes them to `analysis/fieldnames.json`.
+shipped exe - 4712 `(class, field)` pairs across 537 classes on build
+25477059 (4675 across 536 on 25246367) - and writes them to
+`analysis/fieldnames.json`.
 
 They come from the game's own error strings. Every record deserializer
 reports a per-field read failure with a UTF-8 **Korean** message of the
@@ -580,10 +583,12 @@ default.
 
 | detector | lists | blocks | distinct items |
 | --- | --- | --- | --- |
-| `shipped` (default) | 573 | 896 | 215 |
-| `--loose` | 589 | 1038 | 311 |
+| `shipped` (default) | 572 | 895 | 215 |
+| `--loose` | 588 | 1037 | 311 |
 
-The 573 are a strict subset of the 589. The 16 extra lists are real
+Those are build 25477059's; build 25246367 had one list and one block more
+in each (573 / 896 and 589 / 1038), the output block `itembox_11` lost in
+the update. The 572 are a strict subset of the 588. The 16 extra lists are real
 content - `Temple_Chest_01`, `dff_chest_24`,
 `gimmick_item_dropset_treasurebox_01`, `clawmachine_capsule_01`,
 `Action_dig_01`, `gimmick_Dig_land_0001`, the
@@ -608,15 +613,15 @@ recorded in `docs/findings/2026-09-12-water-wells.md` sections 5, 7 and 8,
 and both cost an earlier investigation a wrong answer:
 
 * The item id is at **`block+1`**, echoed at `+60`. Both `+5` and `+64`
-  are zero on all 896 blocks the shipped detector admits, so `block_ok`'s
+  are zero on all 895 blocks the shipped detector admits, so `block_ok`'s
   `b[5..9] == b[64..68]` clause is vacuous *within that population* - but
   it is not vacuous, and calling `+64` a pad is wrong. It is zero on
-  those 896 and **nonzero on all 142 blocks only `--loose` sees**, which
+  those 895 and **nonzero on all 142 blocks only `--loose` sees**, which
   is precisely what excludes them. `FUN_141a37180`, the block parser,
   consumes exactly `+0..+63`; the list loop `FUN_1414a7cc0` reads the
   four bytes at `+64` after each block and stores them at `entry+0x08`,
   so `+64` is the **list entry's own key field**. `+5` is the only real
-  pad: zero on all 1038 blocks of both populations.
+  pad: zero on all 1037 blocks of both populations.
 * A block is attributed to its record by the **key echo**: a real record
   header repeats its own `u32` key just before a later digits-only id
   sub-field. Nested string fields use the same `u32 len, bytes, NUL`
@@ -625,15 +630,16 @@ and both cost an earlier investigation a wrong answer:
   `firewood_0001` should be.
 
 Every run re-checks the five numbers and three offset anchors that were
-confirmed three independent ways - 573 output lists, 896 blocks, 215
-distinct item ids, 13412 records, and fourteen known item names - and
-prints `FAIL` for any that moved. A `FAIL` means the table or the walk
+confirmed three independent ways on build 25246367, re-measured on 25477059
+(`paths::CALIBRATED_BUILD`) - 572 output lists, 895 blocks, 215 distinct
+item ids, 13447 records, and fourteen known item names - and prints `FAIL`
+for any that moved. A `FAIL` means the table or the walk
 changed, and nothing downstream should be trusted until it is explained.
-A `--loose` run checks its own three counts (589/1038/311) on top, plus
+A `--loose` run checks its own three counts (588/1037/311) on top, plus
 the relations that make it a superset rather than a different answer:
-the 573 shipped lists all present, 16 extra lists and 142 extra blocks,
+the 572 shipped lists all present, 16 extra lists and 142 extra blocks,
 a nonzero `+64` on every one of those blocks and a zero `+5` on all
-1038, 96 items that only it can see, and the 9 implausible ids confined
+1037, 96 items that only it can see, and the 9 implausible ids confined
 to one list. Those are this walk's own numbers and have had none of the
 three-ways treatment, which is the point of stating them separately.
 
@@ -680,7 +686,11 @@ lever by accident, and the economy lever can never pick up a material. When
 the clean table body is present (the plugin's dump or DMM's copy, chosen as
 `items` chooses) the generator re-derives those from the bytes
 and refuses to write on any mismatch; when it is absent it prints a banner
-saying the rows were not verified. Records measured to be unreachable by a
+saying the rows were not verified. The walk only answers if it reproduces
+`CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide counts and
+three anchor records, taken on build 25477059 - and a refusal names that
+build and the installed one, so after a game update it says which side moved.
+Records measured to be unreachable by a
 table edit are kept in the same file as `records_not_enabled`, verified the
 same way and emitted only as a test that keeps them out. `spec` has the format
 and the reasons.
@@ -718,7 +728,7 @@ an afternoon.
   reads as "2 code reference(s)". The scanner cannot tell from the bytes alone
   which reading a decoder took and reports both on purpose; it is the summary
   line that misleads. Disassemble the address before believing a count of 2 -
-  the `+0x569C7C0` example above is what this looks like in the wild.
+  the `+0x569C7C0` / `+0x57AFC28` example above is what this looks like in the wild.
 * **`xrefs --selfcheck` has a blind spot at the tail.** The reference scanner
   stops 7 bytes short of the end of the image while the fast one does not, so
   the two are not compared over the last seven bytes. Harmless on this exe -
