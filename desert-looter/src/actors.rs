@@ -908,6 +908,24 @@ pub fn category_at(actor: usize, off: usize) -> Option<u8> {
     safe::read(comp + STATUS_CATEGORY_OFF)
 }
 
+/// `ClientStatusActorComponent+0x30`, u16: the actor's `characterinfo` row
+/// index, i.e. **which species it is**. The dead-drop gate `FUN_142ab8140`
+/// reads it as `*(u16*)(*(*(carcass+0x68)+0x20)+0x30)` and hands it to the
+/// `characterinfo` accessor (`docs/findings/2026-09-15-skinning.md` section 4,
+/// build 25246367, static). The survey prints it as `chr=` because the class
+/// byte is not a species: two fish giving different items both read class 0x23
+/// (`docs/reference-internals.md` section 15.5), so only this row can tell
+/// whether two actors sharing a class are the same creature. Survey-only;
+/// nothing decides on it.
+pub const STATUS_SPECIES_OFF: usize = 0x30;
+
+/// [`STATUS_SPECIES_OFF`] once the component's slot is known.
+pub fn species_at(actor: usize, off: usize) -> Option<u16> {
+    let sub = safe::read_ptr(actor + 0x68)?;
+    let comp = safe::read_ptr(sub + off)?;
+    safe::read(comp + STATUS_SPECIES_OFF)
+}
+
 /// [`status_bytes`] once the component's slot is known.
 pub fn status_bytes_at(actor: usize, off: usize) -> Option<StatusBytes> {
     let sub = safe::read_ptr(actor + 0x68)?;
@@ -925,8 +943,8 @@ pub fn is_owned_or_special(st: StatusBytes) -> bool {
 ///
 /// `Unknown(c)` is a creature that passes the type-and-status gate but whose
 /// [`interaction_category`] byte has never been seen on a creature we have
-/// actually caught (`desert_core::creature` holds the two lists and the
-/// evidence for them). It is **never targeted**, and it is a variant rather
+/// actually caught, on that type (`desert_core::creature` holds the two lists
+/// and the evidence for them; a class-0x23 deer on type 3 is one). It is **never targeted**, and it is a variant rather
 /// than a `None` because the looter has something to say about it: the class
 /// is reported once per value per session so the lists can be grown from a
 /// real log.
@@ -937,11 +955,13 @@ pub enum Catchable {
 }
 
 impl Catchable {
-    /// The looter's view of an [`interaction_category`] byte: the shared
-    /// class when it is one a recorded catch has shown, `Unknown` otherwise.
-    /// Nothing here may invent a class - see `desert_core::creature`.
-    fn of_category(cat: u8) -> Self {
-        match creature::catch_class(cat) {
+    /// The looter's view of a type byte and an [`interaction_category`]
+    /// byte: the shared class when it is one a recorded catch has shown on
+    /// that type, `Unknown` otherwise. Nothing here may invent a class - see
+    /// `desert_core::creature`, and its `FISH_TYPES` for why the type is
+    /// asked (0x23 is a fish on type 6 and a deer on type 3).
+    fn of(ty: u8, cat: u8) -> Self {
+        match creature::catch_class(ty, cat) {
             Some(c) => Catchable::Known(c),
             None => Catchable::Unknown(cat),
         }
@@ -977,14 +997,15 @@ impl Catchable {
 /// holds a list of types rather than a single value. See
 /// `docs/reference-internals.md` section 15.5.
 pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
-    if !creature::is_catchable_type(actor) {
+    let ty = creature::type_byte(actor)?;
+    if !creature::CATCHABLE_TYPES.contains(&ty) {
         return None;
     }
     if !status_bytes(m, actor).is_some_and(|s| s.kind == 0) {
         return None;
     }
     let cat = interaction_category(m, actor)?;
-    Some(Catchable::of_category(cat))
+    Some(Catchable::of(ty, cat))
 }
 
 /// Is this actor a carcass the player could skin - a dead animal?
@@ -1468,9 +1489,13 @@ mod tests {
     fn an_unrecognised_category_is_never_a_class() {
         // 0x20 is the birds-in-flight class of section 15.5; the rest are the
         // unidentified species the same surveys turned up, plus the ends.
-        for cat in [0x00, 0x20, 0x2C, 0x44, 0x65, 0xFF] {
-            assert_eq!(Catchable::of_category(cat), Catchable::Unknown(cat), "0x{cat:02X}");
+        for cat in [0x00, 0x20, 0x2C, 0x44, 0xFF] {
+            for ty in [3u8, 6] {
+                assert_eq!(Catchable::of(ty, cat), Catchable::Unknown(cat), "type {ty} 0x{cat:02X}");
+            }
         }
+        // A fish class on the deer's type is not a fish.
+        assert_eq!(Catchable::of(3, 0x23), Catchable::Unknown(0x23));
     }
 
     /// The candidate set is the one thing `game::nearest_gather` and
@@ -1536,9 +1561,11 @@ mod tests {
 
     #[test]
     fn the_recorded_categories_carry_the_core_class_through() {
-        assert_eq!(Catchable::of_category(0x80), Catchable::Known(CatchClass::Bug));
-        assert_eq!(Catchable::of_category(0x23), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of_category(0x83), Catchable::Known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x80), Catchable::Known(CatchClass::Bug));
+        assert_eq!(Catchable::of(3, 0x80), Catchable::Known(CatchClass::Bug));
+        assert_eq!(Catchable::of(6, 0x23), Catchable::Known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x65), Catchable::Known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x83), Catchable::Known(CatchClass::Fish));
     }
 
     /// [`eid_map`] used to also reject any map whose `capacity` exceeded

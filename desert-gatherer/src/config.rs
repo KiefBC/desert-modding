@@ -462,7 +462,7 @@ pub fn schema() -> Section {
                         "Debug",
                         "Debug",
                         Kind::Bool { default: d.debug },
-                        "Also log the records that are not gather nodes. The table holds about 13,875 of them, so the hook caps this at 400 lines; useful only when a family looks like it is missing and you want to see what the loader is handing us.",
+                        "Also log the records that are not gather nodes (the table holds about 13,875 of them, so the hook caps this at 400 lines), and one line per creature caught, with its type, class and species - which is how a fish the plugin passes over gets named.",
                     )
                 },
             ),

@@ -170,15 +170,19 @@ fn catch_diagnostic_line(
     pos: &Vec3,
     kind: actors::Kind,
 ) {
-    let ty = match creature::type_byte(a) {
-        Some(t) => format!("{t:02X}"),
-        None => "?".to_string(),
-    };
+    let ty = type_text(a);
     let st = match actors::status_bytes(m, a) {
         Some(s) => format!("{:02X}/{:02X}", s.kind, s.flag),
         None => "?".to_string(),
     };
     let cat = category_text(m, a);
+    let names = actors::component_names(m, a);
+    // The species row, printed beside the class byte because the class byte
+    // is not a species (`actors::STATUS_SPECIES_OFF`).
+    let chr = match actors::status_off(&names).and_then(|off| actors::species_at(a, off)) {
+        Some(r) => r.to_string(),
+        None => "?".to_string(),
+    };
     // The dead-drop component's state, for dead animals only. This is the one
     // instrument that tells "skinning did nothing" apart from "there was
     // nothing left to skin", and it is what makes two open questions about the
@@ -203,14 +207,22 @@ fn catch_diagnostic_line(
         }
         _ => String::new(),
     };
-    let comps: Vec<String> = actors::component_names(m, a)
+    let comps: Vec<String> = names
         .into_iter()
         .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
         .collect();
     crate::log!(
-        "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} status={st}{dd} comps=[{}]",
+        "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} chr={chr} status={st}{dd} comps=[{}]",
         pos.x, pos.y, pos.z, class_of(m, a), comps.join(" ")
     );
+}
+
+/// `creature::type_byte` as two hex digits, or `?` when it is not readable.
+fn type_text(actor: usize) -> String {
+    match creature::type_byte(actor) {
+        Some(t) => format!("{t:02X}"),
+        None => "?".to_string(),
+    }
 }
 
 /// `actors::interaction_category` as two hex digits, or `?` when the status
@@ -1030,7 +1042,8 @@ pub fn nearest_gather(
                 Some(Catchable::Unknown(c)) => {
                     if first_sighting_of(c) {
                         crate::log!(
-                            "[gather] catchable creature cat={c:02X} at {d:.0} m is not a known bug/fish class; skipped (catch one by hand with F7 recording to add it)"
+                            "[gather] catchable creature cat={c:02X} type={} at {d:.0} m is not a known bug/fish class on this type; skipped (catch one by hand with F7 recording to add it)",
+                            type_text(a)
                         );
                     }
                     continue;
@@ -1051,7 +1064,9 @@ pub fn nearest_gather(
                 actor: a,
                 player_actor: sc.player,
                 dist: d,
-                name: format!("{what} cat={}", category_text(m, a)),
+                // The type is in the name because a class alone does not say
+                // what a creature is (`creature::FISH_TYPES`).
+                name: format!("{what} cat={} type={}", category_text(m, a), type_text(a)),
                 family: family.to_string(),
                 cat: 0,
                 mode: crate::payload::PickupMode::Catch,
@@ -1091,7 +1106,7 @@ pub fn nearest_gather(
                 actor: a,
                 player_actor: sc.player,
                 dist: d,
-                name: format!("carcass cat={}", category_text(m, a)),
+                name: format!("carcass cat={} type={}", category_text(m, a), type_text(a)),
                 cat: actors::interaction_category(m, a).unwrap_or(0),
                 family: "Carcass".to_string(),
                 mode: crate::payload::PickupMode::Skin,

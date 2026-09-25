@@ -82,6 +82,8 @@ mod off {
     pub const ACTOR_SUB: usize = 0x68;
     pub const SUB_STATUS: usize = 0x20;
     pub const STATUS_CLASS: usize = 0x5A;
+    /// u16 `characterinfo` row: the species. Logged with `Debug=1` only.
+    pub const STATUS_SPECIES: usize = 0x30;
 }
 
 /// Ceiling on `[catch]` lines per session. Catches are rare — a good session
@@ -150,6 +152,28 @@ fn class_byte(actor: usize) -> Option<u8> {
     safe::read(status + off::STATUS_CLASS)
 }
 
+/// `*(*(actor+0x68)+0x20) + 0x30`, the species row (`characterinfo` index).
+fn species_row(actor: usize) -> Option<u16> {
+    let sub = safe::read_ptr(actor + off::ACTOR_SUB)?;
+    let status = safe::read_ptr(sub + off::SUB_STATUS)?;
+    safe::read(status + off::STATUS_SPECIES)
+}
+
+/// With `[Gatherer] Debug=1`, one line per creature granted: its type, class
+/// and species, read at the moment the game grants it. Every other `[catch]`
+/// line is once per class per session, so a second species sharing an
+/// already-logged class (or on a type outside `CATCHABLE_TYPES`) was silent;
+/// this is the line that names a fish caught by hand, with its `[recv]`
+/// following in the same millisecond. Reads only, and inside the line cap.
+fn debug_line(actor: usize, ty: u8) {
+    if !LIVE.debug() || !may_log() {
+        return;
+    }
+    let class = class_byte(actor).map_or_else(|| "?".to_string(), |c| format!("{c:02X}"));
+    let chr = species_row(actor).map_or_else(|| "?".to_string(), |r| r.to_string());
+    crate::log!("[catch] debug: type={ty:02X} class={class} chr={chr}");
+}
+
 /// The count the game should use for this creature, or 1 for vanilla.
 ///
 /// Split out of the callback so the decision has one exit and the callback
@@ -166,6 +190,7 @@ fn count_for(actor: usize) -> u32 {
     // is still `desert_core`'s, so this and Desert Looter cannot come to
     // disagree about what is creature-shaped.
     let Some(ty) = creature::type_byte(actor) else { return 1 };
+    debug_line(actor, ty);
     if !creature::CATCHABLE_TYPES.contains(&ty) {
         // A **known** bug/fish class on a type the list does not hold is
         // exactly what the Firefly Colony looked like before type 3 was added
@@ -177,7 +202,7 @@ fn count_for(actor: usize) -> u32 {
         // three extra `safe` reads sit on a path the game takes on inventory
         // grants, not per frame.
         if let Some(class) = class_byte(actor) {
-            if creature::catch_class(class).is_some() && first_odd_pair(ty, class) && may_log() {
+            if creature::is_catch_class(class) && first_odd_pair(ty, class) && may_log() {
                 crate::log!(
                     "[catch] type={ty:02X} class={class:02X} is a known class on a \
                      non-catchable type; vanilla (logged once)"
@@ -188,11 +213,13 @@ fn count_for(actor: usize) -> u32 {
     }
     let Some(class) = class_byte(actor) else { return 1 };
 
-    let Some(kind) = creature::catch_class(class) else {
+    // The type goes in too: 0x23 is a fish on type 6 and a deer on type 3
+    // (`creature::FISH_TYPES`), and only the first is multiplied.
+    let Some(kind) = creature::catch_class(ty, class) else {
         if first_unknown(class) && may_log() {
             crate::log!(
-                "[catch] class={class:02X} not a known bug/fish class; vanilla \
-                 (logged once per class)"
+                "[catch] type={ty:02X} class={class:02X} not a known bug/fish class on this \
+                 type; vanilla (logged once per class)"
             );
         }
         return 1;

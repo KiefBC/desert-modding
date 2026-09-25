@@ -156,11 +156,14 @@ from the menu.
   "catch" event rather than a pickup. Fish within reach at the water's edge go
   the same way, with the very same event as an insect. The steal check applies
   to both, so a creature the game counts as someone else's is left alone.
-  `GatherBugs=0` and `GatherFish=0` turn them off separately.
+  `GatherBugs=0` and `GatherFish=0` turn them off separately. The Rice Fish is
+  the exception: the game gives it the insect class, so it is caught under
+  `GatherBugs` and multiplied by `Bugs`, not `Fish`.
 - **Leaves alone what it does not recognise.** Insects and fish are told apart
   from birds in flight and other wildlife by a class byte on the creature
   itself, and only the classes that have actually been caught by hand are ever
-  targeted. Anything else is passed over and reported in the log once per class,
+  targeted. For fish the creature's type has to match too, because one fish
+  class is shared with a land animal. Anything else is passed over and reported in the log once per class,
   so an unrecognised species shows up as a line to add rather than as something
   grabbed by mistake.
 - **Asks the game about stealing first.** Before every pickup, node or ground
@@ -367,7 +370,7 @@ rather than pretending nothing was there.
 |---|---|---|
 | `Enabled` | 1 | 0 = the record-loader hook still reads every record to keep its own remembered table current, but writes nothing as records load, and the re-apply pass (see below) writes vanilla numbers back into whatever is already parsed. Flipping it back to 1 re-applies the multipliers the same way |
 | `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
-| `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines) |
+| `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines), and one `[catch] debug: type=.. class=.. chr=..` line per creature caught |
 | `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. For the offline tools (`CD_DMM_TABLE`); nothing in the game needs it |
 | `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |

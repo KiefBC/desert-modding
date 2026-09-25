@@ -9,6 +9,43 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [Unreleased]
+
+Measured on game build 25477059, 2026-09-24.
+
+### Fixed
+
+- **A live land animal of fish class `0x23` is no longer taken for a fish.** The class byte is
+  not a species: on 25477059 a type-06 fish (item 29805, species row 4000) and a type-03 land
+  animal (species row 3458) both read `0x23`, and a class-`0x23` carcass paid Animal_Bone, Meat_II
+  and Deer_Leather. Until now `GatherFish=1` with AutoGather on would have aimed the catch event
+  at that animal once it came within `GatherRange`. A fish class now counts only on type 06, the
+  type every fish ever read has had; the Firefly Colony's type-03 insect class is unaffected.
+
+### Added
+
+- **Tench (fish class `0x65`) is caught with `GatherFish=1`.** It was passed over as an unknown
+  class until a hand catch recorded it: `00 08 FF 21 0A 10 B0 03`, `class=65`, item 29809.
+- **`[Gatherer] Debug=1` logs one line per creature caught**:
+  `[catch] debug: type=06 class=65 chr=4005`, just before its `[recv]` line. The other `[catch]`
+  lines are once per class per session, so a second species on an already-logged class was
+  silent; this one names every catch.
+- **The F11 survey prints each creature's species row** as `chr=`, beside `type=` and `cat=`.
+
+### Changed
+
+- `[gather] auto:` lines for fish, bugs and carcasses carry `type=` after `cat=`, and the
+  "not a known bug/fish class" skip lines (looter and gatherer both) name the type, since a class
+  can now be known on one type and not another.
+
+### Known
+
+- **The Rice Fish is caught as a bug.** It reads the insect class `0x80` on type 06, the same pair
+  as the insects, so `GatherBugs` and `Bugs` take and multiply it, not `GatherFish` and `Fish`.
+- **Fish class `0x44` (item 29810) is still skipped.** It is a type-06 fish on 25477059, but on
+  25246367 a type-06 class-`0x44` carcass paid Bird_Meat and Feather, so the type does not
+  separate the two the way it does for `0x23`.
+
 ## [0.9.0] - 2026-09-24
 
 Built against an install on game build 25477059 (0.8.0 was 25246367). The plugin resolved
