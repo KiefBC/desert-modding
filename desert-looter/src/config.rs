@@ -595,7 +595,7 @@ pub fn schema() -> Section {
                     slider: false,
                     format: None,
                 },
-                "Which inventory tab counts as the bag for the full check. 1 is the right answer on build 25116796; -1 means auto, i.e. whichever tab has the largest capacity.",
+                "Which inventory tab counts as the bag for the full check. 1 was right on build 25116796; -1 means auto, i.e. whichever tab has the largest capacity.",
                 ),
             ),
         ],

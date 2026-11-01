@@ -457,7 +457,7 @@ banks nothing either: a reward still waiting on you is worked out from the table
 at the moment it lands, so set it back to `1`, or remove the plugin, and what is
 waiting pays vanilla.
 
-**Nor, on this game build, does anything else.** The game has code to bank a
+**Nor, on any build measured so far, does anything else.** The game has code to bank a
 single percentage figure for a finished mission in your save, and part of that
 figure is a bonus for sending more workers than the mission needed — which is the
 one thing `AnyOperatorCount` could have inflated, since it tells the game every
@@ -512,7 +512,7 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 13,906 records, 279 of which this plugin multiplies — the
+called `gimmickinfo`: 13,941 records on build 25477059, 279 of which this plugin multiplies. They are the
 275 the game classes as gather nodes, plus the water well and the three placed
 money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
@@ -613,21 +613,23 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertTooling.asi` | the plugin | yes, that uninstalls it |
-| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch — which means vanilla `1x` for all eight multipliers, so deleting it turns them off |
+| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch, which means vanilla `1x` for every multiplier (the seven under `[Gatherer]`, `Hunting` under `[Looter]`, `Speed` and `Rewards` under `[Dispatch]`), so deleting it turns them off |
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
+| `DesertTooling.ini.tmp` | transient: the menu writes the new ini here and renames it over `DesertTooling.ini`, so it is normally gone a moment later | yes |
+| `DesertTooling.gimmickinfo.bin` | the game's vanilla `gimmickinfo` table body, about 22 MB, for the offline tools; written once per session only with `[Gatherer] DumpTable=1` and `DryRun=1` | yes |
 
 The log is the first thing to look at when something seems off. Every line
 carries the subsystem that wrote it, so one file still separates cleanly:
 
 ```text
-[    0.001] [tid  4812] [tooling] Desert Tooling 0.3.0 loaded, pid 21344 (looter 0.2.0, gatherer 0.2.0, overlay 0.2.0)
-[    0.014] [tid  6120] [gatherer] [hook] record loader +0x3856B0 -> stub 0x1F2C0000
-[    0.312] [tid  5008] [looter] [sig] 8 found, 0 missing, 1 actor-manager vtable(s), 41 ms
+[    0.001] [tid  4812] [tooling] Desert Tooling 0.9.0 loaded, pid 21344 (looter 0.5.0, gatherer 0.4.0, overlay 0.3.0, dispatch 0.3.0)
+[    0.014] [tid  6120] [gatherer] [hook] record loader +0x38BA40 -> stub 0x1F2C0000
+[    0.312] [tid  5008] [looter] [sig] 9 found, 0 missing, 1 actor-manager vtable(s), 41 ms
 [    1.884] [tid  7744] [overlay] [hudhook] DX12 hooks applied in 96 ms; press the menu key in game
 ```
 
-A healthy start shows, from `[looter]`, eight `[sig]` lines ending in `= +0x...`,
+A healthy start shows, from `[looter]`, nine `[sig]` lines ending in `= +0x...`,
 two `[hook]` lines and the `[event]` descriptor lines; from `[gatherer]`, a
 `[gimmick] record loader at +0x...` line, a `[hook]` line and a `[catch]` line,
 then one line per gather record as the game loads it; and from `[overlay]`, the
@@ -645,7 +647,7 @@ x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 
-Nothing here is a hard-coded address. The Looter resolves eight byte signatures
+Nothing here is a hard-coded address. The Looter resolves nine byte signatures
 and finds the actor manager through its RTTI vtable. The Gatherer scans the
 running image for the accessor that names the `gimmickinfo` table and follows it
 to the record-loading function, then refuses to patch unless the twelve bytes it
@@ -706,13 +708,13 @@ just test-game
 `desert-tooling` is the only `cdylib` and the only `DllMain`. It gates on the
 host exe (the ASI loader also injects into `crashpad_handler.exe`), hands off to
 a thread immediately because the loader lock is held, opens `DesertTooling.log`,
-seeds `DesertTooling.ini` from all three subsystems' schemas if it is missing,
+seeds `DesertTooling.ini` from all four subsystems' schemas if it is missing,
 refuses to install anything if a pre-merge `.asi` is still loaded, and then
 starts one thread per subsystem — the gatherer first, because its hook has to go
 in before the game reads the gather table and must not queue behind the looter's
 20-second boot grace.
 
-`desert-looter` resolves eight byte signatures, hooks two functions with inline
+`desert-looter` resolves nine byte signatures, hooks two functions with inline
 trampolines (a per-frame job, for a callback on a game thread, and the event
 queue's push, for observation), finds the actor manager through its RTTI vtable,
 and builds pickups exactly as the game's own event builder builds them, queued

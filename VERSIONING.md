@@ -166,8 +166,8 @@ the player — delete three files, install one — and nothing an upgrader had i
 key, hotkey, log prefix and behaviour survives, moved into a `[Section]` and given a tag. 0.2.0 plus
 a MINOR is 0.3.0.
 
-The `desert-looter`, `desert-gatherer` and `desert-overlay` crates keep their 0.2.0 and stop moving
-as player-facing numbers, and `desert-dispatch` starts at 0.1.0 for the same reason - none of them
+The `desert-looter`, `desert-gatherer`, `desert-overlay` and `desert-dispatch` crates stop moving
+as player-facing numbers; their current numbers are in the table at the top, and none of them
 is a number a player ever reads. They are internal libraries now, like `desert-core`: they ship nothing,
 are never tagged, and their versions are bookkeeping between crates.
 

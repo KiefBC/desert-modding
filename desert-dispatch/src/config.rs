@@ -535,11 +535,12 @@ pub fn schema() -> Section {
              are not saved into your game: set them back and the missions go back, and removing \
              the plugin leaves nothing to undo. The reward multiplier banks nothing either - a \
              reward already waiting on you is worked out from the table at the moment it lands, so \
-             set Rewards back to 1 and it pays vanilla. Nor does anything else on this game build. \
-             The game has code to bank a percentage figure when a mission FINISHES, part of it a \
+             set Rewards back to 1 and it pays vanilla. Nor does anything else on any build \
+             measured so far. The game has code to bank a percentage figure when a mission FINISHES, part of it a \
              bonus for sending more workers than the mission needed - the one thing 'Any number of \
              workers' could have inflated - but both switches that code sits behind are off on \
-             build 25116796: no mission defers a payout, and the figure ignores the worker count. \
+             every build measured so far (25116796, 25246367): no mission defers a payout, and the \
+             figure ignores the worker count. \
              The plugin reads both at startup and says so on the [banking] line of the log; check \
              it after a game update, because an update can flip them. Faster missions and no skill \
              requirement are nowhere in that figure at all. The dump on the Debug tab stays \

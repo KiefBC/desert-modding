@@ -128,6 +128,16 @@ sync-versions: tools
 check-versions: tools
     {{tools_bin}}/sync-versions --check
 
+# Build the documentation book in docs/; output in target/book. The
+# reverse-engineering part is local-only: on a fresh clone each of its missing
+# files logs a warning and the build still succeeds.
+docs:
+    {{nix}} mdbook build docs
+
+# Serve the book with live reload on http://127.0.0.1:3000.
+docs-serve:
+    {{nix}} mdbook serve docs -n 127.0.0.1 -p 3000
+
 # Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
 logo: tools
     {{tools_bin}}/logo-to-rgba

@@ -1,5 +1,5 @@
 {
-  description = "Crimson Desert mods - desert-core + Desert Tooling, the single ASI plugin merging the looter, gatherer and overlay subsystems (Rust, cross-compiled to Windows x64)";
+  description = "Crimson Desert mods - desert-core + Desert Tooling, the single ASI plugin merging the looter, gatherer, overlay and dispatch subsystems (Rust, cross-compiled to Windows x64)";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -55,6 +55,9 @@
             # advisory check behind `just audit`.
             pkgs.just
             pkgs.cargo-audit
+
+            # Builds the documentation book in docs/ (`just docs`).
+            pkgs.mdbook
           ];
 
           # Cargo uses this linker for the gnu target. Scoped to this shell, so
@@ -75,6 +78,7 @@
             echo "  just build      release build of the plugin"
             echo "  just ci         clippy (no warnings) + tests on both targets + cargo audit"
             echo "  just install    copy the .asi file into the game's bin64"
+            echo "  just docs       build the documentation book into target/book"
           '';
         };
       });

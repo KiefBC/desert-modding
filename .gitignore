@@ -9,3 +9,10 @@ result-*
 /dist/
 __pycache__/
 *.pyc
+
+# The private reverse-engineering record in docs/: kept local, never pushed.
+# The mdBook scaffold beside it (docs/book.toml, docs/src/) is tracked.
+/docs/README.md
+/docs/reference-*.md
+/docs/findings/
+/docs/archive/

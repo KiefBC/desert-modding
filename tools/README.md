@@ -717,12 +717,12 @@ an afternoon.
   `nodes`** - a frontier callee that was never exported, or an address that is
   not a function at all. The current tree has 412 such edges out of 807. Anything
   joining the two must tolerate a dangling callee.
-* **`docs/reference-items.md` promises something that has never been true.** It
-  says "`sources` entries in `analysis/items.json` carry `list_items`". They do
-  not, and never did: `grep -c list_items` is 0 in both JSON files, because the
-  fold to `recs_by_key` drops it. The sentence survived the port because
-  byte-identical output was the acceptance criterion. It is a known wrong
-  promise awaiting a decision, not an oversight.
+* **Fixed 2026-09-21: `docs/reference-items.md` no longer promises `list_items`.**
+  It used to say "`sources` entries in `analysis/items.json` carry `list_items`",
+  which was never true (the fold to `recs_by_key` drops it). The generator's
+  text (`items/doc.rs`) now says the entries name the record and its list but
+  not the sibling items, and the copy regenerated on 2026-09-24 carries that
+  wording. `grep -c list_items` is still 0 in both JSON files, as intended.
 * **`xrefs` double-counts the REX forms.** One `48 8D 05 ...` is reported twice,
   as `lea` at the REX byte and `lea32` at the opcode, so a single instruction
   reads as "2 code reference(s)". The scanner cannot tell from the bytes alone

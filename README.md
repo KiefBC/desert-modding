@@ -18,7 +18,7 @@ game's `bin64`).
 
 | Mod | Version | What it does |
 | --- | --- | --- |
-| [desert-tooling](desert-tooling) | 0.9.0 | Auto-loot, gathering yields and the in-game menu, in one plugin |
+| [desert-tooling](desert-tooling) | 0.9.0 | Auto-loot, gathering yields, dispatch levers and the in-game menu, in one plugin |
 
 One `DesertTooling.asi`, one `DesertTooling.ini`, one `DesertTooling.log`. It
 carries four subsystems, each with its own section in that ini and its own tag
@@ -71,7 +71,7 @@ launch, so they are not saved into your game: turn them back and the missions go
 back, and removing the plugin leaves nothing to undo. The reward multiplier banks
 nothing either — a reward still waiting on you is worked out from the table at
 the moment it lands, so set `Rewards` back to 1 and it pays vanilla. **Nor, on
-this game build, does anything else.** The game has code to bank a single
+any build measured so far, does anything else.** The game has code to bank a single
 percentage figure for a finished mission in the save, part of it a bonus for
 sending more workers than the mission needed — the one thing `AnyOperatorCount`
 could have inflated, since it tells the game every mission needs only one

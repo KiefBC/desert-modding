@@ -1,0 +1,57 @@
+# Summary
+
+[Introduction](introduction.md)
+
+# Using the mod
+
+- [Install and upgrade](using/install.md)
+- [Menu and hotkeys](using/menu-and-keys.md)
+- [Settings quick reference](using/settings.md)
+- [Reading the log](using/log.md)
+- [After a game update](using/game-update.md)
+- [Player manual, full text](repo/desert-tooling/README.md)
+- [Changelog](repo/desert-tooling/CHANGELOG.md)
+- [The DMM pack](repo/desert-gatherer-dmm/README.md)
+
+# Developing
+
+- [Current state](dev/current-state.md)
+- [Workspace and rules](dev/workspace.md)
+- [Build, test and just recipes](dev/build-and-test.md)
+- [Looter internals](dev/looter.md)
+- [Gatherer internals](dev/gatherer.md)
+- [Overlay internals](dev/overlay.md)
+- [Dispatch internals](dev/dispatch.md)
+- [Tools](repo/tools/README.md)
+- [Ghidra and analysis](dev/ghidra.md)
+- [Versioning and releases](repo/VERSIONING.md)
+- [Design notes (TODO.md)](repo/TODO.md)
+- [hudhook fork changes](repo/vendor/hudhook/DESERT-CHANGES.md)
+- [Known drift](dev/known-drift.md)
+
+# Reverse-engineering record (local only)
+
+- [Index](re/README.md)
+- [Internals reference](re/reference-internals.md)
+- [Ledger](re/reference-ledger.md)
+- [Overlay reference](re/reference-overlay.md)
+- [Items](re/reference-items.md)
+- [Items, loose](re/reference-items-loose.md)
+- [Findings](re/findings.md)
+  - [2026-09-06 looter first session](re/findings/2026-09-06-looter-first-session.md)
+  - [2026-09-10 dispatch](re/findings/2026-09-10-dispatch.md)
+  - [2026-09-12 design instance lever](re/findings/2026-09-12-design-instance-lever.md)
+  - [2026-09-12 drop carriers](re/findings/2026-09-12-drop-carriers.md)
+  - [2026-09-12 loot taxonomy](re/findings/2026-09-12-loot-taxonomy.md)
+  - [2026-09-12 pickups](re/findings/2026-09-12-pickups.md)
+  - [2026-09-12 session summary](re/findings/2026-09-12-session-summary.md)
+  - [2026-09-12 water wells](re/findings/2026-09-12-water-wells.md)
+  - [2026-09-13 buff stat census](re/findings/2026-09-13-buff-stat-census.md)
+  - [2026-09-13 drop rate levers](re/findings/2026-09-13-drop-rate-levers.md)
+  - [2026-09-15 hunting multiplier](re/findings/2026-09-15-hunting-multiplier.md)
+  - [2026-09-15 skinning](re/findings/2026-09-15-skinning.md)
+  - [2026-09-24 build 25477059 retarget](re/findings/2026-09-24-build-25477059-retarget.md)
+- [Archive](re/archive.md)
+  - [2026-09-08 next session prompt](re/archive/2026-09-08-next-session-prompt.md)
+  - [2026-09-13 next session prompts](re/archive/2026-09-13-next-session-prompts.md)
+  - [2026-09-15 next session prompt hunting](re/archive/2026-09-15-next-session-prompt-hunting.md)
