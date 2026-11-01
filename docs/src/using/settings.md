@@ -70,7 +70,7 @@ The menu notes on this section: `Theme` changes live; everything else here is re
 | key | default | range | tab | meaning |
 |---|---|---|---|---|
 | `Enabled` | 1 | 0/1 | Dispatch | master switch; off before launch, nothing is read for the whole session |
-| `Speed` | 1 | 1..100 | Dispatch | divide every mission's duration by this; never below 6 minutes |
+| `Speed` | 1 | 1..100 | Dispatch | divide every mission's duration by this; never below 6 in-game minutes, about half a real minute |
 | `NoSkillRequirement` | 0 | 0/1 | Dispatch | clear the skill a mission demands of a worker |
 | `AnyOperatorCount` | 0 | 0/1 | Dispatch | let every mission start with a single worker |
 | `Rewards` | 1 | 1..100 | Dispatch | multiply how much of each item a mission pays |

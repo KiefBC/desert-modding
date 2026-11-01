@@ -446,7 +446,7 @@ turning you away.
 | key | default | meaning |
 |---|---|---|
 | `Enabled` | `1` | Turned off **while the game runs**, every mission and reward it changed goes back to vanilla. Turned off **before you launch**, the pass never runs and nothing in the game is read at all, and it stays that way for the session: turning it back on, here or in the menu, does nothing until the next launch |
-| `Speed` | `1` | divide every mission's duration by this, 1..100. Vanilla runs 2h to 96h; `4` turns a 16h mission into a 4h one. Nothing ever goes below 6 minutes. Reaches missions already under way |
+| `Speed` | `1` | divide every mission's duration by this, 1..100. Vanilla runs 2h to 96h; `4` turns a 16h mission into a 4h one. Nothing ever goes below 6 minutes. All in-game time (the clock runs about 12x real time, so the floor is about half a real minute). Reaches missions already under way |
 | `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
 | `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243, the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
 | `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |

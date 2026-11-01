@@ -42,7 +42,9 @@ pub const LINES_MAX: u32 = 20_000;
 /// clamped, so a typo keeps the default instead of quietly meaning something.
 /// The ceiling is `desert_harvest::gatherer`'s `MULT_MAX`, deliberately: the two
 /// subsystems' multipliers should read alike, and 100 is already far past
-/// where a dispatch mission stops being one (96 h at x100 is 57 minutes).
+/// where a dispatch mission stops being one (96 h at x100 is 57 minutes). Every
+/// duration here is in-game time, which the game clock runs at about twelve
+/// times real time.
 pub const SPEED_MIN: u32 = 1;
 pub const SPEED_MAX: u32 = 100;
 
@@ -50,7 +52,8 @@ pub const SPEED_MAX: u32 = 100;
 pub const REWARDS_MIN: u32 = 1;
 pub const REWARDS_MAX: u32 = 100;
 
-/// The shortest a mission may be made: **one tenth of an hour, six minutes**.
+/// The shortest a mission may be made: **one tenth of an hour, six in-game
+/// minutes** (about half a real minute).
 ///
 /// `vanilla / Speed` is integer division, so a 2.0 h mission at `Speed=100`
 /// would land on `0`, and a duration of zero is not a faster mission - it is a
@@ -569,7 +572,7 @@ pub fn schema() -> Section {
                         slider: true,
                         format: Some("%dx".to_string()),
                     },
-                    "Divide every dispatch mission's duration by this. 1 = vanilla (2h to 96h); 4 makes a 16h mission take 4h. Never goes below 6 minutes. This reaches missions already under way, not only the ones you have not sent yet.",
+                    "Divide every dispatch mission's duration by this. 1 = vanilla (2h to 96h); 4 makes a 16h mission take 4h. Never goes below 6 minutes. All in-game time, as the mission screen shows it: the game clock runs about 12x real time, so the floor is about half a real minute. This reaches missions already under way, not only the ones you have not sent yet.",
                 )
             },
             f(
