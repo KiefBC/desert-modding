@@ -82,15 +82,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "desert-gatherer"
-version = "0.4.0"
-dependencies = [
- "desert-core",
-]
-
-[[package]]
-name = "desert-looter"
-version = "0.5.0"
+name = "desert-harvest"
+version = "0.6.0"
 dependencies = [
  "desert-core",
  "windows-sys",
@@ -108,12 +101,11 @@ dependencies = [
 
 [[package]]
 name = "desert-tooling"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "desert-core",
  "desert-dispatch",
- "desert-gatherer",
- "desert-looter",
+ "desert-harvest",
  "desert-overlay",
  "windows-sys",
 ]

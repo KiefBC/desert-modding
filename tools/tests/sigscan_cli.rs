@@ -53,8 +53,9 @@ fn every_signature_still_hits_exactly_once() {
 
     // Every signature in the file must be reported - counted from the file
     // itself, never pinned to a literal. This assertion used to say `9`, which
-    // was right until desert-looter's hunting hook added a tenth, and then a
-    // legitimate signature addition failed a test about uniqueness. Reading
+    // was right until the looter's hunting hook (now in desert-harvest) added
+    // a tenth, and then a legitimate signature addition failed a test about
+    // uniqueness. Reading
     // the file keeps the property that matters: a pattern the scanner silently
     // dropped never gets its hit count checked at all.
     let text = std::fs::read_to_string(repo_root().join("tools/reference-signatures.txt"))
@@ -77,7 +78,7 @@ fn every_signature_still_hits_exactly_once() {
 fn the_static_info_registry_is_unchanged() {
     let (stdout, _) = run_in(&repo_root());
     assert!(
-        stdout.contains("216/216 type names still occur exactly once"),
+        stdout.contains("221/221 type names still occur exactly once"),
         "static-info name check changed:\n{}",
         stdout.split("--- static-info type names ---").nth(1).unwrap_or("(missing)")
     );
@@ -99,7 +100,7 @@ fn a_substring_name_and_a_nul_delimited_one_answer_differently() {
         .find(|l| l.contains("iteminfo ") && l.contains("first @"))
         .expect("no iteminfo line");
     assert_eq!(line[..4].trim(), "2", "substring hits: {line}");
-    assert!(stdout.contains("216/216"), "and all 216 are NUL-unique");
+    assert!(stdout.contains("221/221"), "and all 221 are NUL-unique");
 }
 
 #[test]

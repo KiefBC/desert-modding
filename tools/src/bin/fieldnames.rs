@@ -49,7 +49,7 @@
 //!   * The class names are the **logical** CamelCase names (`GimmickInfo`,
 //!     `DropSetInfo`), not the lowercase table names the accessor census keys
 //!     on (`gimmickinfo`, `dropsetinfo`). Section 19.2's inventory carries both.
-//!   * 537 classes appear here against 149 static-info **tables**, because
+//!   * 581 classes appear here against about 150 static-info **tables**, because
 //!     nested record types (`DropInfoData` inside `GimmickInfo`) get their own
 //!     messages and are not tables of their own.
 //!   * A name is evidence of a field the deserializer reads, nothing more. It
@@ -75,7 +75,7 @@ use serde::{Deserialize, Serialize};
 const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1,80})\xeb\xa5\xbc";
 
 /// Anchors re-checked on every rebuild. The two counts are this walk's own
-/// numbers on build 25477059; the four relations under them are the ones that
+/// numbers on build 26361232; the four relations under them are the ones that
 /// made the inventory worth keeping, and each is independently checkable.
 ///
 /// Build 25246367 had 4675 pairs and 536 classes. The 25477059 growth is real
@@ -84,8 +84,18 @@ const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1
 /// same 21 plus `autoSpawnGroupType`), `BitmapCookData` is new, and 22 other
 /// classes gained a field or a few - `GimmickInfo` among them, 211 -> 213, with
 /// `gimmickFactionInoMode` respelled `gimmickFactionInfoMode`.
-const EXPECT_PAIRS: usize = 4712;
-const EXPECT_CLASSES: usize = 537;
+///
+/// Builds 26345091, 26356046 (both 2026-11-01) and 26361232 have 5034 pairs and 581
+/// classes, +322 and +44 over 25477059. The new classes are the new tables' records (the
+/// `ManagementNeedsSynergy*`, `HousingObjectGroupInfo`, `ManagementBuffInfo`,
+/// `StatChange*` and `NpcName*` families) and their nested data, plus a set of
+/// `StageInfo_*` and `FactionManagement*` sub-records. `GimmickInfo` went from
+/// 213 to 220 fields: nine new (`productData`, `managementStatDataList`,
+/// `simulationProxyRoleType`, four housing and buoyancy flags, two spawn
+/// distance levels), `managementStatData` and `useSimulationProxy` gone. The
+/// four relations below all still hold.
+const EXPECT_PAIRS: usize = 5034;
+const EXPECT_CLASSES: usize = 581;
 
 /// (description, class, fields that must be present)
 const ANCHORS: &[(&str, &str, &[&str])] = &[

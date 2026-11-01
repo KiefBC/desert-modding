@@ -99,7 +99,7 @@ pub enum Role {
     ResizeGripHovered,
     /// ... while dragged.
     ResizeGripActive,
-    /// The menu's tabs at rest: Looter, Gatherer, Dispatch, Settings, Debug.
+    /// The menu's tabs at rest: Harvest, Dispatch, Settings, Debug.
     Tab,
     /// ... while hovered.
     TabHovered,

@@ -4,7 +4,7 @@
 //! # Why this is not just "compare the levers"
 //!
 //! The rule from `CLAUDE.md` is that a subsystem does nothing when nothing it
-//! owns has moved, so a `[Looter]` slider drag does not cost a full pass a
+//! owns has moved, so a `[Harvest]` slider drag does not cost a full pass a
 //! second. That memo is cheap to get wrong in a way that leaves the game
 //! permanently non-vanilla while the ini says vanilla, and two ways of getting
 //! it wrong were shipped here before this module existed:

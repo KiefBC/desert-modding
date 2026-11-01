@@ -4,13 +4,13 @@ Sources: `git tag`, `git ls-remote --tags origin`, `gh release list`, `git log` 
 
 ## Game build
 
-Steam build **25477059**, installed 2026-09-24. The plugin resolved everything it needs on that build without a code change; the re-target pass (test pins, tool calibration, DMM pack rebase) is recorded in `docs/findings/2026-09-24-build-25477059-retarget.md`.
+Steam build **26361232**, installed 2026-11-01 about 16:55 UTC, the second hotfix of the day: **26345091** (2026-10-31) was followed by **26356046** (2026-11-01 05:07 UTC) and then by 26361232. 26345091 changed the compiler's codegen under the accessor template and five looter signatures, so 0.10.0 carries a re-target: derived on 26345091 with the new `retarget` tool and re-pinned to 26356046 and then to 26361232 the same day, each time when `just retarget report` came back clean on the hotfix (on 26361232 every signature sits 0x50 lower and the only verdict item was the build pin). It is recorded in `docs/findings/2026-11-01-build-26345091-retarget.md`; the one before it, 25477059, in `docs/findings/2026-09-24-build-25477059-retarget.md`. 26361232 has been launched in game, in dry runs only (`DryRun=1` in both sections). The first resolved and hooked everything and both dispatch verdicts passed, but the record loader's stream layout had moved, so the table dump was refused and no gather record was patched; 0.10.0 now reads that layout off the game's code (findings note §7.7). The dump then landed (2026-11-01 18:46 UTC: 17,621,227 bytes, 14,210 records, both `[banking]` gates `0`, dispatch back to vanilla with 0 changes) and exposed a second break: the gimmickinfo record header changed shape and every output list moved inside its record. 0.10.0 reads both header shapes (findings note §7.8). From that dump the walk calibrations are re-pinned (`paths::CALIBRATED_BUILD` is 26361232), `collect.rs` regenerates byte-identical, and DMM pack 1.3 is rebased onto 26361232. `just test-game` passes on 26361232: `game_exe` 2/2, `gimmick_real` 10/10, `banking_real` 1/1. The first live launch (19:28 UTC, `Foraging=2 Fish=2 Hunting=2`, dispatch levers at vanilla) patched 83 gather records at load (`[stat] ... recognised 279, patched 83, scalars written 646`) and multiplied a carcass's 4 drop-set rows, but two things did not work: the live re-apply skipped all 279 records (`key mismatch 279`: the parsed record layout moved on this build; fix in progress), and a hand-caught creature `cat=44 type=06` was not a known fish class (open). Still to do on 26361232: a launch after the parsed-layout fix, where a slider move gives `0 skipped`; the catch class; and a dispatch launch with a lever set (for example `Speed=2`), since the write path has not run yet. F9's manual gather was not exercised either (findings note §7.9).
 
 ## Branches
 
 | Branch | Head | What it holds |
 | --- | --- | --- |
-| `dev` | `3db8ae1`, 2026-09-25 | `desert-tooling` 0.9.0, untagged, plus an `[Unreleased]` CHANGELOG entry. 8 commits ahead of `main`. Same as `origin/dev`. |
+| `dev` | `3db8ae1`, 2026-09-25 | `desert-tooling` 0.9.0, untagged, plus an `[Unreleased]` CHANGELOG entry. 8 commits ahead of `main`. Same as `origin/dev`. The 0.10.0 merge of `desert-looter` and `desert-gatherer` into `desert-harvest` goes on top of it. |
 | `main` | `83391c7`, 2026-09-13 | The merge of PR #5, which released 0.6.0. Same as `origin/main`. |
 
 `main` is the release branch: `release.yml` refuses a tag whose commit is not on `main`. Work lands on `dev` and reaches `main` through a pull request. `main` has **no branch protection** (the API answers "Branch not protected"), so the `ci` check reports but does not block a merge. `ci.yml` runs on pull requests, on pushes to `main` and weekly; not on pushes to `dev`.
@@ -19,10 +19,9 @@ Steam build **25477059**, installed 2026-09-24. The plugin resolved everything i
 
 | Package | Version | Source |
 | --- | --- | --- |
-| `desert-tooling` (the plugin) | 0.9.0 | `desert-tooling/Cargo.toml` |
+| `desert-tooling` (the plugin) | 0.10.0 | `desert-tooling/Cargo.toml` |
 | `desert-core` | 0.7.0 | `desert-core/Cargo.toml` |
-| `desert-looter` | 0.5.0 | `desert-looter/Cargo.toml` |
-| `desert-gatherer` | 0.4.0 | `desert-gatherer/Cargo.toml` |
+| `desert-harvest` | 0.6.0 | `desert-harvest/Cargo.toml` (the merge of `desert-looter` 0.5.0 and `desert-gatherer` 0.4.0) |
 | `desert-overlay` | 0.3.0 | `desert-overlay/Cargo.toml` |
 | `desert-dispatch` | 0.3.0 | `desert-dispatch/Cargo.toml` |
 | DMM pack | 1.2 | `desert-gatherer-dmm/dmm_pack.json` |
@@ -42,7 +41,7 @@ Six tags exist, identical locally and on `origin`:
 | `desert-looter-v0.1.0` | 2026-09-07 | none |
 | `desert-gatherer-v0.1.0` | 2026-09-07 | none |
 
-So 0.7.0, 0.8.0 and 0.9.0 exist only on `dev`, with CHANGELOG entries and no tag, and DMM pack 1.2 is in source and unreleased. The `Tagged` column in `VERSIONING.md` and the release links in the root `README.md` already name `desert-tooling-v0.9.0`: `just sync-versions` writes them from `Cargo.toml`, so they name the next release by design (see [Known drift](known-drift.md)).
+So 0.7.0, 0.8.0 and 0.9.0 exist only on `dev`, with CHANGELOG entries and no tag (0.10.0 likewise once committed), and DMM pack 1.3 is in source and unreleased. The four `desert-looter-v*` and `desert-gatherer-v*` tags are the pre-merge plugins' and name crates that no longer exist; they stay as history. The `Tagged` column in `VERSIONING.md` and the release links in the root `README.md` already name `desert-tooling-v0.10.0`: `just sync-versions` writes them from `Cargo.toml`, so they name the next release by design (see [Known drift](known-drift.md)).
 
 ## Open design entries in `TODO.md`
 

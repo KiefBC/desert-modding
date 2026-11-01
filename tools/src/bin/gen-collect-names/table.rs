@@ -39,8 +39,9 @@ const MAX_QTY: u64 = 100_000;
 
 /// Table-wide totals and three (list offset -> record, record-relative offset)
 /// anchors the record walk must reproduce. `firewood_0001` is the load-bearing
-/// one: on build 25477059 the Logging pack (1.2) patches file offset 12921585
-/// = 12919540 + 1999 + 4 + MIN_AT, so a walk that puts this list anywhere else
+/// one: on build 26361232 the Logging pack (1.3) patches file offset 10136519
+/// = 10134677 + 1796 + 4 + MIN_AT (on 25477059 pack 1.2 patched 12921585 =
+/// 12919540 + 1999 + 4 + MIN_AT), so a walk that puts this list anywhere else
 /// is not calibrated (on build 25246367 it was 12843255 = 12841210 + 1999 + 4 +
 /// MIN_AT). Without the echo test the first two resolve to `NatureBuffTrigger`
 /// and `UnnamedTrigger_0`, both with the bogus key 16777216. The well and the
@@ -66,16 +67,23 @@ pub struct Calibration {
 /// Build 25246367 was 573 lists / 896 blocks / 13412 records, anchors at
 /// 12843209, 4373870 and 1049316 (same keys, same relative offsets). 25477059
 /// added 35 records, none with blocks, and `itembox_11` (key 1012375, never a
-/// row) lost its only output block.
+/// row) lost its only output block: 572 / 895 / 13447, anchors at 12921539,
+/// 4382086 and 1051437, relative 1999, 965 and 1600.
+///
+/// 26361232 is the first `NameFirst` table (`desert_tools::records`): 581
+/// lists / 904 blocks / 14210 records, every record found by the strict
+/// header scan rather than the echo test. The relative offsets moved because
+/// the record bodies did: the lists sit 120 to 320 bytes nearer their record's
+/// start than on 25477059, and the header itself grew a prefab path.
 pub const CALIBRATION: Calibration = Calibration {
     build: desert_tools::paths::CALIBRATED_BUILD,
-    lists: 572,
-    blocks: 895,
-    records: 13447,
+    lists: 581,
+    blocks: 904,
+    records: 14210,
     anchors: &[
-        (12921539, 1002971, "firewood_0001", 1999),
-        (4382086, 1001081, "gimmick_well_0001_parts01", 965),
-        (1051437, 21030076, "Background_Breakable_66", 1600),
+        (10136473, 1002971, "firewood_0001", 1796),
+        (3374134, 1001081, "gimmick_well_0001_parts01", 731),
+        (807359, 21030076, "Background_Breakable_66", 1393),
     ],
 };
 
@@ -146,11 +154,18 @@ pub struct Header {
 
 /// Every real record header, sorted by offset.
 ///
-/// Nested string fields share the record name's `u32 len, bytes, NUL` shape, so
-/// shape alone is not enough. The discriminator that works: a real record echoes
-/// its own `u32` key immediately before a later digits-only id sub-field. See
-/// findings section 7.
+/// On a `NameFirst` body (26361232 on, `desert_tools::records`) the header
+/// validates strictly and nothing else in the body does, so the walk is that
+/// scan. On a `KeyFirst` body nested string fields share the record name's
+/// `u32 len, bytes, NUL` shape, so shape alone is not enough. The
+/// discriminator that works there: a real record echoes its own `u32` key
+/// immediately before a later digits-only id sub-field. See findings section
+/// 7. The shape is probed off the body's first record.
 pub fn record_headers(buf: &[u8]) -> Vec<Header> {
+    use desert_tools::records::{name_first_headers, probe, HeaderShape};
+    if probe(buf) == Some(HeaderShape::NameFirst) {
+        return name_first_headers(buf).into_iter().map(|h| Header { off: h.off, key: h.key, name: h.name }).collect();
+    }
     let n = buf.len();
     // Printable runs, capped at 120 bytes each. The cap is not cosmetic: a run
     // longer than 120 is matched as back-to-back 120-byte chunks, and the

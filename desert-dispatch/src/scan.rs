@@ -62,7 +62,7 @@
 //! when the loaded count has settled and
 //! either it or the levers have moved since the last one. The last of those is
 //! the rule `CLAUDE.md` states in as many words - `DesertTooling.ini` carries
-//! four sections, so a `[Looter]` slider being dragged moves this file's
+//! three sections, so a `[Harvest]` slider being dragged moves this file's
 //! modified time once a second, and without a comparison against what is
 //! already applied that drag would run a full pass over every mission and every
 //! reward row per second.
@@ -403,6 +403,7 @@ fn read_dropset_row(row: u16, obj: usize, sum: &mut RewardSummary) -> Option<Dro
     let draws = safe::read::<i32>(obj + dropset::ROW_DRAWS)?;
     let declared_entries = safe::read::<u32>(obj + dropset::ROW_ENTRY_COUNT)?;
     let no_drop_ppm = safe::read::<i64>(obj + dropset::ROW_NO_DROP_PPM)?;
+    let weight_sum = safe::read::<i64>(obj + dropset::ROW_WEIGHT_SUM);
 
     let declared = declared_entries as usize;
     if declared > node::MAX_DROP_ENTRIES {
@@ -436,7 +437,7 @@ fn read_dropset_row(row: u16, obj: usize, sum: &mut RewardSummary) -> Option<Dro
             _ => sum.entry_read_fail += 1,
         }
     }
-    Some(DropsetRow { row, draws, declared_entries, no_drop_ppm, entries })
+    Some(DropsetRow { row, draws, declared_entries, no_drop_ppm, weight_sum, entries })
 }
 
 /// The hex dump of one reward row: its head, then each entry it points at,
@@ -867,17 +868,28 @@ pub fn start() {
 
     // The two bytes that decide whether anything this subsystem writes can ever
     // be banked into the save, read once and **only** read: see
-    // `node::globals`, which is the one place here that names an address instead
-    // of finding it by content, and says why that is acceptable for these two.
+    // `node::globals`, which finds both by signature on the instructions that
+    // test them (one walk of the image for the pair).
     // `docs/reference-internals.md` section 20.18 calls them the most
     // consequential open question in the feature, and the reason the README's
     // `AnyOperatorCount` warning has to hedge twice; nothing acts on either
     // value, and one capture of this line settles the hedging.
+    let (deferred_rva, surplus_rva) = node::globals::resolve_gates(module.bytes());
+    for (what, r) in [("deferred-reward", &deferred_rva), ("surplus-worker", &surplus_rva)] {
+        if let Err(e) = r {
+            crate::log!("[banking] {what} gate: {e}");
+        }
+    }
+    let read = |r: &Result<usize, String>| {
+        r.as_ref().ok().and_then(|&rva| safe::read::<u8>(module.base.checked_add(rva)?))
+    };
     crate::log!(
         "{}",
         node::globals::banking_gate_line(
-            safe::read::<u8>(module.base + node::globals::DEFERRED_REWARD_GATE_RVA),
-            safe::read::<u8>(module.base + node::globals::SURPLUS_WORKER_GATE_RVA),
+            deferred_rva.as_ref().ok().copied(),
+            read(&deferred_rva),
+            surplus_rva.as_ref().ok().copied(),
+            read(&surplus_rva),
         )
     );
 
@@ -999,7 +1011,7 @@ pub fn start() {
 /// Read together, and re-read on every poll rather than cached at startup. The
 /// count published when the table first appears is not the count for the rest
 /// of the session - records get registered later - and a cached array pointer
-/// with a fresh count is the worst of both. `desert_gatherer::hook::reapply`
+/// with a fresh count is the worst of both. `desert_harvest::gatherer::hook::reapply`
 /// re-reads its manager the same way and for the same reason.
 fn manager_view(mgr: usize) -> Option<(usize, usize)> {
     let (count, records) = manager::view_of(mgr)?;
@@ -1028,7 +1040,7 @@ fn count_loaded(count: usize, records: usize) -> usize {
 /// **dump**, which is read-only and gated on the table having grown, and an
 /// **apply pass**, which writes and is gated on the table or the levers having
 /// moved since the last one. The two [`Gate`]s are the whole of that second
-/// gate, and without them a `[Looter]` slider drag would run a full pass every
+/// gate, and without them a `[Harvest]` slider drag would run a full pass every
 /// second. What is in a gate's key, and why a pass that did not finish is not
 /// memoised at all, is argued in [`crate::gate`] - both of those were bugs that
 /// left the game non-vanilla while the ini said vanilla.
@@ -1071,6 +1083,9 @@ struct Watch {
     gate: Gate,
     /// The same, for the reward rows.
     rows_gate: Gate,
+    /// Whether this launch's vanilla censuses have confirmed the layout: until
+    /// they have, every write pass runs dry (`node::WriteGate`).
+    layout: node::WriteGate,
 }
 
 impl Watch {
@@ -1090,7 +1105,31 @@ impl Watch {
             rows_dumped_of: 0,
             gate: Gate::new(),
             rows_gate: Gate::new(),
+            layout: node::WriteGate::new(),
         }
+    }
+
+    /// Whether a write pass actually writes: never under `DryRun=1`, and
+    /// otherwise only once the layout is confirmed (`node::WriteGate`). A
+    /// refusal that matters (some lever is set) gets its `writes disabled`
+    /// line, once per change of reason; `DryRun=1` needs no such line, the
+    /// `[ini]` line already said it.
+    fn effective_dry(&mut self, cfg: &Config, lev: &Levers, rewards: bool) -> bool {
+        if cfg.dry_run {
+            return true;
+        }
+        let check = if rewards { self.layout.rewards() } else { self.layout.missions() };
+        let Err(mut why) = check else { return false };
+        let wants_write = if rewards { lev.rewards > 1 } else { !lev.is_vanilla() };
+        if wants_write {
+            if rewards && !cfg.dump_rewards {
+                why.push_str(", and DumpRewards=0 means the reward census never runs; set it to 1");
+            }
+            if let Some(line) = self.layout.refusal_line(rewards, &why) {
+                crate::log!("{line}");
+            }
+        }
+        true
     }
 
     /// One poll of the faction node records: count them, settle, then dump
@@ -1153,11 +1192,16 @@ impl Watch {
         // this subsystem's own table and `lev` is its own section, so neither
         // moves when somebody else's key does. `DryRun` is in the key too, and
         // the outcome decides whether the pass is memoised at all.
-        if !self.gate.owed(loaded, cfg.dry_run, &lev) {
+        // After the dump, so the census it just took can confirm the layout
+        // for this very pass. `dry` replaces `cfg.dry_run` from here on, in the
+        // memo key too: a pass refused for an unconfirmed layout is not the
+        // same pass as a confirmed one, and must run again once it confirms.
+        let dry = self.effective_dry(cfg, &lev, false);
+        if !self.gate.owed(loaded, dry, &lev) {
             return;
         }
-        let outcome = self.apply_missions(records, count, cfg, &lev);
-        self.gate.record(loaded, cfg.dry_run, lev, outcome);
+        let outcome = self.apply_missions(records, count, cfg, &lev, dry);
+        self.gate.record(loaded, dry, lev, outcome);
     }
 
     /// The read-only dump, unchanged: walk, log what is new, summarise.
@@ -1180,6 +1224,9 @@ impl Watch {
         // not told that will go looking for a moved offset.
         if self.gate.dirty() {
             crate::log!("[sum] {}", Summary::written_to_caveat());
+        } else {
+            // A vanilla census: the only kind that may confirm the layout.
+            self.layout.note_missions(sum.layout_check());
         }
         // The reward census, whether or not the rows themselves are being
         // dumped: it comes out of the missions just walked, it is one line, and
@@ -1213,8 +1260,8 @@ impl Watch {
         count: usize,
         cfg: &Config,
         lev: &Levers,
+        dry: bool,
     ) -> crate::gate::Outcome {
-        let dry = cfg.dry_run;
         let mut budget = Budget::new(cfg.max_lines);
         let t0 = std::time::Instant::now();
         let (counts, rows) = apply::missions(records, count, lev, dry, cfg.debug, &mut budget);
@@ -1337,6 +1384,8 @@ impl Watch {
                 // Rows that loaded, were multiplied, and are only being dumped
                 // now: the amounts above are `vanilla * Rewards`.
                 crate::log!("[rewards] {}", Summary::written_to_caveat());
+            } else {
+                self.layout.note_rewards(sum.layout_check());
             }
             crate::log!(
                 "reward dump finished in {:.0} ms ({} of {} named rows parsed so far); the dump \
@@ -1348,7 +1397,8 @@ impl Watch {
             self.rows_dumped_at = sum.rows_loaded.max(live);
             self.rows_dumped_of = rows.len();
         }
-        if !self.rows_gate.owed(live, cfg.dry_run, &lev) {
+        let dry = self.effective_dry(cfg, &lev, true);
+        if !self.rows_gate.owed(live, dry, &lev) {
             return;
         }
         // The write pass, over the identified rows alone. Empty until the mission
@@ -1358,7 +1408,6 @@ impl Watch {
         if acted.is_empty() {
             return;
         }
-        let dry = cfg.dry_run;
         let mut budget = Budget::new(cfg.max_lines);
         let counts = apply::rewards(slot, &acted, &lev, dry, cfg.debug, &mut budget);
         crate::log!("{}", counts.summary(&lev, dry));
@@ -1442,7 +1491,7 @@ fn watch(
                     // instead of being missed.
                     last_ini_mtime = mtime;
                     let (cfg, warnings) = config::parse(&text);
-                    // A `[Looter]`, `[Gatherer]` or `[Overlay]` edit moves this
+                    // A `[Harvest]` or `[Overlay]` edit moves this
                     // file too. Comparing against what is already live is what
                     // keeps a slider drag somewhere else from costing a pass a
                     // second.

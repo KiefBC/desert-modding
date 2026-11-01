@@ -24,11 +24,11 @@
 //! carry creatures nobody can catch.
 //!
 //! This lives in desert-core because two plugins need the same answer for
-//! different reasons: Desert Looter decides whether to *target* a creature,
+//! different reasons: the looter decides whether to *target* a creature,
 //! and Desert Gatherer decides how many of it to *grant* (its catch-count
 //! hook, section 17). They must never disagree about what a fish is. What is
 //! deliberately *not* here is how each plugin reaches the
-//! `ClientStatusActorComponent` the category byte sits on: Desert Looter
+//! `ClientStatusActorComponent` the category byte sits on: the looter
 //! finds it by RTTI name because it is surveying arbitrary actors, and Desert
 //! Gatherer uses the fixed `sub+0x20` slot because that is what the function
 //! it is standing inside does. Both are right where they are.
@@ -38,20 +38,21 @@
 //! and `desert-core/tests/gimmick_real.rs` checks them against the real exe.
 
 // ---------------------------------------------------------------------------
-// The catch-count patch site (build 25246367, section 17.4)
+// The catch-count patch site (build 26345091; section 17.4 has 25246367's)
 // ---------------------------------------------------------------------------
 
 /// The 21 bytes of section 17.4, unique in the mapped image:
 ///
 /// ```text
-/// 0x142a75891  41 B8 01 00 00 00        mov  r8d,1              <- the count
-/// 0x142a75897  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
-/// 0x142a7589E  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
-/// 0x142a758A5  E8 ...                   call FUN_1423507b0      ; (out, &item_index, count)
+/// +2dd6448  41 B8 01 00 00 00        mov  r8d,1              <- the count
+/// +2dd644e  48 8D 95 D0 01 00 00     lea  rdx,[rbp+0x1d0]
+/// +2dd6455  48 8D 8D B0 00 00 00     lea  rcx,[rbp+0xb0]
+/// +2dd645c  E8 ...                   call +25fa160           ; (out, &item_index, count)
 /// ```
 ///
-/// The bytes are the contract and the addresses are only illustration: the
-/// site moved 0x1740 between builds 25116796 and 25246367 without one of these
+/// The bytes are the contract and the RVAs (26345091's, file offset
+/// `0x2DD5848`; `+0x2DD6778` on 26356046, `+0x2DD6728` on 26361232) are only illustration: the site moved 0x1740 between builds
+/// 25116796 and 25246367, and again on every build since, without one of these
 /// bytes changing, which is exactly why it is found by scanning for them.
 ///
 /// The trailing `lea` and `E8` are not stolen; they are in the pattern
@@ -130,13 +131,32 @@ pub const BUG_CLASSES: &[u8] = &[0x80];
 ///
 /// ```text
 /// [record] TrocTrPushCharacterToInventoryOnceTimer ... 00 08 FF 21 0A 10 B0 03
-/// [gatherer] [catch] class=65 not a known bug/fish class; vanilla
+/// [harvest] [catch] class=65 not a known bug/fish class; vanilla
 /// [recv] item 29809 x1
 /// ```
 ///
+/// **0x44** was added on build 26361232 (2026-11-01 19:33 UTC): the second
+/// fish caught by hand on type 6 with that class, after one on 25477059
+/// (2026-09-24). The live session, in the order the user caught them (a bug,
+/// a skinning, then the fish), logged
+///
+/// ```text
+/// [catch] type=06 class=44 not a known bug/fish class on this type; vanilla
+/// ```
+///
+/// for the fish. It had been kept off because a type-6 bird **carcass** on
+/// 25246367 carried 0x44 too, but a carcass never comes through here: the
+/// looter's carcass gate takes every dead catchable-type actor first
+/// (`desert_harvest::looter::actors`, dead status before any class), and the
+/// catch hook only ever sees a creature being granted by hand. What the
+/// addition can do is let the F9 auto-catch approach a **live** type-6
+/// class-0x44 bird, if one exists; the catch event then fails the way it
+/// does on any creature the game will not hand over, and nothing is granted
+/// or multiplied.
+///
 /// A class on this list is a fish **only on [`FISH_TYPES`]**: 0x23 is also
 /// carried by a deer. See [`catch_class`].
-pub const FISH_CLASSES: &[u8] = &[0x23, 0x65, 0x83];
+pub const FISH_CLASSES: &[u8] = &[0x23, 0x44, 0x65, 0x83];
 
 /// The [`type_byte`] values on which a [`FISH_CLASSES`] byte means a fish.
 ///
@@ -158,8 +178,10 @@ pub const FISH_CLASSES: &[u8] = &[0x23, 0x65, 0x83];
 /// not taken for a fish.
 ///
 /// This separates 0x23 and nothing more general: land animals come on type
-/// 6 too (Kiwi, class 0x75; class 0x5C), which is why 0x44 - a type-6 fish on
-/// 25477059, a type-6 bird carcass on 25246367 - is still on neither list.
+/// 6 too (Kiwi, class 0x75; class 0x5C). 0x44 - a type-6 fish caught by hand
+/// on 25477059 and again on 26361232, a type-6 bird carcass on 25246367 - is
+/// on [`FISH_CLASSES`] since the second fish; see there for why the carcass
+/// does not argue against it.
 /// Insects are not held to this: the Firefly Colony is caught by hand on
 /// type 3.
 pub const FISH_TYPES: &[u8] = &[6];
@@ -175,8 +197,9 @@ pub const FISH_TYPES: &[u8] = &[6];
 /// animal or a person. The type byte cannot answer it - see
 /// [`CATCHABLE_TYPES`], "the type byte alone never decides anything" - and a
 /// whitelist of animal classes cannot either, because the carcasses actually
-/// skinned in game read 0xD9, 0x75, 0x44 and 0xD7, none of which any recorded
-/// catch has shown, so a whitelist would refuse the very species the feature
+/// skinned in game read 0xD9, 0x75, 0x44 and 0xD7, three of which no recorded
+/// catch has shown (0x44 only ever on fish, alive, on type 6), so a whitelist
+/// of catch classes would refuse the very species the feature
 /// works on. A blacklist of the classes known to be people is what is left. It
 /// is not airtight: a dead NPC whose class is not one of these four is still
 /// taken for an animal, and the honest fix for that is another survey.
@@ -190,7 +213,7 @@ pub fn is_npc_class(cat: u8) -> bool {
 /// Classify a creature by its type byte and interaction category byte.
 ///
 /// `None` means "not a class we have ever watched being caught on this type".
-/// Every caller must treat that as vanilla behaviour: Desert Looter skips the
+/// Every caller must treat that as vanilla behaviour: the looter skips the
 /// actor, Desert Gatherer returns a multiplier of 1. Guessing here would mean
 /// grabbing, or scaling, whatever else the game happens to route through the
 /// same code - birds in flight read 0x20 and pass every other test, and a
@@ -235,7 +258,7 @@ pub const TYPE_BYTE_OFF: usize = 1;
 ///
 /// **Type 6** was recorded live on build 25116796 (2026-09-08) by surveying
 /// the world and then catching the very actors the survey had just listed,
-/// with Desert Looter's F7 event recorder running. All three insects read the
+/// with the looter's F7 event recorder running. All three insects read the
 /// same way:
 ///
 /// ```text
@@ -302,12 +325,12 @@ mod tests {
         assert_eq!(catch_class(6, 0x23), Some(CatchClass::Fish));
         assert_eq!(catch_class(6, 0x65), Some(CatchClass::Fish));
         assert_eq!(catch_class(6, 0x83), Some(CatchClass::Fish));
+        // Two hand-caught type-6 fish, on 25477059 and 26361232.
+        assert_eq!(catch_class(6, 0x44), Some(CatchClass::Fish));
         // 0x20 is the birds-in-flight class of section 15.5, and the whole
         // reason `None` is not a third `CatchClass` variant: it must never
-        // reach a code path that acts on it. 0x44 gave a fish by hand on
-        // 25477059 but a bird's drops as a carcass on 25246367, and no survey
-        // has read its type yet, so it stays off.
-        for other in [0x00, 0x20, 0x2C, 0x44, 0x57, 0x8C, 0x90, 0xFF] {
+        // reach a code path that acts on it.
+        for other in [0x00, 0x20, 0x2C, 0x57, 0x8C, 0x90, 0xFF] {
             for ty in [3u8, 6] {
                 assert_eq!(catch_class(ty, other), None, "type {ty} 0x{other:02X}");
             }

@@ -36,7 +36,7 @@ impl MainModule {
     pub fn bytes(&self) -> &[u8] {
         // SAFETY: `self.base` and `self.size` were taken from the module's own
         // PE headers in `locate`, so they are the exact range the loader
-        // reserved and committed for the main exe — code, data and zero-fill
+        // reserved and committed for the main exe: code, data and zero-fill
         // alike are readable and stay mapped for the life of the process. The
         // returned slice borrows `self`, and this crate never builds a
         // `MainModule` for a module that can be unloaded.

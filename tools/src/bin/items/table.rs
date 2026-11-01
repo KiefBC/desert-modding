@@ -135,7 +135,7 @@ impl Table {
         let b = std::fs::read(path).map_err(|e| {
             anyhow!(
                 "cannot read the clean table body {}: {e}\n  \
-                 the plugin writes it to bin64 under [Gatherer] DumpTable=1 \
+                 the plugin writes it to bin64 under [Harvest] DumpTable=1 \
                  and DryRun=1; pass --table if it lives elsewhere.",
                 path.display()
             )
@@ -264,7 +264,16 @@ impl Table {
     /// backwards scan finds `NatureBuffTrigger` with the bogus key 16777216
     /// where `firewood_0001` should be. A real record repeats its own key just
     /// before a later digits-only id sub-field.
+    ///
+    /// On a `NameFirst` body (26361232 on) the strict header scan in
+    /// `desert_tools::records` replaces all of that: every record's header
+    /// validates and nothing else does. The shape is probed off the first
+    /// record.
     pub fn records(&self) -> Vec<(usize, u32, String)> {
+        use desert_tools::records::{name_first_headers, probe, HeaderShape};
+        if probe(&self.b) == Some(HeaderShape::NameFirst) {
+            return name_first_headers(&self.b).into_iter().map(|h| (h.off, h.key, h.name)).collect();
+        }
         let strs = self.strings();
         let mut out = Vec::new();
         for (i, (o, name)) in strs.iter().enumerate() {

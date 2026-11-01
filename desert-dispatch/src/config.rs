@@ -1,7 +1,7 @@
 //! The `[Dispatch]` section of `DesertTooling.ini`, beside the game exe.
 //! Missing file, missing section or missing key => defaults.
 //!
-//! Same shape as `desert_gatherer::config`: `parse` walks only this
+//! Same shape as `desert_harvest::gatherer::config`: `parse` walks only this
 //! subsystem's own section through [`ini::lines_in_section`], returns the
 //! config plus ready-to-log warnings, and a bad value never replaces the
 //! default. `Enabled` and `Debug` exist under other headers too and mean
@@ -14,8 +14,8 @@
 //! already parsed, and a multiplier set back to 1 has to put them back. The
 //! rule that comes with that pair is not optional either - **compare the
 //! section you just parsed against the values you are already running on and do
-//! nothing when it did not move.** `DesertTooling.ini` carries four sections,
-//! so a `[Looter]` slider being dragged moves this file's modified time once a
+//! nothing when it did not move.** `DesertTooling.ini` carries three sections,
+//! so a `[Harvest]` slider being dragged moves this file's modified time once a
 //! second, and a pass over every mission and every reward row per drag is what
 //! that rule exists to prevent.
 //!
@@ -40,7 +40,7 @@ pub const LINES_MAX: u32 = 20_000;
 /// Bounds on `Speed`. `1` is vanilla and is the only value that writes
 /// nothing; `0` would be a division by zero and is refused rather than
 /// clamped, so a typo keeps the default instead of quietly meaning something.
-/// The ceiling is `desert_gatherer`'s `MULT_MAX`, deliberately: the two
+/// The ceiling is `desert_harvest::gatherer`'s `MULT_MAX`, deliberately: the two
 /// subsystems' multipliers should read alike, and 100 is already far past
 /// where a dispatch mission stops being one (96 h at x100 is 57 minutes).
 pub const SPEED_MIN: u32 = 1;
@@ -162,7 +162,7 @@ pub struct Config {
     /// than `1`, not laxer.
     pub any_operator_count: bool,
     /// 1 = log every change that would be made and write nothing. The same
-    /// meaning the `[Gatherer]` key of this name has.
+    /// meaning the `[Harvest]` key of this name has.
     pub dry_run: bool,
 }
 
@@ -259,7 +259,7 @@ impl Levers {
     /// same non-negative factor applied to both ends of a range preserves its
     /// ordering.
     ///
-    /// Saturating, like `desert_gatherer`'s: inside the amount band a vanilla
+    /// Saturating, like `desert_harvest::gatherer`'s: inside the amount band a vanilla
     /// entry has to be in before it is touched at all, `i64` cannot overflow
     /// here, and saturating instead of wrapping is the correct answer for the
     /// case that says the band check was wrong.
@@ -375,7 +375,7 @@ pub fn derived_min_operators(vanilla: u32, cur: u32) -> bool {
 /// Lock-free mirror of [`Config`], published by this subsystem's thread after
 /// every ini change it detects.
 ///
-/// The same shape `desert_gatherer::config::LiveConfig` has. It matters less
+/// The same shape `desert_harvest::gatherer::config::LiveConfig` has. It matters less
 /// here - the only reader is the thread that publishes it, because this
 /// subsystem installs no hook and so has no game thread reading its settings -
 /// but the two subsystems' configs should read alike, and having one place
@@ -539,7 +539,7 @@ pub fn schema() -> Section {
              measured so far. The game has code to bank a percentage figure when a mission FINISHES, part of it a \
              bonus for sending more workers than the mission needed - the one thing 'Any number of \
              workers' could have inflated - but both switches that code sits behind are off on \
-             every build measured so far (25116796, 25246367): no mission defers a payout, and the \
+             every build measured so far (25116796, 25246367, 26361232): no mission defers a payout, and the \
              figure ignores the worker count. \
              The plugin reads both at startup and says so on the [banking] line of the log; check \
              it after a game update, because an update can flip them. Faster missions and no skill \
@@ -702,7 +702,7 @@ pub fn schema() -> Section {
 ///
 /// Keys under another subsystem's header, and keys before any header at all,
 /// are skipped without a warning: they are not this subsystem's to complain
-/// about, and `Enabled` under `[Looter]` is a different setting entirely.
+/// about, and `Enabled` under `[Harvest]` is a different setting entirely.
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();

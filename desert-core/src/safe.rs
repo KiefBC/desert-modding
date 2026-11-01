@@ -144,7 +144,7 @@ pub fn write_into(addr: usize, buf: &[u8]) -> bool {
         return false;
     }
     let mut done: usize = 0;
-    // SAFETY: as in `read_into` — the GetCurrentProcess pseudo-handle names this
+    // SAFETY: as in `read_into`: the GetCurrentProcess pseudo-handle names this
     // process and needs no close, `buf` is a live `&[u8]` so its pointer and
     // length describe exactly the bytes the kernel may read, and `addr` was
     // range-checked above and is touched only by the kernel, which fails the

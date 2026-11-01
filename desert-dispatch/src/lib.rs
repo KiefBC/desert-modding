@@ -28,7 +28,9 @@
 //!   this subsystem wrote, is the exception below - a value the game computed,
 //!   not a write of ours.
 //! * **Nothing outside dispatch is touched.** The reward rows come only from
-//!   the `+0xA8` / `+0xAA` of an operation entry. `dropsetinfo` is the
+//!   the two reward-set row indices of an operation entry
+//!   (`node::parsed::OP_REWARD_1`/`_2`, `+0xA0`/`+0xA2` on 26345091 and
+//!   26356046, `+0xA8`/`+0xAA` before). `dropsetinfo` is the
 //!   game-wide drop table, and a row set gathered any other way would make this
 //!   a global loot mod by accident.
 //!
@@ -38,25 +40,36 @@
 //! a parked reward pays at whatever `Rewards` says *when it lands* (section
 //! 20.18). The lever that *could* leave something behind is
 //! **`AnyOperatorCount`**. What a completed mission stores is a single `i64`
-//! percent, and the only plugin-written field feeding it is `entry+0xC4`: the
-//! percent carries a surplus-worker term `max(0, workersSent - entry+0xC4)`, so
-//! with `+0xC4` forced to `1` a full crew would look like a surplus crew and the
+//! percent, and the only plugin-written field feeding it is the minimum operator
+//! count (`node::parsed::OP_MIN_OPERATORS`, `entry+0xB0` on 26345091/26356046,
+//! `+0xC4` before): the percent carries a surplus-worker term
+//! `max(0, workersSent - minOperators)`, so with it forced to `1` a full crew
+//! would look like a surplus crew and the
 //! stored percent would be inflated - and it would pay out later even after the
 //! plugin was gone.
 //!
-//! **Both gates in front of that are off.** Measured 2026-09-11 on build
-//! 25116796, one launch: the deferred-reward gate (`0x6BC6AA8`) reads `0`, so no
-//! completed mission defers a payout and nothing is appended to the stored-reward
-//! list at all; the surplus-worker gate (`0x6BA07C8`) also reads `0`, so the
-//! stored percent is the flat base and `entry+0xC4` never enters the arithmetic.
-//! Nothing this subsystem writes reaches save data on this build. The paragraph
-//! stays because the code path is real and both gates are plain data bytes a game
-//! update could flip - `0x6BA07C8`'s own compiled initialiser writes `1` and
-//! something zeroes it before the game runs, so neither value is structural:
-//! `node::globals::banking_gate_line` prints them at
-//! startup on the `[banking]` line, and that line - not this comment - is the
-//! check after an update. Were they both on, the exposure would be at most the
-//! 142 of 936 operations with `entry+0x118 != 0`, bounded to missions completed
+//! **Both gates in front of that were off when last measured.** Measured
+//! 2026-09-11 on build 25116796, one launch: the deferred-reward gate reads `0`,
+//! so no completed mission defers a payout and nothing is appended to the
+//! stored-reward list at all; the surplus-worker gate also reads `0`, so the
+//! stored percent is the flat base and the operator count never enters the
+//! arithmetic. The paragraph stays because the code path is real and both gates
+//! are plain data bytes a game update could flip - the surplus gate's own
+//! compiled initialiser writes `1` and something zeroes it before the game runs,
+//! so neither value is structural.
+//!
+//! Both are found **by signature** on the two instructions that test them
+//! (`node::globals::DEFERRED_GATE_SIG` and `SURPLUS_GATE_SIG`, one walk of the
+//! image), never by address: they were the bare RVAs `0x6BC6AA8` and
+//! `0x6BA07C8` on 25116796, and resolve to `0x714FE68`/`0x7127CF8` on 26345091
+//! and `0x7150E18`/`0x7128CA8` on 26356046 and 26361232 alike.
+//! `node::globals::banking_gate_line`
+//! prints the address and the byte at startup on the `[banking]` line, and that
+//! line - not this comment - is the check after an update; a signature that
+//! does not resolve says so there. Were they both on, the exposure would be at
+//! most the 142 of 936 operations with the repeat flag set
+//! (`node::parsed` has no constant for it; `entry+0x100` on 26345091/26356046,
+//! `+0x118` before), bounded to missions completed
 //! under the forced minimum, self-clearing as the list drains, and not save
 //! corruption. `Speed` and `NoSkillRequirement` appear nowhere in that percent
 //! either way.
@@ -65,15 +78,17 @@
 //!
 //! Four settings, five fields: `Rewards` writes both halves of a min/max pair,
 //! and a write that scaled one half would invert 136 of the 725 entries. All of
-//! them are fields of parsed records, all were confirmed in game, and two carry
+//! them are fields of parsed records, all were confirmed in game on 25116796
+//! (the 26345091 re-derivation is by code; see `node::parsed`, and nothing is
+//! written until this launch's census confirms it, see `node::WriteGate`), and two carry
 //! a trap that is written out at length where they are declared:
 //!
 //! | Lever | Field | Note |
 //! | --- | --- | --- |
 //! | `Speed` | `steps[1]+0x08`, `u32` tenths of an hour | floored at one tenth; reaches missions already under way (section 20.4) |
 //! | `Rewards` | dropset `entry+0x20` **and** `+0x28`, `i64` | both halves, or 136 entries invert; retroactive to parked rewards |
-//! | `NoSkillRequirement` | `entry+0xDA`, `i16` | write `0xFFFF`; `0` makes a mission unstartable. Start-time gate |
-//! | `AnyOperatorCount` | `entry+0xC4`, `u32` | write `1`; `0` is stricter, not laxer. Start-time gate, **and the one field a save could keep if the banking gates were on** |
+//! | `NoSkillRequirement` | `OP_SKILL_REQ` (`entry+0xC2` on 26345091/26356046, `+0xDA` before), `i16` | write `0xFFFF`; `0` makes a mission unstartable. Start-time gate |
+//! | `AnyOperatorCount` | `OP_MIN_OPERATORS` (`entry+0xB0` on 26345091/26356046, `+0xC4` before), `u32` | write `1`; `0` is stricter, not laxer. Start-time gate, **and the one field a save could keep if the banking gates were on** |
 //!
 //! The two start-time gates are checked when a mission starts, so a mission
 //! already running keeps running under them; a **repeating** mission re-checks on

@@ -6,14 +6,14 @@
 //! `dis` is the one tool in this directory allowed to differ from the script it
 //! replaced, because it swapped `objdump` for `iced-x86`. Operand SPELLING may
 //! differ. Instruction BOUNDARIES may not, in code, and that is what these
-//! check: known first bytes at known RVAs on build 25477059, and the property
+//! check: known first bytes at known RVAs on build 26361232, and the property
 //! that every line's address is the previous one plus that instruction's
 //! length with nothing skipped.
 //!
-//! Every address here was re-derived for 25477059 by content, not by guess:
+//! Every address here was re-derived for 26361232 by content, not by guess:
 //! the functions through the byte signatures in `reference-signatures.txt`
-//! (`sigscan`), and the data through the string it holds. The 25246367 value
-//! sits beside each one.
+//! (`sigscan`, converted with `retarget`), and the data through the string it
+//! holds. The 25477059 value sits beside each one.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -43,17 +43,18 @@ fn stdout(args: &[&str]) -> String {
 fn a_known_function_prologue_decodes_to_the_expected_lines() {
     assert!(exe().is_file(), "CrimsonDesert.exe not found at {}", exe().display());
     // `get_pos` from reference-signatures.txt, converted from its file offset
-    // 0x17F9620 to an RVA (build 25477059; it was file 0x1763820, RVA
-    // 0x1764420 on 25246367). This is also the worked example of that
-    // conversion: the two numbers differ by 0xC00 here and by something else
-    // in every other section.
-    let s = stdout(&["17fa220", "17fa300"]);
+    // 0x19369C0 to an RVA (build 26361232; RVA 0x1937610, file 0x1936A10, on
+    // 26356046 and 26345091; file 0x17F9620, RVA 0x17FA220 on 25477059). This
+    // is also the worked example of that conversion: the two numbers differ by
+    // 0xC00 here (`.sxdata` this build, raw 0x400 at RVA 0x1000) and by
+    // something else in every other section.
+    let s = stdout(&["19375c0", "19376a0"]);
     let lines: Vec<&str> = s.lines().collect();
-    assert_eq!(lines[0], "+17fa220 push rbx");
-    assert_eq!(lines[1], "+17fa222 sub rsp,0x50");
-    assert_eq!(lines[2], "+17fa226 mov rax,QWORD PTR [rcx+0x68]");
-    assert_eq!(lines[3], "+17fa22a mov rcx,QWORD PTR [rax+0x1a0]");
-    assert_eq!(lines[4], "+17fa231 mov rax,QWORD PTR [rcx]");
+    assert_eq!(lines[0], "+19375c0 push rbx");
+    assert_eq!(lines[1], "+19375c2 sub rsp,0x50");
+    assert_eq!(lines[2], "+19375c6 mov rax,QWORD PTR [rcx+0x68]");
+    assert_eq!(lines[3], "+19375ca mov rcx,QWORD PTR [rax+0x1a0]");
+    assert_eq!(lines[4], "+19375d1 mov rax,QWORD PTR [rcx]");
     // The signature comment says this one walks [rcx+0x68] -> [+0x1A0] ->
     // vtbl+0x140; the call through the vtable is the last of those.
     assert!(s.contains("call QWORD PTR [rax+0x140]"), "{s}");
@@ -67,13 +68,14 @@ fn every_address_is_covered_exactly_once_with_no_gap_and_no_overlap() {
     // inside the range. A gap means bytes were skipped; a repeat means the
     // window was rebuilt mid-run.
     //
-    // Function entries on 25477059, the same four `xrefs_cli.rs` pins; on
-    // 25246367 they were 1764420, 13aaa80, 2a73c20 and 3796520.
+    // Function entries on 26361232, the same four `xrefs_cli.rs` pins; on
+    // 26356046 they were 1937610, 161afd0, 2af9ce0 and 3b53d60, on 25477059
+    // 17fa220, 1439060, 2affbf0 and 387bda0.
     for (start, end) in [
-        ("17fa220", "17fa300"), // get_pos
-        ("1439060", "1439120"), // alloc_event
-        ("2affbf0", "2affcd0"), // a function nothing references
-        ("387bda0", "387be80"), // area_sweep
+        ("19375c0", "19376a0"), // get_pos
+        ("161af80", "161b040"), // alloc_event
+        ("2af9c90", "2af9d70"), // a function nothing references
+        ("3b53c90", "3b53d70"), // area_sweep
     ] {
         let s = stdout(&[start, end]);
         let addrs: Vec<u64> = s
@@ -92,12 +94,12 @@ fn every_address_is_covered_exactly_once_with_no_gap_and_no_overlap() {
 #[test]
 #[ignore = "needs the installed CrimsonDesert.exe"]
 fn an_instruction_straddling_the_end_address_still_decodes_whole() {
-    // 0x17FA222 (build 25477059; 0x1764422 on 25246367) is `sub rsp,0x50`,
+    // 0x19375C2 (build 26361232; 0x1937612 on 26356046, 0x17FA222 on 25477059) is `sub rsp,0x50`,
     // four bytes. Asking for a range that ends one byte into it must print it
     // whole, not a truncated `(bad)` - the decoder is given 15 bytes of slack
     // past the end for this. `objdump --stop-address` behaves the same way.
-    let s = stdout(&["17fa222", "17fa223"]);
-    assert_eq!(s, "+17fa222 sub rsp,0x50\n");
+    let s = stdout(&["19375c2", "19375c3"]);
+    assert_eq!(s, "+19375c2 sub rsp,0x50\n");
 }
 
 #[test]
@@ -107,10 +109,11 @@ fn rip_relative_operands_resolve_to_rvas() {
     // decoded a bare buffer from 0, every one of these would silently become
     // an offset into that buffer - still plausible-looking, still wrong.
     //
-    // `get_pos`+0x3F. Build 25477059; on 25246367 it was
-    // `+176445f lea rax,[0x57fc990]`.
-    let s = stdout(&["17fa25f", "17fa266"]);
-    assert_eq!(s, "+17fa25f lea rax,[0x5912e60]\n");
+    // `get_pos`+0x3F, build 26361232. The target is the same on 26356046
+    // (0x5cc1178 on 26345091); on 25477059 it was
+    // `+17fa25f lea rax,[0x5912e60]`.
+    let s = stdout(&["19375ff", "1937606"]);
+    assert_eq!(s, "+19375ff lea rax,[0x5cc2178]\n");
 }
 
 #[test]
@@ -118,8 +121,8 @@ fn rip_relative_operands_resolve_to_rvas() {
 fn no_line_is_wider_than_a_hundred_columns() {
     // A wall of prefixes in data can format to hundreds of characters. The
     // `SetAdditionalCollectDropRate` literal, which is data decoded as code:
-    // RVA 0x57AFC28 on build 25477059, 0x569C7C0 on 25246367.
-    let s = stdout(&["57afc28", "57afc68"]);
+    // RVA 0x5B58050 on builds 26356046 and 26361232, 0x57AFC28 on 25477059.
+    let s = stdout(&["5b58050", "5b58090"]);
     assert!(s.lines().all(|l| l.chars().count() <= 100));
     assert!(!s.is_empty());
 }
@@ -132,7 +135,7 @@ fn nothing_is_written_to_a_temporary_directory() {
     // This port keeps no cache; that is a behaviour, so it gets a test.
     let tmp = tempfile::tempdir().unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_dis"))
-        .args(["17fa220", "17fa300"])
+        .args(["19375c0", "19376a0"])
         .env("TMPDIR", tmp.path())
         .output()
         .unwrap();

@@ -10,7 +10,7 @@
 //!
 //! Every static-info table the game parses - `gimmickinfo`, `FactionNode`,
 //! `dropsetinfo` - is reached through that one pair, and two subsystems walk
-//! it: `desert_gatherer::hook::reapply` over the gimmick records it remembered,
+//! it: `desert_harvest::gatherer::hook::reapply` over the gimmick records it remembered,
 //! and `desert_dispatch`'s scan and apply passes over the faction-node and
 //! dropset records. Both had their own copy of the offsets, their own
 //! byte-identical `plausible`, and their own `(count, records)` read; this

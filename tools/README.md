@@ -14,7 +14,8 @@ Two kinds of thing live here, and the difference matters:
 These were thirteen Python and bash scripts until the port. They are thirteen
 Rust binaries now, in one package (`desert-tools`), and the `.py`/`.sh`
 originals are gone. A fourteenth, `dmm-rebase`, replaced the last Python in
-the repo, the DMM pack's own `rebase.py`. What that bought, in the order it matters:
+the repo, the DMM pack's own `rebase.py`, and a fifteenth, `retarget`
+(2026-11-01), replaced Ghidra in the re-target procedure. What that bought, in the order it matters:
 
 * **The dev shell is needed for far less.** No tool shells out to `objdump`,
   `zip`, `unzip`, `sha256sum` or `python3` any more. The only external program
@@ -54,12 +55,22 @@ default hangs off that. `dist` deletes a directory called `dist`; one resolved
 against wherever the shell happened to be would eventually delete the wrong
 one.
 
-The shared library is `desert_tools`, and it is deliberately two modules:
-`paths` (every default overridable by the same environment variable the
-justfile uses, so a tool run by hand and the same tool run by `just` look in
-the same place) and `pe` (offset <-> RVA conversion, the loader's image layout,
-and reading the import table). Anything only one binary needs stays in that
-binary.
+The shared library is `desert_tools`. `paths` (every default overridable by
+the same environment variable the justfile uses, so a tool run by hand and the
+same tool run by `just` look in the same place), `pe` (offset <-> RVA
+conversion, the loader's image layout, the data directories, the import
+table) and `sha256` were all there was until `retarget` arrived; four more were
+hoisted out of the binaries then, with no change in what those binaries print:
+`pattern` (`sigscan`'s matcher, overlapping and non-overlapping), `scan`
+(`xrefs`' scanners), `disasm` (`dis`'s formatter and window, plus an
+instruction-level decoder and auto-wildcarding) and `funcs` (function starts
+from the exception directory). `records` came with build 26361232: it probes
+the `gimmickinfo` record header shape at the first record (`KeyFirst`, `u32
+key, u32 name_len, name, 0x00`, through 25477059; `NameFirst`, `u32 name_len,
+name, u32 key, u8 0, u32 path_len, path, u8 flag`, on 26361232) and walks a
+name-first table header by header, exactly, so `gen-collect-names`, `items`
+and `dmm-rebase` all read both shapes. Anything only one binary needs stays in
+that binary.
 
 ## Its own cargo workspace, and the config trap
 
@@ -180,7 +191,7 @@ just dmm-rebase --dry-run              verify and print the report, write nothin
 Two inputs. The clean `gimmickinfo` table body comes from
 `paths::dmm_table()` - the plugin's own dump
 `<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
-`[Gatherer] DumpTable=1` and `DryRun=1`, unless `CD_DMM_TABLE` names another
+`[Harvest] DumpTable=1` and `DryRun=1`, unless `CD_DMM_TABLE` names another
 copy (DMM's backup is the last resort). The build id comes from the Steam
 appmanifest (`CD_APPMANIFEST`); with neither a `--build` nor a manifest it
 refuses rather than stamp the pack with a guess. The first line it prints is
@@ -192,7 +203,9 @@ block's signature within `SEARCH_WINDOW` (1024 bytes) of where its list used to
 sit in the record, and the vanilla bytes are checked at the new offset before
 `offset`, `record_rel_offset` and `rel_offset` are rewritten. Per module it
 prints how many output lists stayed put inside their record and how many
-shifted.
+shifted. On 25477059 none shifted; the 26361232 rebase (pack 1.3) relocated
+every list, each 120 to 320 bytes nearer its record start, because the new
+record header moved the bodies.
 
 **All or nothing.** Every module is verified, and the whole report built,
 before anything is written; then every file goes to a temporary sibling and is
@@ -238,8 +251,9 @@ and it does not install a toolchain of its own: the first job uploads
 lookups would be the slower and more fragile arrangement.
 
 ### `sigscan` + `reference-signatures.txt` (`just sigscan`)
-Scans the installed `CrimsonDesert.exe` for the nine byte signatures the
-plugins resolve at load, plus a handful of class and event names. Each
+Scans the installed `CrimsonDesert.exe` for every byte signature the
+plugins resolve at load (twelve on build 26361232: the looter's nine, the
+catch site and the two `[banking]` gate reads), plus a handful of class and event names. Each
 signature must hit **exactly once**; more than one hit means the pattern is no
 longer unique and the plugin could bind to the wrong function. Run it after a
 game update. Not in CI, because CI has no copy of the game.
@@ -249,9 +263,10 @@ game update. Not in CI, because CI has no copy of the game.
 signature deliberately matches `0xF` bytes into its function rather than at the
 entry point, and the comment says so.
 
-It also checks `static-info-names.txt`, the 216 names of the game's 149
-static-info types (149 class names plus the 67 lowercase table names that
-differ), extracted from `FUN_1424fef70` and recorded in
+It also checks `static-info-names.txt`, 221 names on 26361232: the 216 names
+of the game's 149 static-info types as of 25116796 (149 class names plus the
+67 lowercase table names that differ), less `reviepointinfo` and plus the six
+table names 26345091 added, extracted from `FUN_1424fef70` and recorded in
 `docs/reference-internals.md` section 19. Each must still occur **exactly once**
 as a NUL-delimited literal; output is a single summary line plus any name that
 went missing or gained a second hit. A change there means the game's type
@@ -272,7 +287,10 @@ read, not a gate. See **Known defects**.
 **The offsets it prints are FILE OFFSETS.** `xrefs` takes an RVA. See the note
 under `xrefs`.
 
-### `evidence` (`just evidence`)
+### `evidence` (`just evidence`; optional, needs Ghidra)
+**Not part of the re-target procedure any more**; `retarget` replaced it there,
+and `evidence/` as it stands is the frozen build 25116796 reference, kept
+because grepping it is still the fastest way to see what an old function did.
 Walks the game's call graph outward from anchor functions and writes one
 Markdown file per function into `evidence/` - signature, callers, direct
 callees, decompilation, disassembly - plus `index.tsv` and `graph.json`. The
@@ -377,22 +395,102 @@ as being right - but the silent-wrong-answer path is closed.
 ## Manual, reverse-engineering aids
 
 Nothing calls these. They exist for working out what the game does, and they
-work offline on the shipped `.exe` with no Ghidra project, which is useful when
-Ghidra is busy or closed. Decompilation itself goes through the Windows Ghidra
-over its MCP bridge; these cover the cases where that is not to hand.
+work offline on the shipped `.exe` with no Ghidra project, in seconds. Since
+2026-11-01 they are the whole re-target procedure; Ghidra is an optional
+extra for `evidence` and nothing else.
 
 **None of them may select a PE section by name, and there is a test asserting
-it.** This exe's twelve section names are scrambled - `.idata .arch .debug$P
-.tls$ .shared .xcode .00cfg .sbss .text1 .trace .xtls .link` - and the 80 MB
-one holding the code is the one called `.idata`. No section is called `.text`;
-the `.text1` that exists is 1.9 MB of something else. Match on the address
-range, from the section table. See
-`tools/tests/pe_real_exe.rs`, which exists because an earlier version of it
-asserted a `.text` section and failed against the real game.
+it.** This exe's twelve section names are scrambled on every build, hotfixes
+included. On 26361232 they are `.sxdata .xtls .udata .debug$P .reloc .data
+.link .xtext .rdata .sdata .rodata .shared`, the 89 MB code section every
+signature hits is `.sxdata` (RVA `0x1000`), `.xtext` is the 203 MB writable
+code section at RVA `0x7a3a000`, and the exception directory is all of
+`.shared`. Earlier the same day they were `.xtext .shared .sdata .didata .trace
+.xcode .data .text .ecode .rsrc .tls .rdata` on 26356046, with the 89 MB code
+section named `.xtext` and the exception directory all of `.rdata`, and on
+26345091 `.trace .xtls .reloc .arch .text1 .shared .data2 .didata .debug .data1
+.xtext .edata`, with the code in `.trace` and the exception directory in
+`.edata`. Match on the
+address range, from the section table, and find the exception directory
+through data directory 3. See `tools/tests/pe_real_exe.rs`, which exists
+because an earlier version of it asserted a `.text` section and failed against
+the real game.
+
+### `retarget` (`just retarget <subcommand>`)
+Re-targets the plugin to a new game build. Each subcommand is one step of the
+procedure that every re-target so far repeated by hand with `xrefs` and `dis`;
+`CLAUDE.md` ("Re-targeting after a game update") and the book's
+"Re-targeting and analysis tools" chapter have the procedure around them.
+
+```
+retarget report                         triage + census + pe as a markdown checklist
+retarget triage   [--sigs file]         hit count per signature; for a dead one, what is left
+retarget census   [--b-window 0x400] [--sites] [--names file]
+retarget calls    <rva> <len> [--n 16] [--callers]
+retarget callers  <rva>
+retarget prologue <rva> [bytes] [--stolen K] [--tokens]
+retarget pe
+```
+
+Every subcommand takes `--exe` (default `paths::game_exe()`, which honours
+`EXE`) and `--tsv`. Addresses print as RVAs and are accepted as RVA hex or as
+a **file offset with an `f:` prefix**, so a `sigscan` number can be passed
+straight in.
+
+* `triage` counts each signature in `reference-signatures.txt` with the
+  overlapping matcher (the plugin's semantics), names it from the `# name -
+  description` comment above it, and for a dead one binary-searches the
+  longest prefix and suffix that still hit, printing up to eight RVAs and the
+  function start a suffix implies. **Exit 1** if any signature not marked
+  `[optional]` in its name line is not exactly once: unlike `sigscan`, this
+  one is a gate.
+* `census` measures the accessor template (`desert-core/src/gimmick.rs`): the
+  four heads, the tail after each, the slot load and its bounds-check
+  register, the loader-call shape and distance, `LOADER_PROLOGUE` at the
+  target, the stream fill (the three stores that put the stream's buffer,
+  size and cursor into the stack stream before `lea r9,[rsp+0x30]`: `stream
+  fill: buffer +0x20 size +0x28 cursor +0x2c at 154 of 154 sites` on 26361232,
+  plus a `stream fill:` line for `gimmickinfo` alone, and a `fill` column under
+  `--sites`), and each passed name against `static-info-names.txt`. Its constants
+  mirror `gimmick.rs` with a comment saying so, because `tools/` does not
+  depend on `desert-core`; `expect.rs` pins the 26361232 figures (including
+  `STREAM_LAYOUT` 0x20 / 0x28 / 0x2c and `STREAM_SITES` 154) and
+  `desert-core/tests/gimmick_real.rs` asserts the same ones.
+* `calls` lists every `E8`/`E9` target in a range with its `.pdata` status,
+  first bytes, an auto-wildcarded pattern (rel32, RIP disp32 and imm32
+  masked) and that pattern's exe-wide count; import thunks print their import
+  name. `--callers` adds the distinct calling functions of each target, all
+  in one extra pass.
+* `callers` groups every reference to an address by enclosing function, with
+  each function's first 24 bytes and pattern.
+* `prologue` decodes whole instructions with `RIP`/`BR` flags and lists the
+  safe stolen counts: boundaries at or past `MIN_STOLEN = 12` (every hook
+  writes a 12-byte `mov rax,imm64; jmp rax`) before the first RIP-relative or
+  branch instruction. `--stolen K` validates one and prints its bytes as a
+  Rust array (`--tokens`: one commented line per instruction, the shape of the
+  `*_PROLOGUE` consts); **exit 2** if K is unsafe.
+* `pe` prints the image base, SizeOfImage, timestamp, sha256, sections, the
+  sixteen data directories and the exception directory's range and entry
+  count.
+* `report` is triage, census and pe as one markdown page plus a table of the
+  constants to update, ending `Verdict: clean` (exit 0) or `Verdict: work to
+  do: <reasons>` (exit 1). The constants table has a `StreamLayout` row, and a
+  `gimmickinfo` fill that does not parse is a verdict reason of its own: on
+  26361232 the stream layout moved while every signature still hit, and only a
+  launch caught it (`docs/findings/2026-11-01-build-26345091-retarget.md` §7.7).
+
+Function starts come from the exception directory (`desert_tools::funcs`):
+the `RUNTIME_FUNCTION` table, with chained cold fragments followed to their
+parent, and a prologue-shape heuristic for leaf functions that have no entry.
+Every start printed says `pdata` or `heuristic`.
+
+`tests/retarget_cli.rs` drives every subcommand and exit code against a
+synthetic PE (`tests/common/synth_pe.rs`); the real-exe figures are the
+`#[ignore]`d tests in `src/bin/retarget/expect.rs`.
 
 ### `dis <start-rva-hex> <end-rva-hex>`
 Disassembles a range of the game exe as Intel syntax, with addresses printed as
-RVAs. Add `0x140000000` for the preferred VA that Ghidra shows.
+RVAs. Add `0x140000000` for the preferred VA.
 
 **There is no image cache any more, and the staleness bug went with it.** The
 shell version wrote a ~380 MB image-layout copy of the exe into `$TMPDIR` and
@@ -456,7 +554,9 @@ the example to reach for when explaining the counting defect below: `xrefs
 instruction - the `4C 8D 05` at `+0x1529527`, reported once at the REX byte as
 `lea` and once at the opcode as `lea32`. On build 25477059 the literal is at
 `+0x57AFC28`, the cell at `+0x59792A8`, and the one instruction reads as `lea`
-at `+0x15BBA17` and `lea32` at `+0x15BBA18` (`tests/xrefs_cli.rs` pins it).
+at `+0x15BBA17` and `lea32` at `+0x15BBA18`. On build 26356046 the literal is
+at `+0x5B58050`, the cell at `+0x5D2E048`, and the instruction at `+0x17E03B7`
+(`tests/xrefs_cli.rs` pins it).
 
 **It takes an RVA. `sigscan` prints file offsets.** The two are not directly
 composable: feeding a `sigscan` offset to `xrefs` will usually report zero
@@ -465,8 +565,9 @@ table (`desert_tools::pe`) first.
 
 ### `fieldnames`
 Recovers the **field names of every static-info record class** from the
-shipped exe - 4712 `(class, field)` pairs across 537 classes on build
-25477059 (4675 across 536 on 25246367) - and writes them to
+shipped exe - 5034 `(class, field)` pairs across 581 classes on build
+26361232, as on 26345091 and 26356046 (4712 across 537 on 25477059, 4675 across 536 on 25246367) - and
+writes them to
 `analysis/fieldnames.json`.
 
 They come from the game's own error strings. Every record deserializer
@@ -510,7 +611,7 @@ Two more things worth knowing before using a name:
   `DropSetInfo`), not the lowercase table names the accessor census keys
   on (`gimmickinfo`, `dropsetinfo`). `reference-internals.md` section
   19.2 carries both, and is the join.
-* 536 classes against 149 tables, because nested record types get their
+* 581 classes against about 150 tables, because nested record types get their
   own messages without being tables - `DropInfoData` inside `GimmickInfo`
   is the one that paid for the tool.
 
@@ -533,12 +634,14 @@ to look up what an item id *is*".
 It walks the clean `gimmickinfo` table body (`--table` overrides). The
 preferred source is the plugin's own dump,
 `<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
-`[Gatherer] DumpTable=1` and `DryRun=1`; DMM's copy
+`[Harvest] DumpTable=1` and `DryRun=1`; DMM's copy
 (`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`) is the fallback when
 there is no dump, and `CD_DMM_TABLE` beats both. The bytes are identical -
 the dump is preferred because DMM deletes its backups at will. The body
 carries record-relative offsets only and so needs no rebasing for a game
-update. It also reads `desert-core/src/collect.rs` for the current family
+update, as long as the record shape holds: it reads both header shapes
+through `records`, and on a name-first table every record is found by an
+exact header walk. It also reads `desert-core/src/collect.rs` for the current family
 of each record. Offline, about a sixth of a second - a full rebuild
 of both outputs is now cheaper than the old tool's startup.
 
@@ -631,9 +734,14 @@ and both cost an earlier investigation a wrong answer:
 
 Every run re-checks the five numbers and three offset anchors that were
 confirmed three independent ways on build 25246367, re-measured on 25477059
-(`paths::CALIBRATED_BUILD`) - 572 output lists, 895 blocks, 215 distinct
-item ids, 13447 records, and fourteen known item names - and prints `FAIL`
-for any that moved. A `FAIL` means the table or the walk
+and again on 26361232 (`paths::CALIBRATED_BUILD`) - now 581 output lists,
+904 blocks, 220 distinct item ids, 14210 records (25477059: 572, 895, 215,
+13447), and the known item names - and prints `FAIL` for any that
+moved. On 26361232 the `--loose` walk is 597 lists / 1047 blocks / 317 items,
+the loose-only part 16 lists / 143 blocks / 97 items, the 9 implausible ids
+are still all in `gimmick_item_dropset_treasurebox_01`, and the shared ids are
+unchanged. The table below and the paragraphs after it give the 25477059
+figures they were written on. A `FAIL` means the table or the walk
 changed, and nothing downstream should be trusted until it is explained.
 A `--loose` run checks its own three counts (588/1037/311) on top, plus
 the relations that make it a superset rather than a different answer:
@@ -688,8 +796,10 @@ the clean table body is present (the plugin's dump or DMM's copy, chosen as
 and refuses to write on any mismatch; when it is absent it prints a banner
 saying the rows were not verified. The walk only answers if it reproduces
 `CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide counts and
-three anchor records, taken on build 25477059 - and a refusal names that
-build and the installed one, so after a game update it says which side moved.
+three anchor records, taken on build 26361232 (581 lists / 904 blocks / 14210
+records; `firewood_0001`'s list at table offset 10136473, +1796 from its record
+start, `gimmick_well_0001_parts01` at 3374134, +731, `Background_Breakable_66`
+at 807359, +1393) - and a refusal names that build and the installed one, so after a game update it says which side moved.
 Records measured to be unreachable by a
 table edit are kept in the same file as `records_not_enabled`, verified the
 same way and emitted only as a test that keeps them out. `spec` has the format

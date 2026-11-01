@@ -9,9 +9,129 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
-## [Unreleased]
+## [0.10.0] - 2026-11-01
 
-Measured on game build 25477059, 2026-09-24.
+Game build 26361232. Re-targeted on 26345091 and re-pinned to the 26356046 and then the 26361232
+hotfix the same day, 2026-11-01. 26345091 and 26356046 were measured offline only; 26361232 has had
+dry-run launches, which found the stream and record-header changes below, and one live launch. The harvest merge below was written on
+25477059.
+
+**Re-targeted to game build 26361232.** Build 26345091 (2026-10-31) changed how the game's
+compiler lays out code: a frame pointer in `r11`, so the accessor every static-info table is
+reached through now ends `lea rcx,[r11+0x10]` instead of `lea rcx,[rsp+0x70]`, the record-count
+check before it compares `edx` instead of `edi`, and the call to the record loader dropped its
+`movzx`. The gatherer's record-loader lookup, the dispatch tables and five of the looter's nine
+signatures stopped matching. All of them are re-derived and found by content again: the accessor
+census reads 154 copies in four encodings, every one with the new tail, and the loader hook steals
+the same 12 bytes it always did. Steam shipped 26356046 while this was being done, and 26361232 later
+the same day; on each of them every signature still hit exactly once and only the test pins moved
+(on 26361232 every signature sits 0x50 lower than on 26356046), so this entry names the last one.
+The
+re-target folds into 0.10.0 the way the 25477059 one folded into 0.9.0: a re-target with no change
+to what you set is a PATCH, and a PATCH before the untagged MINOR it follows folds into it.
+- **The gatherer finds the record loader's stream layout in the game's code instead of assuming
+  it.** 26361232 moved the buffer, size and cursor of the stream the game hands the record loader
+  from `+0x10`/`+0x18`/`+0x1c` to `+0x20`/`+0x28`/`+0x2c`. With the old offsets hard-coded, the
+  first launch on that build read zeros, refused the table dump and multiplied nothing, with no
+  warning beyond the dump line. The layout is now read at startup off the stores the game makes
+  just before it calls the loader, with a checked probe of the known layouts as a fallback, and
+  logged as `[gimmick] stream layout: buffer +0x20 size +0x28 cursor +0x2c (...)`. If neither
+  works, the log says `stream layout unknown on this build` and the yields stay vanilla rather than
+  being written at the wrong place. Nothing changes in the ini.
+- **The gatherer reads both shapes of the gimmickinfo record header.** Through 25477059 a record
+  opened with its `u32` key and then its name; on 26361232 it opens with the name's length and
+  the name, and the key, unchanged, comes after it, followed by a path and a flag. The old reader
+  failed on every record without a word, so the gatherer recognised no gather record in game.
+  It now tells the two shapes apart (they can never both read cleanly), latches the one it finds
+  and says which: `[gimmick] record header: name first, key after it (26361232 shape)` or
+  `[gimmick] record header: key first (25477059 shape)`. The `[stat]` line now counts every way a
+  record can be missed, `[stat] records seen N, stream unread N, headers unparsed N, gather records
+  recognised N, patched N, scalars written N`, and two once-only warnings say when the yields
+  stay vanilla because something changed: `[gimmick] WARN no record header parsed in N records:
+  the record format changed; yields stay vanilla` and `[gimmick] WARN no record stream read in N
+  records: the stream layout changed; yields stay vanilla`. Nothing changes in the ini.
+- Re-derived: `alloc_event`, `enqueue`, `own_check_site`, `loot_grant` and `category fn`, so the
+  log still says `[sig] 9 found, 0 missing`. The `enqueue` and `loot_grant` hooks now steal 15
+  bytes (were 14 and 13), the first safe boundary on the new code.
+- **The dispatch mission and reward layout moved, and dispatch now checks it before writing.**
+  26345091 moved most of a mission's fields (the mission list itself from `record+0xA0` to
+  `+0xC0`, the crew size from `+0xC4` to `+0xB0`, the skill requirement from `+0xDA` to `+0xC2`,
+  the reward rows from `+0xA8` to `+0xA0`) and the reward row's entry list and weight total; all of
+  them are re-derived. New: `[Dispatch]` writes nothing, exactly as under `DryRun=1`, until this
+  launch's own vanilla census says the layout is right (real durations and crew sizes that vary,
+  reward weights that add up to the row's total), and logs
+  `[dispatch] writes disabled (missions): <reason> ...` (or `(reward rows)`) once per reason until
+  then; once it passes it stays passed for the session. Nothing changes in the ini. The mission
+  lines print the always-1 field as `+0xAC` (was `+0xC0`) and the reward slots as `+0xA0`/`+0xA2`
+  (were `+0xA8`/`+0xAA`), and the reward verdict adds `weight totals: N/M fully read rows match
+  record+0x38`.
+- **`[banking]` finds its two gates by signature**, so it no longer depends on addresses measured
+  on build 25116796 and keeps working across updates: `0x7150E18` and `0x7128CA8` on 26356046 and 26361232.
+  On a build where the code moved, the line says `not found by signature on this build` instead.
+  No bare game address is left anywhere in the plugin.
+- The game's own table, read from one `DumpTable=1` launch on 26361232: 14,210 records (13,941 on
+  25477059) in a 17,621,227-byte body. The DMM pack is rebased onto it as **pack 1.3**: the same
+  275 records, 587 blocks and 1174 offsets per rate, every output list relocated inside its record.
+- Behind it, nothing a player sees: a new `retarget` tool in `tools/` (`just retarget report`,
+  `triage`, `census`, `calls`, `callers`, `prologue`, `pe`) that does in seconds what the last
+  re-targets did by hand, and Ghidra is out of the procedure. A hotfix build now costs one
+  `just retarget report` and a re-pin of the tests, which is what 26356046 cost. 26361232 cost that and the two fixes above,
+  which only a launch could find: neither the stream layout nor the record header is a signature.
+
+**`[Looter]` and `[Gatherer]` become one section, `[Harvest]`. This is a breaking change to the
+ini, and your file is migrated for you on the first launch.** Auto-loot and the yield
+multipliers act on the same thing in the game, the nodes, ground items and creatures you gather,
+and they had two sections, two log tags, two menu tabs and two of every master switch between
+them. Now there is one of each. A MINOR by `VERSIONING.md`'s "what bumps what": a renamed section
+is something new asked of the player, and below 1.0 a MINOR may break. No key is renamed and none
+is taken away; nothing you had set is lost.
+
+### Changed (breaking)
+
+- **One `[Harvest]` section replaces `[Looter]` and `[Gatherer]`.** Every key keeps the name,
+  default, range and meaning it had, except the two below that there used to be two of. Only
+  `[Harvest]` is read: a `[Looter]` or `[Gatherer]` header left in a file that already has
+  `[Harvest]` is ignored, with a WARN in the log saying so.
+- **The ini is migrated on first launch.** A `DesertTooling.ini` with the old sections and no
+  `[Harvest]` is rewritten once, in place and atomically: the two old sections become one
+  `[Harvest]` section where `[Looter]` was, the looter's keys first, then the gatherer's, with
+  your comments and any key you added by hand travelling with their lines. `[Overlay]`,
+  `[Dispatch]` and everything outside the old sections are left byte for byte as they were, and
+  the line endings are kept. The log says so once:
+
+  ```text
+  [tooling] [ini] [Looter] and [Gatherer] were merged into [Harvest] (Enabled is on only if both were, Debug if either was)
+  ```
+
+  A file that already has `[Harvest]` is never touched, so the migration runs once and a freshly
+  written ini is already in the new shape.
+- **One `Enabled` and one `Debug`, read by both halves.** `Enabled=0` idles the whole section: no
+  gathering, no hotkeys, vanilla yields. Every hook still goes in at load, as before, so it can be
+  turned back on mid-session. On migration `Enabled` comes out on **only if it was on in both old
+  sections**, so nothing starts that you had switched off, and when the two disagreed a comment
+  above the new `Enabled` line says so and what to set. `Debug` comes out on if it was on in
+  either.
+- **Multipliers without auto-loot is `AutoGather=0`.** That used to be `[Looter] Enabled=0`; with
+  one switch it is now the auto mode left off, which is the default anyway. The hotkeys stay live.
+- **`DryRun` and `DumpTable` act on the yield multipliers only**, as they always did; the help
+  text now says so, since they sit in a section that also holds the auto-loot.
+- **One log tag, `[harvest]`**, for every line `[looter]` and `[gatherer]` used to write. The
+  lines themselves are unchanged, and the order at startup is the yield hooks first, then the
+  looter's: `[gimmick] record loader`, `[hook] record loader ... -> stub`, `[catch] hook`,
+  `[sig] 9 found`, `[hook] area_sweep`, `[hook] enqueue`, `[hunting] loot_grant`, `[event] ...`.
+  Anything matching on the old tags has to match on the new one.
+- **One menu tab, Harvest**, instead of Looter and Gatherer: the presets, `Enabled`,
+  `AutoGather`, what auto-loot takes, `Hunting`, the ranges and pacing, then the yield
+  multipliers `Foraging` to `Fish`. The four keys stay on Settings; `Debug`, `LogReceived`,
+  `SurveyLines`, `BagTab`, `DryRun` and `DumpTable` stay on Debug.
+- The banner line names three versions: `Desert Tooling 0.10.0 loaded, pid N (harvest 0.6.0,
+  overlay 0.3.0, dispatch 0.3.0)`.
+- The `[ini]` summary line is one line, the looter's fields then `DryRun=`, `DumpTable=` and the
+  seven multipliers.
+- `GatherMoney`'s help says "the Money multiplier below" instead of naming `[Gatherer]`.
+- Library bookkeeping, nothing a player sees: `desert-looter` and `desert-gatherer` are merged into
+  one crate, `desert-harvest` 0.6.0, run on one thread named `desert-harvest`. The
+  `DesertTooling.yields` cache keeps its header, so the yields it learned are kept too.
 
 ### Fixed
 
@@ -26,7 +146,7 @@ Measured on game build 25477059, 2026-09-24.
 
 - **Tench (fish class `0x65`) is caught with `GatherFish=1`.** It was passed over as an unknown
   class until a hand catch recorded it: `00 08 FF 21 0A 10 B0 03`, `class=65`, item 29809.
-- **`[Gatherer] Debug=1` logs one line per creature caught**:
+- **`Debug=1` logs one line per creature caught** (`[Gatherer]` until the merge above, `[Harvest]` now):
   `[catch] debug: type=06 class=65 chr=4005`, just before its `[recv]` line. The other `[catch]`
   lines are once per class per session, so a second species on an already-logged class was
   silent; this one names every catch.

@@ -26,8 +26,8 @@
 //!
 //! Two fields deliberately **not** written, both two bytes from one that is:
 //!
-//! * `entry+0xD8`, the work-stat a mission pays a bonus for. Clearing it
-//!   alongside `+0xDA` silently deletes a reward nobody asked to lose, with
+//! * `parsed::OP_SKILL_STAT`, the work-stat a mission pays a bonus for. Clearing it
+//!   alongside `parsed::OP_SKILL_REQ` silently deletes a reward nobody asked to lose, with
 //!   nothing in the UI to show it happened.
 //! * `entry+0x10` and the dropset weights. Editing a weight would break the
 //!   `row+0x48` weight-sum invariant this module *asserts* before every reward
@@ -35,7 +35,7 @@
 //!
 //! # The shape, and why it is the gatherer's
 //!
-//! `desert_gatherer::hook::reapply` is the model, and the resemblance is not
+//! `desert_harvest::gatherer::hook::reapply` is the model, and the resemblance is not
 //! decoration. Three rules come with it:
 //!
 //! 1. **Vanilla is remembered on first sight and never re-derived.** What is
@@ -646,7 +646,7 @@ pub struct RewardCounts {
     pub skip_shape: usize,
     /// The row index is past the end of the `dropsetinfo` table. Kept apart from
     /// [`Self::skip_shape`]: that one says a row's own count is wrong, this one
-    /// says `entry+0xA8` is not a row index.
+    /// says the reward-set index (`parsed::OP_REWARD_1`) is not a row index.
     pub skip_row_index: usize,
     /// The remember table is full.
     pub skip_no_room: usize,
@@ -885,7 +885,7 @@ fn apply_entry(row: u16, at: usize, e: &node::DropsetEntry, ctx: &mut Ctx, c: &m
     // inversion the order exists to prevent.
     //
     // `usize::from(write(..)) + ..` / `ok < 2` is the same idiom
-    // `desert_gatherer::hook::reapply` uses over its own min/max pair, and it is
+    // `desert_harvest::gatherer::hook::reapply` uses over its own min/max pair, and it is
     // deliberately not shared: the two loops differ in their order (this one is
     // ordered by `amount_write_order` and stops on a refusal, the gatherer's is
     // unordered and attempts both) and a helper would have to take that

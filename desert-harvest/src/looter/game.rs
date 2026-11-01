@@ -1,0 +1,1297 @@
+//! Resolution of game-side anchors (byte signatures, RTTI vtables) and the
+//! read-only survey. Nothing here touches game state.
+
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+use desert_core::creature::{self, CatchClass};
+
+use crate::looter::actors::{self, Catchable, Vec3};
+use crate::looter::config::Config;
+use crate::module::MainModule;
+use crate::pattern::{self, Found, Pattern};
+use crate::rtti;
+
+/// The name [`SIGNATURES`] gives the loot grant (`FUN_142ab6f20` on build
+/// 25246367), so [`crate::looter::hunting`] and the table cannot come to spell
+/// it differently.
+pub const LOOT_GRANT_SIG: &str = "loot_grant";
+
+/// The loot grant's signature, named separately because `crate::looter::hunting` holds
+/// the stolen bytes to being a literal prefix of it.
+///
+/// `grant(component, &mask, flag, &out)`: the function that walks a dead-drop
+/// component's two row lists (`comp+0x48`/`+0x50` and `comp+0x58`/`+0x60`) and
+/// hands the matching ones to the inventory. The register saves and pushes are
+/// what every large function in this image shares, so the signature runs on
+/// into the frame setup, whose two displacements are wildcarded because a frame
+/// size is the first thing a rebuild moves, and into the three argument moves.
+///
+/// Build 26345091 added a third spill (`mov [rsp+0x10],rdx`) and moved the
+/// arguments into `r12`/`r13`/`r15` instead of `r15`/`r12`/`r13`, so the old
+/// frame tail `4D 8B F9 4C 8B E2 4C 8B E9` now hits two unrelated small
+/// functions. Identity on 26345091 (RVA `0x2E1F010`): the body still opens
+/// `movzx ecx,r8b; test r8b,r8b; je; cmp ecx,1; jne` and walks both row lists,
+/// its size is 0x7AB against 0x7C4 for `FUN_142ab4ee0` on 25116796, and it has
+/// the same five callers in three functions (two, one, two) as the evidence
+/// export records for that build. `+0x2E1F340` on the 26356046 hotfix and
+/// `+0x2E1F2F0` on 26361232; was
+/// `+0x2B84650` on 25477059 and `+0x2AB6F20` on 25246367.
+pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9";
+
+/// The `enqueue` signature, named separately because `crate::looter::entry`
+/// holds its stolen bytes to being a literal prefix of it. Function start,
+/// RVA `0x29A8370` on 26345091 (`0x29A86A0` on 26356046, `0x29A8650` on 26361232): the `call` at `desc_mask+queue_site`+0x98
+/// lands here, and the body reads `[rdx+0x38]` and `gs:[0x58]` as the
+/// 25116796 function did. 26345091 added `mov [rsp+0x20],rsi` to the
+/// prologue, which is what killed the old pattern.
+pub const ENQUEUE_PATTERN: &str =
+    "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00";
+
+/// The `own_check_site` signature: `mov rcx,[rcx+0x120]; call steal_check;
+/// test al,al; je +5; mov dil,2`. Named separately because
+/// [`OWN_CHECK_LAYOUT`] describes it and `crate::looter::events::resolve`
+/// reads it through that layout.
+///
+/// RVA `0x2D35585` on 26345091 (`0x2D358B5` on 26356046, `0x2D35865` on 26361232),
+/// inside the function at `0x2D35230` (`0x2D35510` on 26361232) that calls the steal check twice, as `FUN_1429db730` did on
+/// 25116796. The steal check itself (`0x2801700`; `0x2801A10` on 26356046,
+/// `0x28019C0` on 26361232)
+/// has nine callers in both builds, in the same address
+/// order; this is the seventh. `mov bl,2` became `mov dil,2` (`40 B7 02`),
+/// which is what killed the old pattern; the old tail `84 C0 74 04 B3 02`
+/// still hits twice, both elsewhere.
+pub const OWN_CHECK_PATTERN: &str = "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02";
+
+/// Where things are inside an [`OWN_CHECK_PATTERN`] hit.
+pub struct OwnCheckLayout {
+    /// Offset of the `call`'s `E8` from the hit (the `mov` is 7 bytes).
+    pub call_at: usize,
+    /// How far back from the hit to look for the `lea r9,[rip+ctx]`
+    /// (`4C 8D 0D`) that loads the steal check's fourth argument. It sits
+    /// 0xE before the hit on 25116796 through 26345091; the search takes the
+    /// nearest one within this many bytes.
+    pub lea_r9_back: usize,
+}
+pub const OWN_CHECK_LAYOUT: OwnCheckLayout = OwnCheckLayout { call_at: 7, lea_r9_back: 0x20 };
+
+/// Signatures lifted from the reference mod, re-derived per build. Names are
+/// ours; the comment says what the hit is and its RVA on build 26345091, where
+/// they were re-derived, then on the 26356046 hotfix, then on 26361232 (every
+/// hit exactly 0x50 lower than on 26356046).
+pub const SIGNATURES: &[(&str, &str)] = &[
+    // Function start, 0x161AFD0: the `call` at `desc_mask+queue_site`+0x22,
+    // 68 callers, allocates 0x80 bytes behind the `gs:[0x58]` pool check.
+    // Unmoved on 26356046; 0x161AF80 on 26361232.
+    ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00"),
+    ("enqueue", ENQUEUE_PATTERN),
+    // 0x3B539AF, 0xF into the function; 0x3B53D6F on 26356046, 0x3B53C9F on 26361232.
+    ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B"),
+    ("own_check_site", OWN_CHECK_PATTERN),
+    // 0x1937610 on both; 0x19375C0 on 26361232.
+    ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01"),
+    // 0x29A97C3; 0x29A9AF3 on 26356046, 0x29A9AA3 on 26361232.
+    ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25"),
+    // 0x22D6A50 on both; 0x22D6A00 on 26361232.
+    ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??"),
+    // 0x22D6D70 on both (0x22D6D20 on 26361232), the function right after `interaction_fn` (0x310 after it on
+    // 25477059, 0x320 on 26345091), with `call [rax+0x818]` (`FF 90 imm32`)
+    // inside. Scanned and never consumed. `movzx esi,dl` became
+    // `movzx r13d,dl` (`44 0F B6 EA`) on 26345091.
+    ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9"),
+    // 0x2E1F010; 0x2E1F340 on 26356046, 0x2E1F2F0 on 26361232.
+    (LOOT_GRANT_SIG, LOOT_GRANT_PATTERN),
+];
+
+pub const ACTOR_MANAGER_RTTI: &str = ".?AVClientActorManager@pa@@";
+
+#[derive(Debug, Default)]
+pub struct Anchors {
+    /// name -> absolute VA of the signature hit (not adjusted for +0xF etc.).
+    pub hits: Vec<(&'static str, usize)>,
+    pub missing: Vec<&'static str>,
+    pub actor_manager_vtables: Vec<u64>,
+}
+
+impl Anchors {
+    pub fn get(&self, name: &str) -> Option<usize> {
+        self.hits.iter().find(|(n, _)| *n == name).map(|(_, a)| *a)
+    }
+}
+
+/// Scan the main module for everything we know how to find, logging as we go.
+pub fn resolve(m: &MainModule) -> Anchors {
+    let img = m.bytes();
+    let mut a = Anchors::default();
+    // The signatures above are built in and all parse; a typo in one is a
+    // skipped anchor, never a panic in the game process.
+    let parsed: Vec<Option<Pattern>> = SIGNATURES.iter().map(|(_, t)| Pattern::parse(t)).collect();
+    // One walk of the image for all nine, not one each: eight passes
+    // measured 1.49 s in game, some 80% of this subsystem's startup, and the
+    // inline hooks installed right after it can only go in while the game is
+    // still loading.
+    let pats: Vec<Pattern> = parsed.iter().flatten().cloned().collect();
+    let mut scanned = pattern::find_unique_multi(&pats, img).into_iter();
+    // A signature that did not parse took no part in the scan, so it consumes
+    // no result and the rest stay aligned with `SIGNATURES`.
+    let found: Vec<Option<Found>> =
+        parsed.iter().map(|p| p.as_ref().and_then(|_| scanned.next())).collect();
+    for ((name, _), found) in SIGNATURES.iter().zip(found) {
+        match found {
+            Some(Found::Unique(off)) => {
+                crate::log!("[sig] {name:<22} = +0x{off:X}");
+                a.hits.push((name, m.base + off));
+            }
+            Some(Found::None) => {
+                crate::log!("[sig] {name:<22} NOT FOUND");
+                a.missing.push(name);
+            }
+            Some(Found::Ambiguous(n)) => {
+                crate::log!("[sig] {name:<22} AMBIGUOUS ({n}+ hits)");
+                a.missing.push(name);
+            }
+            None => {
+                crate::log!("[sig] {name:<22} UNPARSEABLE");
+                a.missing.push(name);
+            }
+        }
+    }
+    a.actor_manager_vtables = rtti::vtables_for_class(img, m.base as u64, ACTOR_MANAGER_RTTI);
+    match a.actor_manager_vtables.as_slice() {
+        [] => crate::log!("[rtti] {ACTOR_MANAGER_RTTI}: no vtable found"),
+        v => {
+            for vt in v {
+                crate::log!("[rtti] {ACTOR_MANAGER_RTTI} vtable = +0x{:X}", vt - m.base as u64);
+            }
+        }
+    }
+    // The two info-manager global slots, resolved by content the same way and
+    // at the same moment as the signatures above.
+    crate::looter::tables::resolve_slots(m);
+    a
+}
+
+pub struct World {
+    pub manager_slot: usize,
+    pub manager: usize,
+}
+
+/// Find the actor manager through its global pointer. Retried by the caller.
+pub fn find_world(m: &MainModule, a: &Anchors) -> Option<World> {
+    let (slot, obj) = actors::find_manager(m, &a.actor_manager_vtables)?;
+    crate::log!("[world] actor manager at 0x{obj:X} via global +0x{:X}", m.rva(slot));
+    Some(World { manager_slot: slot, manager: obj })
+}
+
+fn class_of(m: &MainModule, obj: usize) -> String {
+    actors::rtti_name(m, obj).map(|n| actors::short_name(&n)).unwrap_or_else(|| "?".into())
+}
+
+/// Inert actors closer than this get a detail line in the survey.
+pub const INERT_DETAIL_RANGE: f32 = 10.0;
+
+/// Print order of the F11 listing, lowest first: the actors a gather or
+/// pickup question is about, then the ones a catch question is about, then
+/// scenery. Distance orders within a rank. Kept as a function rather than a
+/// derive on `Kind` so the enum's own order stays free to mean nothing.
+fn survey_rank(k: actors::Kind) -> u8 {
+    // Exhaustive on purpose: a new `Kind` must decide where it prints.
+    match k {
+        actors::Kind::Gather => 0,
+        actors::Kind::Unarmed => 1,
+        actors::Kind::Item | actors::Kind::Equipment => 2,
+        actors::Kind::Interactable => 3,
+        // A carcass is a loot target, so it prints with the targets - and
+        // ahead of `Catchable` rather than beside it. There are only ever a
+        // handful of corpses in range and every one is actionable, where
+        // `Catchable` also carries the birds in flight and the unidentified
+        // species that are never taken; sharing a rank would let a flock
+        // sort itself in front of the one corpse by distance and push it off
+        // the end of the `SurveyLines` budget, which is the failure this
+        // whole ordering exists to prevent.
+        actors::Kind::Carcass => 4,
+        // Prints, but below the actionable targets: an emptied carcass is
+        // still worth seeing in a survey, because it is the difference
+        // between "skinning did nothing" and "there was nothing to skin".
+        actors::Kind::CarcassEmpty => 5,
+        actors::Kind::Catchable => 6,
+        actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 7,
+        actors::Kind::Inert => 8,
+    }
+}
+
+/// One survey line for an actor with no gimmick record: the class, the type
+/// byte, the two `ClientStatusActorComponent` bytes, the interaction category
+/// (`status+0x5A`, what `FUN_1429DB730` switches on) and the components. This
+/// is the evidence the catch rule is refined from.
+fn catch_diagnostic_line(
+    m: &MainModule,
+    a: usize,
+    d: f32,
+    eid: u32,
+    pos: &Vec3,
+    kind: actors::Kind,
+) {
+    let ty = type_text(a);
+    let st = match actors::status_bytes(m, a) {
+        Some(s) => format!("{:02X}/{:02X}", s.kind, s.flag),
+        None => "?".to_string(),
+    };
+    let cat = category_text(m, a);
+    let names = actors::component_names(m, a);
+    // The species row, printed beside the class byte because the class byte
+    // is not a species (`actors::STATUS_SPECIES_OFF`).
+    let chr = match actors::status_off(&names).and_then(|off| actors::species_at(a, off)) {
+        Some(r) => r.to_string(),
+        None => "?".to_string(),
+    };
+    // The dead-drop component's state, for dead animals only. This is the one
+    // instrument that tells "skinning did nothing" apart from "there was
+    // nothing left to skin", and it is what makes two open questions about the
+    // carcass path answerable from a log instead of by guesswork - both since
+    // answered in game: the drops are *not* pre-rolled at spawn (every
+    // untouched carcass reads `0/0/0`), and the client actor does carry the
+    // component (no `dd=none` has ever been logged).
+    //
+    // `dd=rolled/item_rows/set_rows(grantable)`. The bracketed number is how
+    // many drop-set rows skinning can actually take; it is what decides, and
+    // the gap between it and `set_rows` is exactly the bug that switched
+    // auto-gather off - class 0x82 reads `1/0/4(0)` once emptied.
+    let dd = match kind {
+        actors::Kind::Carcass | actors::Kind::CarcassEmpty => {
+            match actors::dead_drop_state(a) {
+                Some(s) => format!(
+                    " dd={}/{}/{}({})",
+                    s.rolled, s.item_rows, s.set_rows, s.grantable_set_rows
+                ),
+                None => " dd=none".to_string(),
+            }
+        }
+        _ => String::new(),
+    };
+    let comps: Vec<String> = names
+        .into_iter()
+        .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
+        .collect();
+    crate::log!(
+        "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} chr={chr} status={st}{dd} comps=[{}]",
+        pos.x, pos.y, pos.z, class_of(m, a), comps.join(" ")
+    );
+}
+
+/// `creature::type_byte` as two hex digits, or `?` when it is not readable.
+fn type_text(actor: usize) -> String {
+    match creature::type_byte(actor) {
+        Some(t) => format!("{t:02X}"),
+        None => "?".to_string(),
+    }
+}
+
+/// `actors::interaction_category` as two hex digits, or `?` when the status
+/// component is not there or not readable.
+pub fn category_text(m: &MainModule, actor: usize) -> String {
+    match actors::interaction_category(m, actor) {
+        Some(c) => format!("{c:02X}"),
+        None => "?".to_string(),
+    }
+}
+
+/// Log everything within `range` metres of the player, classified the way
+/// the reference mod does it. Read-only. Debug=1 adds the structural dumps.
+pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bool) {
+    let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+    let Some(c) = crate::safe::read_ptr(manager + actors::CONTAINER_OFF) else {
+        crate::log!("[survey] container pointer unreadable");
+        return;
+    };
+    let Some(map) = actors::eid_map(c) else {
+        let b = c + actors::EIDMAP_OFF;
+        crate::log!(
+            "[survey] eid map rejected: count={:?} cap={:?} keys={:?} values={:?}",
+            crate::safe::read::<u32>(b + 8), crate::safe::read::<u32>(b + 0xC),
+            crate::safe::read::<u64>(b + 0x10).map(|v| format!("0x{v:X}")),
+            crate::safe::read::<u64>(b + 0x18).map(|v| format!("0x{v:X}"))
+        );
+        return;
+    };
+    let entries = map.entries();
+    let Some(player) = actors::player_actor(manager) else {
+        crate::log!("[survey] player actor not at manager+0x50");
+        return;
+    };
+    let Some(ppos) = actors::actor_position(player) else {
+        crate::log!("[survey] player has no readable position");
+        return;
+    };
+    crate::log!(
+        "[survey] {} actors ({} readable); player eid={:08X} at ({:.1} {:.1} {:.1})",
+        map.count, entries.len(), actors::actor_eid(player).unwrap_or(0), ppos.x, ppos.y, ppos.z
+    );
+    match actors::inventory_tabs(player) {
+        Some(tabs) => {
+            crate::log!("[survey] inventory tabs (id:used/max): {}", tabs_summary(&tabs));
+            if let Some(bag) = actors::bag_tab(&tabs, Some(1)) {
+                match actors::tab_slots(&bag) {
+                    Some(slots) => {
+                        let shown: Vec<String> = slots
+                            .iter()
+                            .take(if debug { 200 } else { 12 })
+                            .map(|sl| {
+                                let rec = crate::looter::tables::item_record(m, sl.item_index);
+                                let key = rec.and_then(crate::looter::tables::item_record_key).unwrap_or(0);
+                                let name = rec.and_then(crate::looter::tables::item_record_name).unwrap_or_else(|| "?".into());
+                                let tab = rec.and_then(crate::looter::tables::item_record_tab).unwrap_or(-2);
+                                format!("[{}] {name} key={key} x{} tab={tab}", sl.slot, sl.count)
+                            })
+                            .collect();
+                        crate::log!("[survey] bag: {} stacks; {}", slots.len(), shown.join("; "));
+                        if debug {
+                            dump_item_records(m, &tabs, &slots);
+                        }
+                    }
+                    None => crate::log!("[survey] bag slots unreadable (tab ptr 0x{:X})", bag.ptr),
+                }
+            }
+        }
+        None => crate::log!("[survey] inventory not readable via player+0x68->+0xB8"),
+    }
+    let mut near: Vec<(f32, usize, u32, Vec3)> = entries
+        .iter()
+        .filter(|(_, a)| *a != player)
+        .filter_map(|&(eid, a)| {
+            let pos = actors::actor_position(a)?;
+            let d = pos.dist(&ppos);
+            (d <= range).then_some((d, a, eid, pos))
+        })
+        .collect();
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    // Classify everything once. The census below counts every actor in range
+    // and is never truncated; only the listing is.
+    let classified: Vec<(f32, usize, u32, Vec3, actors::Kind)> = near
+        .iter()
+        .map(|&(d, a, eid, pos)| (d, a, eid, pos, actors::classify(m, a, player)))
+        .collect();
+    let mut counts = std::collections::BTreeMap::<String, usize>::new();
+    for (_, _, _, _, kind) in &classified {
+        *counts.entry(format!("{kind:?}")).or_default() += 1;
+    }
+    // Kind-first, then distance. Until 2026-09-13 this was distance only,
+    // and with a heap of smashed pottery underfoot the budget went entirely
+    // on inert shards a metre away while the gather nodes and items - the
+    // actors the survey exists for - fell off the end unprinted and unreported.
+    // Three investigations read that window as the world (TODO.md, "the
+    // looter's survey truncates at 64 lines"). Ordering by kind means the
+    // budget only ever cuts the least interesting actors, and the line after
+    // the listing says exactly what it cut.
+    let mut ordered = classified;
+    ordered.sort_by(|a, b| survey_rank(a.4).cmp(&survey_rank(b.4)).then(a.0.total_cmp(&b.0)));
+    let mut shown = 0usize;
+    let mut cut = std::collections::BTreeMap::<String, usize>::new();
+    for (d, a, eid, pos, kind) in &ordered {
+        let (d, a, eid, kind) = (d, a, eid, *kind);
+        // A far-off inert gimmick prints nothing outside debug, so it must
+        // not spend a line of the budget either.
+        if kind == actors::Kind::Inert && *d > INERT_DETAIL_RANGE && !debug {
+            continue;
+        }
+        if shown >= max_lines {
+            *cut.entry(format!("{kind:?}")).or_default() += 1;
+            continue;
+        }
+        shown += 1;
+        match kind {
+            actors::Kind::Gather | actors::Kind::Item | actors::Kind::Interactable | actors::Kind::Unarmed => {
+                let id = actors::node_identity(m, *a);
+                let (rec, key, name, fam) = match &id {
+                    Some(n) => (
+                        n.index.to_string(),
+                        n.key.map(|k| k.to_string()).unwrap_or_else(|| "-".into()),
+                        n.name.clone().unwrap_or_else(|| "?".into()),
+                        n.family.map(|f| format!("{f:?}")).unwrap_or_else(|| "-".into()),
+                    ),
+                    None => ("-".into(), "-".into(), "?".into(), "-".into()),
+                };
+                let st = match actors::status_bytes(m, *a) {
+                    Some(s) => format!(" status={:02X}/{:02X}{}", s.kind, s.flag, if actors::is_owned_or_special(s) { " OWNED" } else { "" }),
+                    None => " status=?".to_string(),
+                };
+                crate::log!(
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{st}",
+                    pos.x, pos.y, pos.z
+                );
+            }
+            actors::Kind::Inert if *d <= INERT_DETAIL_RANGE => {
+                // Close-by inert gimmicks are what droppings look like; show
+                // what record they carry even when it is not a gather record.
+                let id = actors::node_identity(m, *a);
+                let (rec, key, name) = match &id {
+                    Some(n) => (
+                        n.index.to_string(),
+                        n.key.map(|k| k.to_string()).unwrap_or_else(|| "-".into()),
+                        n.name.clone().unwrap_or_else(|| "?".into()),
+                    ),
+                    None => ("-".into(), "-".into(), "-".into()),
+                };
+                let comps: Vec<String> = actors::component_names(m, *a)
+                    .into_iter()
+                    .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
+                    .collect();
+                crate::log!(
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} gimmick={} comps=[{}]",
+                    pos.x, pos.y, pos.z, actors::interaction_words(m, *a), comps.join(" ")
+                );
+                if debug {
+                    dump_gimmick_raw(m, *a);
+                }
+            }
+            actors::Kind::Inert if !debug => {}
+            // Characters, insects and everything unclassified: show the bytes
+            // the catch rule keys on (`actors::catch_class`, section 15) so
+            // insects and fish can be told apart from birds, NPCs and animals
+            // - `cat=` is the class byte that decides it. `Catchable` is
+            // named here rather than left to `_` precisely because it is the
+            // line that says whether the rule picked the right actor.
+            actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Carcass | actors::Kind::Other => {
+                catch_diagnostic_line(m, *a, *d, *eid, pos, kind);
+            }
+            _ => {
+                catch_diagnostic_line(m, *a, *d, *eid, pos, kind);
+            }
+        }
+    }
+    let summary: Vec<String> = counts.iter().map(|(k, v)| format!("{k}={v}")).collect();
+    crate::log!("[survey] within {range:.0} m: {}", summary.join(" "));
+    if !cut.is_empty() {
+        let dropped: usize = cut.values().sum();
+        let by_kind: Vec<String> = cut.iter().map(|(k, v)| format!("{k}={v}")).collect();
+        crate::log!(
+            "[survey] listing capped at {max_lines} lines ([Harvest] SurveyLines): {dropped} more not printed - {}",
+            by_kind.join(" ")
+        );
+    }
+    if debug {
+        if let Some((_, a, eid, _)) = near.iter().find(|(_, a, _, _)| actors::classify(m, *a, player) == actors::Kind::Gather) {
+            crate::log!("[debug] strings of gather node eid={eid:08X}");
+            dump_all_strings(m, *a);
+            dump_gimmick_raw(m, *a);
+        }
+    }
+}
+
+/// One-off structural dump: what the manager points at, and every global
+/// object the exe knows by class. Read-only.
+pub fn census(m: &MainModule, w: &World) {
+    let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+    crate::log!("[census] manager 0x{manager:X} fields with RTTI targets:");
+    for (off, p, class) in actors::object_fields(m, manager, actors::MANAGER_SIZE) {
+        crate::log!("[census]   manager+0x{off:03X} -> 0x{p:X} {class}");
+    }
+    if let Some(c) = crate::safe::read_ptr(manager + actors::CONTAINER_OFF) {
+        crate::log!("[census] container 0x{c:X} ({}) fields with RTTI targets:", class_of(m, c));
+        for (off, p, class) in actors::object_fields(m, c, actors::CONTAINER_SCAN) {
+            crate::log!("[census]   container+0x{off:03X} -> 0x{p:X} {class}");
+        }
+    }
+    let globals = actors::global_object_census(m);
+    crate::log!("[census] {} distinct RTTI classes referenced from data sections:", globals.len());
+    for (rva, p, class) in globals {
+        crate::log!("[census]   +0x{rva:X} -> 0x{p:X} {class}");
+    }
+}
+
+/// Dump a `{ptr p0; u32 a; u32 b; ptr p2; ptr p3}` structure and the first
+/// qwords behind p0 and p2, annotated as actors where they look like actors.
+fn dump_map(m: &MainModule, label: &str, base: usize) {
+    use crate::safe;
+    let (Some(p0), Some(a), Some(b)) = (
+        safe::read::<u64>(base),
+        safe::read::<u32>(base + 8),
+        safe::read::<u32>(base + 0xC),
+    ) else {
+        return;
+    };
+    let p2: u64 = safe::read(base + 0x10).unwrap_or(0);
+    let p3: u64 = safe::read(base + 0x18).unwrap_or(0);
+    crate::log!("[map] {label}: p0=0x{p0:X} a={a} b={} p2=0x{p2:X} p3=0x{p3:X}", b as i32);
+    for (nm, p) in [("p0", p0 as usize), ("p2", p2 as usize)] {
+        if p < 0x10000 || !safe::readable(p, 8 * 6) {
+            continue;
+        }
+        let mut cells = Vec::new();
+        for i in 0..6 {
+            let v: u64 = safe::read(p + i * 8).unwrap_or(0);
+            let q = v as usize;
+            let desc = if q >= 0x10000 && safe::readable(q, 0x100) {
+                match (actors::actor_eid(q), actors::rtti_name(m, q)) {
+                    (Some(e), Some(n)) => format!("{e:08X}:{}", actors::short_name(&n)),
+                    (_, Some(n)) => format!("obj:{}", actors::short_name(&n)),
+                    _ => "mem".into(),
+                }
+            } else {
+                "-".into()
+            };
+            cells.push(format!("{v:X}({desc})"));
+        }
+        crate::log!("[map]   {nm}[0..6] = {}", cells.join(" "));
+    }
+}
+
+/// Raw structural dump of the container and manager map/list structures.
+pub fn dump_maps(m: &MainModule, w: &World) {
+    let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+    if let Some(c) = crate::safe::read_ptr(manager + actors::CONTAINER_OFF) {
+        dump_map(m, "ctr+0x08", c + 0x08);
+        let mut off = 0x88;
+        while off + 0x20 <= actors::CONTAINER_SCAN {
+            dump_map(m, &format!("ctr+0x{off:X}"), c + off);
+            off += 0x20;
+        }
+    }
+    for off in [0x128usize, 0x130, 0x138, 0x140, 0x148, 0x150, 0x158, 0x180, 0x190, 0x438] {
+        dump_map(m, &format!("mgr+0x{off:X}"), manager + off);
+    }
+}
+
+fn qwords(addr: usize, n: usize) -> String {
+    (0..n)
+        .map(|i| crate::safe::read::<u64>(addr + i * 8).map(|v| format!("{v:X}")).unwrap_or_else(|| "?".into()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Raw look at the first records of a data table and at a gimmick component's
+/// two side objects, to pin down where the record key lives.
+pub fn dump_table_records(m: &MainModule, label: &str, slot_rva: usize, n: usize) {
+    use crate::safe;
+    let Some(mgr) = crate::looter::tables::manager_at(m, slot_rva) else { return };
+    let count: u32 = safe::read(mgr + 8).unwrap_or(0);
+    let Some(arr) = safe::read_ptr(mgr + 0x58) else { return };
+    crate::log!("[table] {label}: manager=0x{mgr:X} count={count} records=0x{arr:X}; manager qwords: {}", qwords(mgr, 14));
+    for i in 0..n {
+        let Some(rec) = safe::read_ptr(arr + i * 8) else { continue };
+        let name = crate::looter::tables::name(m, slot_rva, i as u32).unwrap_or_else(|| "?".into());
+        crate::log!("[table]   [{i}] rec=0x{rec:X} name={name}: {}", qwords(rec, 10));
+    }
+}
+
+pub fn dump_gimmick_raw(m: &MainModule, actor: usize) {
+    use crate::safe;
+    let Some((off, _)) = actors::component_names(m, actor).into_iter().find(|(_, n)| n.contains("ClientGimmickActorComponent")) else { return };
+    let Some(sub) = safe::read_ptr(actor + 0x68) else { return };
+    let Some(comp) = safe::read_ptr(sub + off) else { return };
+    crate::log!("           gimmick comp=0x{comp:X} +0xC0..+0xF0: {}", qwords(comp + 0xC0, 6));
+    for o in [0xC0usize, 0xE0] {
+        if let Some(p) = safe::read_ptr(comp + o) {
+            crate::log!("           comp+0x{o:X} -> 0x{p:X}: {} {}", qwords(p, 6),
+                actors::rtti_name(m, p).map(|n| actors::short_name(&n)).unwrap_or_default());
+        }
+    }
+}
+
+fn hexascii(addr: usize, n: usize) -> String {
+    let mut hex = String::new();
+    let mut asc = String::new();
+    for i in 0..n {
+        match crate::safe::read::<u8>(addr + i) {
+            Some(b) => {
+                hex.push_str(&format!("{b:02X} "));
+                asc.push(if (0x20..0x7F).contains(&b) { b as char } else { '.' });
+            }
+            None => {
+                hex.push_str("?? ");
+                asc.push('?');
+            }
+        }
+    }
+    format!("{hex}|{asc}|")
+}
+
+/// Look inside an eid-map value object for anything that is an actor.
+pub fn dump_value_object(m: &MainModule, key: u32, obj: usize) {
+    crate::log!("[val] key={key:08X} obj=0x{obj:X}: {}", qwords(obj, 12));
+    for off in (0..0x80).step_by(8) {
+        if let Some(p) = crate::safe::read_ptr(obj + off) {
+            if let Some(n) = actors::rtti_name(m, p) {
+                let eid = actors::actor_eid(p).map(|e| format!("{e:08X}")).unwrap_or_else(|| "-".into());
+                crate::log!("[val]   +0x{off:02X} -> 0x{p:X} {} eid={eid}", actors::short_name(&n));
+            }
+        }
+    }
+}
+
+pub fn dump_record_bytes(m: &MainModule, label: &str, slot_rva: usize, idx: usize) {
+    let Some(mgr) = crate::looter::tables::manager_at(m, slot_rva) else { return };
+    let Some(arr) = crate::safe::read_ptr(mgr + 0x58) else { return };
+    let Some(rec) = crate::safe::read_ptr(arr + idx * 8) else { return };
+    for line in 0..4 {
+        crate::log!("[table] {label}[{idx}] +0x{:02X}: {}", line * 32, hexascii(rec + line * 32, 32));
+    }
+}
+
+/// Check every u32 in a gimmick node's side objects against the gimmick key index.
+pub fn match_gimmick_keys(m: &MainModule, actor: usize, index: &std::collections::HashMap<u32, usize>) {
+    use crate::safe;
+    let Some((off, _)) = actors::component_names(m, actor).into_iter().find(|(_, n)| n.contains("ClientGimmickActorComponent")) else { return };
+    let Some(sub) = safe::read_ptr(actor + 0x68) else { return };
+    let Some(comp) = safe::read_ptr(sub + off) else { return };
+    let mut places: Vec<(String, usize)> = vec![("comp".into(), comp)];
+    for o in [0xC0usize, 0xE0] {
+        if let Some(p) = safe::read_ptr(comp + o) {
+            places.push((format!("comp+0x{o:X}->"), p));
+        }
+    }
+    for (label, base) in places {
+        for i in 0..64 {
+            let Some(v) = safe::read::<u32>(base + i * 4) else { break };
+            if v == 0 || v == 0xFFFF_FFFF { continue; }
+            if let Some(&rec) = index.get(&v) {
+                crate::log!(
+                    "           key match: {label}+0x{:X} = {v} -> rec 0x{rec:X} names={:?}",
+                    i * 4, crate::looter::tables::gimmick_name_candidates(rec)
+                );
+            }
+        }
+    }
+}
+
+/// The object behind `+0xE0 -> [1]` on a gimmick node: class, qwords, and any
+/// name reachable by the known record layouts.
+pub fn dump_type_object(m: &MainModule, actor: usize) {
+    use crate::safe;
+    let Some((off, _)) = actors::component_names(m, actor).into_iter().find(|(_, n)| n.contains("ClientGimmickActorComponent")) else { return };
+    let Some(sub) = safe::read_ptr(actor + 0x68) else { return };
+    let Some(comp) = safe::read_ptr(sub + off) else { return };
+    let Some(t) = safe::read_ptr(comp + 0xE0) else { return };
+    let Some(obj) = safe::read_ptr(t + 8) else { return };
+    let class = actors::rtti_name(m, obj).map(|n| actors::short_name(&n)).unwrap_or_else(|| "?".into());
+    crate::log!("           type obj 0x{obj:X} ({class}): {}", qwords(obj, 12));
+    crate::log!("           type obj name candidates: {:?} / +0x08 chain {:?}",
+        crate::looter::tables::record_name_any(obj),
+        safe::read_ptr(obj + 8).and_then(|p| actors::rtti_name(m, p)).map(|n| actors::short_name(&n)));
+    for o in (0..0x60).step_by(8) {
+        if let Some(p) = safe::read_ptr(obj + o) {
+            if let Some(s) = safe::read_cstr(p, 48).filter(|s| s.len() >= 4) {
+                crate::log!("           type obj +0x{o:X} -> str {s:?}");
+            }
+            if let Some(n) = actors::rtti_name(m, p) {
+                crate::log!("           type obj +0x{o:X} -> {}", actors::short_name(&n));
+            }
+        }
+    }
+}
+
+/// Scan an object's qwords for pointers into known table records or to strings.
+fn scan_links(
+    m: &MainModule,
+    label: &str,
+    base: usize,
+    size: usize,
+    records: &std::collections::HashMap<usize, (String, usize)>,
+) {
+    use crate::safe;
+    for off in (0..size).step_by(8) {
+        let Some(p) = safe::read_ptr(base + off) else { continue };
+        if let Some((table, idx)) = records.get(&p) {
+            let name = crate::looter::tables::record_name_any(p).unwrap_or_else(|| "?".into());
+            crate::log!("           link {label}+0x{off:X} -> {table}[{idx}] {name}");
+            continue;
+        }
+        if m.contains(p) {
+            continue;
+        }
+        if let Some(s) = safe::read_cstr(p, 48) {
+            if s.len() >= 4 && s.chars().any(|c| c.is_ascii_alphabetic()) {
+                crate::log!("           str  {label}+0x{off:X} -> {s:?}");
+            }
+        }
+    }
+}
+
+/// Depth-2: for every pointer field of `base`, scan the target for record pointers.
+fn scan_links_deep(
+    m: &MainModule,
+    label: &str,
+    base: usize,
+    size: usize,
+    records: &std::collections::HashMap<usize, (String, usize)>,
+) {
+    use crate::safe;
+    for off in (0..size).step_by(8) {
+        let Some(p) = safe::read_ptr(base + off) else { continue };
+        if m.contains(p) || !safe::readable(p, 0x100) {
+            continue;
+        }
+        for o2 in (0..0x100).step_by(8) {
+            let Some(q) = safe::read_ptr(p + o2) else { continue };
+            if let Some((table, idx)) = records.get(&q) {
+                let name = crate::looter::tables::record_name_any(q).unwrap_or_else(|| "?".into());
+                crate::log!("           link {label}+0x{off:X}->+0x{o2:X} -> {table}[{idx}] {name}");
+            }
+        }
+    }
+}
+
+/// Where does a node point at its definition? Check actor, sub-object, every
+/// component, and one level below each of them.
+pub fn find_record_links(
+    m: &MainModule,
+    actor: usize,
+    records: &std::collections::HashMap<usize, (String, usize)>,
+) {
+    use crate::safe;
+    scan_links(m, "actor", actor, 0x300, records);
+    scan_links_deep(m, "actor", actor, 0x300, records);
+    let Some(sub) = safe::read_ptr(actor + 0x68) else { return };
+    scan_links(m, "sub", sub, 0x400, records);
+    scan_links_deep(m, "sub", sub, 0x400, records);
+    for (off, name) in actors::component_names(m, actor) {
+        let Some(comp) = safe::read_ptr(sub + off) else { continue };
+        let label = actors::component_label(&actors::short_name(&name));
+        let size = if name.contains("Gimmick") { 0x600 } else { 0x300 };
+        scan_links(m, &label, comp, size, records);
+        scan_links_deep(m, &label, comp, size, records);
+        if name.contains("Gimmick") {
+            for o in [0x420usize, 0x428, 0x5A8] {
+                let Some(p) = safe::read_ptr(comp + o) else {
+                    crate::log!("           gimmick+0x{o:X} = null");
+                    continue;
+                };
+                let class = actors::rtti_name(m, p).map(|n| actors::short_name(&n)).unwrap_or_else(|| "?".into());
+                let rec = records.get(&p).map(|(t, i)| format!(" [{t}[{i}]]")).unwrap_or_default();
+                crate::log!("           gimmick+0x{o:X} -> 0x{p:X} ({class}){rec}: {}", qwords(p, 10));
+                scan_links(m, &format!("gimmick+0x{o:X}->"), p, 0x200, records);
+                scan_links_deep(m, &format!("gimmick+0x{o:X}->"), p, 0x100, records);
+            }
+        }
+    }
+}
+
+/// Scan u32 fields of a node's objects for values that are record keys.
+pub fn find_key_links(
+    m: &MainModule,
+    actor: usize,
+    keys: &std::collections::HashMap<u32, Vec<(String, usize, usize)>>,
+) {
+    use crate::safe;
+    let mut places: Vec<(String, usize, usize)> = vec![("actor".into(), actor, 0x300)];
+    if let Some(sub) = safe::read_ptr(actor + 0x68) {
+        places.push(("sub".into(), sub, 0x400));
+        for (off, name) in actors::component_names(m, actor) {
+            if let Some(comp) = safe::read_ptr(sub + off) {
+                let label = actors::component_label(&actors::short_name(&name));
+                let size = if name.contains("Gimmick") { 0x600 } else { 0x300 };
+                places.push((label.clone(), comp, size));
+                if name.contains("Gimmick") {
+                    for o in [0xC0usize, 0xE0, 0x420, 0x428] {
+                        if let Some(p) = safe::read_ptr(comp + o) {
+                            places.push((format!("{label}+0x{o:X}->"), p, 0x80));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (label, base, size) in places {
+        for off in (0..size).step_by(4) {
+            let Some(v) = safe::read::<u32>(base + off) else { break };
+            if let Some(hits) = keys.get(&v) {
+                let desc: Vec<String> = hits
+                    .iter()
+                    .take(4)
+                    .map(|(t, i, rec)| format!("{t}[{i}]={}", crate::looter::tables::record_name_any(*rec).unwrap_or_else(|| "?".into())))
+                    .collect();
+                crate::log!("           key  {label}+0x{off:X} = {v} -> {}", desc.join(" | "));
+            }
+        }
+    }
+}
+
+/// Look at the ServerActorManager: its fields, and whether it has an eid map
+/// holding the given entity id.
+pub fn server_side(m: &MainModule, census: &[(usize, usize, String)], eid: u32) {
+    use crate::safe;
+    let Some((_, srv, _)) = census.iter().find(|(_, _, c)| c == "ServerActorManager") else {
+        crate::log!("[server] no ServerActorManager in census");
+        return;
+    };
+    crate::log!("[server] ServerActorManager at 0x{srv:X}");
+    for (off, p, class) in actors::object_fields(m, *srv, 0x600) {
+        crate::log!("[server]   +0x{off:03X} -> 0x{p:X} {class}");
+    }
+    // Same container/map shape as the client side?
+    for coff in [0x08usize, 0x10, 0x18, 0x20] {
+        let Some(c) = safe::read_ptr(srv + coff) else { continue };
+        if !safe::readable(c, 0x100) {
+            continue;
+        }
+        let Some(map) = actors::eid_map(c) else { continue };
+        let entries = map.entries();
+        crate::log!("[server]   container via +0x{coff:X}: eid map count={} readable={}", map.count, entries.len());
+        if let Some((_, a)) = entries.iter().find(|(e, _)| *e == eid) {
+            let class = actors::rtti_name(m, *a).map(|n| actors::short_name(&n)).unwrap_or_else(|| "?".into());
+            crate::log!("[server]   eid {eid:08X} -> server actor 0x{a:X} {class}: {}", qwords(*a, 12));
+            for (off, name) in actors::component_names(m, *a) {
+                crate::log!("[server]     comp +0x{off:02X} {}", actors::short_name(&name));
+            }
+            for off in (0..0x200).step_by(8) {
+                if let Some(p) = safe::read_ptr(*a + off) {
+                    if let Some(s) = safe::read_cstr(p, 48).filter(|s| s.len() >= 4) {
+                        crate::log!("[server]     str +0x{off:X} -> {s:?}");
+                    }
+                    if let Some(n) = actors::rtti_name(m, p) {
+                        crate::log!("[server]     +0x{off:X} -> {}", actors::short_name(&n));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Every string reachable one pointer away from the actor, its sub-object and components.
+pub fn dump_all_strings(m: &MainModule, actor: usize) {
+    use crate::safe;
+    let mut places: Vec<(String, usize, usize)> = vec![("actor".into(), actor, 0x300)];
+    if let Some(sub) = safe::read_ptr(actor + 0x68) {
+        places.push(("sub".into(), sub, 0x400));
+        for (off, name) in actors::component_names(m, actor) {
+            if let Some(comp) = safe::read_ptr(sub + off) {
+                let size = if name.contains("Gimmick") { 0x600 } else { 0x300 };
+                places.push((actors::component_label(&actors::short_name(&name)), comp, size));
+            }
+        }
+    }
+    for (label, base, size) in places {
+        for off in (0..size).step_by(8) {
+            let Some(p) = safe::read_ptr(base + off) else { continue };
+            if m.contains(p) { continue; }
+            if let Some(s) = safe::read_cstr(p, 200) {
+                if s.len() >= 6 && s.chars().filter(|c| c.is_ascii_alphabetic()).count() >= 4 {
+                    crate::log!("           str {label}+0x{off:X} -> {s:?}");
+                }
+            }
+        }
+    }
+}
+
+/// Hunt for gimmickinfo record keys (the collect families use 17,0xx,xxx keys,
+/// e.g. peony_01 = 17020006) anywhere in a node's objects, scanning further
+/// than before.
+pub fn hunt_keys(m: &MainModule, actor: usize, keys: &std::collections::HashMap<u32, Vec<(String, usize, usize)>>) {
+    use crate::safe;
+    let mut places: Vec<(String, usize, usize)> = vec![("actor".into(), actor, 0x800)];
+    if let Some(sub) = safe::read_ptr(actor + 0x68) {
+        places.push(("sub".into(), sub, 0x1000));
+        for (off, name) in actors::component_names(m, actor) {
+            if let Some(comp) = safe::read_ptr(sub + off) {
+                let label = actors::component_label(&actors::short_name(&name));
+                places.push((label.clone(), comp, 0x1000));
+                if name.contains("Gimmick") {
+                    for o in [0xC0usize, 0xE0, 0x420, 0x428, 0x5A8] {
+                        if let Some(p) = safe::read_ptr(comp + o) {
+                            places.push((format!("{label}+0x{o:X}->"), p, 0x200));
+                            if o == 0xE0 {
+                                if let Some(q) = safe::read_ptr(p + 8) {
+                                    places.push((format!("{label}+0xE0->[1]->"), q, 0x200));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for (label, base, size) in places {
+        for off in (0..size).step_by(4) {
+            let Some(v) = safe::read::<u32>(base + off) else { break };
+            let in_collect_range = (17_000_000..17_999_999).contains(&v);
+            if let Some(hits) = keys.get(&v).filter(|h| h.iter().any(|(t, _, _)| t == "GimmickInfoManager")) {
+                let desc: Vec<String> = hits.iter().filter(|(t, _, _)| t == "GimmickInfoManager").take(2)
+                    .map(|(t, i, rec)| format!("{t}[{i}]={}", crate::looter::tables::record_name_any(*rec).unwrap_or_else(|| "?".into()))).collect();
+                crate::log!("[hunt]   {label}+0x{off:X} = {v} -> {}", desc.join(" | "));
+            } else if in_collect_range {
+                crate::log!("[hunt]   {label}+0x{off:X} = {v} (collect-range, no record)");
+            }
+        }
+    }
+}
+
+/// What the gather hotkey found: the nearest `Gather` node in range plus the
+/// two player values the event carries.
+#[derive(Debug, Clone)]
+pub struct GatherTarget {
+    pub eid: u32,
+    pub record: u16,
+    pub actor: usize,
+    pub player_actor: usize,
+    pub dist: f32,
+    pub name: String,
+    /// Gather family, or "Item" for a ground item.
+    pub family: String,
+    /// `actors::interaction_category`, the species class byte, for a carcass;
+    /// 0 for everything else. Carried so the skin/`[recv]` pairing can say
+    /// which species a drop came from without re-reading the actor, which by
+    /// then may be gone.
+    pub cat: u8,
+    pub mode: crate::looter::payload::PickupMode,
+    /// Carries the game's interaction object (`Gather`) rather than `Unarmed`.
+    pub armed: bool,
+    pub player_eid: u32,
+    pub route: u32,
+}
+
+/// The game's own event builder (`FUN_1426B21A0`) fills `ev+0x50` with
+/// `actor+0x60` (the eid) and `ev+0x58` ("route") with `actor+0x58` of the
+/// actor it is given. The reference mod, built for an older build, read the
+/// route at `player+0x90`; that value is only logged here for comparison.
+pub const PLAYER_ROUTE_OFF: usize = 0x58;
+pub const PLAYER_ROUTE_MOD_OFF: usize = 0x90;
+
+pub fn player_route(player: usize) -> Option<u32> {
+    crate::safe::read(player + PLAYER_ROUTE_OFF)
+}
+
+/// One enumeration of the world, shared by everything a tick needs.
+pub struct Scene {
+    pub player: usize,
+    pub player_eid: u32,
+    pub route: u32,
+    pub ppos: Vec3,
+    pub entries: Vec<(u32, usize)>,
+    /// None when the inventory could not be read this tick.
+    pub tabs: Option<Vec<actors::InventoryTab>>,
+}
+
+pub fn tabs_summary(tabs: &[actors::InventoryTab]) -> String {
+    tabs.iter().map(|t| format!("{}:{}/{}", t.id, t.used, t.max)).collect::<Vec<_>>().join(" ")
+}
+
+impl Scene {
+    pub fn actor(&self, eid: u32) -> Option<usize> {
+        self.entries.iter().find(|(e, _)| *e == eid).map(|(_, a)| *a)
+    }
+}
+
+pub fn scene(m: &MainModule, w: &World) -> Result<Scene, String> {
+    let _ = m;
+    let manager = actors::find_manager_current(w).unwrap_or(w.manager);
+    let c = crate::safe::read_ptr(manager + actors::CONTAINER_OFF).ok_or("container pointer unreadable")?;
+    let map = actors::eid_map(c).ok_or("eid map rejected")?;
+    let player = actors::player_actor(manager).ok_or("player actor not at manager+0x50")?;
+    let player_eid = actors::actor_eid(player).ok_or("player eid unreadable")?;
+    let route = player_route(player).ok_or("player+0x58 unreadable")?;
+    let ppos = actors::actor_position(player).ok_or("player position unreadable")?;
+    let tabs = actors::inventory_tabs(player);
+    Ok(Scene { player, player_eid, route, ppos, entries: map.entries(), tabs })
+}
+
+/// One bit per [`actors::interaction_category`] value (256 of them in four
+/// words), set the first time a catchable creature of that class is passed
+/// over as unknown. A catch candidate is looked at every gather tick, so
+/// without this the log would carry the same line several times a second;
+/// with it each unrecognised class says its piece once per session. Four
+/// atomics, no allocation and no lock on the path that reads it.
+static UNKNOWN_CATCH_CATEGORIES: [AtomicU64; 4] =
+    [AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0)];
+
+/// Claim the right to log category `c`: true exactly once per value per
+/// session. `c >> 6` is 0..=3 for any `u8`, so the `get` never misses; it is
+/// a `get` rather than an index because indexing is denied in shipped code.
+fn first_sighting_of(c: u8) -> bool {
+    let bit = 1u64 << (c & 63);
+    match UNKNOWN_CATCH_CATEGORIES.get(usize::from(c >> 6)) {
+        Some(word) => word.fetch_or(bit, Ordering::Relaxed) & bit == 0,
+        None => false,
+    }
+}
+
+/// Set the first time a skinnable carcass is passed over only because
+/// `GatherCarcass=0`, so the log says once per session that there is a switch
+/// for what the player just walked past.
+///
+/// One line, not one per tick: a corpse stays in the world for a while, the
+/// gather tick looks at it several times a second, and `GatherCarcass` is off
+/// by default - so anything chattier would be noise in every log of every
+/// player who has never asked for skinning. This is the same argument
+/// `UNKNOWN_CATCH_CATEGORIES` makes, and it needs no table behind it because
+/// there is nothing to say per carcass: the switch is the whole reason.
+static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+
+/// Nearest node within `GatherRange` metres that classifies as `Gather`
+/// (interaction object present and the gimmick record is a
+/// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
+/// true. Ground items (`GatherItems`) and catchable creatures (`GatherBugs`
+/// for insects, `GatherFish` for fish) are candidates too; a creature comes
+/// back with `mode: Catch`, which is a different game event entirely (see
+/// `payload::catch_payload`). So are animal carcasses when `GatherCarcass=1`,
+/// with `mode: Skin` and a third event again (`payload::skin_payload`).
+/// `cfg` is the live config, so what counts as a candidate follows the ini
+/// without this having to be told twice - `actors::Kind::is_gather_candidate`
+/// is where that set is defined, once, for here and for
+/// `autogather::Gatherer::review`. Read-only.
+pub fn nearest_gather(
+    m: &MainModule,
+    sc: &Scene,
+    cfg: &Config,
+    skip: &dyn Fn(u32) -> bool,
+) -> Result<GatherTarget, String> {
+    let range = cfg.gather_range;
+    let unarmed = cfg.gather_unarmed;
+    // (dist, eid, actor, pos, kind) for every gather-record node in range.
+    let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
+    for &(eid, a) in &sc.entries {
+        if a == sc.player {
+            continue;
+        }
+        let Some(pos) = actors::actor_position(a) else { continue };
+        let d = pos.dist(&sc.ppos);
+        if d > range {
+            continue;
+        }
+        let kind = actors::classify(m, a, sc.player);
+        // One shared definition of the candidate set, `actors::Kind`'s own,
+        // so this and `autogather::Gatherer::review` cannot come to disagree
+        // about what the gatherer aims at - see `Kind::is_gather_candidate`.
+        if !kind.is_gather_candidate(cfg.gather_carcass) {
+            // A carcass in reach with the switch off is the one non-candidate
+            // worth a word, and it gets exactly one per session.
+            if kind == actors::Kind::Carcass && !CARCASS_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed) {
+                crate::log!(
+                    "[gather] a skinnable carcass is {d:.0} m away and GatherCarcass=0, so it is not a target; set [Harvest] GatherCarcass=1 to skin carcasses (said once per session)"
+                );
+            }
+            continue;
+        }
+        // Shop goods, quest items, decoration: the reference mod's first
+        // rejection, and the difference between an ore chunk and a cup on a
+        // merchant's table (both are `item_basic_*`). Unreadable status
+        // counts as owned for items; nodes have no owner.
+        if kind == actors::Kind::Item {
+            match actors::status_bytes(m, a) {
+                Some(st) if !actors::is_owned_or_special(st) => {}
+                _ => continue,
+            }
+        }
+        nodes.push((d, eid, a, pos, kind));
+    }
+    nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
+    let mut unarmed_seen = 0usize;
+    // Nodes passed over only because their family is switched off. Creatures
+    // skipped by `GatherBugs=0` or `GatherFish=0` are counted here too: to the
+    // player it is the same kind of "you switched that off", and the summary
+    // reads the same. A creature of an unknown class is *not* counted, because
+    // nothing the player can set would have taken it.
+    let mut family_off_seen = 0usize;
+    let mut refused_seen = 0usize;
+    for &(d, eid, a, pos, kind) in &nodes {
+        // Catchable creatures carry no gimmick record, so they are decided
+        // before `node_identity` (which returns None for them) rather than
+        // after. `Kind::Catchable` only says the actor is shaped like a
+        // creature the game lets you catch; the class byte says whether it is
+        // one we have ever actually caught, and birds in flight and several
+        // unidentified species pass the first test but fail the second.
+        if kind == actors::Kind::Catchable {
+            let (what, family) = match actors::catch_class(m, a) {
+                Some(Catchable::Known(CatchClass::Bug)) if !cfg.gather_bugs => {
+                    family_off_seen += 1;
+                    continue;
+                }
+                Some(Catchable::Known(CatchClass::Fish)) if !cfg.gather_fish => {
+                    family_off_seen += 1;
+                    continue;
+                }
+                Some(Catchable::Known(CatchClass::Bug)) => ("bug", "Bug"),
+                Some(Catchable::Known(CatchClass::Fish)) => ("fish", "Fish"),
+                Some(Catchable::Unknown(c)) => {
+                    if first_sighting_of(c) {
+                        crate::log!(
+                            "[gather] catchable creature cat={c:02X} type={} at {d:.0} m is not a known bug/fish class on this type; skipped (catch one by hand with F7 recording to add it)",
+                            type_text(a)
+                        );
+                    }
+                    continue;
+                }
+                // Classified `Catchable` a moment ago and unreadable now: the
+                // actor went away mid-pass. Nothing to say about it.
+                None => continue,
+            };
+            if skip(eid) {
+                continue;
+            }
+            return Ok(GatherTarget {
+                eid,
+                // No gimmick record: 0xFFFF is the same "none" the game's own
+                // record index uses, and nothing downstream looks it up
+                // (yield learning is Gather-only).
+                record: 0xFFFF,
+                actor: a,
+                player_actor: sc.player,
+                dist: d,
+                // The type is in the name because a class alone does not say
+                // what a creature is (`creature::FISH_TYPES`).
+                name: format!("{what} cat={} type={}", category_text(m, a), type_text(a)),
+                family: family.to_string(),
+                cat: 0,
+                mode: crate::looter::payload::PickupMode::Catch,
+                armed: true,
+                player_eid: sc.player_eid,
+                route: sc.route,
+            });
+        }
+        // A carcass carries no gimmick record either, so like a catch it is
+        // decided before `node_identity` rather than after. Everything that
+        // decides *whether* has already been decided: `Kind::Carcass` means
+        // the type byte is an animal's and the dead flag is set
+        // (`actors::is_skinnable_carcass`), and `GatherCarcass` was consulted
+        // in the candidate filter above, so reaching here means the switch is
+        // on. There is deliberately no class table to consult and no
+        // `UNKNOWN_CATCH_CATEGORIES` equivalent: a `Catchable` needs its
+        // category byte to be one a recorded catch has shown, because that
+        // list is how birds in flight are kept out, but a corpse's category
+        // byte says nothing a dead-drop event cares about - the carcasses
+        // surveyed live read `cat=D9`, `82`, `13`, `44` and `23`, five values
+        // of which four are `Catchable::Unknown`, and all eight were skinned
+        // by hand with the same event
+        // (`docs/findings/2026-09-15-skinning.md` section 7). The byte is
+        // logged in the target name so a log can still say what species it
+        // was, and it gates nothing.
+        if kind == actors::Kind::Carcass {
+            if skip(eid) {
+                continue;
+            }
+            return Ok(GatherTarget {
+                eid,
+                // No gimmick record, the same as a catch, and for a stronger
+                // reason: a carcass's drops are rows on its `characterinfo`
+                // record (section 4), a different table this mod does not
+                // read. 0xFFFF is the game's own "none".
+                record: 0xFFFF,
+                actor: a,
+                player_actor: sc.player,
+                dist: d,
+                name: format!("carcass cat={} type={}", category_text(m, a), type_text(a)),
+                cat: actors::interaction_category(m, a).unwrap_or(0),
+                family: "Carcass".to_string(),
+                mode: crate::looter::payload::PickupMode::Skin,
+                // A carcass has no interaction object to be armed with; the
+                // word means "not an `Unarmed` twin" here, and nothing
+                // downstream reads it except the log's UNARMED note.
+                armed: true,
+                player_eid: sc.player_eid,
+                route: sc.route,
+            });
+        }
+        if kind == actors::Kind::Unarmed {
+            unarmed_seen += 1;
+            if !unarmed {
+                continue;
+            }
+            // An armed node at the same spot means this is its twin: use the armed one.
+            if nodes.iter().any(|n| n.4 == actors::Kind::Gather && n.3.dist(&pos) < 0.1) {
+                continue;
+            }
+        }
+        if skip(eid) {
+            continue;
+        }
+        let Some(id) = actors::node_identity(m, a) else { continue };
+        let name = id.name.clone().unwrap_or_else(|| format!("rec{}", id.index));
+        let (family, mode) = if kind == actors::Kind::Item {
+            if !cfg.gather_items || !actors::is_basic_item_record(&name) {
+                continue;
+            }
+            if !cfg.gather_gear && actors::is_gear_item_record(&name) {
+                continue;
+            }
+            ("Item".to_string(), crate::looter::payload::PickupMode::Item)
+        } else {
+            let Some(f) = id.family else { continue };
+            // The water well's bucket is refused by record key, before its
+            // family is even consulted: a forged pickup there leaves the well
+            // permanently empty (`config::WELL_BUCKET_RECORD_KEY`). Counted so
+            // the "nothing to gather" line can say that is what it walked past.
+            if crate::looter::config::never_forge_pickup(id.key, id.name.as_deref()) {
+                refused_seen += 1;
+                continue;
+            }
+            // Filtered on the typed family, before it becomes a string.
+            if !cfg.allows_family(f) {
+                family_off_seen += 1;
+                continue;
+            }
+            (format!("{f:?}"), crate::looter::payload::PickupMode::Gather)
+        };
+        return Ok(GatherTarget {
+            eid,
+            record: id.index,
+            actor: a,
+            player_actor: sc.player,
+            dist: d,
+            name,
+            family,
+            // Not a carcass: this branch is the gimmick/ground-item path.
+            cat: 0,
+            mode,
+            armed: kind == actors::Kind::Gather,
+            player_eid: sc.player_eid,
+            route: sc.route,
+        });
+    }
+    if unarmed_seen > 0 && !unarmed {
+        return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
+    }
+    if family_off_seen > 0 {
+        return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)"));
+    }
+    if refused_seen > 0 {
+        return Err(format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)"));
+    }
+    Err(format!("no Gather node within {range:.1} m"))
+}
+
+/// Debug: raw item records for a few bag stacks and a few equipment-tab
+/// entries, to locate the stack-limit field by comparison (a material should
+/// show a large limit where gear shows 1).
+pub fn dump_item_records(m: &MainModule, tabs: &[actors::InventoryTab], bag: &[actors::InventorySlot]) {
+    let mut picks: Vec<(String, actors::InventorySlot)> = bag.iter().take(4).map(|s| ("bag".to_string(), *s)).collect();
+    for t in tabs.iter().filter(|t| t.id != 1 && t.used > 0).take(3) {
+        if let Some(slots) = actors::tab_slots(t) {
+            for s in slots.iter().take(2) {
+                picks.push((format!("tab{}", t.id), *s));
+            }
+        }
+    }
+    for (label, sl) in picks {
+        let Some(rec) = crate::looter::tables::item_record(m, sl.item_index) else { continue };
+        let name = crate::looter::tables::item_record_name(rec).unwrap_or_else(|| "?".into());
+        crate::log!("[itemrec] {label} slot {} {name} x{} rec=0x{rec:X} idx={}", sl.slot, sl.count, sl.item_index);
+        for line in 0..(0x480 / 32) {
+            crate::log!("[itemrec]   +0x{:03X}: {}", line * 32, hexascii(rec + line * 32, 32));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// [`OWN_CHECK_LAYOUT`] describes [`OWN_CHECK_PATTERN`]: the `call`'s
+    /// `E8` sits where the layout says, with the four wildcards of its rel32
+    /// after it, and the pattern opens with the 7-byte `mov rcx,[rcx+0x120]`.
+    #[test]
+    fn the_own_check_layout_matches_its_pattern() {
+        let toks: Vec<&str> = OWN_CHECK_PATTERN.split_whitespace().collect();
+        assert_eq!(toks.get(OWN_CHECK_LAYOUT.call_at), Some(&"E8"));
+        let rel = &toks[OWN_CHECK_LAYOUT.call_at + 1..OWN_CHECK_LAYOUT.call_at + 5];
+        assert!(rel.iter().all(|t| *t == "??"), "{rel:?}");
+        assert_eq!(&toks[..OWN_CHECK_LAYOUT.call_at], &["48", "8B", "89", "20", "01", "00", "00"]);
+    }
+
+    /// Every signature parses, and the table carries each name once.
+    #[test]
+    fn every_signature_parses_and_is_named_once() {
+        assert_eq!(SIGNATURES.len(), 9);
+        for (name, text) in SIGNATURES {
+            assert!(Pattern::parse(text).is_some(), "{name}");
+            assert_eq!(SIGNATURES.iter().filter(|(n, _)| n == name).count(), 1, "{name}");
+        }
+    }
+}

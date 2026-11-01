@@ -1,18 +1,40 @@
 # Desert Tooling
 
-**Version 0.9.0**, for Crimson Desert Enhanced, Steam build **25477059**.
+**Version 0.10.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
-One `.asi` plugin with four subsystems: **auto-loot**, **gathering yield
-multipliers**, **dispatch missions** and an **in-game settings menu**. Written in
-Rust, installed by dropping two files into `bin64`.
+One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
+gathering yield multipliers), **dispatch missions** and an **in-game settings
+menu**. Written in Rust, installed by dropping two files into `bin64`.
 
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
-| Looter | gathers plants, ore, stone, wood, insects and fish around you | `[Looter]` | `[looter]` |
-| Gatherer | multiplies what a gathering node, a water well, a caught creature or a coin lying in the world gives | `[Gatherer]` | `[gatherer]` |
+| Harvest | gathers plants, ore, stone, wood, insects and fish around you, and multiplies what a gathering node, a water well, a caught creature or a coin lying in the world gives | `[Harvest]` | `[harvest]` |
 | Dispatch | shorter dispatch missions, bigger mission rewards, no skill or headcount gate | `[Dispatch]` | `[dispatch]` |
 | Overlay | the settings menu, `Insert` | `[Overlay]` | `[overlay]` |
+
+## Upgrading from 0.9 and earlier
+
+`[Looter]` and `[Gatherer]` are now one section, `[Harvest]`, and your
+`DesertTooling.ini` is **migrated on first launch**: the plugin rewrites the two
+old sections into one `[Harvest]` section where `[Looter]` was, keeping every
+value, comment and hand-added key, and leaves `[Overlay]` and `[Dispatch]`
+exactly as they were. The log says so once:
+
+```text
+[tooling] [ini] [Looter] and [Gatherer] were merged into [Harvest] (Enabled is on only if both were, Debug if either was)
+```
+
+There is now one `Enabled` and one `Debug` for the whole section. `Enabled` comes
+out on only if it was on in **both** old sections, so nothing starts doing
+something you had switched off; if the two disagreed, a comment above the new
+`Enabled` line says so and what to set. If what you wanted was the multipliers
+without the auto-loot, that is `AutoGather=0` now (the hotkeys stay live).
+`DryRun` and `DumpTable` stay, and still act on the yield multipliers only.
+
+A file that already has a `[Harvest]` section is not touched. If it still has an
+old `[Looter]` or `[Gatherer]` section beside it, those are not read, and the log
+warns about it.
 
 ## Upgrading from Desert Looter, Desert Gatherer and Desert Overlay
 
@@ -21,8 +43,8 @@ Those three plugins are this one. **Delete them first:**
 1. Remove `DesertLooter.asi`, `DesertGatherer.asi` and `DesertOverlay.asi` from
    `bin64`, along with their `.ini`, `.log` and `.overlay.ini` files.
 2. Extract this release into `bin64`.
-3. Re-enter your settings. Nothing is migrated — the old ini files are not
-   read, and `DesertTooling.ini` starts at every key's default.
+3. Re-enter your settings. Nothing is migrated from those plugins: their ini
+   files are not read, and `DesertTooling.ini` starts at every key's default.
 
 Leaving an old `.asi` in place is not just untidy: two copies of the same plugin
 patch the same game function, the second trampoline overwrites the first one's
@@ -37,8 +59,8 @@ delete in the log:
 
 ## Install
 
-The release archive holds five files at its root — `DesertTooling.asi`,
-`DesertTooling.ini`, `README.md`, `CHANGELOG.md` and `LICENSE` — so it suits
+The release archive holds five files at its root (`DesertTooling.asi`,
+`DesertTooling.ini`, `README.md`, `CHANGELOG.md` and `LICENSE`), so it suits
 either way of installing it.
 
 ### By hand
@@ -49,7 +71,7 @@ Requirements: the game, and Ultimate ASI Loader present in `bin64` as
 Extract the archive straight into `<game>\bin64\`, or copy two files there:
 
 - `DesertTooling.asi`: the plugin. Rename the built `desert_tooling.dll` to this.
-- `DesertTooling.ini`: the settings. Optional — if it is missing, the plugin
+- `DesertTooling.ini`: the settings. Optional: if it is missing, the plugin
   writes one itself with every key at its default on the next launch, so you
   always end up with a file to edit.
 
@@ -64,7 +86,7 @@ folder under `<DMM>\mods\_asi\`. DMM copies `DesertTooling.asi` and the `.ini`
 beside it into the game's `bin64` itself, and it installs Ultimate ASI Loader as
 `winmm.dll` for you, so there is nothing to set up beforehand. Enable the mod in
 DMM's ASI tab; the same tab turns it off again. Read
-[Conflicts with DMM](#conflicts-with-dmm-important) first — DMM's own gathering
+[Conflicts with DMM](#conflicts-with-dmm-important) first: DMM's own gathering
 multiplier and the "The Desert Gatherer" module pack change the same numbers,
 and must stay unmounted.
 
@@ -82,17 +104,17 @@ changes a running game's behaviour can avoid those imports.
 Everything else the scan looks at is clean: the DLL is not packed and is of
 ordinary entropy, has no data appended past its last PE section, has no
 writable-and-executable sections, and carries a version-info resource (product
-name, version, `KiefBC`, MIT). It is **not** digitally signed — a code-signing
-certificate costs money — so check the `SHA256SUMS` file from the release
+name, version, `KiefBC`, MIT). It is **not** digitally signed (a code-signing
+certificate costs money), so check the `SHA256SUMS` file from the release
 instead. And the source is public: all of it is in this repository.
 
 ## The menu
 
 Press **Insert** and a window appears over the game (DirectX 12, Dear ImGui)
 with every setting in it as a checkbox, slider or key picker, behind a row of
-tabs: **Looter**, **Gatherer** and **Dispatch**, then **Settings** (every key you
-can bind, and how the menu itself looks, the overlay's own included) and
-**Debug** (every logging switch and dump). Change one and
+tabs: **Harvest** and **Dispatch**, then **Settings** (every key you can bind,
+and how the menu itself looks, the overlay's own included) and **Debug** (every
+logging switch and dump). Change one and
 it takes effect within about a second, without leaving the game and without a
 restart.
 
@@ -109,9 +131,11 @@ subsystem re-reads its own section of it once a second, so:
   exactly as they were. Writes go through a temporary file and a rename, so a
   subsystem reading the file at the wrong moment never sees half of it.
 
-Presets sit at the top of the Looter tab: `Everything`, `Plants only`, `Wood only`,
-`Rock and ore only`. One click sets the Looter's four gather families and
-ground items and leaves everything else alone.
+Presets sit at the top of the Harvest tab: `Everything`, `Plants only`, `Wood only`,
+`Rock and ore only`. One click sets the four gather families and ground items
+and leaves everything else alone. Below them come `Enabled` and `AutoGather`,
+what auto-loot takes, `Hunting`, the ranges and pacing, and then the yield
+multipliers, `Foraging` to `Fish`.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
@@ -138,7 +162,8 @@ it.
 | F7 | debug: log the events the game queues, up to 25 lines per event type and 300 in all, then it stops by itself and prints a census of everything it saw; press again to stop early |
 
 Every gathering keypress beeps once. All five keys can be changed in the ini or
-from the menu.
+from the menu: Insert is `KeyMenu` under `[Overlay]`, the other four are
+`KeyGather`, `KeyToggle`, `KeyScan` and `KeyRecord` under `[Harvest]`.
 
 ## What the Looter does
 
@@ -200,15 +225,15 @@ game but are separate families in the game's data; set both if you want all
 mining-style gathering raised together. Nothing is patched on disk: the numbers
 are multiplied in memory as the game loads them.
 
-They are the game's own groupings — the 275 records it classes as gather nodes,
-the same four the DMM pack covered — plus four records the pack never had: the
+They are the game's own groupings (the 275 records it classes as gather nodes,
+the same four the DMM pack covered) plus four records the pack never had: the
 three placed money records, which are the `Money` family and get their own
 section below, and the water well, which pays out through the same kind of
 record as a bush and so sits under `Foraging`. Water from a well is a thing you gather out of the world
 like everything else there, and a player reading "plants, fruit, berries" would
 not guess it, so it is said here: **`Foraging` also multiplies the water you
 draw from a well.** It does *not* touch the breakable water pots or the goods
-sitting on market stalls — those hand you a ready-made item and never read the
+sitting on market stalls: those hand you a ready-made item and never read the
 table, so they are not in any family.
 
 **`Money` multiplies the money you find lying in the world, and nothing else.**
@@ -237,20 +262,20 @@ handful of silver, never a thousand.
 Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
 one is worth: the game grants exactly one, from a constant in its own code. So
-that pair works differently from the four families — it is a small patch on that
-constant, applied as the creature is caught — and it is the one part of this
+that pair works differently from the four families (it is a small patch on that
+constant, applied as the creature is caught), and it is the one part of this
 plugin a game update can switch off on its own. If that happens the log says so
 once at startup (`[catch] signature not found; catch multipliers off`) and
 everything else here goes on working.
 
 Because that patch is in the game's own grant code rather than in anything the
-Looter sends, it multiplies the creatures **you** catch by hand exactly as it
+auto-loot sends, it multiplies the creatures **you** catch by hand exactly as it
 multiplies the ones auto mode catches for you.
 
 One creature pays out twice: a Firefly Colony gives you colonies *and*
 fireflies, and because the game rolls a handful of fireflies for each colony you
 take, the fireflies come out at roughly double your `Bugs` setting and a
-different number every time — at `Bugs=10`, ten colonies and somewhere around
+different number every time: at `Bugs=10`, ten colonies and somewhere around
 twenty fireflies. That is the game's own drop rule, not a bug in the patch.
 
 **The multipliers** do not touch enemy loot, chests, rod-and-line fishing, quests,
@@ -258,7 +283,7 @@ Abyss objects, artifacts, gates or fast travel - and `Money` does not reach the
 money any of those pay, only the coins placed in the world. They do not reach
 what a skinned carcass gives either: a carcass's drops come from a different
 table than the gather nodes these multipliers edit. **That one has its own key
-now** - `[Looter] Hunting` - and it works a different way: rather than editing a
+now** - `[Harvest] Hunting` - and it works a different way: rather than editing a
 table, it hooks the game's own loot grant and scales the amounts the game rolled
 for that one corpse a moment before they reach your bag. So it works however the
 carcass was looted - by the gather key or by hand - and nothing else in the
@@ -321,15 +346,20 @@ on the DMM side to stack with is the water well, which the pack never covered.
 
 ## Settings (`DesertTooling.ini`)
 
-One file, four sections. A key belongs to the `[Section]` header above it:
-`Enabled` and `Debug` exist under all four and mean different things in each,
-and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
+One file, three sections. A key belongs to the `[Section]` header above it:
+`Enabled` and `Debug` exist under all three and mean different things in each,
+and `DryRun` exists under `[Harvest]` and `[Dispatch]`.
 
-### `[Looter]`
+### `[Harvest]`
+
+Auto-loot and the yield multipliers, one section since 0.10.0 (it was `[Looter]`
+and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
+`Enabled` and `Debug` are read by both halves; every other key belongs to one.
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | 1 | 0 = idle: no gathering, no hotkeys, nothing logged. Live: set it to 1 while the game runs and it comes back |
+| `Enabled` | 1 | 0 = idle: no gathering, no hotkeys, and vanilla yields. Every hook stays installed: the record-loader hook still reads each record to keep its remembered table current but writes nothing, and a pass right after the change writes vanilla numbers back into whatever is already loaded. Live: set it to 1 while the game runs and both halves come back, the multipliers re-applied the same way |
+| `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines), plus the records that are not gather nodes (capped at 400 lines) and one `[catch] debug: type=.. class=.. chr=..` line per creature caught |
 | `GatherRange` | 6 | how far a node may be, in metres (max 50) |
 | `AutoGather` | 0 | 1 = auto mode on from the start (F10 flips it) |
 | `GatherInterval` | 500 | milliseconds between automatic pickups |
@@ -341,7 +371,7 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `GatherLogging` | 1 | 0 = pass over firewood cut from felled trees |
 | `GatherMining` | 1 | 0 = pass over the `collect_mine` family: rocks, veins, stalactites |
 | `GatherOre` | 1 | 0 = pass over the `collect_ore` family: ore deposits and sulfur stone (separate from Mining; set both to gather all of them) |
-| `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is `[Gatherer]`'s `Money`. Untested in game, so off by default |
+| `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is the `Money` multiplier below. Untested in game, so off by default |
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `GatherCarcass` | 0 | 1 = also loot animal carcasses within `GatherRange`, without the skinning animation. A carcass already skinned gives nothing, and the classes known to be people are refused. 0 by default: opt in |
@@ -350,9 +380,21 @@ and `DryRun` exists under `[Gatherer]` and `[Dispatch]`.
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
 | `SurveyLines` | 200 | how many actor lines one F11 prints; gather nodes and items come first, and the survey says how many it cut |
-| `Debug` | 0 | 1 = very verbose survey (first F11 dumps hundreds of lines) |
 | `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields. Coin props are not logged: measure money with the bag line of two F11 surveys |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | see the key names below |
+| `DryRun` | 0 | 1 = log every yield change that would be made and write nothing; for troubleshooting and after game updates. The yield multipliers only: auto-loot still runs |
+| `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. For the offline tools (`CD_DMM_TABLE`); nothing in the game needs it |
+| `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
+| `Logging` | 1 | multiplier for firewood, 1..100 |
+| `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
+| `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
+| `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
+| `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
+| `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
+
+For the multipliers, `1` means vanilla: that family's records are read and left
+untouched. A value outside 1..100, or one that is not a number, is refused with
+a warning in the log and the default is kept.
 
 **The plugin never takes a water well's bucket**, whatever `GatherForaging`
 says, and F9 will not either. The well's record is a `Foraging` record, so the
@@ -364,35 +406,20 @@ it yourself - lower, crank, take - and the multiplier still applies to what
 you take. When the nearest thing is a well the F9 line says it was refused
 rather than pretending nothing was there.
 
-### `[Gatherer]`
-
-| key | default | meaning |
-|---|---|---|
-| `Enabled` | 1 | 0 = the record-loader hook still reads every record to keep its own remembered table current, but writes nothing as records load, and the re-apply pass (see below) writes vanilla numbers back into whatever is already parsed. Flipping it back to 1 re-applies the multipliers the same way |
-| `DryRun` | 0 | 1 = log every change that would be made and write nothing; for troubleshooting and after game updates |
-| `Debug` | 0 | 1 = also log the records that are not gather nodes (capped at 400 lines), and one `[catch] debug: type=.. class=.. chr=..` line per creature caught |
-| `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. For the offline tools (`CD_DMM_TABLE`); nothing in the game needs it |
-| `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
-| `Logging` | 1 | multiplier for firewood, 1..100 |
-| `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
-| `Ore` | 1 | multiplier for `collect_ore`, 1..100 |
-| `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
-| `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
-| `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
-
-`1` means vanilla: that family's records are read and left untouched. A value
-outside 1..100, or one that is not a number, is refused with a warning in the
-log and the default is kept.
+On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the ranges
+and pacing and the seven multipliers are on the Harvest tab; the four keys are on
+Settings; `Debug`, `LogReceived`, `SurveyLines`, `BagTab`, `DryRun` and
+`DumpTable` are on Debug.
 
 ### `[Overlay]`
 
 Read **once** at game start; a change to this section needs a restart. (It is
-only the menu's own settings that are not live — everything it puts on screen
+only the menu's own settings that are not live; everything it puts on screen
 is.)
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | `1` | `0` = install no graphics hook at all, so the game renders exactly as it would without the `.asi` and there is no menu. The other two subsystems are unaffected |
+| `Enabled` | `1` | `0` = install no graphics hook at all, so the game renders exactly as it would without the `.asi` and there is no menu. The other subsystems are unaffected |
 | `Debug` | `0` | `1` = log every ini write and reload, plus everything hudhook says (its per-frame debug and trace lines included, capped at 20000 lines per session) |
 | `KeyMenu` | `Insert` | the key that shows and hides the menu |
 | `ShowOnStart` | `0` | `1` = the menu is already open at the first frame |
@@ -418,10 +445,10 @@ turning you away.
 
 | key | default | meaning |
 |---|---|---|
-| `Enabled` | `1` | Turned off **while the game runs**, every mission and reward it changed goes back to vanilla. Turned off **before you launch**, the pass never runs and nothing in the game is read at all — and it stays that way for the session: turning it back on, here or in the menu, does nothing until the next launch |
+| `Enabled` | `1` | Turned off **while the game runs**, every mission and reward it changed goes back to vanilla. Turned off **before you launch**, the pass never runs and nothing in the game is read at all, and it stays that way for the session: turning it back on, here or in the menu, does nothing until the next launch |
 | `Speed` | `1` | divide every mission's duration by this, 1..100. Vanilla runs 2h to 96h; `4` turns a 16h mission into a 4h one. Nothing ever goes below 6 minutes. Reaches missions already under way |
 | `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
-| `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243 — the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
+| `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243, the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
 | `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |
 | `LogRecords` | `1` | `1` = one line per mission in the log |
 | `MaxLines` | `4000` | ceiling on the lines one pass writes, 0..20000. The summaries are never capped, and hitting it never stops a change being made |
@@ -432,16 +459,34 @@ turning you away.
 | `DumpBuffs` | `0` | `1` = census the game's buff and stat tables into the log, read-only: the buff effects that touch drop rates, sell prices, crime prices or dispatch reward rates, and the stat rows behind money and equipment drops. A diagnostic for one investigation, tagged `[buffs]`; it edits nothing |
 
 A change takes effect within about a second. Only the 219 reward rows dispatch
-missions actually name are touched — never the game's wider drop table — so this
+missions actually name are touched, never the game's wider drop table, so this
 does not become a loot multiplier for chests and carcasses. No game code is
 patched and no hook is installed: the plugin edits five fields of the tables the
-game has already read (four settings, five fields — `Rewards` writes both ends of
+game has already read (four settings, five fields: `Rewards` writes both ends of
 a min/max pair), on its own thread, and remembers what each one said first so it
 can put it back.
 
+**It checks before it writes.** Every launch, the plugin first reads every
+mission and reward row as the game left them and judges whether the layout it
+knows still fits: real durations and crew sizes that vary from mission to mission,
+and reward rows whose odds add up to the total the game keeps beside them. Until
+that check passes on this launch, nothing in this section writes anything, exactly
+as if `DryRun=1` were set, and the log says why, once:
+
+```text
+[dispatch] writes disabled (missions): <reason> ...
+```
+
+(or `(reward rows)`; the reward side also waits for the missions to pass). Once
+it passes it stays passed for the session. This is what keeps a game update that
+moved these tables from turning `Speed` or `Rewards` into writes in the wrong
+places: after an update that moved them, the section does nothing until a new
+version of the plugin knows the new layout. Build 26345091 moved them, and 0.10.0
+knows its layout.
+
 **Two of the settings reach missions that are already out, and two do not.**
-`Speed` shortens a mission already under way — the game checks a mission's
-progress against the duration in the table every time it ticks — and `Rewards`
+`Speed` shortens a mission already under way (the game checks a mission's
+progress against the duration in the table every time it ticks), and `Rewards`
 reaches rewards already waiting to be paid, because the game reads the amounts at
 the moment the items land. `NoSkillRequirement` and `AnyOperatorCount` are
 checked when a mission *starts*, so a mission already out keeps running under the
@@ -459,20 +504,27 @@ waiting pays vanilla.
 
 **Nor, on any build measured so far, does anything else.** The game has code to bank a
 single percentage figure for a finished mission in your save, and part of that
-figure is a bonus for sending more workers than the mission needed — which is the
+figure is a bonus for sending more workers than the mission needed, which is the
 one thing `AnyOperatorCount` could have inflated, since it tells the game every
 mission needs only one worker. Both of the switches that code sits behind are
-turned **off** on build 25246367, as they were on 25116796 before it: no mission
-defers a payout, and the figure ignores the worker count entirely. The plugin
-reads both at startup and says so in `DesertTooling.log`, on the `[banking]`
-line:
+turned **off** on build 26361232, read in game on 2026-11-01, as they were on
+25246367 and 25116796 before it: no mission defers a payout, and the figure
+ignores the worker count entirely. The plugin
+finds both switches in the game by their code, whatever the build, reads them at
+startup and says so in `DesertTooling.log`, on the `[banking]` line (the
+addresses are build 26361232's, the same as on 26356046):
 
 ```text
-[banking] deferred-reward gate (0x6BC6AA8) = 0 - no mission defers its payout, so nothing is
-stored in the save; surplus-worker gate (0x6BA07C8) = 0 - the stored percent ignores the worker
-count, so entry+0xC4 never enters it; on this launch nothing is ever banked: no completed mission
-defers a reward, so AnyOperatorCount cannot outlive the plugin.
+[banking] deferred-reward gate (0x7150E18) = 0 - no mission defers its payout, so nothing is
+stored in the save; surplus-worker gate (0x7128CA8) = 0 - the stored percent ignores the worker
+count, so the minimum operator count never enters it; on this launch nothing is ever banked: no
+completed mission defers a reward, so AnyOperatorCount cannot outlive the plugin. Both are
+read-only and nothing here acts on either.
 ```
+
+If a game update moves the code they are found by, the line says `not found by
+signature on this build` in place of the address, and the warning below stands as
+it is. On 26361232 both gates resolved at the addresses above and both read `0`.
 
 **Check that line after a game update**, because these are the kind of switch an
 update can flip, and it is the only thing that would tell you.
@@ -497,8 +549,8 @@ the game uses.
 
 The plugin writes one itself on the next launch, with every key of every section
 at its default, instead of leaving nothing to edit. An existing file is never
-read, rewritten or replaced — the create is the OS's own atomic "only if
-absent" — so this can never touch your settings. The generated file is bare,
+read, rewritten or replaced (the create is the OS's own atomic "only if
+absent"), so this can never touch your settings. The generated file is bare,
 unlike the shipped template's comments explaining each key, but every key in the
 tables above is in it, including the ones the menu draws on its Debug tab.
 
@@ -506,13 +558,13 @@ tables above is in it, including the ones the menu draws on its Debug tab.
 
 Short version: the game still reads its whole gather table once, about nine
 seconds after launch, and the load-time hook still only runs inside that one
-read — but the plugin also rewrites the records the game already parsed, right
+read, but the plugin also rewrites the records the game already parsed, right
 after the ini changes, so a change reaches the game on the next gather rather
 than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 13,941 records on build 25477059, 279 of which this plugin multiplies. They are the
+called `gimmickinfo`: 14,210 records on build 26361232 (13,941 on 25477059), 279 of which this plugin multiplies. They are the
 275 the game classes as gather nodes, plus the water well and the three placed
 money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
@@ -526,9 +578,9 @@ do not empty the slots; the parsed records live as long as the process does.
 That is why editing the raw bytes as they load is not enough on its own: past
 that first minute, there is nothing left for the load-time hook to intercept.
 
-**What the plugin remembers.** Every time the hook sees a gather record — even
+**What the plugin remembers.** Every time the hook sees a gather record (even
 at `Enabled=0` and at `1x`, because vanilla is the only fixed point a later
-change can be computed from — it reads the vanilla minimum, maximum and item id
+change can be computed from), it reads the vanilla minimum, maximum and item id
 of each of the record's output blocks straight out of the raw bytes, along with
 the record's index, and keeps them in a small fixed table. Nothing here touches
 a parsed object; it is all taken from the same bytes the load-time hook was
@@ -545,14 +597,14 @@ left alone. If any of those checks fails for a record or a block, that record or
 block is skipped rather than patched, and the pass still writes everything it
 safely can.
 
-The change shows on the very next gather — no restart, no save reload needed. A
+The change shows on the very next gather: no restart, no save reload needed. A
 record the game has not loaded yet still gets the new numbers the ordinary way,
 through the load-time hook, whenever it does load.
 
 **What the log shows.** Right after each `[ini] reloaded: ...` line:
 
 ```text
-[gatherer] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1 Money=1: 83 records rewritten, 196 unchanged, 0 skipped; 646 scalars written
+[harvest] [live] re-applied Foraging=10 Logging=1 Mining=1 Ore=1 Money=1: 83 records rewritten, 196 unchanged, 0 skipped; 646 scalars written
 ```
 
 or, with `DryRun=1`, the same line as `[dry] would re-apply ...`. At `Enabled=0`
@@ -562,7 +614,7 @@ so the pass writes every record's minimum and maximum back to their disk values.
 With `Debug=1`, each rewritten record also gets its own line:
 
 ```text
-[gatherer] [live] mine_bluestone key=17030001 Mining x5 blocks=2 wrote 4: 1->5/3->15, 2->10/8->40
+[harvest] [live] mine_bluestone key=17030001 Mining x5 blocks=2 wrote 4: 1->5/3->15, 2->10/8->40
 ```
 
 Nothing is logged at all if the ini changes before the table has finished its
@@ -573,13 +625,13 @@ is nothing left for the re-apply pass to do yet.
 the summary line is followed by one naming the reasons, for example:
 
 ```text
-[gatherer] [live] WARN 12 of 279 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
+[harvest] [live] WARN 12 of 279 records and 3 blocks skipped (not loaded 10, key mismatch 2, null block 3); the parsed record layout may have moved in this game build
 ```
 
 or, if the record manager itself could not be read at all:
 
 ```text
-[gatherer] [live] WARN the record manager is unreadable; nothing was re-applied
+[harvest] [live] WARN the record manager is unreadable; nothing was re-applied
 ```
 
 Either is the first thing a game update would trip, ahead of the load-time
@@ -587,12 +639,12 @@ patching breaking, because the re-apply pass walks live game pointers that the
 load path never has to touch.
 
 **What is different about this path.** Everywhere else, the hooks only ever
-write into bytes the game has not parsed yet — a stream buffer about to be
+write into bytes the game has not parsed yet, a stream buffer about to be
 handed to the deserialiser. This is the one place the plugin writes into an
 object the game has already built and is actively using, reached by walking the
 record manager rather than being handed a pointer. That write is guarded the
-same way as everything else — a key check, an item-id check, a list-count check,
-and a `WriteProcessMemory` that never assumes an address is still valid — but it
+same way as everything else (a key check, an item-id check, a list-count check,
+and a `WriteProcessMemory` that never assumes an address is still valid), but it
 is worth being clear about what it writes: always the *vanilla* number times the
 current multiplier, taken from what was remembered at load time, never the value
 already sitting in the block scaled again. A record re-applied five times at
@@ -602,7 +654,7 @@ multiplier would have left it.
 `Bugs` and `Fish` need none of that machinery: the multiplier is read at the
 moment the creature is caught, so a change there takes effect on the **next
 catch** with nothing to re-apply. Each multiplied catch logs one line,
-`[gatherer] [catch] fish class=23 -> x3`; a creature whose class the plugin has
+`[harvest] [catch] fish class=23 -> x3`; a creature whose class the plugin has
 never seen caught is left vanilla and reported once per class per session.
 `Enabled=0` and `DryRun=1` both mean "grant one, as the game would".
 
@@ -613,32 +665,36 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | file | what it is | safe to delete? |
 |---|---|---|
 | `DesertTooling.asi` | the plugin | yes, that uninstalls it |
-| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch, which means vanilla `1x` for every multiplier (the seven under `[Gatherer]`, `Hunting` under `[Looter]`, `Speed` and `Rewards` under `[Dispatch]`), so deleting it turns them off |
+| `DesertTooling.ini` | your settings, read at game start and re-read while it runs | yes, the plugin recreates a bare one at every key's default on the next launch, which means vanilla `1x` for every multiplier (the seven yield multipliers and `Hunting` under `[Harvest]`, `Speed` and `Rewards` under `[Dispatch]`), so deleting it turns them off |
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
 | `DesertTooling.ini.tmp` | transient: the menu writes the new ini here and renames it over `DesertTooling.ini`, so it is normally gone a moment later | yes |
-| `DesertTooling.gimmickinfo.bin` | the game's vanilla `gimmickinfo` table body, about 22 MB, for the offline tools; written once per session only with `[Gatherer] DumpTable=1` and `DryRun=1` | yes |
+| `DesertTooling.gimmickinfo.bin` | the game's vanilla `gimmickinfo` table body, about 22 MB, for the offline tools; written once per session only with `[Harvest] DumpTable=1` and `DryRun=1` | yes |
 
 The log is the first thing to look at when something seems off. Every line
 carries the subsystem that wrote it, so one file still separates cleanly:
 
 ```text
-[    0.001] [tid  4812] [tooling] Desert Tooling 0.9.0 loaded, pid 21344 (looter 0.5.0, gatherer 0.4.0, overlay 0.3.0, dispatch 0.3.0)
-[    0.014] [tid  6120] [gatherer] [hook] record loader +0x38BA40 -> stub 0x1F2C0000
-[    0.312] [tid  5008] [looter] [sig] 9 found, 0 missing, 1 actor-manager vtable(s), 41 ms
+[    0.001] [tid  4812] [tooling] Desert Tooling 0.10.0 loaded, pid 21344 (harvest 0.6.0, overlay 0.3.0, dispatch 0.3.0)
+[    0.014] [tid  6120] [harvest] [hook] record loader +0x38BA40 -> stub 0x1F2C0000
+[    0.312] [tid  6120] [harvest] [sig] 9 found, 0 missing, 1 actor-manager vtable(s), 41 ms
 [    1.884] [tid  7744] [overlay] [hudhook] DX12 hooks applied in 96 ms; press the menu key in game
 ```
 
-A healthy start shows, from `[looter]`, nine `[sig]` lines ending in `= +0x...`,
-two `[hook]` lines and the `[event]` descriptor lines; from `[gatherer]`, a
-`[gimmick] record loader at +0x...` line, a `[hook]` line and a `[catch]` line,
-then one line per gather record as the game loads it; and from `[overlay]`, the
+A healthy start shows, from `[harvest]`, a `[gimmick] record loader at +0x...`
+line, a `[gimmick] stream layout: buffer +0x.. size +0x.. cursor +0x..` line (where
+the plugin found the table data the game loads from), a `[hook]` line and a `[catch]` line, then nine `[sig]` lines ending in
+`= +0x...`, the `[hook]` lines for `area_sweep` and `enqueue`, the
+`[hunting] loot_grant` line and the `[event]` descriptor lines, then one line
+per gather record as the game loads it; and from `[overlay]`, the
 `[hudhook] DX12 hooks applied` line. If a signature stops matching after a game
 update, the log says `NOT FOUND` and that part stays idle; nothing dangerous
-happens.
+happens. The same goes for the yields: `[gimmick] stream layout unknown on this
+build` means gathering stays vanilla for that session, and nothing is dumped.
 
-`[gatherer]` lines record what was **written** to the records, not what you
-received. To measure actual yields, set `LogReceived=1` under `[Looter]` and
+The `[gimmick]`, `[live]` and `[dry]` lines record what was **written** to the
+records, not what you received. To measure actual yields, set `LogReceived=1`
+under `[Harvest]` and
 read the `[recv] item <key> x<count>` lines as you gather. That is every item the
 game hands you, and it is how the numbers in this README were measured. The one
 exception is money: picking up a coin prop writes no `[recv]` line at all, so
@@ -647,8 +703,9 @@ x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 
-Nothing here is a hard-coded address. The Looter resolves nine byte signatures
-and finds the actor manager through its RTTI vtable. The Gatherer scans the
+Nothing here is a hard-coded address. The auto-loot half resolves nine byte
+signatures and finds the actor manager through its RTTI vtable. The yield half
+scans the
 running image for the accessor that names the `gimmickinfo` table and follows it
 to the record-loading function, then refuses to patch unless the twelve bytes it
 is about to overwrite are exactly the prologue it expects; inside each record,
@@ -668,7 +725,7 @@ the plugin scans for the 21-byte instruction sequence that hands the catch
 handler its count, and refuses to patch unless the thirteen bytes it is about to
 overwrite are exactly the two instructions it expects. A game update that
 rewrites that function disables **only** those two keys, with a `[catch]` line
-saying which check failed — every other multiplier is untouched by it, and the
+saying which check failed: every other multiplier is untouched by it, and the
 game is untouched by us.
 
 ## Building (developers)
@@ -677,8 +734,8 @@ Built on NixOS under WSL and cross-compiled to Windows. Desert Tooling is one
 crate of a Cargo workspace (see the repo root `README.md`); run cargo from the
 workspace root, not from this directory. The `flake.nix` dev shell provides the
 Rust toolchain with the `x86_64-pc-windows-gnu` target, the mingw cross-linker,
-and the analysis tools (python, binutils, file). Ghidra is not in the dev shell:
-it runs on the Windows side and is driven over its MCP bridge.
+and the analysis tools (python, binutils, file). Re-targeting to a new game
+build needs nothing outside the repo: the tools in `tools/` do it offline.
 
 ```bash
 nix develop
@@ -708,23 +765,25 @@ just test-game
 `desert-tooling` is the only `cdylib` and the only `DllMain`. It gates on the
 host exe (the ASI loader also injects into `crashpad_handler.exe`), hands off to
 a thread immediately because the loader lock is held, opens `DesertTooling.log`,
-seeds `DesertTooling.ini` from all four subsystems' schemas if it is missing,
-refuses to install anything if a pre-merge `.asi` is still loaded, and then
-starts one thread per subsystem — the gatherer first, because its hook has to go
-in before the game reads the gather table and must not queue behind the looter's
-20-second boot grace.
+seeds `DesertTooling.ini` from all three subsystems' schemas if it is missing,
+migrates a pre-0.10 `[Looter]`/`[Gatherer]` pair into `[Harvest]`, refuses to
+install anything if a pre-merge `.asi` is still loaded, and then starts one
+thread per subsystem, harvest first. That thread installs the yield hooks before
+anything else, because the record-loader hook has to go in before the game
+reads the gather table and must not queue behind the auto-loot's signature scan
+or its 20-second boot grace.
 
-`desert-looter` resolves nine byte signatures, hooks two functions with inline
-trampolines (a per-frame job, for a callback on a game thread, and the event
-queue's push, for observation), finds the actor manager through its RTTI vtable,
-and builds pickups exactly as the game's own event builder builds them, queued
-from inside the hook.
+`desert-harvest` has two halves. The looter resolves nine byte signatures,
+hooks two functions with inline trampolines (a per-frame job, for a callback on
+a game thread, and the event queue's push, for observation), finds the actor
+manager through its RTTI vtable, and builds pickups exactly as the game's own
+event builder builds them, queued from inside the hook.
 
-`desert-gatherer` hooks the gimmickinfo record loader, which is entered on
+The gatherer hooks the gimmickinfo record loader, which is entered on
 whichever game thread loads a record, before the deserializer has read a byte of
 it, and rewrites the yield scalars in the raw bytes; a second hook replaces the
 hard-coded catch count. `desert-overlay` draws the menu with Dear ImGui inside
-the game's DirectX 12 frame and writes the ini. All four read game memory
+the game's DirectX 12 frame and writes the ini. All of them read game memory
 through `ReadProcessMemory` on their own process, so a vanished page can never
 crash the game.
 
@@ -733,10 +792,12 @@ handling and the logger all live in `desert-core`.
 
 ### Analysis tooling
 
-`just sigscan` checks the signatures against the exe after a game update; each
-must hit exactly once. `dis` disassembles an address range and `xrefs` finds
-references; both are Rust binaries in `tools/`, built by `just tools`.
-Decompilation goes through the Windows Ghidra over its MCP bridge.
+After a game update, `just retarget report` says which signatures and
+constants moved, and `just retarget triage`, `census`, `calls`, `callers` and
+`prologue` re-derive them; `just sigscan` checks that each signature hits
+exactly once. `dis` disassembles an address range and `xrefs` finds
+references. All are Rust binaries in `tools/`, built by `just tools`, and none
+needs Ghidra.
 
 ## Credits and licence
 

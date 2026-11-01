@@ -16,11 +16,11 @@ Across the plugin, startup makes 8 full passes over the image:
 
 | Site | Passes |
 | --- | --- |
-| `desert-looter/src/game.rs` `pattern::find_unique_multi`, the nine signatures | 1 (was one per signature) |
-| `desert-looter/src/game.rs` `rtti::vtables_for_class` | 3 |
-| `desert-looter/src/tables.rs` accessor scan, no base | 1 |
-| `desert-gatherer/src/entry.rs` accessor scan, no base | 1 |
-| `desert-gatherer/src/catch.rs` `CATCH_SITE` | 1 |
+| `desert-harvest/src/looter/game.rs` `pattern::find_unique_multi`, the nine signatures | 1 (was one per signature) |
+| `desert-harvest/src/looter/game.rs` `rtti::vtables_for_class` | 3 |
+| `desert-harvest/src/looter/tables.rs` accessor scan, no base | 1 |
+| `desert-harvest/src/gatherer/entry.rs` accessor scan, no base | 1 |
+| `desert-harvest/src/gatherer/catch.rs` `CATCH_SITE` | 1 |
 | `desert-dispatch/src/scan.rs` accessor scan, with base | 1 |
 
 The three RTTI walks are a dependency chain (descriptor, then locator, then vtable), so they cannot be batched like the signatures.
@@ -37,4 +37,4 @@ The game parses its static-info tables once during loading and keeps the objects
 
 ## Banking and the buff census
 
-At startup `scan.rs` reads two gates that would let a finished mission bank a figure (deferred reward, surplus-worker bonus) and prints them on the `[banking]` line. They were off on every build measured so far (25116796, 25246367); check that line after an update. `DumpBuffs=1` runs a separate read-only census of `buffinfo` and `statusinfo` (`buff.rs`, `census.rs`), logged under its own `[buffs]` tag.
+At startup `scan.rs` reads two gates that would let a finished mission bank a figure (deferred reward, surplus-worker bonus) and prints them on the `[banking]` line. They were off on every build measured so far (25116796, 25246367, 26361232); check that line after an update. `DumpBuffs=1` runs a separate read-only census of `buffinfo` and `statusinfo` (`buff.rs`, `census.rs`), logged under its own `[buffs]` tag.

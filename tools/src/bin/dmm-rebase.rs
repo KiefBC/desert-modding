@@ -8,7 +8,7 @@
 //!
 //! The table defaults to `paths::dmm_table()`: `CD_DMM_TABLE`, else the
 //! plugin's own dump `<bin64>/DesertTooling.gimmickinfo.bin` (one launch with
-//! `[Gatherer] DumpTable=1` and `DryRun=1` writes it), else DMM's backup copy.
+//! `[Harvest] DumpTable=1` and `DryRun=1` writes it), else DMM's backup copy.
 //! The build id defaults to the one in the Steam appmanifest
 //! (`paths::build_id()`, `CD_APPMANIFEST`). There is no fallback for the build:
 //! a pack stamped with a guessed build is worse than no pack.
@@ -152,7 +152,7 @@ fn run() -> Result<()> {
     let table_path = cli.table.clone().unwrap_or_else(paths::dmm_table);
     let table = fs::read(&table_path).with_context(|| {
         format!(
-            "cannot read the clean table {} (launch the game once with [Gatherer] \
+            "cannot read the clean table {} (launch the game once with [Harvest] \
              DumpTable=1 and DryRun=1, set CD_DMM_TABLE, or pass --table)",
             table_path.display()
         )
@@ -285,10 +285,51 @@ fn read_u32(table: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes(bytes.try_into().unwrap()))
 }
 
-/// Map each wanted (key, name) to the absolute offset of its record's `u32`
-/// key. A record starts `u32 key, u32 len, name, NUL`, where `len` is the
-/// name's length without the NUL; exactly one such header must exist.
-fn locate_records(table: &[u8], wanted: &[(u32, String)]) -> Result<HashMap<(u32, String), usize>> {
+/// Where one record sits in the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Rec {
+    /// The record's `u32` key, which `record_rel_offset` counts from.
+    key_at: usize,
+    /// One past the header's last byte; `rel_offset` counts from the byte
+    /// before this (the name's NUL on a `KeyFirst` table, the flag byte on a
+    /// `NameFirst` one), which is what it always counted from on `KeyFirst`.
+    body: usize,
+    /// Where the next record starts, when the header walk is exact
+    /// (`NameFirst`); output lists are then searched for across the whole
+    /// record instead of around their old position.
+    end: Option<usize>,
+}
+
+/// Map each wanted (key, name) to its record, by the table's header shape
+/// (`desert_tools::records::probe`). `NameFirst` (26361232 on): the strict
+/// header walk, which is exact. `KeyFirst`: a record starts `u32 key, u32 len,
+/// name, NUL`, where `len` is the name's length without the NUL. Either way
+/// exactly one header must match.
+fn locate_records(table: &[u8], wanted: &[(u32, String)]) -> Result<HashMap<(u32, String), Rec>> {
+    use desert_tools::records::{name_first_headers, probe, HeaderShape};
+    if probe(table) == Some(HeaderShape::NameFirst) {
+        let hs = name_first_headers(table);
+        let mut hits: HashMap<(u32, String), Vec<Rec>> = HashMap::new();
+        for (i, h) in hs.iter().enumerate() {
+            let end = hs.get(i + 1).map_or(table.len(), |n| n.off);
+            hits.entry((h.key, h.name.clone())).or_default().push(Rec { key_at: h.key_at, body: h.body, end: Some(end) });
+        }
+        let mut found = HashMap::with_capacity(wanted.len());
+        for w in wanted {
+            match hits.get(w).map(Vec::as_slice) {
+                Some([one]) => {
+                    found.insert(w.clone(), *one);
+                }
+                other => bail!(
+                    "record {} '{}': expected 1 hit, got {:?}",
+                    w.0,
+                    w.1,
+                    other.unwrap_or_default().iter().map(|r| r.key_at).collect::<Vec<_>>()
+                ),
+            }
+        }
+        return Ok(found);
+    }
     let mut by_key: HashMap<u32, Vec<usize>> = HashMap::new();
     for (i, (key, _)) in wanted.iter().enumerate() {
         by_key.entry(*key).or_default().push(i);
@@ -316,7 +357,7 @@ fn locate_records(table: &[u8], wanted: &[(u32, String)]) -> Result<HashMap<(u32
         if hit.len() != 1 {
             bail!("record {key} '{name}': expected 1 hit, got {hit:?}");
         }
-        found.insert((*key, name.clone()), hit[0]);
+        found.insert((*key, name.clone()), Rec { key_at: hit[0], body: hit[0] + 9 + name.len(), end: None });
     }
     Ok(found)
 }
@@ -357,7 +398,7 @@ fn rebase_module(
     file: &str,
     module: &mut Value,
     table: &[u8],
-    recs: &HashMap<(u32, String), usize>,
+    recs: &HashMap<(u32, String), Rec>,
     label: &Regex,
 ) -> Result<Vec<Edit>> {
     let mult = module["multiplier"]
@@ -427,8 +468,9 @@ fn rebase_module(
                 .iter()
                 .map(|(&n, [mn, mx])| (n, (mn.as_deref().unwrap(), mx.as_deref().unwrap())))
                 .collect();
-            let keypos = recs[&(list.key, list.entry.clone())];
-            let hits = find_output_list(table, keypos, list.old_list, count, &expect);
+            let rec = recs[&(list.key, list.entry.clone())];
+            let keypos = rec.key_at;
+            let hits = find_output_list(table, rec, list.old_list, count, &expect);
             if hits.len() != 1 {
                 bail!(
                     "{file}: record {} ({}) group {}: {} candidate lists {hits:?}",
@@ -456,13 +498,13 @@ fn rebase_module(
                     list.key
                 );
                 let c = &mut changes[ci];
-                // The name's length in bytes, as the record header stores it.
-                // The Python took `len()` of the str, which counts characters;
-                // every record name is ASCII, so the two agree.
-                let name_len = c["entry"].as_str().unwrap_or_default().len();
+                // `rel_offset` counts from the header's last byte: on a
+                // `KeyFirst` table that is the name's NUL at keypos + 8 +
+                // name_len, exactly what the Python wrote; on a `NameFirst`
+                // table it is the flag byte.
                 c["offset"] = json!(new_off);
                 c["record_rel_offset"] = json!(new_off - keypos);
-                c["rel_offset"] = json!(new_off as i64 - (keypos + 8 + name_len) as i64);
+                c["rel_offset"] = json!(new_off as i64 - (rec.body - 1) as i64);
             }
         }
         for (ci, (_, patched)) in originals.into_iter().enumerate() {
@@ -477,20 +519,29 @@ fn rebase_module(
     Ok(edits)
 }
 
-/// Absolute offsets of every `u32`-count-prefixed output list within
-/// [`SEARCH_WINDOW`] of `keypos + old_list` whose blocks carry exactly the
-/// vanilla (minimum, maximum) pairs in `expect`. Never before the record's
-/// name length field: a list cannot start inside the record's own key.
+/// Absolute offsets of every `u32`-count-prefixed output list whose blocks
+/// carry exactly the vanilla (minimum, maximum) pairs in `expect`. Searched
+/// across the whole record when its end is known (a `NameFirst` table: on
+/// 26361232 the lists moved 120 to 320 bytes inside their records, against a
+/// pack built on 25477059), else within [`SEARCH_WINDOW`] of `keypos +
+/// old_list`. Never inside the record's own header.
 fn find_output_list(
     table: &[u8],
-    keypos: usize,
+    rec: Rec,
     old_list: i64,
     count: usize,
     expect: &BTreeMap<usize, (&[u8], &[u8])>,
 ) -> Vec<usize> {
-    let centre = keypos as i64 + old_list;
-    let lo = (keypos as i64 + 8).max(centre - SEARCH_WINDOW).max(0);
-    let hi = (centre + SEARCH_WINDOW).min(table.len() as i64);
+    let (lo, hi) = match rec.end {
+        Some(end) => (rec.body as i64, end as i64),
+        None => {
+            let centre = rec.key_at as i64 + old_list;
+            (
+                (rec.key_at as i64 + 8).max(centre - SEARCH_WINDOW).max(0),
+                (centre + SEARCH_WINDOW).min(table.len() as i64),
+            )
+        }
+    };
     let mut hits = Vec::new();
     for q in lo..hi.max(lo) {
         let q = q as usize;
@@ -788,6 +839,9 @@ mod tests {
         out
     }
 
+    /// A `KeyFirst` record whose key is at 1000 and whose end is unknown.
+    const KF_REC: Rec = Rec { key_at: 1000, body: 1008, end: None };
+
     #[test]
     fn the_list_is_found_where_it_moved_to_and_only_there() {
         let one = 1u64.to_le_bytes();
@@ -799,21 +853,21 @@ mod tests {
         let mut table = vec![0u8; 4096];
         table[1000 + 300..1000 + 300 + 140].copy_from_slice(&list(&blocks));
         // It used to be 40 bytes earlier in its record.
-        assert_eq!(find_output_list(&table, 1000, 260, 2, &expect), vec![1300]);
+        assert_eq!(find_output_list(&table, KF_REC, 260, 2, &expect), vec![1300]);
 
         // Too far away is not found at all.
-        assert!(find_output_list(&table, 1000, 260 + 2000, 2, &expect).is_empty());
+        assert!(find_output_list(&table, KF_REC, 260 + 2000, 2, &expect).is_empty());
 
         // A second identical list in the window is ambiguous, and reported as such.
         table[1000 + 600..1000 + 600 + 140].copy_from_slice(&list(&blocks));
-        assert_eq!(find_output_list(&table, 1000, 260, 2, &expect), vec![1300, 1600]);
+        assert_eq!(find_output_list(&table, KF_REC, 260, 2, &expect), vec![1300, 1600]);
 
         // A block whose trailing item id disagrees with its leading one is not one.
         let mut table = vec![0u8; 4096];
         let mut bad = blocks.clone();
         bad[1][64] ^= 1;
         table[1300..1440].copy_from_slice(&list(&bad));
-        assert!(find_output_list(&table, 1000, 300, 2, &expect).is_empty());
+        assert!(find_output_list(&table, KF_REC, 300, 2, &expect).is_empty());
     }
 
     #[test]
@@ -828,11 +882,51 @@ mod tests {
         // Same key, different name: not a hit for mine_a.
         header(&mut table, 100, 42, "mine_b");
         let wanted = vec![(42, "mine_a".to_string())];
-        assert_eq!(locate_records(&table, &wanted).unwrap()[&wanted[0]], 10);
+        assert_eq!(locate_records(&table, &wanted).unwrap()[&wanted[0]], Rec { key_at: 10, body: 25, end: None });
 
         header(&mut table, 150, 42, "mine_a");
         let err = locate_records(&table, &wanted).unwrap_err().to_string();
         assert_eq!(err, "record 42 'mine_a': expected 1 hit, got [10, 150]");
+    }
+
+    /// A `NameFirst` header as 26361232 writes it.
+    fn nf(name: &str, key: u32, path: &str) -> Vec<u8> {
+        let mut r = (name.len() as u32).to_le_bytes().to_vec();
+        r.extend_from_slice(name.as_bytes());
+        r.extend_from_slice(&key.to_le_bytes());
+        r.push(0);
+        r.extend_from_slice(&(path.len() as u32).to_le_bytes());
+        r.extend_from_slice(path.as_bytes());
+        r.push(0);
+        r
+    }
+
+    #[test]
+    fn a_name_first_table_is_walked_exactly_and_lists_are_searched_per_record() {
+        let one = 1u64.to_le_bytes();
+        let three = 3u64.to_le_bytes();
+        let expect: BTreeMap<usize, (&[u8], &[u8])> =
+            [(1, (&one[..], &three[..])), (2, (&one[..], &one[..]))].into();
+        let blocks = [block(7, 1, 3), block(8, 1, 1)];
+
+        let mut table = nf("mine_a", 42, "/object/a.prefab");
+        let body = table.len();
+        table.extend(vec![0u8; 3000]);
+        let at = body + 2500;
+        table[at..at + 140].copy_from_slice(&list(&blocks));
+        let second = table.len();
+        table.extend(nf("mine_b", 43, "/object/b.prefab"));
+        // The same list in the next record is outside this one.
+        table.extend(list(&blocks));
+
+        let wanted = vec![(42, "mine_a".to_string())];
+        let rec = locate_records(&table, &wanted).unwrap()[&wanted[0]];
+        assert_eq!(rec, Rec { key_at: 4 + 6, body, end: Some(second) });
+        // Found 2500 bytes in, far past SEARCH_WINDOW from where the pack
+        // said it was: the whole record is searched, and only the record.
+        assert_eq!(find_output_list(&table, rec, 0, 2, &expect), vec![at]);
+        let err = locate_records(&table, &[(44, "nope".to_string())]).unwrap_err().to_string();
+        assert_eq!(err, "record 44 'nope': expected 1 hit, got []");
     }
 
     #[test]

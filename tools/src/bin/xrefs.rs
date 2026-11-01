@@ -21,18 +21,13 @@
 //! The image is built from the section table's ADDRESSES, by
 //! `desert_tools::pe::image()`.
 
-// `#[path]` because a binary's submodules resolve against `src/bin/`, not
-// against a directory named for the binary: a bare `mod scan;` here looks for
-// `src/bin/scan.rs` and would collide with every other tool's submodules.
-#[path = "xrefs/scan.rs"]
-mod scan;
-
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use anyhow::{Context, Result};
 
 use desert_tools::pe::Pe;
+use desert_tools::scan;
 
 /// What `xrefs` with no arguments prints, and the exit code it prints it with.
 ///
@@ -125,12 +120,12 @@ fn run() -> Result<ExitCode> {
             let mut only: Vec<(usize, &str, bool)> = Vec::new();
             for h in &want {
                 if !hits.contains(h) {
-                    only.push((h.0, h.1, true));
+                    only.push((h.at, h.kind, true));
                 }
             }
             for h in &hits {
                 if !want.contains(h) {
-                    only.push((h.0, h.1, false));
+                    only.push((h.at, h.kind, false));
                 }
             }
             only.sort_unstable();
@@ -146,8 +141,8 @@ fn run() -> Result<ExitCode> {
         );
     }
 
-    for (off, kind) in &hits {
-        println!("{kind:14} at +0x{off:X}");
+    for h in &hits {
+        println!("{:14} at +0x{:X}", h.kind, h.at);
     }
     for off in &cells {
         println!(

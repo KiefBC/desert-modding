@@ -1,7 +1,7 @@
 //! Property tests for the pure byte parsers.
 //!
-//! The game hands these functions untrusted bytes on every load — a record the
-//! loader is about to parse, the mapped image, an ini the player edited — and a
+//! The game hands these functions untrusted bytes on every load (a record the
+//! loader is about to parse, the mapped image, an ini the player edited), and a
 //! panic in the game process is a crash to desktop. So the property that matters
 //! everywhere here is "never panics, and what it returns is consistent with what
 //! it was given". Each property runs 512 cases.
@@ -27,7 +27,7 @@ fn cfg() -> ProptestConfig {
 
 /// One well-formed resource-output block, laid out field by field.
 ///
-/// Until 2026-09-12 this put the item id at `+5` and `+64` — the two zero pads —
+/// Until 2026-09-12 this put the item id at `+5` and `+64`, the two zero pads,
 /// matching the constants of the day rather than the table, which is half of why
 /// the off-by-4 in `ITEM_AT`/`ITEM_TAIL_AT` survived its own test suite (the
 /// other half is the identical builder in `gimmick.rs`'s unit tests).
@@ -137,19 +137,153 @@ fn pattern_text(toks: &[Option<u8>]) -> String {
 proptest! {
     #![proptest_config(cfg())]
 
-    /// A header is never read past the end of the record, and the name it
-    /// reports is exactly the printable ASCII run at +8.
+    /// A header is never read past the end of the record, and what it reports
+    /// is exactly what sits where its shape says: the name at +8 then a NUL
+    /// (`KeyFirst`), or the name at +4, the key, a zero, the rooted path and a
+    /// 0/1 flag (`NameFirst`).
     #[test]
     fn parse_header_stays_inside_the_record(bytes in prop::collection::vec(any::<u8>(), 0..512)) {
         if let Some(h) = gimmick::parse_header(&bytes) {
             let len = h.name.len();
             prop_assert!((1..=255).contains(&len));
-            prop_assert_eq!(h.body, 8 + len + 1);
             prop_assert!(h.body <= bytes.len());
-            let name = &bytes[8..8 + len];
-            prop_assert!(name.iter().all(|&b| (0x20..=0x7E).contains(&b)));
-            prop_assert_eq!(name, h.name.as_bytes());
-            prop_assert_eq!(bytes[8 + len], 0);
+            prop_assert_eq!(gimmick::detect_header_shape(&bytes), Some(h.shape));
+            match h.shape {
+                gimmick::HeaderShape::KeyFirst => {
+                    prop_assert_eq!(h.body, 8 + len + 1);
+                    prop_assert_eq!(&bytes[8..8 + len], h.name.as_bytes());
+                    prop_assert_eq!(bytes[8 + len], 0);
+                    prop_assert!(h.path.is_none());
+                }
+                gimmick::HeaderShape::NameFirst => {
+                    let path = h.path.clone().unwrap_or_default();
+                    prop_assert_eq!(h.body, 4 + len + 9 + path.len() + 1);
+                    prop_assert_eq!(&bytes[4..4 + len], h.name.as_bytes());
+                    prop_assert_eq!(bytes[4 + len + 4], 0);
+                    prop_assert!(path.starts_with('/'));
+                    prop_assert!(bytes[h.body - 1] <= 1);
+                }
+            }
+            prop_assert!(h.name.bytes().all(|b| (0x20..=0x7E).contains(&b)));
+        }
+    }
+
+    /// The parsed-layout probe never panics over arbitrary memory and arbitrary
+    /// remembered records, and whatever layout it returns fits inside the
+    /// windows it reads.
+    #[test]
+    fn parsed_layout_probe_never_panics(
+        mem in prop::collection::vec(any::<u8>(), 0..0x600),
+        samples in prop::collection::vec(
+            (any::<u32>(), 0usize..0x700, prop::collection::vec((any::<u32>(), 1u64..10, 1u64..10), 0..4)),
+            0..4,
+        ),
+    ) {
+        const BASE: usize = 0x1000_0000;
+        let read = |addr: usize, len: usize| -> Option<Vec<u8>> {
+            let off = addr.checked_sub(BASE)?;
+            mem.get(off..off.checked_add(len)?).map(<[u8]>::to_vec)
+        };
+        let samples: Vec<gimmick::ParsedSample> = samples
+            .into_iter()
+            .map(|(key, off, blocks)| gimmick::ParsedSample { key, obj: BASE + off, blocks })
+            .collect();
+        if let Ok(l) = gimmick::probe_parsed_layout(&samples, read) {
+            prop_assert!(l.key + 4 <= gimmick::PARSED_WINDOW && l.count + 4 <= gimmick::PARSED_WINDOW);
+            prop_assert!(l.block_min + 8 <= gimmick::BLOCK_WINDOW && l.block_max + 8 <= gimmick::BLOCK_WINDOW);
+        }
+    }
+
+    /// Collapsing candidate layouts never panics, and an answer has one of the
+    /// inputs' structures and the lowest key offset among the inputs that
+    /// share it; two structures are always refused.
+    #[test]
+    fn choose_parsed_is_consistent(
+        raw in prop::collection::vec((0usize..4, 0usize..3, 0usize..3, 0usize..2), 0..8),
+    ) {
+        let found: Vec<gimmick::ParsedLayout> = raw
+            .iter()
+            .map(|&(k, l, c, m)| gimmick::ParsedLayout {
+                key: 0x10 + k * 0x34,
+                list: 0xD0 + l * 0x40,
+                count: 0xD8 + c * 4,
+                block_min: 0x20 + m * 0x10,
+                ..gimmick::ParsedLayout::OLD
+            })
+            .collect();
+        let shapes: std::collections::BTreeSet<(usize, usize)> = found.iter().map(|l| (l.list, l.block_min)).collect();
+        match gimmick::choose_parsed(&found) {
+            Ok(got) => {
+                prop_assert_eq!(shapes.len(), 1);
+                prop_assert!(shapes.contains(&(got.list, got.block_min)));
+                let min_key = found.iter().map(|l| l.key).min();
+                prop_assert_eq!(Some(got.key), min_key);
+            }
+            Err(_) => prop_assert!(shapes.len() != 1),
+        }
+    }
+
+    /// The item finder never panics over arbitrary memory and keeps to its
+    /// bounds: no path deeper than `max_depth` pointers, no more than
+    /// `max_hits` paths, every path ending on an aligned offset.
+    #[test]
+    fn item_finder_keeps_to_its_bounds(
+        mem in prop::collection::vec(any::<u8>(), 0..0x800),
+        item in any::<u32>(),
+        depth in 0usize..4,
+        hits in 0usize..6,
+    ) {
+        const BASE: usize = 0x1000_0000;
+        let read = |addr: usize, len: usize| -> Option<Vec<u8>> {
+            let off = addr.checked_sub(BASE)?;
+            mem.get(off..off.checked_add(len)?).map(<[u8]>::to_vec)
+        };
+        let paths = gimmick::find_item_paths(BASE, item, read, depth, 64, hits);
+        prop_assert!(paths.len() <= hits);
+        for p in &paths {
+            prop_assert!(!p.is_empty() && p.len() <= depth + 1, "{:?}", p);
+            prop_assert!(p.last().is_some_and(|o| o % 4 == 0));
+        }
+    }
+
+    /// Synthesised headers of both shapes round-trip and are detected as the
+    /// shape they were built in, whatever follows. A `KeyFirst` key below 256
+    /// also reads as a `NameFirst` name length; full validation still picks
+    /// `KeyFirst`, because the "name" would be its zero-padded length field.
+    #[test]
+    fn headers_of_both_shapes_round_trip(
+        key in prop_oneof![0u32..256, any::<u32>()],
+        name in "[ -~]{1,40}",
+        path in "/[ -~]{0,60}",
+        flag in 0u8..2,
+        name_first in any::<bool>(),
+        rest in prop::collection::vec(any::<u8>(), 0..16),
+    ) {
+        let mut b = Vec::new();
+        let (shape, body) = if name_first {
+            b.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            b.extend_from_slice(name.as_bytes());
+            b.extend_from_slice(&key.to_le_bytes());
+            b.push(0);
+            b.extend_from_slice(&(path.len() as u32).to_le_bytes());
+            b.extend_from_slice(path.as_bytes());
+            b.push(flag);
+            (gimmick::HeaderShape::NameFirst, b.len())
+        } else {
+            b.extend_from_slice(&key.to_le_bytes());
+            b.extend_from_slice(&(name.len() as u32).to_le_bytes());
+            b.extend_from_slice(name.as_bytes());
+            b.push(0);
+            (gimmick::HeaderShape::KeyFirst, b.len())
+        };
+        b.extend_from_slice(&rest);
+        prop_assert_eq!(gimmick::detect_header_shape(&b), Some(shape));
+        let h = gimmick::parse_header(&b).expect("a well-formed header parses");
+        prop_assert_eq!((h.key, h.name.as_str(), h.shape, h.body), (key, name.as_str(), shape, body));
+        prop_assert_eq!(h.path.as_deref(), name_first.then_some(path.as_str()));
+        // Every truncation inside the header is refused, in both shapes.
+        for n in 0..body {
+            prop_assert!(gimmick::parse_header_as(&b[..n], shape).is_none());
         }
     }
 
@@ -287,6 +421,188 @@ proptest! {
             prop_assert_eq!(hi.old, b.max);
             prop_assert_eq!(lo.new, b.min.saturating_mul(u64::from(mult)));
             prop_assert_eq!(hi.new, b.max.saturating_mul(u64::from(mult)));
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// gimmick: the accessor tail, the slot bounds check, the loader call
+// ---------------------------------------------------------------------------
+
+/// One loader call in the grammar `parse_loader_call` reads, built from its
+/// choices: the index load (0 none, 1 movzx, 2 mov) and its source register,
+/// the `lea rdx` width and displacement, the `mov rcx,rbx` encoding. Returns the
+/// bytes and the offset of the `E8`.
+fn loader_call(index: u8, src: u8, disp32: bool, disp: u32, rcx_89: bool) -> (Vec<u8>, usize) {
+    let mut b = vec![0x4C, 0x8D, 0x4C, 0x24, 0x30];
+    match index % 3 {
+        1 => b.extend_from_slice(&[0x44, 0x0F, 0xB7, 0xC0 | (src & 7)]),
+        2 => b.extend_from_slice(&[0x44, 0x8B, 0xC0 | (src & 7)]),
+        _ => {}
+    }
+    if disp32 {
+        b.extend_from_slice(&[0x48, 0x8D, 0x94, 0x24]);
+        b.extend_from_slice(&disp.to_le_bytes());
+    } else {
+        b.extend_from_slice(&[0x48, 0x8D, 0x54, 0x24, disp as u8]);
+    }
+    b.extend_from_slice(if rcx_89 { &[0x48, 0x89, 0xD9] } else { &[0x48, 0x8B, 0xCB] });
+    let e8 = b.len();
+    b.push(0xE8);
+    (b, e8)
+}
+
+/// The stream fill `parse_stream_fill` reads, synthesised: the buffer and size
+/// off one holder (`holder` 1 = rcx, 2 = rdx), the cursor in one of the three
+/// load forms seen on 26361232 (`form` 0 `[rdx+4]`, 1 `[r9+8]`, 2
+/// `[rdx+r15+4]`), each store at `r9 + offset`, `nop` filler of the given
+/// lengths in front of each pair.
+fn stream_fill(holder: u8, form: u8, r9: u8, offs: [u8; 3], pad: [usize; 3]) -> Vec<u8> {
+    let mut b = vec![0x90; pad[0]];
+    b.extend_from_slice(&[0x48, 0x8B, holder, 0x48, 0x89, 0x44, 0x24, r9 + offs[0]]);
+    b.extend(std::iter::repeat_n(0x90, pad[1]));
+    b.extend_from_slice(&[0x8B, 0x40 | holder, 0x0C, 0x89, 0x44, 0x24, r9 + offs[1]]);
+    b.extend(std::iter::repeat_n(0x90, pad[2]));
+    match form % 3 {
+        0 => b.extend_from_slice(&[0x8B, 0x42, 0x04]),
+        1 => b.extend_from_slice(&[0x41, 0x8B, 0x41, 0x08]),
+        _ => b.extend_from_slice(&[0x42, 0x8B, 0x44, 0x3A, 0x04]),
+    }
+    b.extend_from_slice(&[0x89, 0x44, 0x24, r9 + offs[2]]);
+    b
+}
+
+proptest! {
+    #![proptest_config(cfg())]
+
+    /// The tail parser never panics, and what it accepts is one of the two
+    /// shapes with the `E8` exactly where it says.
+    #[test]
+    fn accessor_tail_parse_is_exact(bytes in prop::collection::vec(any::<u8>(), 0..16)) {
+        if let Some((tail, e8)) = gimmick::parse_accessor_tail(&bytes) {
+            prop_assert_eq!(bytes.get(e8), Some(&0xE8));
+            match tail {
+                gimmick::AccessorTail::RspDisp8(d) => {
+                    prop_assert_eq!(e8, 5);
+                    prop_assert_eq!(&bytes[..5], &[0x48, 0x8D, 0x4C, 0x24, d][..]);
+                }
+                gimmick::AccessorTail::R11Disp8(d) => {
+                    prop_assert_eq!(e8, 4);
+                    prop_assert_eq!(&bytes[..4], &[0x49, 0x8D, 0x4B, d][..]);
+                }
+            }
+        }
+    }
+
+    /// Both tail shapes round-trip for every displacement, whatever follows.
+    #[test]
+    fn accessor_tails_round_trip(d in any::<u8>(), r11 in any::<bool>(), rest in prop::collection::vec(any::<u8>(), 0..8)) {
+        let (mut b, want) = if r11 {
+            (vec![0x49, 0x8D, 0x4B, d, 0xE8], (gimmick::AccessorTail::R11Disp8(d), 4))
+        } else {
+            (vec![0x48, 0x8D, 0x4C, 0x24, d, 0xE8], (gimmick::AccessorTail::RspDisp8(d), 5))
+        };
+        b.extend_from_slice(&rest);
+        prop_assert_eq!(gimmick::parse_accessor_tail(&b), Some(want));
+    }
+
+    /// The slot bounds check is `cmp r32,[rbx+8]` for exactly the eight
+    /// 32-bit registers and nothing else.
+    #[test]
+    fn slot_cmp_is_exactly_the_eight_registers(b in any::<[u8; 3]>()) {
+        let want = b[0] == 0x3B
+            && [0x43, 0x4B, 0x53, 0x5B, 0x63, 0x6B, 0x73, 0x7B].contains(&b[1])
+            && b[2] == 0x08;
+        prop_assert_eq!(gimmick::is_slot_cmp(&b), want);
+    }
+
+    /// The loader-call parser never panics on arbitrary bytes, and whatever it
+    /// accepts starts with `lea r9,[rsp+0x30]` and has its `E8` in range.
+    #[test]
+    fn loader_call_parse_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..40)) {
+        if let Some(c) = gimmick::parse_loader_call(&bytes) {
+            prop_assert_eq!(&bytes[..5], &[0x4C, 0x8D, 0x4C, 0x24, 0x30][..]);
+            prop_assert_eq!(bytes.get(c.call_at), Some(&0xE8));
+            prop_assert!((13..=24).contains(&c.call_at), "E8 at {}", c.call_at);
+        }
+    }
+
+    /// Every grammar shape round-trips: built from its choices, it parses
+    /// back to the same choices and the same `E8` offset, whatever follows;
+    /// and every truncation before the `E8` is refused.
+    #[test]
+    fn loader_calls_round_trip(
+        index in 0u8..3,
+        src in 0u8..8,
+        disp32 in any::<bool>(),
+        disp in any::<u32>(),
+        rcx_89 in any::<bool>(),
+        rest in prop::collection::vec(any::<u8>(), 0..8),
+    ) {
+        let (mut b, e8) = loader_call(index, src, disp32, disp, rcx_89);
+        b.extend_from_slice(&rest);
+        let want_index = match index {
+            1 => gimmick::IndexLoad::Movzx,
+            2 => gimmick::IndexLoad::Mov,
+            _ => gimmick::IndexLoad::None,
+        };
+        prop_assert_eq!(
+            gimmick::parse_loader_call(&b),
+            Some(gimmick::LoaderCall { index: want_index, rdx_disp32: disp32, rcx_89, call_at: e8 })
+        );
+        for n in 0..=e8 {
+            prop_assert_eq!(gimmick::parse_loader_call(&b[..n]), None);
+        }
+    }
+
+    /// The stream-fill parser never panics on arbitrary bytes, and whatever it
+    /// accepts is three positive disp8 stores at or past the object's start.
+    #[test]
+    fn stream_fill_parse_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..160), r9 in any::<u8>()) {
+        if let Some(l) = gimmick::parse_stream_fill(&bytes, r9) {
+            for o in [l.buf, l.size, l.cursor] {
+                prop_assert!(o + u32::from(r9) < 0x80, "{l:?} r9 0x{r9:X}");
+            }
+        }
+    }
+
+    /// Every synthesised fill round-trips to the offsets it was built from,
+    /// whichever holder and cursor form it uses, for any r9 displacement that
+    /// keeps the stores positive.
+    #[test]
+    fn stream_fills_round_trip(
+        holder in 1u8..3,
+        form in 0u8..3,
+        r9 in 0u8..0x40,
+        offs in prop::array::uniform3(0u8..0x40),
+        pad in prop::array::uniform3(0usize..12),
+    ) {
+        let b = stream_fill(holder, form, r9, offs, pad);
+        prop_assert_eq!(
+            gimmick::parse_stream_fill(&b, r9),
+            Some(gimmick::StreamLayout { buf: offs[0].into(), size: offs[1].into(), cursor: offs[2].into() })
+        );
+        // Shifting the object's start past a store takes that field away.
+        let lowest = offs.iter().min().copied().unwrap_or(0);
+        prop_assert_eq!(gimmick::parse_stream_fill(&b, r9 + lowest + 1), None);
+    }
+
+    /// A scan of arbitrary bytes never panics, its census stays inside the
+    /// image, and every site it reports has its file-load `E8` where it says.
+    #[test]
+    fn accessor_census_stays_inside(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
+        let sites = gimmick::AccessorSites::scan(&bytes, Some(0x1_4000_0000)).expect("patterns parse");
+        for r in sites.census(&bytes).expect("same image") {
+            prop_assert!(r.site.call_at < bytes.len());
+            prop_assert_eq!(bytes.get(r.site.call_at), Some(&0xE8));
+            if let Ok((load, slot)) = r.slot {
+                prop_assert!(load < r.site.at && slot < bytes.len());
+            }
+            if let Ok((b, c, target)) = r.loader {
+                prop_assert!(b >= r.site.call_at && b - r.site.call_at < gimmick::B_WINDOW);
+                prop_assert!(target < bytes.len());
+                prop_assert_eq!(bytes.get(b + c.call_at), Some(&0xE8));
+            }
         }
     }
 }
@@ -432,7 +748,7 @@ proptest! {
 
     /// The same agreement over a *skewed* alphabet and a haystack long enough
     /// to be sampled many times, which is what makes the scan's choice of
-    /// anchor — the rarest literal, not the first — a real choice: `48` is the
+    /// anchor (the rarest literal, not the first) a real choice: `48` is the
     /// filler here the way the REX.W prefix is in the game image, so patterns
     /// routinely start on the commonest byte and must anchor elsewhere. Under a
     /// flat alphabet every byte ranks alike and this path is never taken.

@@ -50,14 +50,15 @@ fn a_rebuild_passes_every_self_check() {
         !text.contains("FAIL"),
         "a self-check moved; explain it before trusting the inventory:\n{text}"
     );
-    // Build 25477059. On 25246367 these were 4675 pairs and 536 classes; the
-    // growth is schema change, itemised at `EXPECT_PAIRS` in the tool.
+    // Build 26361232, the same as 26345091 and 26356046. On 25477059 these were 4712
+    // pairs and 537 classes, and on 25246367 4675 and 536; the growth is schema change, itemised at
+    // `EXPECT_PAIRS` in the tool.
     assert!(
-        text.contains("4712 (class, field) pairs, expected 4712"),
+        text.contains("5034 (class, field) pairs, expected 5034"),
         "{text}"
     );
     assert!(
-        text.contains("537 distinct classes, expected 537"),
+        text.contains("581 distinct classes, expected 581"),
         "{text}"
     );
     assert!(dir.path().join("analysis/fieldnames.json").is_file());
@@ -93,7 +94,7 @@ fn every_rva_matches_an_independent_section_walk() {
         .collect();
 
     let pairs = doc["pairs"].as_array().unwrap();
-    assert_eq!(pairs.len(), 4712); // build 25477059; 4675 on 25246367
+    assert_eq!(pairs.len(), 5034); // builds 26345091, 26356046 and 26361232; 4712 on 25477059, 4675 on 25246367
     for p in pairs {
         let off = p["message_off"].as_u64().unwrap() as u32;
         let want = secs
@@ -139,9 +140,9 @@ fn a_lookup_answers_from_the_json_without_the_exe() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    // Build 25477059: 213. It was 211 on 25246367; the update added
-    // `enableCameraOverlap` and `housingObjectInfo`.
-    assert!(text.contains("GimmickInfo  (213 fields)"), "{text}");
+    // Builds 26345091, 26356046 and 26361232: 220. It was 213 on 25477059 and 211 on
+    // 25246367; the fields that moved are listed at `EXPECT_PAIRS` in the tool.
+    assert!(text.contains("GimmickInfo  (220 fields)"), "{text}");
 }
 
 /// A missing exe with no inventory to fall back on is the one failure a user

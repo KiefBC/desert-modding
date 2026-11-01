@@ -27,8 +27,8 @@ pub fn game_exe() -> PathBuf {
 }
 
 /// What the plugin writes the table body as, beside its log in `bin64`, when
-/// `[Gatherer] DumpTable=1` and `DryRun=1` are both set. The plugin's
-/// `desert_gatherer::dump::FILE_NAME`.
+/// `[Harvest] DumpTable=1` and `DryRun=1` are both set. The plugin's
+/// `desert_harvest::gatherer::dump::FILE_NAME`.
 pub const TABLE_DUMP_NAME: &str = "DesertTooling.gimmickinfo.bin";
 
 /// Where DMM leaves its extracted clean copy of the same bytes.
@@ -77,7 +77,7 @@ pub fn appmanifest() -> PathBuf {
 /// The game build whose `gimmickinfo` table body the walk calibrations were
 /// measured on: `gen-collect-names`' `CALIBRATION` and `items`' expected
 /// counts and anchors. Both move together, so both name this one constant.
-pub const CALIBRATED_BUILD: &str = "25477059";
+pub const CALIBRATED_BUILD: &str = "26361232";
 
 /// The game build id read out of the appmanifest, if it is there.
 pub fn build_id() -> Option<String> {

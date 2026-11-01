@@ -105,9 +105,9 @@ The granted count is at **`instance+0x10`** - a runtime heap field on the `+0xC0
 hanging off the gimmick actor's `ClientGimmickActorComponent`, not a record field. It exists
 only while the prop exists, which is what makes this a live write rather than a load-time one.
 
-`desert-looter/src/actors.rs` **already locates that instance**, which is most of why this is
+`desert-harvest/src/looter/actors.rs` **already locates that instance**, which is most of why this is
 tractable at all. `Kind::Item` in `actors::classify` *is* the `comp+0xC0` case
-(`actors::gimmick_info`, `desert-looter/src/actors.rs:365`), and `comp+0x48`
+(`actors::gimmick_info`, `desert-harvest/src/looter/actors.rs:365`), and `comp+0x48`
 (`actors::GIMMICK_RECORD_INDEX_OFF`) gives the gimmickinfo row index - so the record's key,
 its name and its `collect::Family` are all reachable **from the actor**. That is what would
 let a multiplier be gated per family instead of applied to every item lying on the ground.
@@ -122,12 +122,12 @@ built rather than after.
 ### Hazards, all of which belong in the design before the code
 
 - **The player's own equipment rides on `+0xC0` instances too.** Multiplying those is a
-  different mod and quite possibly a corrupt save. `desert-looter` already separates them -
-  `Kind::Equipment` and `actors::refers_to_player` (`desert-looter/src/actors.rs:505`) - and
+  different mod and quite possibly a corrupt save. The looter already separates them -
+  `Kind::Equipment` and `actors::refers_to_player` (`desert-harvest/src/looter/actors.rs:505`) - and
   this must reuse that check rather than re-derive it.
 - **The write must be idempotent.** A dropped prop persists until it is taken, so a repeating
   pass over the same instance compounds the multiplier every tick. Writing once per instance
-  pointer, or remembering the vanilla value per instance the way `desert-gatherer`'s
+  pointer, or remembering the vanilla value per instance the way the gatherer's
   `remember` does per record, is most of the actual difficulty of the feature.
 - **`ItemInfo._maxStackCount` may clamp the result.** The field name is **CONFIRMED** in the
   exe (`fieldnames --grep maxStack`; `ItemInfo._applyMaxStackCap` sits
@@ -151,7 +151,7 @@ spending a launch on it ahead of any of them.
 
 **Raised** 2026-09-12. **Status: RESOLVED 2026-09-13**, in 0.4.1's *Fixed*, taking two of the
 three candidates below at once. `64` is gone: `[Looter] SurveyLines` (default 200, range 16..2000,
-`desert-looter/src/config.rs` `SURVEY_LINES_RANGE`) is the budget, and `game::survey` orders the
+`desert-harvest/src/looter/config.rs` `SURVEY_LINES_RANGE`) is the budget, and `game::survey` orders the
 listing **kind-first** (`survey_rank`: Gather, Unarmed, Item/Equipment, Interactable, Catchable,
 Character/Player/Other, Inert) and by distance within a kind, so the budget can only ever cut the least
 interesting actors. It also prints `[survey] listing capped at N lines ...: M more not printed -
@@ -169,8 +169,8 @@ first lines, so the cap reaches them last.
 
 The argument as it stood, kept because it is the reason the default is 200 and not 64:
 
-`desert-looter/src/lib.rs:560` passes a hard-coded `64` as `game::survey`'s `max_lines`, and
-`game::survey` (`desert-looter/src/game.rs:156`) sorts candidates by distance from the player
+`desert-harvest/src/looter/lib.rs:560` (now `desert-harvest/src/looter/entry.rs`) passes a hard-coded `64` as `game::survey`'s `max_lines`, and
+`game::survey` (`desert-harvest/src/looter/game.rs:156`) sorts candidates by distance from the player
 before printing. Together those mean the printed lines are the **64 nearest actors**, and with
 a heap of smashed pottery underfoot that is a window a few metres wide. The `Kind` histogram at
 the foot of the pass is *not* truncated - it counts every actor inside `ScanRange` - but it
@@ -478,7 +478,7 @@ another bucket**. The crank sequence is what respawns it; a pickup delivered fro
 sequence leaves the well permanently empty. So the answer to the question in the heading is no:
 the looter cannot drive a multi-step gimmick, and firing at one step of it breaks the object.
 
-**Resolution.** `desert-looter/src/config.rs` `WELL_BUCKET_RECORD_KEY` / `never_forge_pickup`,
+**Resolution.** `desert-harvest/src/looter/config.rs` `WELL_BUCKET_RECORD_KEY` / `never_forge_pickup`,
 checked in `nearest_gather` **before** `allows_family`, as this entry's last paragraph said the
 fix should be shaped - a record-key refusal, not a family carve-out. The F9 line reports the
 refusal; the `GatherForaging` help and the README say the switch never covers the well; a test
@@ -498,7 +498,7 @@ The text below is the entry as it stood before the test, kept because its reason
 **Status before the test: UNCONFIRMED / untested.** Nobody had tried it.
 
 Folding the well into `Foraging` had a side effect on Desert Looter that was chosen
-deliberately rather than left to fall out of the enum: `desert-looter/src/config.rs`'s
+deliberately rather than left to fall out of the enum: `desert-harvest/src/looter/config.rs`'s
 `allows_family(Family::Foraging)` is `GatherForaging`, which defaults to `1`, and
 `actors::classify` returns `Kind::Gather`/`Kind::Unarmed` for any actor whose record has a
 family. So with `AutoGather=1` the looter will now target the well's `parts01` record. The
@@ -524,7 +524,7 @@ exploit that would ship untested. The cheap check is the looter's own survey: st
 untouched well, press F11, and look for `gimmick_well_0001_parts01` in the output; then crank
 and press F11 again. If it only appears after the crank, the QoL behaviour is safe. If it is
 there before, the fix is a narrow exclusion of that one record key in `nearest_gather`
-(`desert-looter/src/game.rs`), not a family-wide carve-out, and this entry is where to say so.
+(`desert-harvest/src/looter/game.rs`), not a family-wide carve-out, and this entry is where to say so.
 (The survey caps at 64 distance-sorted lines, so stand close.)
 
 **The multiplier is independent either way.** `Foraging` edits the record's block at load time
@@ -642,7 +642,7 @@ Three things in that table are decisions, not data:
   ask to steal more per theft.
 
 Capacity is not a constraint: `collect.rs` holds **276** rows against
-`desert-gatherer/src/remember.rs`'s `MAX_RECORDS = 512`, and 29 more is 305 (the count was 292
+`desert-harvest/src/gatherer/remember.rs`'s `MAX_RECORDS = 512`, and 29 more is 305 (the count was 292
 before the 16 inert records came out on 2026-09-12). That was the
 answer when these rows were going to drive `gimmick::multiply`; it stays true for rows that
 exist only to give the instance lever a family to gate on, and the 397 in group two are the
@@ -681,7 +681,7 @@ field is in the exe (`fieldnames --grep convert`, so the *name* is
 CONFIRMED), and it is **scalar - no list, no min, no max**. Its sibling
 `CharacterInfo._convertItemInfo` is the same shape, and §17 already established how that one
 behaves: the record names the item and **the amount is a hard-coded immediate in code**, the
-`mov r8d,1` that `desert-gatherer/src/catch.rs` patches. If a collection prop grants the same
+`mov r8d,1` that `desert-harvest/src/gatherer/catch.rs` patches. If a collection prop grants the same
 way, **there is no scalar anywhere for a multiplier to scale** and the only lever is a second
 code patch.
 
@@ -825,7 +825,7 @@ happens when that last question is skipped: 16 of its 17 rows were inert.
 
 ### The capacity ceiling to check before growing anything
 
-`desert-gatherer/src/remember.rs:43` caps the table at `MAX_RECORDS = 512` against **276** rows
+`desert-harvest/src/gatherer/remember.rs:43` caps the table at `MAX_RECORDS = 512` against **276** rows
 today. Adding a handful of rows is free; acting on 297 records is not. It is a
 **refusal**, not a truncation - over-running it leaves the excess records vanilla with no
 crash, so the failure mode is silent, and the ceiling has to be raised *before* a large
@@ -1137,7 +1137,7 @@ well is the precedent - so no generator extension is needed. The one generator e
 `log_1002_index07 -> None` line. Regeneration then emits the two rows, a
 `logging_extra_records_are_present` test with the family count at 143, and
 `COLLECT_RECORDS.len() == 281`. Diff the output before accepting it (CLAUDE.md, analysis tooling).
-Then: the `Logging` help text in `desert-gatherer/src/config.rs` and the README key row say "141
+Then: the `Logging` help text in `desert-harvest/src/gatherer/config.rs` and the README key row say "141
 records" - make them 143; `docs/findings/2026-09-12-loot-taxonomy.md` gets a "Corrections" note that
 the two are in; the ledger rows for both records and the `collect.rs` count rows (279 -> 281);
 `docs/README.md`'s "Still open" bullet.
@@ -1153,7 +1153,7 @@ never sees. So each record stays **CONFIRMED-STATIC** until one pickup is logged
   log's `[recv] item 710001 x3` / `x1` pairs at `Logging=3` / `1` were exactly those, and prove
   nothing about this record. Find a pile: stand by stacked firewood and press F11; the survey prints
   one line per actor, `grep 'name=gimmick_wood_firewood_0001'`. Today it shows `family=-`; after the
-  change, `family=Logging`. Pick it up with `[Gatherer] Logging=3` and `[Looter] LogReceived=1` and
+  change, `family=Logging`. Pick it up with `[Harvest] Logging=3` and `[Harvest] LogReceived=1` and
   expect `[recv] item 710001 x3`. A `x1` means the instance path, and the record moves to
   `records_not_enabled` with that log as its `why`.
 - **Bamboo.** Expect `[recv] item 1002124 x3`. The player had no access to bamboo as of

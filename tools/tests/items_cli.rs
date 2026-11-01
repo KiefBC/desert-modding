@@ -171,12 +171,13 @@ fn real_table() -> Option<String> {
 }
 
 /// The five numbers findings section 9 confirmed three independent ways, as
-/// re-measured on build 25477059 (573 / 896 / 215 / 13412 on 25246367). A
+/// re-measured on build 26361232, the first `NameFirst` body (572 / 895 / 215
+/// / 13447 on 25477059, 573 / 896 / 215 / 13412 on 25246367). A
 /// `FAIL` here means the table or the walk moved and nothing downstream should
 /// be trusted until it is explained.
 #[test]
 #[ignore = "needs the clean gimmickinfo body"]
-fn the_shipped_walk_still_finds_572_895_215() {
+fn the_shipped_walk_still_finds_581_904_220() {
     let Some(t) = real_table() else { return };
     let dir = tempfile::tempdir().unwrap();
     let j = dir.path().join("items.json");
@@ -188,10 +189,10 @@ fn the_shipped_walk_still_finds_572_895_215() {
     let out = stdout(&o);
     assert!(!out.contains("FAIL"), "{out}");
     let d = read_json(&j);
-    assert_eq!(d["totals"]["output_lists"], 572);
-    assert_eq!(d["totals"]["blocks"], 895);
-    assert_eq!(d["totals"]["distinct_items"], 215);
-    assert_eq!(d["totals"]["records_in_table"], 13447);
+    assert_eq!(d["totals"]["output_lists"], 581);
+    assert_eq!(d["totals"]["blocks"], 904);
+    assert_eq!(d["totals"]["distinct_items"], 220);
+    assert_eq!(d["totals"]["records_in_table"], 14210);
 }
 
 /// The loose walk is a *superset*, not a different answer: its own three counts
@@ -211,13 +212,14 @@ fn the_loose_walk_is_a_superset_of_the_shipped_one() {
     let out = stdout(&o);
     assert!(!out.contains("FAIL"), "{out}");
     let d = read_json(&j);
-    assert_eq!(d["totals"]["output_lists"], 588);
-    assert_eq!(d["totals"]["blocks"], 1037);
-    assert_eq!(d["totals"]["distinct_items"], 311);
-    assert_eq!(d["totals"]["shipped_lists"], 572);
+    // 26361232; 588 / 1037 / 311 / 572 / 16 / 142 / 96 on 25477059.
+    assert_eq!(d["totals"]["output_lists"], 597);
+    assert_eq!(d["totals"]["blocks"], 1047);
+    assert_eq!(d["totals"]["distinct_items"], 317);
+    assert_eq!(d["totals"]["shipped_lists"], 581);
     assert_eq!(d["totals"]["loose_only_lists"], 16);
-    assert_eq!(d["totals"]["loose_only_blocks"], 142);
-    assert_eq!(d["totals"]["items_loose_only"], 96);
+    assert_eq!(d["totals"]["loose_only_blocks"], 143);
+    assert_eq!(d["totals"]["items_loose_only"], 97);
     // The nine nine-digit ids, all inside the one mis-parsed list. They are
     // flagged, never filtered: the flag is the finding.
     assert_eq!(d["totals"]["implausible_item_ids"], 9);

@@ -1,20 +1,21 @@
 //! Desert Tooling - the one ASI plugin this workspace ships.
 //!
 //! It holds no mod policy at all. Everything the player sees is in one of the
-//! four subsystem crates, each an rlib linked in here:
+//! three subsystem crates, each an rlib linked in here:
 //!
 //! | subsystem | crate | ini section | log tag |
 //! | --- | --- | --- | --- |
-//! | auto-loot | `desert-looter` | `[Looter]` | `[looter]` |
-//! | gathering yields | `desert-gatherer` | `[Gatherer]` | `[gatherer]` |
+//! | auto-loot and gathering yields | `desert-harvest` | `[Harvest]` | `[harvest]` |
 //! | the in-game menu | `desert-overlay` | `[Overlay]` | `[overlay]` |
 //! | dispatch missions | `desert-dispatch` | `[Dispatch]` | `[dispatch]` |
 //!
 //! What is left here is the plumbing that used to exist three times over, once
 //! per shipped `.asi`: the single `DllMain`, the host-exe gate, `log::init` for
 //! the one shared `DesertTooling.log`, seeding the one shared
-//! `DesertTooling.ini` from every schema, the guard against a pre-merge
-//! `.asi` still being loaded beside this one, and one thread per subsystem.
+//! `DesertTooling.ini` from every schema, the one-time migration of a pre-0.10
+//! ini's `[Looter]` and `[Gatherer]` sections into `[Harvest]`, the guard
+//! against a pre-merge `.asi` still being loaded beside this one, and one
+//! thread per subsystem.
 //!
 //! The workspace's rules are hardest here, because this is the file the loader
 //! calls: **no file I/O in `DllMain`** (the loader lock is held), **never
@@ -47,7 +48,7 @@ pub const INI_NAME: &str = "DesertTooling.ini";
 pub const GAME_EXE: &str = "CrimsonDesert.exe";
 
 /// Every subsystem's settings, in the order the menu shows them and the order
-/// the seeded ini writes them: Looter, Gatherer, Overlay, Dispatch.
+/// the seeded ini writes them: Harvest, Overlay, Dispatch.
 ///
 /// This is the only place they are named together. Adding a subsystem means
 /// adding its `config::schema()` here and starting its thread in
@@ -58,8 +59,7 @@ pub const GAME_EXE: &str = "CrimsonDesert.exe";
 /// `DesertTooling.ini` against every subsystem's own parser.
 pub fn sections() -> Vec<desert_core::schema::Section> {
     vec![
-        desert_looter::config::schema(),
-        desert_gatherer::config::schema(),
+        desert_harvest::config::schema(),
         desert_overlay::config::schema(),
         desert_dispatch::config::schema(),
     ]
@@ -171,8 +171,8 @@ mod entry {
     /// identically either way and the only thing lost is the file to edit.
     ///
     /// **This runs before any subsystem thread is started**, and that ordering
-    /// is load bearing rather than tidy: the looter stamps its ini watermark
-    /// from the file's modified time as it reads it, and a file that did not
+    /// is load bearing rather than tidy: the harvest thread stamps its ini
+    /// watermark from the file's modified time as it reads it, and a file that did not
     /// exist yet at that moment but appeared a millisecond later would make its
     /// once-a-second poll fire a spurious reload on its very first tick.
     ///
@@ -214,6 +214,36 @@ mod entry {
         }
     }
 
+    /// Fold a pre-0.10 ini's `[Looter]` and `[Gatherer]` sections into
+    /// `[Harvest]`, once. Every outcome is a log line at most and none of them
+    /// stops the plugin: a failure leaves the file as it was, and the harvest
+    /// thread then reads its defaults from a file with no `[Harvest]` in it.
+    fn migrate_ini() {
+        use desert_harvest::migrate::{self, Migration};
+
+        let path = log::exe_dir().join(crate::INI_NAME);
+        match migrate::migrate_file(&path) {
+            Ok(Migration::Unchanged) => {}
+            Ok(Migration::Rewritten(text)) => {
+                crate::log!(
+                    "[ini] [Looter] and [Gatherer] were merged into [Harvest] (Enabled is on only if both were, Debug if either was)"
+                );
+                if let Some(note) = migrate::enabled_note(&text) {
+                    crate::log!("[ini] {note}");
+                }
+            }
+            Ok(Migration::StaleOldSections(names)) => crate::log!(
+                "[ini] WARN {} has [Harvest] and also [{}]; only [Harvest] is read, so delete the old section(s) once anything you need is copied over",
+                crate::INI_NAME,
+                names.join("], [")
+            ),
+            Err(e) => crate::log!(
+                "[ini] WARN could not migrate {}: {e}; the [Harvest] defaults are in effect",
+                crate::INI_NAME
+            ),
+        }
+    }
+
     /// Runs on its own thread for the life of the process. `param` is the
     /// `HMODULE` `DllMain` was handed.
     unsafe extern "system" fn main_thread(param: *mut c_void) -> u32 {
@@ -222,11 +252,10 @@ mod entry {
         // process's own PEB; it is sound to call from any thread.
         let pid = unsafe { GetCurrentProcessId() };
         crate::log!(
-            "Desert Tooling {} loaded, pid {} (looter {}, gatherer {}, overlay {}, dispatch {})",
+            "Desert Tooling {} loaded, pid {} (harvest {}, overlay {}, dispatch {})",
             crate::VERSION,
             pid,
-            desert_looter::VERSION,
-            desert_gatherer::VERSION,
+            desert_harvest::VERSION,
             desert_overlay::VERSION,
             desert_dispatch::VERSION
         );
@@ -254,19 +283,20 @@ mod entry {
 
         let sections = crate::sections();
         seed_ini(&sections);
+        // After the seed (a freshly seeded file is already `[Harvest]` and so
+        // left alone) and before any subsystem thread exists, so nothing reads
+        // the file while it is being rewritten.
+        migrate_ini();
 
-        // One thread per subsystem, exactly reproducing the three-DLL timing
-        // that was verified in game: each of the three used to get its own
-        // thread out of its own DllMain, and they raced each other from there.
+        // One thread per subsystem.
         //
-        // The gatherer goes first and is never made to wait: it hooks the
+        // Harvest goes first and is never made to wait: it hooks the
         // gimmickinfo record loader, which the game reads while the level is
         // still loading, and the only safe moment to patch that prologue is
-        // before any thread is executing it. The looter's own 20-second boot
-        // grace is inside its start(), which is exactly why it must not be
-        // ahead of the gatherer on one shared thread.
-        spawn("gatherer", desert_gatherer::start);
-        spawn("looter", desert_looter::start);
+        // before any thread is executing it. Its auto-loot half's 20-second
+        // boot grace is a deadline inside its loop, after every hook is in,
+        // which is what lets the two halves share one thread.
+        spawn("harvest", desert_harvest::start);
         // Hookless: it patches no code and installs no trampoline, so where it
         // sits in this list cannot matter to anything - it has no prologue to
         // reach before a game thread does. It waits on the FactionNode table
@@ -281,8 +311,8 @@ mod entry {
             desert_overlay::start(hmodule.get(), sections);
         });
 
-        // Nothing is joined. The four threads own the rest of the process's
-        // life (three of them never return at all), an `.asi` is never unloaded,
+        // Nothing is joined. The three threads own the rest of the process's
+        // life (two of them never return at all), an `.asi` is never unloaded,
         // so their code cannot go away underneath them, and this thread has
         // nothing left to do.
         0
@@ -355,17 +385,13 @@ mod tests {
     /// it repeatedly caught a default changed in `config.rs` and not in the ini
     /// beside it. There is one shipped file now, so the test belongs to the
     /// crate that ships it - and it is stronger here, because the same text has
-    /// to satisfy four independent parsers at once. An `Enabled` that landed
+    /// to satisfy three independent parsers at once. An `Enabled` that landed
     /// under the wrong `[Section]` fails it twice over.
     #[test]
     fn the_shipped_ini_is_every_subsystem_at_its_defaults() {
-        let (looter, warnings) = desert_looter::config::parse(SHIPPED_INI);
-        assert!(warnings.is_empty(), "[Looter] warnings: {warnings:?}");
-        assert_eq!(looter, desert_looter::config::Config::default());
-
-        let (gatherer, warnings) = desert_gatherer::config::parse(SHIPPED_INI);
-        assert!(warnings.is_empty(), "[Gatherer] warnings: {warnings:?}");
-        assert_eq!(gatherer, desert_gatherer::config::Config::default());
+        let (harvest, warnings) = desert_harvest::config::parse(SHIPPED_INI);
+        assert!(warnings.is_empty(), "[Harvest] warnings: {warnings:?}");
+        assert_eq!(harvest, desert_harvest::config::Config::default());
 
         let (overlay, warnings) = desert_overlay::config::parse(SHIPPED_INI);
         assert!(warnings.is_empty(), "[Overlay] warnings: {warnings:?}");
@@ -410,14 +436,14 @@ mod tests {
     #[test]
     fn the_sections_are_in_menu_order() {
         let names: Vec<String> = sections().into_iter().map(|s| s.ini_section).collect();
-        assert_eq!(names, ["Looter", "Gatherer", "Overlay", "Dispatch"]);
+        assert_eq!(names, ["Harvest", "Overlay", "Dispatch"]);
         let orders: Vec<i32> = sections().iter().map(|s| s.order).collect();
         assert!(orders.windows(2).all(|w| w[0] < w[1]), "orders: {orders:?}");
     }
 
     /// The menu is a tab bar, and this is the shape of it: one tab per section
     /// that kept a field of its own, plus the two shared tabs. Read across all
-    /// four schemas at once, because that is the only place the answer exists -
+    /// three schemas at once, because that is the only place the answer exists -
     /// each subsystem marks its own fields and none of them can see the others.
     #[test]
     fn every_subsystem_but_the_overlay_gets_a_tab_and_both_shared_tabs_have_content() {
@@ -433,7 +459,7 @@ mod tests {
                 .iter()
                 .any(|f| f.tab == Tab::Section)
         };
-        for name in ["Looter", "Gatherer", "Dispatch"] {
+        for name in ["Harvest", "Dispatch"] {
             assert!(own_tab(name), "[{name}] must keep a field of its own, or it gets no tab");
         }
         assert!(

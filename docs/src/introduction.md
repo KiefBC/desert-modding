@@ -2,14 +2,13 @@
 
 Source: root `README.md`, the header comment of the root `Cargo.toml`.
 
-Desert Tooling is one ASI plugin for Crimson Desert Enhanced, written in Rust and cross-compiled to Windows x64. Ultimate ASI Loader, installed as `winmm.dll` in the game's `bin64`, loads it. It is supported on Steam build 25477059.
+Desert Tooling is one ASI plugin for Crimson Desert Enhanced, written in Rust and cross-compiled to Windows x64. Ultimate ASI Loader, installed as `winmm.dll` in the game's `bin64`, loads it. It is supported on Steam build 26361232.
 
-The plugin is one `DesertTooling.asi`, one `DesertTooling.ini` and one `DesertTooling.log`. Four subsystems live inside it, each with its own section of the ini and its own tag on every log line it writes:
+The plugin is one `DesertTooling.asi`, one `DesertTooling.ini` and one `DesertTooling.log`. Three subsystems live inside it, each with its own section of the ini and its own tag on every log line it writes:
 
 | subsystem | what it does | ini section | log tag |
 |---|---|---|---|
-| Looter | auto-loot for gathering nodes | `[Looter]` | `[looter]` |
-| Gatherer | gathering yield multiplier | `[Gatherer]` | `[gatherer]` |
+| Harvest | auto-loot for gathering nodes, and the gathering yield multipliers | `[Harvest]` | `[harvest]` |
 | Overlay | the in-game settings menu, `Insert` | `[Overlay]` | `[overlay]` |
 | Dispatch | faster dispatch missions, bigger mission rewards, a dump of both into the log, and a read-only buff/stat census (`[buffs]`) | `[Dispatch]` | `[dispatch]` |
 

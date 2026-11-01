@@ -8,7 +8,7 @@
 // This used to exist three times over, once per shipped plugin, kept in sync by
 // copying. There is one plugin now, so this is the only copy: desert-tooling is
 // the workspace's single cdylib, and a build script in the rlibs it links
-// (desert-core, desert-looter, desert-gatherer, desert-overlay) would embed a
+// (desert-core, desert-harvest, desert-overlay, desert-dispatch) would embed a
 // resource into nothing. Everything mod-specific below is derived from this
 // crate's own Cargo metadata - name, version, description - so a version bump
 // or a renamed package carries into the resource with nothing to edit here.

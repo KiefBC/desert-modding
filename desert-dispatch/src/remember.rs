@@ -43,7 +43,7 @@
 //! # Shape
 //!
 //! Written by this subsystem's own thread and readable from anywhere, so it is
-//! the same shape `desert_gatherer::remember` uses: a fixed open-addressed
+//! the same shape `desert_harvest::gatherer::remember` uses: a fixed open-addressed
 //! table of atomics, probed linearly from `key % MAX`, with no allocation
 //! after startup, no locks and nothing ever freed. **Deliberately not generic**
 //! over that shape: these two tables and the gatherer's share a ~25-line probe
@@ -99,10 +99,10 @@ pub struct Mission {
     pub key: u32,
     /// `steps[1]+0x08`, the mission length in tenths of an hour.
     pub duration_tenths: u32,
-    /// `entry+0xDA`, the required `Skill` index, or
+    /// `parsed::OP_SKILL_REQ`, the required `Skill` index, or
     /// [`crate::node::parsed::SKILL_NONE`].
     pub skill_req: u16,
-    /// `entry+0xC4`, the minimum operator count.
+    /// `parsed::OP_MIN_OPERATORS`, the minimum operator count.
     pub min_operators: u32,
 }
 

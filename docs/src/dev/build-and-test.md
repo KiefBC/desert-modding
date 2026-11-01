@@ -20,7 +20,7 @@ Sources: `justfile`, `flake.nix`, `.cargo/config.toml`, `.github/workflows/ci.ym
 | | `install` | Copy `desert_tooling.dll` into `bin64` as `DesertTooling.asi`; refuses while the game runs, warns about pre-merge `.asi` files; `CD_BIN64` overrides the path |
 | | `clean` | Remove build output and `dist/` |
 | Test | `test` | `test-native` then `test-win` (Windows binaries through WSL interop) |
-| | `test-game` | The `#[ignore]`d tests against the real exe and table |
+| | `test-game` | The `#[ignore]`d tests against the real exe and table (`game_exe`, `gimmick_real`, `banking_real`) |
 | | `tools-check` | Tools clippy and unit tests |
 | | `tools-check-game` | The tools' `#[ignore]`d tests (exe, table or a built plugin) |
 | Lint | `clippy` | Both targets, `-D warnings` |
@@ -29,8 +29,9 @@ Sources: `justfile`, `flake.nix`, `.cargo/config.toml`, `.github/workflows/ci.ym
 | | `check-versions` | Fail if `README.md` / `VERSIONING.md` drifted from `Cargo.toml` |
 | | `sync-versions` | Rewrite those version strings from `Cargo.toml` |
 | | `ci` | `clippy test tools-check audit check-versions check-imports` |
-| Game | `sigscan` | Re-check every byte signature and static-info type name against the exe |
-| | `evidence [flags]` | Export Ghidra evidence into `evidence/` (needs Ghidra) |
+| Game | `retarget <subcommand>` | Re-target after a game update: `report`, `triage`, `census`, `calls`, `callers`, `prologue`, `pe` |
+| | `sigscan` | Re-check every byte signature and static-info type name against the exe |
+| | `evidence [flags]` | Optional: export Ghidra evidence into `evidence/` (needs Ghidra) |
 | | `log` | Follow `DesertTooling.log` |
 | | `yields` | Show the looter's learned yields cache |
 | | `dmm-rebase [table] [build] [--dry-run]` | Rebase the DMM pack onto the current build |
@@ -49,7 +50,8 @@ nix develop --command cargo test --target x86_64-unknown-linux-gnu -p desert-cor
 - **Unit tests** on both targets. The cfg split (see [Workspace and rules](workspace.md)) is what lets most of them run natively.
 - **Property tests**, `desert-core/tests/props.rs`: proptest over the byte parsers (`gimmick`, `pe`, `rtti`, `pattern`, `ini`). Arbitrary input never panics and the output is self-consistent. They stand in for fuzzing on stable. Add one for any new parser of game bytes.
 - **Shipped-ini tests**, `desert-tooling/src/lib.rs`: every subsystem parses `DesertTooling.ini` back to its own defaults with no warning, every key of every section is present, and the sections are in menu order. They compare keys and defaults only, not comment or help text.
-- **Game tests**, `#[ignore]`d: `desert-looter/tests/game_exe.rs` (2: the nine signatures resolve uniquely with the actor-manager vtable, and the one-pass scan agrees with one pattern at a time) and `desert-core/tests/gimmick_real.rs` (9: record loader, manager slots, catch site, the shared accessor scan, the DMM pack oracle, output-block item ids, indirect-template tables, the 149-accessor census, every named table's slot and loader). The pack oracle passes by skipping, with a banner, when no table is found. `just test-game` runs all eleven.
+- **Game tests**, `#[ignore]`d: `desert-harvest/tests/game_exe.rs` (2: the nine looter signatures, `loot_grant` among them, resolve uniquely with the actor-manager vtable, and the one-pass scan agrees with one pattern at a time) and `desert-core/tests/gimmick_real.rs` (9: record loader, manager slots, catch site, the shared accessor scan, the DMM pack oracle, output-block item ids, indirect-template tables, the 154-accessor census, every named table's slot and loader). The pack oracle passes by skipping, with a banner, when no table is found. `desert-dispatch/tests/banking_real.rs` (1: both `[banking]` gate signatures resolve exactly once). `just test-game` runs all twelve.
+- **Tool game tests**, `just tools-check-game`: the tools' `#[ignore]`d tests, among them `tools/src/bin/retarget/expect.rs`, which pins `retarget census` and `triage` to the supported build. `tools/tests/retarget_cli.rs` runs every `retarget` subcommand against a synthetic PE under plain `just tools-check`.
 
 ## CI and release
 
@@ -59,10 +61,13 @@ nix develop --command cargo test --target x86_64-unknown-linux-gnu -p desert-cor
 
 ## After a game update
 
-1. `just sigscan`. It always exits 0 (a known defect in [Tools](../repo/tools/index.md)), so read the output: each signature must hit once and every type name must occur once.
-2. `just test-game` and `just tools-check-game`. A failure on a pinned address means re-pinning the test, not a broken plugin, if the plugin resolves at runtime.
-3. If the table moved, re-pin the walk calibration (`tools/src/bin/gen-collect-names/table.rs` `CALIBRATION`, `tools/src/bin/items/checks.rs` `EXPECT_*`). Never override it.
-4. Launch once with `[Gatherer] DumpTable=1` and `DryRun=1` to get a clean `DesertTooling.gimmickinfo.bin` for the tools.
-5. Read the first log lines: `[looter] [sig] N found, 0 missing`, the three looter hook lines (`enqueue`, `area_sweep`, `[hunting] loot_grant`), `[gatherer] [gimmick] record loader at`, `[gatherer] [catch] hook at`, the dispatch slot lines and `[banking]`. Any `[gimmick] idx N: stream cursor ...` line means every gimmick record was left vanilla for that pass.
+The full procedure, with what each tool prints, is [Re-targeting and analysis tools](retarget.md). In short:
 
-The worked example is `docs/findings/2026-09-24-build-25477059-retarget.md`.
+1. `just retarget report`. `Verdict: clean` means no signature and no template constant moved; otherwise the page says which, and is the skeleton of the findings note.
+2. For what moved: `just retarget triage` (what is left of each dead signature), then `calls`, `callers` and `prologue` on it, and `census` for the accessor template. Accept a new signature only at an exe-wide count of 1, and a stolen count only from `prologue --stolen K`.
+3. `just test-game` and `just tools-check-game`. A failure on a pinned address means re-pinning the test, not a broken plugin, when the plugin resolves at runtime.
+4. Launch once with `[Harvest] DumpTable=1` and `DryRun=1` for a clean `DesertTooling.gimmickinfo.bin`, and read the first log lines, all `[harvest]` in this order: `[gimmick] record loader at`, `[hook] record loader ... -> stub`, `[catch] hook at`, `[sig] N found, 0 missing`, the three looter hook lines (`area_sweep`, `enqueue`, `[hunting] loot_grant`); then the dispatch slot lines, its `verdict` and `[banking]`. Any `[gimmick] idx N: stream cursor ...` line means every gimmick record was left vanilla for that pass.
+5. Re-pin the walk calibration from that dump (`tools/src/bin/gen-collect-names/table.rs` `CALIBRATION`, `tools/src/bin/items/checks.rs` `EXPECT_*`, `tools/src/paths.rs` `CALIBRATED_BUILD`). Never override it. Then `just dmm-rebase`.
+6. Write `docs/findings/<date>-build-<id>-retarget.md` and the ledger rows.
+
+The worked examples are `docs/findings/2026-11-01-build-26345091-retarget.md` (the first with `retarget`, and a same-day hotfix that cost one report) and `docs/findings/2026-09-24-build-25477059-retarget.md`.

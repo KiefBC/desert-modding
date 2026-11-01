@@ -1,7 +1,7 @@
 //! Shared plumbing for the Crimson Desert ASI plugins.
 //!
-//! This crate ships nothing on its own; it is linked into `desert-looter` and
-//! `desert-gatherer`. It holds exactly the things that must not exist twice:
+//! This crate ships nothing on its own; it is linked into `desert-harvest`,
+//! `desert-overlay` and `desert-dispatch`. It holds exactly the things that must not exist twice:
 //! the crash-safe logger, the guarded game-memory reads, the inline
 //! trampoline hook, PE/RTTI/pattern scanning, the static-info record-manager
 //! walk, the ini reader, the settings

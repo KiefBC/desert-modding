@@ -1,7 +1,7 @@
 //! The `[Overlay]` section of `DesertTooling.ini`. Missing file, missing
 //! section or missing key => defaults.
 //!
-//! Same shape as `desert_looter::config` and `desert_gatherer::config`:
+//! Same shape as `desert_harvest::config`:
 //! [`parse`] returns the config plus ready-to-log warnings, a bad value never
 //! replaces the default, the tokeniser and the virtual-key name table come from
 //! `desert_core::ini`, and [`schema`] declares the same keys for the menu -
@@ -26,8 +26,8 @@ pub const INI_NAME: &str = "DesertTooling.ini";
 pub const INI_SECTION: &str = "Overlay";
 
 /// `Insert`. The default has to be a key the game does not use and that a
-/// laptop keyboard actually has, which rules out most of F1..F12 (Desert
-/// Looter already owns F7/F9/F10/F11).
+/// laptop keyboard actually has, which rules out most of F1..F12 (the
+/// `[Harvest]` section already owns F7/F9/F10/F11).
 pub const DEFAULT_KEY_MENU: u16 = 0x2D;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -247,7 +247,7 @@ pub fn default_theme() -> &'static crate::theme::Theme {
 pub fn parse(text: &str) -> (Config, Vec<String>) {
     let mut cfg = Config::default();
     let mut warnings = Vec::new();
-    // Only this subsystem's own section: `Enabled` under `[Looter]` is not
+    // Only this subsystem's own section: `Enabled` under `[Harvest]` is not
     // ours, and a key we do not know about there is not our unknown key either.
     for line in ini::lines_in_section(text, INI_SECTION) {
         let (k, v) = match line {
@@ -421,8 +421,8 @@ pub fn schema() -> Section {
                     "KeyMenu",
                     "Menu key",
                     Kind::Key { default: key_name(d.key_menu) },
-                    "Shows and hides the menu. Avoid keys the game uses, and the ones Desert Looter \
-                     already has.",
+                    "Shows and hides the menu. Avoid keys the game uses, and the four the [Harvest] \
+                     section already has.",
                 ),
             ),
             on(

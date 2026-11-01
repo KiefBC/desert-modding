@@ -10,10 +10,9 @@
 use std::path::Path;
 use std::process::{Command, Output};
 
-const CRATES: [(&str, &str); 6] = [
+const CRATES: [(&str, &str); 5] = [
     ("desert-tooling", "0.6.0"),
-    ("desert-looter", "0.3.1"),
-    ("desert-gatherer", "0.3.1"),
+    ("desert-harvest", "0.3.1"),
     ("desert-overlay", "0.3.0"),
     ("desert-dispatch", "0.3.0"),
     ("desert-core", "0.7.0"),
@@ -94,9 +93,8 @@ fn a_tree_in_sync_says_so_and_exits_zero() {
     assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
     assert_eq!(
         stdout(&out),
-        "sync-versions: already in sync (desert-tooling 0.6.0, desert-looter 0.3.1, \
-         desert-gatherer 0.3.1, desert-overlay 0.3.0, desert-dispatch 0.3.0, \
-         desert-core 0.7.0, DMM pack 1.1)\n"
+        "sync-versions: already in sync (desert-tooling 0.6.0, desert-harvest 0.3.1, \
+         desert-overlay 0.3.0, desert-dispatch 0.3.0, desert-core 0.7.0, DMM pack 1.1)\n"
     );
 }
 

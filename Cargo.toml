@@ -2,8 +2,9 @@
 #
 #   desert-core     rlib, ships nothing: hooks, guarded reads, logger, PE/RTTI,
 #                   byte patterns, ini parsing, schema, the gather-record table.
-#   desert-looter   rlib, the auto-loot subsystem       -> [Looter]   [looter]
-#   desert-gatherer rlib, the gathering yield multiplier -> [Gatherer] [gatherer]
+#   desert-harvest  rlib, auto-loot and the gathering    -> [Harvest]  [harvest]
+#                   yield multipliers, one subsystem in two halves
+#                   (src/looter/, src/gatherer/) on one thread.
 #   desert-overlay  rlib, the in-game settings menu      -> [Overlay]  [overlay]
 #                   Its hudhook/imgui dependencies are declared in its own
 #                   manifest, not here: one crate uses them, and they only
@@ -14,9 +15,9 @@
 #                   it edits parsed static-info records on its own thread, and
 #                   those are re-read from disk every launch.
 #   desert-tooling  cdylib -> DesertTooling.asi. The workspace's ONLY cdylib
-#                   and only DllMain: it links the four subsystems, gates on
+#                   and only DllMain: it links the three subsystems, gates on
 #                   the host exe, opens the one DesertTooling.log, seeds the one
-#                   DesertTooling.ini from all four schemas, and starts one
+#                   DesertTooling.ini from all three schemas, and starts one
 #                   thread per subsystem.
 #
 # desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
@@ -25,8 +26,7 @@
 resolver = "2"
 members = [
     "desert-core",
-    "desert-looter",
-    "desert-gatherer",
+    "desert-harvest",
     "desert-overlay",
     "desert-dispatch",
     "desert-tooling",

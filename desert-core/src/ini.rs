@@ -5,7 +5,11 @@
 //! it. Every subsystem now shares one ini, and `Enabled`/`Debug`/`DryRun`
 //! collide across them, so a subsystem reads its own settings through
 //! [`lines_in_section`]. Values are interpreted by the caller, which owns its
-//! own key list; this module only tokenises and supplies the shared vocabulary.
+//! own key list; this module only tokenises and supplies the shared vocabulary,
+//! plus [`write_atomically`], the one way any subsystem puts a rewritten ini on
+//! disk.
+
+use std::path::{Path, PathBuf};
 
 /// One meaningful line of an ini file.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -171,9 +175,36 @@ pub fn canonical_key_name(name: &str) -> Option<String> {
     Some(listed.map_or(n, |s| (*s).to_string()))
 }
 
+/// Where [`write_atomically`] stages the new content: `DesertTooling.ini` ->
+/// `DesertTooling.ini.tmp`, in the same directory so the rename is a
+/// same-volume move rather than a copy.
+pub fn temp_path(path: &Path) -> PathBuf {
+    let mut s = path.as_os_str().to_os_string();
+    s.push(".tmp");
+    PathBuf::from(s)
+}
+
+/// Write `contents` to `path` through a temporary file and a rename.
+///
+/// The subsystems poll the ini's modified time roughly once a second and
+/// re-read it when it moves; a truncate-then-write would give them a window in
+/// which the file is empty and every key falls back to its default. The rename
+/// makes the change one indivisible step. A failure leaves the original
+/// untouched and the temporary file removed.
+pub fn write_atomically(path: &Path, contents: &str) -> std::io::Result<()> {
+    let tmp = temp_path(path);
+    std::fs::write(&tmp, contents)?;
+    if let Err(e) = std::fs::rename(&tmp, path) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     #[test]
     fn key_names() {
@@ -318,5 +349,23 @@ Enabled=1
     fn bools() {
         assert!(parse_bool("1") && parse_bool("on") && parse_bool("yes") && parse_bool("true"));
         assert!(!parse_bool("0") && !parse_bool("True") && !parse_bool(""));
+    }
+
+    #[test]
+    fn temp_path_sits_beside_the_target() {
+        let p = Path::new("/game/bin64/DesertTooling.ini");
+        assert_eq!(temp_path(p), Path::new("/game/bin64/DesertTooling.ini.tmp"));
+    }
+
+    #[test]
+    fn write_atomically_replaces_an_existing_file() {
+        let dir = std::env::temp_dir().join(format!("desert-core-ini-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("DesertTooling.ini");
+        std::fs::write(&path, "Enabled=1\n").unwrap();
+        write_atomically(&path, "Enabled=0\n").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "Enabled=0\n");
+        assert!(!temp_path(&path).exists(), "the staging file is gone after the rename");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

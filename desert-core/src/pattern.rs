@@ -59,8 +59,8 @@ impl Pattern {
     /// The literal byte that `counts` says is rarest, and its index: what
     /// [`find_all_multi`] anchors on instead.
     ///
-    /// Any literal position anchors the pattern correctly — the candidate start
-    /// is just `i - idx` — so this is free to pick whichever one costs the
+    /// Any literal position anchors the pattern correctly (the candidate start
+    /// is just `i - idx`), so this is free to pick whichever one costs the
     /// fewest `matches_at` calls. Which matters enormously: four of Desert
     /// Looter's eight signatures begin with `48`, the REX.W prefix, which
     /// occurs 24,079,962 times in the 363 MB image. Anchored on their first
@@ -140,7 +140,7 @@ const LANES: usize = 64;
 /// alias with the 16-byte alignment compiled code is padded to and read only
 /// the same slot of every instruction group.
 ///
-/// Counting all 363 MB costs about 250 ms — more than the whole walk the
+/// Counting all 363 MB costs about 250 ms, more than the whole walk the
 /// ranking is meant to speed up. This reads ~1.5 M bytes in a few ms, and a
 /// sample that size is far more than enough to *rank*: a byte occurring 24 M
 /// times in the image lands ~94,000 times in it, a rare one ~1,400. Only the
@@ -151,7 +151,7 @@ const SAMPLE_STRIDE: usize = 251;
 ///
 /// A haystack shorter than [`SAMPLE_STRIDE`] contributes its first byte alone
 /// and an empty one contributes nothing; both leave a table too flat to rank,
-/// which is not a failure — the anchor choice falls back to the lowest-index
+/// which is not a failure: the anchor choice falls back to the lowest-index
 /// literal, which is what the scan used before and is correct, just not faster.
 fn sample_byte_counts(hay: &[u8]) -> [u32; 256] {
     let mut counts = [0u32; 256];
@@ -168,18 +168,18 @@ fn sample_byte_counts(hay: &[u8]) -> [u32; 256] {
 /// `pats[i].find_all(hay, n)` byte for byte, limit truncation included.
 ///
 /// The image is 363 MB and a pass over it costs about 190 ms, so the count of
-/// passes is the whole cost: Desert Looter's eight signatures were eight passes
+/// passes is the whole cost: the looter's eight signatures were eight passes
 /// and 1.49 s, some 80% of its startup, all of it before the inline hooks it
 /// must install while the game is still loading.
 ///
 /// The walk is [`Pattern::find_all`]'s anchor trick widened to a set: a
 /// 256-entry table of bit masks says which patterns this byte anchors, so a
-/// byte that anchors nothing — nearly all of them — costs a load and a branch,
+/// byte that anchors nothing (nearly all of them) costs a load and a branch,
 /// and only a byte that anchors something pays for a compare.
 ///
 /// Which byte anchors a pattern is decided by [`Pattern::rarest_anchor`] over a
 /// sample of `hay`, not by taking the first literal: the first literal of half
-/// Desert Looter's signatures is `48`, and the difference is 102 M candidate
+/// The looter's signatures is `48`, and the difference is 102 M candidate
 /// compares against 4.5 M.
 pub fn find_all_multi(pats: &[Pattern], hay: &[u8], limit: usize) -> Vec<Vec<usize>> {
     let mut out: Vec<Vec<usize>> = pats.iter().map(|_| Vec::new()).collect();
@@ -248,6 +248,30 @@ pub fn find_all_multi(pats: &[Pattern], hay: &[u8], limit: usize) -> Vec<Vec<usi
 /// a whole signature table at the price of a single pass.
 pub fn find_unique_multi(pats: &[Pattern], hay: &[u8]) -> Vec<Found> {
     find_all_multi(pats, hay, 2).into_iter().map(|hits| verdict(&hits)).collect()
+}
+
+/// The target of a RIP-relative operand, as an offset into `img`: the
+/// instruction starts at `ins`, is `len` bytes long, and holds its signed
+/// disp32 at `ins + disp_at`, so the target is `ins + len + disp32`. `None`
+/// when the disp32 is not inside `img`, the arithmetic leaves `usize`, or the
+/// target is not inside `img` either.
+///
+/// What a signature hit hands its caller is usually an instruction whose
+/// operand names the thing wanted (a global, a callee); this is the one
+/// decoding of that, shared by `desert-harvest`'s event API and
+/// `desert-dispatch`'s banking gates. For a `call rel32` it is
+/// `resolve_rip(img, e8, 1, 5)`.
+pub fn resolve_rip(img: &[u8], ins: usize, disp_at: usize, len: usize) -> Option<usize> {
+    let at = ins.checked_add(disp_at)?;
+    let d: [u8; 4] = img.get(at..at.checked_add(4)?)?.try_into().ok()?;
+    let disp = i32::from_le_bytes(d);
+    let next = ins.checked_add(len)?;
+    let target = if disp >= 0 {
+        next.checked_add(disp as usize)?
+    } else {
+        next.checked_sub(disp.unsigned_abs() as usize)?
+    };
+    (target < img.len()).then_some(target)
 }
 
 #[cfg(test)]
@@ -389,8 +413,8 @@ mod tests {
     }
 
     /// A haystack shorter than the sampling stride yields at most one sampled
-    /// byte, so the ranking says nothing and the lowest-index literal — the old
-    /// anchor — is what is used. Still correct, just not faster.
+    /// byte, so the ranking says nothing and the lowest-index literal (the old
+    /// anchor) is what is used. Still correct, just not faster.
     #[test]
     fn a_haystack_shorter_than_the_stride_falls_back_to_the_first_literal() {
         let hay: Vec<u8> = (0..200u8).map(|b| b % 7).collect();
@@ -423,5 +447,25 @@ mod tests {
         for (i, hits) in all.iter().enumerate() {
             assert_eq!(hits, &vec![i], "byte {i:02X}");
         }
+    }
+
+    #[test]
+    fn resolve_rip_reads_both_signs_and_refuses_the_outside() {
+        let mut img = vec![0u8; 0x100];
+        // call +0x20 at 0x10: target 0x10 + 5 + 0x20.
+        img[0x10] = 0xE8;
+        img[0x11..0x15].copy_from_slice(&0x20i32.to_le_bytes());
+        assert_eq!(resolve_rip(&img, 0x10, 1, 5), Some(0x35));
+        // mov r12,[rip-0x40] at 0x80 (7 bytes, disp at +3).
+        img[0x83..0x87].copy_from_slice(&(-0x40i32).to_le_bytes());
+        assert_eq!(resolve_rip(&img, 0x80, 3, 7), Some(0x47));
+        // Targets past the end or before the start, and a disp32 that is
+        // not all inside the image.
+        img[0x11..0x15].copy_from_slice(&0x1000i32.to_le_bytes());
+        assert_eq!(resolve_rip(&img, 0x10, 1, 5), None);
+        img[0x83..0x87].copy_from_slice(&(-0x1000i32).to_le_bytes());
+        assert_eq!(resolve_rip(&img, 0x80, 3, 7), None);
+        assert_eq!(resolve_rip(&img, 0xFE, 1, 5), None);
+        assert_eq!(resolve_rip(&img, usize::MAX, 1, 5), None);
     }
 }

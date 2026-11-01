@@ -59,9 +59,9 @@ pub struct Hook {
 fn alloc_stub() -> Result<usize, String> {
     let mut g = STUB_PAGE.lock().unwrap_or_else(|e| e.into_inner());
     if g.0 == 0 || g.1 + STUB_SIZE > PAGE {
-        // SAFETY: VirtualAlloc with a null base has no precondition to uphold —
-        // the kernel picks an address, so no existing mapping of ours can be
-        // disturbed — and it reports failure by returning null, which is checked
+        // SAFETY: VirtualAlloc with a null base has no precondition to uphold
+        // (the kernel picks an address, so no existing mapping of ours can be
+        // disturbed), and it reports failure by returning null, which is checked
         // on the next line before the value is ever used as a pointer.
         let p = unsafe {
             VirtualAlloc(core::ptr::null(), PAGE, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE)

@@ -14,6 +14,9 @@ use std::process::Command;
 use desert_tools::paths;
 
 const BIN: &str = env!("CARGO_BIN_EXE_gen-collect-names");
+/// The water well's output list in the calibrated body (`table.rs`
+/// `CALIBRATION`'s second anchor): 3374134 on 26361232, 4382086 on 25477059.
+const WELL_LIST: usize = 3374134;
 
 fn committed_collect_rs() -> (PathBuf, String) {
     let path = paths::repo_root().expect("inside the repo").join("desert-core/src/collect.rs");
@@ -80,12 +83,13 @@ fn a_body_that_disagrees_refuses_to_write() {
     let tmp = tempfile::tempdir().unwrap();
     let table = tmp.path().join("corrupt.bin");
     let mut body = fs::read(clean_body()).unwrap();
-    // The water well's output list is at 4382086 on build 25477059 (the
-    // CALIBRATION anchor; 4373870 on 25246367) and the item id sits at +4 for
+    // The water well's output list is at 3374134 on build 26361232 (the
+    // CALIBRATION anchor; 4382086 on 25477059, 4373870 on 25246367) and the
+    // item id sits at +4 for
     // the count, +1 for ITEM_AT. Changing it makes
     // the body say the well pays something the json does not claim, without
     // disturbing the block flags the walk calibrates on.
-    let item = 4382086 + 4 + 1;
+    let item = WELL_LIST + 4 + 1;
     assert_eq!(u32::from_le_bytes(body[item..item + 4].try_into().unwrap()), 22008);
     body[item..item + 4].copy_from_slice(&48879u32.to_le_bytes());
     fs::write(&table, &body).unwrap();
@@ -111,7 +115,7 @@ fn money_in_the_body_cannot_ride_into_a_gathering_family() {
     let tmp = tempfile::tempdir().unwrap();
     let table = tmp.path().join("money.bin");
     let mut body = fs::read(clean_body()).unwrap();
-    let item = 4382086 + 4 + 1;
+    let item = WELL_LIST + 4 + 1;
     body[item..item + 4].copy_from_slice(&1u32.to_le_bytes());
     fs::write(&table, &body).unwrap();
 

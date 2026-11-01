@@ -12,7 +12,7 @@
 //! recovered them from the field-by-field record copy in `FUN_140ee53d0` and
 //! corroborated them in the validator and the UI. They are **parsed-object**
 //! offsets - the objects the game's record loader produced - not offsets into
-//! the raw table bytes, the same distinction `desert_gatherer::hook`'s own
+//! the raw table bytes, the same distinction `desert_harvest::gatherer::hook`'s own
 //! `mod parsed` makes.
 //!
 //! **Two of those offsets were wrong, and live data is what corrected them.**
@@ -45,7 +45,7 @@
 //! 3. The kind set is `{0, 1, 4, 6, 13}`, not the `{0, 1, 6, 9}` decompilation
 //!    reported. There is no `9` anywhere in the capture.
 //!
-//! Four offsets in that half are still **UNCONFIRMED** and say so where they
+//! Three offsets in that half are still **UNCONFIRMED** and say so where they
 //! are declared: each reads one constant value across the whole capture, which
 //! is exactly the reading a wrong offset gives. The two halves still keep
 //! separate accumulators and separate verdicts, because they are still two
@@ -62,9 +62,53 @@ use crate::remember::{Mission, Reward};
 /// Offsets inside the objects the game parsed the `FactionNode` table into.
 ///
 /// The manager pair is the same shape every static-info manager has, and is
-/// the same one `desert_gatherer::hook::reapply` walks: a `u32` record count
+/// the same one `desert_harvest::gatherer::hook::reapply` walks: a `u32` record count
 /// and an array of record-object pointers, null where the game has not loaded
 /// that record yet.
+///
+/// # Re-derived for builds 26345091 and 26356046 (2026-11-01)
+///
+/// The operation entry kept its 0x120 stride but was repacked, and the
+/// `FactionNodeInfo` record moved its operation array. Every offset below
+/// carries its old (25116796..25477059) value in its doc comment and how the
+/// new one was confirmed. The sources, all read with the repo's `dis` and
+/// `retarget` on 26345091 and then diffed instruction by instruction against
+/// 26356046, where all four are identical apart from addresses:
+///
+/// * **the field-by-field operation copy** (`FUN_140ee53d0` on 25116796, RVA
+///   `0x1107760` on both new builds, one of the `"KeyGuide"` functions):
+///   copies every field in declaration order with its width, so the old and
+///   new sequences align one to one. This is the authority for every entry
+///   offset not confirmed by a second reader.
+/// * **the dispatch reward function** (`FUN_142780d10`; `0x2A899F0` on
+///   26345091, `0x2A89D20` on 26356046), the banking gates' function: the
+///   operation lookup (`[rec+0xC0]`/`[rec+0xC8]`, stride `0x120`, key at
+///   `+0x60`), the reward-row test (`cmp word [op+0xA0/+0xA2],0xFFFF`), the
+///   surplus term's operator count (`[op+0xB0]`) and the repeat flag
+///   (`[op+0x100]`).
+/// * **the payout and the skill gate** (`FUN_1416f0750`/`FUN_1416f09a0`;
+///   `0x18BAC00`/`0x18BAE50`, 0x250 apart as before): the bonus stat
+///   `[op+0xC0]`, its per-point value `imul [op+0xC8]`, and the requirement
+///   `cmp word [op+0xC2],0xFFFF`.
+/// * **the dropset roller** (`FUN_142216450`; `0x24AC920` on 26345091,
+///   `0x24ACC30` on 26356046, 39 callers) and its per-entry applier (`0x1C49FE0`):
+///   see [`dropset`].
+///
+/// 50 copies of the operation-array scan (`mov r,[rec+0xC0]; mov eax,[rec+0xC8];
+/// lea rcx,[rax+rax*8]; shl rcx,5`) exist on 26356046 and no other offset pair
+/// occurs in that shape, which is what settles [`REC_OPS`] beyond one reader.
+///
+/// Build 26361232 was not re-derived: `just retarget report` came back clean,
+/// every signature byte-identical, and the code in this range sits 0x50 lower
+/// than on 26356046 (the operation copy at `0x1107710`, the reward function at
+/// `0x2A89CD0`, the payout and skill gate at `0x18BABB0`/`0x18BAE00`, the
+/// roller at `0x24ACBE0` and its applier at `0x1C49F90`). The offsets below are
+/// carried over unchanged on that basis, and the census and write gate are
+/// what confirm them on this build too.
+///
+/// None of this was confirmed in game yet. That is what `verdict()` and the
+/// write gate in `scan.rs` are for: nothing is written until a vanilla census
+/// on this launch says LOOKS RIGHT.
 pub mod parsed {
     /// `u32` record count at `manager+0x08`, and the array of record-object
     /// pointers at `manager+0x58` - one `usize` per record, indexed by record
@@ -84,22 +128,35 @@ pub mod parsed {
     /// It is still read and printed as `node key=` / `node=` in the dispatch
     /// log, and the dedupe of already-logged missions pairs it with the
     /// operation key, so the lines stay greppable; nothing keys on it - the
-    /// remembered missions use `entry+0x60` and the dropset row.
+    /// remembered missions use [`OP_KEY`] and the dropset row.
+    ///
+    /// **UNCONFIRMED on 26345091/26356046**: no reader was re-derived (nothing
+    /// acts on it), and the record grew 0x20 bytes ahead of the operation array.
+    /// If it is still right the dump keeps reading 8-aligned values that change
+    /// between passes, as it did before.
     pub const REC_KEY: usize = 0x08;
-    /// Pointer to the record's operation entries, at `record+0xA0`.
-    pub const REC_OPS: usize = 0xA0;
-    /// Count of those entries, at `record+0xA8`.
-    pub const REC_OP_COUNT: usize = 0xA8;
+    /// Pointer to the record's operation entries, at `record+0xC0` (`0xA0`
+    /// through 25477059). CONFIRMED by code: every operation lookup on the new
+    /// builds reads `[rec+0xC0]`, 50 copies, see the module docs.
+    pub const REC_OPS: usize = 0xC0;
+    /// Count of those entries, at `record+0xC8` (`0xA8` through 25477059).
+    /// CONFIRMED by code, the same 50 lookups.
+    pub const REC_OP_COUNT: usize = 0xC8;
 
-    /// Bytes per operation entry.
+    /// Bytes per operation entry: `0x120`, unchanged. CONFIRMED by code on the
+    /// new builds (`lea rcx,[rax+rax*8]; shl rcx,5` and `add r,0x120` in every
+    /// lookup).
     pub const OP_STRIDE: usize = 0x120;
     /// Pointer to the entry's step list, at `entry+0x08`. Three steps, always,
     /// one per operation state (`cpp-operation-state-goto`, `-working`,
-    /// `-leave`).
+    /// `-leave`). Unchanged on 26345091/26356046: the operation copy hands
+    /// `entry+0x08` to the step-vector copy first, as `FUN_140ee53d0` did.
     pub const OP_STEPS: usize = 0x08;
     /// Count of those steps, at `entry+0x10`. Every vanilla entry reports 3.
+    /// Unchanged: the vector copy reads its count at `vec+0x08`.
     pub const OP_STEP_COUNT: usize = 0x10;
-    /// Bytes per step.
+    /// Bytes per step: `0x30`, unchanged (the step-vector copy indexes with
+    /// `lea rcx,[rax+rax*2]; shl rcx,4` and copies `step+0x08` as a `u32`).
     pub const STEP_STRIDE: usize = 0x30;
     /// `u32` **duration in tenths of an hour**, at `step+0x08`.
     ///
@@ -119,13 +176,21 @@ pub mod parsed {
     /// "working" state. Steps `0` (goto) and `2` (leave) read `0`.
     pub const DURATION_STEP: usize = 1;
 
-    /// `u32` FactionOperationKey, at `entry+0x60`.
+    /// `u32` FactionOperationKey, at `entry+0x60`, unchanged. CONFIRMED by
+    /// code on the new builds: every operation lookup compares `[op+0x60]`.
     pub const OP_KEY: usize = 0x60;
-    /// `u16` FactionOperationGroupKey, at `entry+0x90`. Two bytes, not four:
-    /// reading a `u32` here picks up `+0x92`'s stale bytes and turns the nine
-    /// distinct vanilla groups into 592 (`docs/reference-internals.md`
-    /// section 20.19). The decoder widens it to `u32` for the log line.
-    pub const OP_GROUP: usize = 0x90;
+    /// `u16` FactionOperationGroupKey, at `entry+0x88` (`0x90` through
+    /// 25477059). Two bytes, not four: reading a `u32` here picks up stale
+    /// bytes and turns the nine distinct vanilla groups into 592
+    /// (`docs/reference-internals.md` section 20.19). The decoder widens it to
+    /// `u32` for the log line.
+    ///
+    /// From the operation copy: one 8-byte field between the key's text
+    /// wrappers went away, so `+0x80` (u8) became `+0x78`, the `+0x88` text
+    /// became `+0x80`, and the `u16` that followed it moved from `+0x90` to
+    /// `+0x88` (`movzx eax,word [rdi+0x88]`). UNCONFIRMED in game: right, the
+    /// dump shows nine distinct groups `0..8` again.
+    pub const OP_GROUP: usize = 0x88;
     /// `u32` at `entry+0xC0`, meaning unknown. **Not the duration.**
     ///
     /// Decompilation read the completion test as `step >= [entry+0xC0]` and
@@ -138,16 +203,32 @@ pub mod parsed {
     /// It is still read on every pass, and still reported on the mission line
     /// as `c0=`, precisely because it is constant today: a field that starts
     /// varying after a game update is worth seeing.
-    pub const OP_UNKNOWN_C0: usize = 0xC0;
-    /// `u32` minimum operator count, at `entry+0xC4`. The hard gate - and
-    /// `0` is *stricter* than `1`, not laxer.
-    pub const OP_MIN_OPERATORS: usize = 0xC4;
-    /// `u32` maximum operator count, at `entry+0xC8`. Display only.
-    pub const OP_MAX_OPERATORS: usize = 0xC8;
-    /// `u32` standard combat power, at `entry+0xCC`. The success-ratio divisor.
-    pub const OP_COMBAT_POWER: usize = 0xCC;
+    ///
+    /// At `entry+0xAC` on 26345091/26356046 (`0xC0` through 25477059; the name
+    /// keeps the old offset because the log label `c0=` does). The operation
+    /// copy dropped the 8-byte text wrapper that sat at the old `+0xB8`, so the
+    /// run of five `u32`s that was `+0xC0..+0xD0` is now `+0xAC..+0xBC`.
+    /// UNCONFIRMED in game: right, the dump reads `1` on every mission again.
+    pub const OP_UNKNOWN_C0: usize = 0xAC;
+    /// `u32` minimum operator count, at `entry+0xB0` (`0xC4` through
+    /// 25477059). The hard gate - and `0` is *stricter* than `1`, not laxer.
+    ///
+    /// CONFIRMED by code on the new builds: the reward function's
+    /// surplus-worker term, which read `[op+0xC4]` on 25116796, reads
+    /// `[op+0xB0]` in the same place, and the operation copy puts it second in
+    /// the five-`u32` run.
+    pub const OP_MIN_OPERATORS: usize = 0xB0;
+    /// `u32` maximum operator count, at `entry+0xB4` (`0xC8` through
+    /// 25477059). Display only. From the operation copy's order alone;
+    /// UNCONFIRMED in game: right, it is never below the minimum.
+    pub const OP_MAX_OPERATORS: usize = 0xB4;
+    /// `u32` standard combat power, at `entry+0xB8` (`0xCC` through
+    /// 25477059). The success-ratio divisor. From the operation copy's order
+    /// alone; UNCONFIRMED in game: right, the dump splits it `10000`/`0` along
+    /// the missions with and without a reward-set-1 row, as before.
+    pub const OP_COMBAT_POWER: usize = 0xB8;
 
-    /// `u16` work-stat index at `entry+0xD8`: the *skill category* a mission
+    /// `u16` work-stat index at [`OP_SKILL_STAT`]: the *skill category* a mission
     /// pays a bonus for. [`SKILL_NONE`] means none; 231 of 936 vanilla missions
     /// set it.
     ///
@@ -161,8 +242,14 @@ pub mod parsed {
     /// two fields are two bytes apart and trivial to confuse, and blanking this
     /// one silently deletes a reward bonus nobody asked to lose - with no error
     /// and nothing in the UI to show it happened.
-    pub const OP_SKILL_STAT: usize = 0xD8;
-    /// `i16` required `Skill`-table index, at `entry+0xDA`. [`SKILL_NONE`]
+    ///
+    /// At `entry+0xC0` on 26345091/26356046 (`0xD8` through 25477059).
+    /// CONFIRMED by code: the payout at `0x18BAC00` opens with
+    /// `cmp word [op+0xC0],0xFFFF` and multiplies by `[op+0xC8]`, where
+    /// `FUN_1416f0750` used `+0xD8` and `+0xE0`. The operation copy moves the
+    /// pair as one 16-byte block from `+0xC0`.
+    pub const OP_SKILL_STAT: usize = 0xC0;
+    /// `i16` required `Skill`-table index, at [`OP_SKILL_REQ`]. [`SKILL_NONE`]
     /// (`-1`) means no requirement; 147 of 936 vanilla missions set one, over
     /// 13 distinct values.
     ///
@@ -181,17 +268,32 @@ pub mod parsed {
     /// record this subsystem reads. The raw and parsed encodings of "absent"
     /// are different values; that is the single likeliest way to get a future
     /// write path here wrong.
-    pub const OP_SKILL_REQ: usize = 0xDA;
+    ///
+    /// At `entry+0xC2` on 26345091/26356046 (`0xDA` through 25477059).
+    /// CONFIRMED by code: the skill gate at `0x18BAE50` (0x250 after the payout,
+    /// as `FUN_1416f09a0` was after `FUN_1416f0750`) opens with
+    /// `cmp word [op+0xC2],0xFFFF` and returns true on a match.
+    pub const OP_SKILL_REQ: usize = 0xC2;
     /// The "no skill" sentinel both fields carry: `0xFFFF`, which is the `-1`
     /// the game's own `i16` comparison tests for.
     pub const SKILL_NONE: u16 = 0xFFFF;
 
-    /// Pointer to the entry's condition list, at `entry+0xF8`.
-    pub const OP_CONDS: usize = 0xF8;
-    /// Count of those conditions, at `entry+0x100`.
-    pub const OP_COND_COUNT: usize = 0x100;
+    /// Pointer to the entry's condition list, at `entry+0xE0` (`0xF8` through
+    /// 25477059). From the operation copy: the vector it hands to the
+    /// condition-list copy is `entry+0xE0`, where `FUN_140ee53d0` handed
+    /// `+0xF8`, after the same three position floats (now `+0xD0`/`+0xD8`).
+    /// UNCONFIRMED in game: right, every mission has 1 to 5 conditions and
+    /// none has 0.
+    pub const OP_CONDS: usize = 0xE0;
+    /// Count of those conditions, at `entry+0xE8` (`0x100` through 25477059),
+    /// the vector's count at `vec+0x08`. Same evidence as [`OP_CONDS`].
+    pub const OP_COND_COUNT: usize = 0xE8;
     /// Bytes per condition entry:
     /// `{u16 conditioninfo key, u16 showFlag, u16 failReasonStringKey, u16}`.
+    /// **UNCONFIRMED on 26345091/26356046**: the condition-list copy is a
+    /// `jmp` into obfuscated code, so the element was not re-read. Read only,
+    /// never written. If it is still right the condition-key histogram reads
+    /// a few dozen small keys again.
     pub const COND_STRIDE: usize = 8;
     /// Offsets inside one condition entry.
     pub const COND_KEY: usize = 0x00;
@@ -205,14 +307,30 @@ pub mod parsed {
     /// `if (key < mgr[+0x08]) rec = ((void**)mgr[+0x58])[key]`, with no hash
     /// step in between, which is why the reward pass needs neither a loader
     /// hook nor a key table - see `docs/reference-internals.md` section 20.17.
-    pub const OP_REWARD_1: usize = 0xA8;
-    /// `u16` `dropsetinfo` row index, reward set 2, at `entry+0xAA`.
-    pub const OP_REWARD_2: usize = 0xAA;
+    ///
+    /// At `entry+0xA0` on 26345091/26356046 (`0xA8` through 25477059).
+    /// CONFIRMED by code: the reward function tests `cmp word [op+0xA0],0xFFFF`
+    /// and `[op+0xA2]` exactly where `FUN_142780d10` tested `+0xA8`/`+0xAA`,
+    /// and the operation copy moves three `u16`s from `+0xA0`.
+    pub const OP_REWARD_1: usize = 0xA0;
+    /// `u16` `dropsetinfo` row index, reward set 2, at `entry+0xA2` (`0xAA`
+    /// through 25477059). Same evidence as [`OP_REWARD_1`].
+    pub const OP_REWARD_2: usize = 0xA2;
     /// The "no row" sentinel both reward-set fields carry.
     pub const REWARD_NONE: u16 = 0xFFFF;
 
     /// Offsets inside the objects the game parsed the **`dropsetinfo`** table
     /// into - the reward rows [`OP_REWARD_1`] and [`OP_REWARD_2`] name.
+    ///
+    /// **26345091/26356046**: the row header shrank (draw count, entry array,
+    /// count and no-drop chance all moved, each noted below) and the entry did
+    /// not. The entry offsets are CONFIRMED by code on both new builds: the
+    /// roller tests the condition keys at `entry+0x04`/`+0x06`/`+0x08`, sums
+    /// weights from `entry+0x10`, and its per-entry applier (`0x1C49FE0`) draws
+    /// `max - min + 1` from `[e+0x28] - [e+0x20]`, passes `e+0x38` to the item
+    /// constructor (`0x25FA160` on 26345091, `0x25FA420` on 26361232, the catch
+    /// hook's callee), and switches on the
+    /// byte at `e+0x60`.
     ///
     /// The manager pair is the same shape as every other static-info manager's
     /// and is not repeated here: the reward pass reads the dropset manager
@@ -237,16 +355,27 @@ pub mod parsed {
         /// (`docs/findings/2026-09-15-hunting-multiplier.md` section 1.3, which
         /// reached this table from the other end: carcass loot rolls through the
         /// very same function.)
-        pub const ROW_DRAWS: usize = 0x20;
+        ///
+        /// At `record+0x14` on 26345091/26356046 (`0x20` through 25477059).
+        /// CONFIRMED by code: the new roller passes `[rec+0x14]` as the third
+        /// argument of the draw-count call, where `FUN_142216450` passed
+        /// `[rec+0x20]`, and loops over the result.
+        pub const ROW_DRAWS: usize = 0x14;
         /// Pointer to an **array of entry pointers** at `record+0x28`, stride
         /// [`ENTRY_PTR_STRIDE`]. Not an array of inline entries: an entry is
         /// reached as `((void**)*(void**)(rec + 0x28))[i]`, one dereference
         /// more than the operation list needs. CONFIRMED - 219 distinct arrays,
         /// every one of them plausible.
-        pub const ROW_ENTRIES: usize = 0x28;
-        /// `u32` count of those entries, at `record+0x30`. CONFIRMED - `1..60`
-        /// over 18 distinct values in the live capture.
-        pub const ROW_ENTRY_COUNT: usize = 0x30;
+        ///
+        /// At `record+0x20` on 26345091/26356046 (`0x28` through 25477059).
+        /// CONFIRMED by code: the roller indexes `[[rec+0x20] + i*8]` and sums
+        /// each entry's weight out of it.
+        pub const ROW_ENTRIES: usize = 0x20;
+        /// `u32` count of those entries, at `record+0x28` (`0x30` through
+        /// 25477059). CONFIRMED by code: the roller's loop bound is
+        /// `[rec+0x28]`. It read `1..60` over 18 distinct values in the
+        /// 25116796 capture.
+        pub const ROW_ENTRY_COUNT: usize = 0x28;
         /// `i64` cached **weight total** at `record+0x48`: it equals the sum
         /// of that row's entry [`ENTRY_WEIGHT`]s on **219/219** rows of the
         /// live capture, exactly.
@@ -264,7 +393,16 @@ pub mod parsed {
         /// never touches a weight, so it leaves the invariant intact by
         /// construction - which is exactly why it is allowed to assert it.
         /// See `docs/reference-internals.md` section 20.22.
-        pub const ROW_WEIGHT_SUM: usize = 0x48;
+        ///
+        /// At `record+0x38` on 26345091/26356046/26361232 (`0x48` through
+        /// 25477059). No reader was found in the roller; this is the old
+        /// position relative to [`ROW_NO_DROP_PPM`], which moved by 0x10 and
+        /// sat 8 bytes after it on every build read so far. **CONFIRMED in
+        /// game on 26361232** (2026-11-01): the reward census read 221 rows in
+        /// full and every one's entry weights added up to this field. The
+        /// write gate requires all of them to, and `apply.rs` refuses any row
+        /// that does not, so it needs no faith on a later build either.
+        pub const ROW_WEIGHT_SUM: usize = 0x38;
         /// `i64` "no drop" chance in parts per million, at `record+0x50`.
         ///
         /// **CONFIRMED by code 2026-09-15**, same source as [`ROW_DRAWS`]:
@@ -272,7 +410,11 @@ pub mod parsed {
         /// (rec + 0x50)) { *err = 0; return; }` - the whole row pays nothing.
         /// `0` on all 219 captured rows means those rows always pay, not that
         /// the offset is wrong.
-        pub const ROW_NO_DROP_PPM: usize = 0x50;
+        ///
+        /// At `record+0x40` on 26345091/26356046 (`0x50` through 25477059).
+        /// CONFIRMED by code: the new roller opens with the same
+        /// `rand % 1000000` and compares it with `[rec+0x40]`.
+        pub const ROW_NO_DROP_PPM: usize = 0x40;
         /// Bytes per element of the pointer array at [`ROW_ENTRIES`].
         pub const ENTRY_PTR_STRIDE: usize = 8;
 
@@ -301,7 +443,7 @@ pub mod parsed {
         /// Decompilation reported a single `AMOUNT` at [`ENTRY_AMOUNT_MIN`] and
         /// that is what the first build of this subsystem read. The pair is the
         /// same shape as the `gimmickinfo` output block's `MIN_AT`/`MAX_AT`
-        /// that `desert_gatherer` already multiplies, and a reward multiplier
+        /// that `desert_harvest::gatherer` already multiplies, and a reward multiplier
         /// here has to be the same shape too: **scale both, remember both**.
         /// Scaling only the minimum yields `min > max` on 136 entries, which is
         /// a corrupt table rather than a wrong number.
@@ -348,56 +490,119 @@ pub mod parsed {
 }
 
 /// The two globals that decide whether a completed mission ever banks anything
-/// into the save - read **once**, read-only, and the one place this subsystem
-/// names an address instead of finding it by content.
+/// into the save, read **once** and read-only.
 ///
-/// Everything else here is resolved from bytes, because a signature survives a
-/// rebuild and an address does not (the 0.2 rung of `VERSIONING.md`). These two
-/// are data, not code: two bytes of the exe's zero-initialised data, named only
-/// by the instructions that test them, with nothing around them to match on.
-/// A build that moved them makes the read return a meaningless byte or nothing
-/// at all, and because **nothing acts on either value**, the whole cost of that
-/// is one wrong log line.
+/// They are data, not code: two bytes of the exe's zero-initialised data,
+/// named only by the instructions that test them. So they are found the way
+/// every other address in this plugin is, by content: a signature on each of
+/// the two reading instructions inside the reward function, and the
+/// RIP-relative operand of that instruction resolved. Until 0.10.0 they were
+/// two bare RVAs measured on build 25116796 (`0x6BC6AA8` and `0x6BA07C8`) and
+/// never re-derived; on 26345091 the signatures resolve them to `0x714FE68` and
+/// `0x7127CF8`, on 26356046 to `0x7150E18` and `0x7128CA8`, and on 26361232 to
+/// the same two. Because **nothing acts on either value**, a signature that does
+/// not resolve costs one log line saying so, never a write.
 ///
 /// They were read to settle whether the `AnyOperatorCount` warning describes
 /// anything that happens. **Measured on build 25116796, 2026-09-11: both read
-/// `0`** - no mission defers its payout and the stored percent ignores the
+/// `0`**: no mission defers its payout and the stored percent ignores the
 /// worker count, so nothing any lever here does reaches the save. The warning
 /// was therefore *downgraded, not deleted*: the code path exists, this is one
-/// launch of one build, and `0x6BA07C8`'s own initialiser writes `1` (something
-/// zeroes it before the game runs, see section 20.18), so neither value is safe
-/// to assume. They stay read, and the `[banking]` line is how a game update
-/// that flips one gets noticed.
+/// launch of one build, and the surplus gate's own initialiser writes `1`
+/// (something zeroes it before the game runs, see section 20.18), so neither
+/// value is safe to assume. They stay read, and the `[banking]` line is how a
+/// game update that flips one gets noticed.
 ///
-/// Both RVAs here were measured on build **25116796** and have not been
-/// re-derived on 25246367; they are the one place this subsystem names an
-/// address instead of finding it by content, and the `[banking]` line they
-/// feed is a diagnostic, never a write. Re-derive them after a game update
-/// (`docs/reference-internals.md` section 20.18 records how they were found).
+/// How the reading function was found again on 26345091 (section 20.18 has
+/// the 25116796 one, `FUN_142780d10`): it is the one function with the
+/// surplus-worker arithmetic `movsxd rax,[rip+rate]; imul rax,rcx;
+/// imul rcx,rax,10000` right after a `cmp byte [rip+gate],r8; je`, the shape
+/// `0x1427819b3` has (RVA `0x2A899F0` now, `+0x2A8A6F5` the read). The
+/// deferred read follows it as it did, after the `cmp byte [entry+..],0; je`
+/// on the repeating flag and before the `mov r8b,1; ...; call` that builds the
+/// stored-reward list, whose callee is the same function `FUN_14038d1d0` was.
+/// The rate global still sits 0xA0 below the surplus gate on 25116796,
+/// 26345091, 26356046 and 26361232.
 pub mod globals {
-    /// `DAT_146BC6AA8`, tested as `cmp byte ptr [0x146bc6aa8],0` at RVA
-    /// `0x2781B08`, whose `je` skips the deferred-reward branch entirely.
-    /// **Zero means no mission ever defers a payout**: nothing is pushed to
-    /// `_factionStoredOperationRewardList`, nothing is banked in the save, and
-    /// nothing this plugin writes can outlive it. Non-zero means the 142
-    /// repeating missions can bank a percent (section 20.18).
-    pub const DEFERRED_REWARD_GATE_RVA: usize = 0x6BC6AA8;
-    /// `DAT_146BA07C8`, tested as `cmp byte ptr [0x146ba07c8],bl` at RVA
-    /// `0x27819B3`, whose `jz` skips the surplus-worker term. Zero means the
-    /// stored percent is the flat 1,000,000 base and `entry+0xC4` - the field
-    /// `AnyOperatorCount` rewrites to `1` - never enters the arithmetic. The
-    /// same byte is the accrual-rate flag the timing tick branches on, where
-    /// non-zero means the flat rate and the worker count does not affect
-    /// progress (section 20.4).
-    pub const SURPLUS_WORKER_GATE_RVA: usize = 0x6BA07C8;
+    use desert_core::pattern::{self, Found, Pattern};
 
-    /// The one startup line those two bytes are worth, in plain words. `None`
-    /// is a read that did not come back - the page is zero-initialised data and
-    /// may not be mapped at all this early.
+    /// The surplus-worker read: `cmp byte [rip+gate],r8; je; mov eax,[entry+
+    /// operators]; ...; movsxd rax,[rip+rate]; imul; imul rcx,rax,10000`. The
+    /// hit is the `38` opcode (any REX before it is outside the pattern), so
+    /// the `cmp` is [`GATE_CMP_LEN`] bytes from the hit. `+0x2A8A6F6` on
+    /// 26345091, `+0x2A8AA26` on 26356046, `+0x2A8A9D6` on 26361232.
+    pub const SURPLUS_GATE_SIG: &str = "38 ?? ?? ?? ?? ?? 74 ?? ?? 8B ?? ?? ?? 00 00 48 8B ?? ?? 48 2B ?? 48 39 ?? ?? ?? 0F 46 ?? 48 63 05 ?? ?? ?? ?? 48 0F AF ?? 48 69 ?? 10 27 00 00";
+    /// Where the `38` of the surplus read sits in a [`SURPLUS_GATE_SIG`] hit.
+    pub const SURPLUS_GATE_CMP_AT: usize = 0;
+    /// The deferred-reward read: the repeating flag's `je rel32`, then
+    /// `cmp byte [rip+gate],r8; je rel32`, then the start of the
+    /// stored-reward list build (`mov rax,[r+0x10]; lea rdx,[rax+8];
+    /// test rax,rax; cmovz; mov r8b,1`). `+0x2A8A84C` on 26345091, `+0x2A8AB7C`
+    /// on 26356046, `+0x2A8AB2C` on 26361232.
+    pub const DEFERRED_GATE_SIG: &str = "0F 84 ?? ?? ?? ?? ?? 38 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? ?? 8B ?? ?? 10 48 8D 50 08 48 85 C0 ?? 0F 44 ?? ?? B0 01";
+    /// Where the `38` of the deferred read sits in a [`DEFERRED_GATE_SIG`] hit
+    /// (after the 6-byte `je` and one REX byte).
+    pub const DEFERRED_GATE_CMP_AT: usize = 7;
+    /// `38 /r` with a RIP-relative r/m: opcode, ModRM, disp32. RIP is the end
+    /// of these six bytes.
+    pub const GATE_CMP_LEN: usize = 6;
+
+    /// The RVA a gate read at `cmp` (the `38` opcode) tests, if that really is
+    /// `cmp r/m8,r8` with a RIP-relative r/m (ModRM mod 00, rm 101) and the
+    /// target is inside `img`.
+    pub fn gate_at(img: &[u8], cmp: usize) -> Option<usize> {
+        if img.get(cmp) != Some(&0x38) {
+            return None;
+        }
+        let modrm = *img.get(cmp.checked_add(1)?)?;
+        if modrm & 0xC7 != 0x05 {
+            return None;
+        }
+        pattern::resolve_rip(img, cmp, 2, GATE_CMP_LEN)
+    }
+
+    /// Both gates' RVAs, `(deferred, surplus)`, found in one walk of `img`,
+    /// each `Err` with the reason when its signature is not exactly once or
+    /// its operand does not decode.
+    pub fn resolve_gates(img: &[u8]) -> (Result<usize, String>, Result<usize, String>) {
+        let sigs = [(DEFERRED_GATE_SIG, DEFERRED_GATE_CMP_AT), (SURPLUS_GATE_SIG, SURPLUS_GATE_CMP_AT)];
+        let pats: Vec<Pattern> = sigs.iter().filter_map(|(t, _)| Pattern::parse(t)).collect();
+        if pats.len() != sigs.len() {
+            let e = "a banking-gate signature does not parse".to_string();
+            return (Err(e.clone()), Err(e));
+        }
+        let found = pattern::find_unique_multi(&pats, img);
+        let mut out = sigs.iter().zip(found).map(|((_, cmp_at), f)| match f {
+            Found::Unique(hit) => gate_at(img, hit + cmp_at)
+                .ok_or_else(|| format!("the read at +0x{:X} does not decode as cmp byte [rip+gate]", hit + cmp_at)),
+            Found::None => Err("signature not found on this build".to_string()),
+            Found::Ambiguous(n) => Err(format!("signature ambiguous ({n}+ hits)")),
+        });
+        let deferred = out.next().unwrap_or_else(|| Err("no result".to_string()));
+        let surplus = out.next().unwrap_or_else(|| Err("no result".to_string()));
+        (deferred, surplus)
+    }
+
+    /// The one startup line those two bytes are worth, in plain words. Each
+    /// gate comes as the RVA its signature resolved (`None`: not found on this
+    /// build) and the byte read there (`None`: a read that did not come back,
+    /// the page is zero-initialised data and may not be mapped this early, or
+    /// there was no address to read).
     ///
     /// Pure, so the sentence a future reader will have to trust is unit tested
     /// natively rather than proof-read in a log.
-    pub fn banking_gate_line(deferred: Option<u8>, surplus: Option<u8>) -> String {
+    pub fn banking_gate_line(
+        deferred_rva: Option<usize>,
+        deferred: Option<u8>,
+        surplus_rva: Option<usize>,
+        surplus: Option<u8>,
+    ) -> String {
+        let deferred = deferred_rva.and(deferred);
+        let surplus = surplus_rva.and(surplus);
+        let at = |rva: Option<usize>| match rva {
+            Some(r) => format!("0x{r:X}"),
+            None => "not found by signature on this build".to_string(),
+        };
         let say = |v: Option<u8>, zero: &str, set: &str| match v {
             None => "would not read".to_string(),
             Some(0) => format!("0 - {zero}"),
@@ -420,19 +625,19 @@ pub mod globals {
             _ => "one of the two gates would not read, so the warning in the README stands as it is",
         };
         format!(
-            "[banking] deferred-reward gate (0x{:X}) = {}; surplus-worker gate (0x{:X}) = {}; \
+            "[banking] deferred-reward gate ({}) = {}; surplus-worker gate ({}) = {}; \
              {verdict}. Both are read-only and nothing here acts on either.",
-            DEFERRED_REWARD_GATE_RVA,
+            at(deferred_rva),
             say(
                 deferred,
                 "no mission defers its payout, so nothing is stored in the save",
                 "repeating missions can defer a payout into the save",
             ),
-            SURPLUS_WORKER_GATE_RVA,
+            at(surplus_rva),
             say(
                 surplus,
-                "the stored percent ignores the worker count, so entry+0xC4 never enters it",
-                "the stored percent carries the surplus-worker term that entry+0xC4 feeds",
+                "the stored percent ignores the worker count, so the minimum operator count never enters it",
+                "the stored percent carries the surplus-worker term that the minimum operator count feeds",
             ),
         )
     }
@@ -672,9 +877,9 @@ pub fn amount_write_order(
 pub struct MissionPlan {
     /// `steps[1]+0x08`, in tenths of an hour.
     pub duration: Option<u32>,
-    /// `entry+0xDA`. Never `0` - see [`crate::config::Levers::skill_req`].
+    /// [`parsed::OP_SKILL_REQ`]. Never `0` - see [`crate::config::Levers::skill_req`].
     pub skill: Option<u16>,
-    /// `entry+0xC4`. Never `0` - see [`crate::config::Levers::min_operators`].
+    /// [`parsed::OP_MIN_OPERATORS`]. Never `0` - see [`crate::config::Levers::min_operators`].
     pub min_operators: Option<u32>,
     /// Fields refused because what is in them now is neither the remembered
     /// vanilla nor anything this plugin could have written from it. At most 3.
@@ -1252,11 +1457,13 @@ impl Summary {
             && self.ops_with_reward1 == REWARD_OPS_SET1
             && self.ops_with_reward2 == REWARD_OPS_SET2;
         format!(
-            "{union} distinct dropset rows requested ({n1} from +0xA8 on {} missions, {n2} from \
-             +0xAA on {} missions, overlapping); vanilla build 25116796 reads \
+            "{union} distinct dropset rows requested ({n1} from +0x{:X} on {} missions, {n2} from \
+             +0x{:X} on {} missions, overlapping); vanilla build 25116796 reads \
              {REWARD_ROWS_UNION} ({REWARD_ROWS_SET1} from {REWARD_OPS_SET1}, {REWARD_ROWS_SET2} \
              from {REWARD_OPS_SET2}){}",
+            parsed::OP_REWARD_1,
             self.ops_with_reward1,
+            parsed::OP_REWARD_2,
             self.ops_with_reward2,
             if agrees { " - AGREES" } else { " - DIFFERS, see the missions above" }
         )
@@ -1462,6 +1669,37 @@ impl Summary {
         out
     }
 
+    /// Whether this census is clean enough to let the write path touch the
+    /// missions, as `Ok` or the reason it is not.
+    ///
+    /// Stricter than [`Self::verdict`]'s wording on purpose: only LOOKS RIGHT
+    /// passes, and neither of the two judged fields may be flat across every
+    /// mission. The caller must only hand it a **vanilla** census (one taken
+    /// before this plugin wrote anything), because the levers move both fields.
+    pub fn layout_check(&self) -> Result<(), String> {
+        let sampled = self.durations.len();
+        if self.ops == 0 || sampled == 0 {
+            return Err("no mission was read, so the layout is unchecked".to_string());
+        }
+        let (dur_ok, ops_ok) = self.in_range_counts();
+        let worst = (dur_ok as f64 / sampled as f64).min(ops_ok as f64 / sampled as f64);
+        if worst < VERDICT_GOOD {
+            return Err(format!(
+                "the mission census is not LOOKS RIGHT ({dur_ok}/{sampled} durations and \
+                 {ops_ok}/{sampled} minimum operator counts in band)"
+            ));
+        }
+        if let Some(v) = self.constant_duration() {
+            return Err(format!("every mission reads duration {v}, the shape of a wrong offset"));
+        }
+        if let Some(v) = self.constant_min_ops() {
+            return Err(format!(
+                "every mission reads minimum operator count {v}, the shape of a wrong offset"
+            ));
+        }
+        Ok(())
+    }
+
     /// The sentence a census owes the log when this plugin has already written
     /// to the records it walked.
     ///
@@ -1514,7 +1752,7 @@ impl Summary {
         format!(
             "records {} ({} loaded, {} with missions), missions {}, duration {dlo}..{dhi} tenths \
              of an hour ({}h..{}h, median {dmed} = {}h), min operators {olo}..{ohi} (median {}), \
-             +0xC0 {clo}..{chi}, missions with no conditions {}, condition entries {}, distinct \
+             +0x{:X} {clo}..{chi}, missions with no conditions {}, condition entries {}, distinct \
              condition keys {}",
             self.records,
             self.records_read,
@@ -1524,6 +1762,7 @@ impl Summary {
             hours(dhi),
             hours(dmed),
             self.operator_median().unwrap_or(0),
+            parsed::OP_UNKNOWN_C0,
             self.ops_without_conds,
             self.cond_entries,
             self.cond_keys.len()
@@ -1562,7 +1801,7 @@ pub struct DropsetEntry {
     /// **The pair is what a reward multiplier scales, both halves of it.**
     /// `min <= max` on every entry of the live capture and the two differ on
     /// 136 of 725, so scaling only the minimum inverts those 136. This is the
-    /// same shape as the `gimmickinfo` output block `desert_gatherer`
+    /// same shape as the `gimmickinfo` output block `desert_harvest::gatherer`
     /// multiplies, deliberately: the two write paths should end up looking
     /// alike.
     pub amount_max: i64,
@@ -1630,6 +1869,11 @@ pub struct DropsetRow {
     pub declared_entries: u32,
     /// [`parsed::dropset::ROW_NO_DROP_PPM`], parts per million.
     pub no_drop_ppm: i64,
+    /// [`parsed::dropset::ROW_WEIGHT_SUM`], the cached weight total, or `None`
+    /// when it would not read. Compared against the entries' own weights by
+    /// [`RewardSummary::row`]: on every build read so far the two agree on
+    /// every row, so agreement is what confirms the offset.
+    pub weight_sum: Option<i64>,
     pub entries: Vec<DropsetEntry>,
 }
 
@@ -1685,6 +1929,12 @@ pub struct RewardSummary {
     /// pair that is not is either a wrong offset or a table something has
     /// already scaled by halves.
     ordered_amounts: usize,
+    /// Rows read in full (every declared entry) with a readable weight total,
+    /// and of those, the rows whose entry weights add up to it exactly. 219 of
+    /// 219 on 25116796; anything less means [`parsed::dropset::ROW_WEIGHT_SUM`]
+    /// or [`parsed::dropset::ENTRY_WEIGHT`] is not where this build keeps it.
+    weight_sums_checked: usize,
+    weight_sums_ok: usize,
 
     amount_mins: Vec<i64>,
     amount_maxes: Vec<i64>,
@@ -1710,6 +1960,15 @@ impl RewardSummary {
     /// Fold one fully read row, and every entry of it, in.
     pub fn row(&mut self, r: &DropsetRow) {
         self.rows_loaded += 1;
+        if let Some(total) = r.weight_sum {
+            if r.entries.len() == r.declared_entries as usize {
+                self.weight_sums_checked += 1;
+                let sum = r.entries.iter().try_fold(0i64, |acc, e| acc.checked_add(e.weight));
+                if sum == Some(total) {
+                    self.weight_sums_ok += 1;
+                }
+            }
+        }
         if self.entry_counts.len() < MAX_SAMPLES {
             self.entry_counts.push(r.entries.len());
             self.draws.push(r.draws);
@@ -1964,6 +2223,16 @@ impl RewardSummary {
             item_frac * 100.0,
             count_frac * 100.0
         );
+        // The weight totals: the one check that reads a row field and the
+        // entries under it together, so a header offset that moved shows here
+        // even when every entry looks fine.
+        let _ = write!(
+            out,
+            "; weight totals: {}/{} fully read rows match record+0x{:X}",
+            self.weight_sums_ok,
+            self.weight_sums_checked,
+            parsed::dropset::ROW_WEIGHT_SUM
+        );
         // Per-entry fields, then per-row ones: the sentence names how many
         // samples agreed, and rows and entries are different counts.
         let rows_sampled = self.entry_counts.len();
@@ -2001,6 +2270,143 @@ impl RewardSummary {
             }
         }
         out
+    }
+}
+
+impl RewardSummary {
+    /// Whether this reward census is clean enough to let the write path touch
+    /// the reward rows, as `Ok` or the reason it is not.
+    ///
+    /// Only LOOKS RIGHT passes, none of the amount pair, the weight or the item
+    /// row may be flat across every entry, and every fully read row's entry
+    /// weights must add up to its cached total. The draw count, the no-drop
+    /// chance and condition slots 0 and 2 are flat on a vanilla table (0, 0,
+    /// `0xFFFF` and `0xFFFF` on every row of 25116796), so they are reported by
+    /// [`Self::verdict`] and not judged here. Same rule as
+    /// [`Summary::layout_check`]: a vanilla census only.
+    pub fn layout_check(&self) -> Result<(), String> {
+        let sampled = self.amount_mins.len();
+        if self.rows_loaded == 0 || sampled == 0 || self.entries == 0 {
+            return Err("no reward entry was read, so the dropset layout is unchecked".to_string());
+        }
+        let (amount_ok, item_ok, count_ok) = self.in_range_counts();
+        let rows = self.entry_counts.len().max(1);
+        let worst = (amount_ok as f64 / sampled as f64)
+            .min(item_ok as f64 / self.entries as f64)
+            .min(count_ok as f64 / rows as f64);
+        if worst < VERDICT_GOOD {
+            return Err(format!(
+                "the dropset census is not LOOKS RIGHT ({amount_ok}/{sampled} amounts, \
+                 {item_ok}/{} item rows, {count_ok}/{rows} entry counts in band)",
+                self.entries
+            ));
+        }
+        for (label, flat) in [
+            ("amount min", self.constant_amount_min().is_some()),
+            ("amount max", self.constant_amount_max().is_some()),
+            ("weight", self.constant_weight().is_some()),
+            ("item row", self.constant_item_row().is_some()),
+        ] {
+            if flat {
+                return Err(format!("every entry reads the same {label}, the shape of a wrong offset"));
+            }
+        }
+        if self.weight_sums_checked == 0 {
+            return Err("no row could be checked against its weight total".to_string());
+        }
+        if self.weight_sums_ok != self.weight_sums_checked {
+            return Err(format!(
+                "only {}/{} rows' entry weights add up to record+0x{:X}",
+                self.weight_sums_ok,
+                self.weight_sums_checked,
+                parsed::dropset::ROW_WEIGHT_SUM
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Whether this launch has confirmed the layout the write path relies on.
+///
+/// **Nothing is written until it has.** The offsets in [`parsed`] were
+/// re-derived from code for 26345091 and have not been read in game on that
+/// build; a default install runs with `DryRun=0`, and a wrong offset there is
+/// five wrong fields per mission on every launch. So a write pass only writes
+/// once a **vanilla** census on this launch, taken before this plugin wrote
+/// anything, has passed [`Summary::layout_check`] (missions) or
+/// [`RewardSummary::layout_check`] (rewards, which also needs the missions).
+/// Until then every pass runs as `DryRun=1` does: it reports what it would
+/// change and writes nothing.
+///
+/// A confirmation **latches** for the session: the parsed tables do not move
+/// their layout while the game runs, and every census after the first write
+/// describes this plugin's own output, which is exactly what the checks would
+/// call wrong (`Speed` floors durations, `AnyOperatorCount` flattens the
+/// operator count). A refusal does not latch: a later vanilla census can
+/// still confirm.
+#[derive(Debug, Default)]
+pub struct WriteGate {
+    missions: Option<Result<(), String>>,
+    rewards: Option<Result<(), String>>,
+    said_missions: Option<String>,
+    said_rewards: Option<String>,
+}
+
+impl WriteGate {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Fold in a vanilla mission census's [`Summary::layout_check`].
+    pub fn note_missions(&mut self, check: Result<(), String>) {
+        if !matches!(self.missions, Some(Ok(()))) {
+            self.missions = Some(check);
+        }
+    }
+
+    /// Fold in a vanilla reward census's [`RewardSummary::layout_check`].
+    pub fn note_rewards(&mut self, check: Result<(), String>) {
+        if !matches!(self.rewards, Some(Ok(()))) {
+            self.rewards = Some(check);
+        }
+    }
+
+    /// `Ok` when mission writes may go ahead, else the reason they may not.
+    pub fn missions(&self) -> Result<(), String> {
+        match &self.missions {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => Err(format!("the mission layout failed this launch's census: {e}")),
+            None => Err("no vanilla mission census has been taken on this launch yet".to_string()),
+        }
+    }
+
+    /// `Ok` when reward writes may go ahead: the missions must be confirmed
+    /// too, since the rows come from their reward-set indices.
+    pub fn rewards(&self) -> Result<(), String> {
+        self.missions()?;
+        match &self.rewards {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => Err(format!("the dropset layout failed this launch's census: {e}")),
+            None => Err("no vanilla reward census has been taken on this launch yet".to_string()),
+        }
+    }
+
+    /// The `writes disabled` line for a refused pass, or `None` when the same
+    /// sentence was already logged: one line per change of reason, not one per
+    /// pass. `rewards` picks which of the two passes is speaking.
+    pub fn refusal_line(&mut self, rewards: bool, why: &str) -> Option<String> {
+        let what = if rewards { "reward rows" } else { "missions" };
+        let line = format!(
+            "writes disabled ({what}): {why}. Every pass reports what it would change, as \
+             DryRun=1 does, and writes nothing until a vanilla census on this launch reads \
+             LOOKS RIGHT"
+        );
+        let said = if rewards { &mut self.said_rewards } else { &mut self.said_missions };
+        if said.as_deref() == Some(line.as_str()) {
+            return None;
+        }
+        *said = Some(line.clone());
+        Some(line)
     }
 }
 
@@ -2074,11 +2480,13 @@ mod tests {
     fn drow(row: u16, n: usize) -> DropsetRow {
         let entries: Vec<DropsetEntry> =
             (0..n).map(|i| entry(i, u32::from(4000 + row) + i as u32, 1 + i as i64)).collect();
+        let weight_sum = Some(entries.iter().map(|e| e.weight).sum());
         DropsetRow {
             row,
             draws: 1,
             declared_entries: n as u32,
             no_drop_ppm: 0,
+            weight_sum,
             entries,
         }
     }
@@ -2181,9 +2589,9 @@ mod tests {
         assert_eq!(s.ops_with_skill_stat, 114);
         assert_eq!(s.skill_histogram(), vec![(1965, 58), (1962, 37), (1944, 18)]);
         let line = s.skill_line(8);
-        assert!(line.contains("113 of 115 missions require a skill (+0xDA)"), "{line}");
+        assert!(line.contains(&format!("113 of 115 missions require a skill (+0x{:X})", parsed::OP_SKILL_REQ)), "{line}");
         assert!(line.contains("over 3 distinct indices"), "{line}");
-        assert!(line.contains("114 carry a bonus stat (+0xD8)"), "{line}");
+        assert!(line.contains(&format!("114 carry a bonus stat (+0x{:X})", parsed::OP_SKILL_STAT)), "{line}");
         assert!(line.ends_with("1965=58 1962=37 1944=18"), "{line}");
         // The cap is a cap, not a silent truncation.
         assert!(s.skill_line(2).ends_with("1965=58 1962=37 (+1 more)"), "{}", s.skill_line(2));
@@ -2583,7 +2991,7 @@ mod tests {
         assert!(line.contains("missions 2"), "{line}");
         assert!(line.contains("duration 20..80 tenths of an hour (2.0h..8.0h"), "{line}");
         assert!(line.contains("median 80 = 8.0h"), "{line}");
-        assert!(line.contains("+0xC0 1..1"), "{line}");
+        assert!(line.contains("+0xAC 1..1"), "{line}");
         assert!(line.contains("min operators 1..4"), "{line}");
         assert!(line.contains("missions with no conditions 1"), "{line}");
         assert!(line.contains("distinct condition keys 1"), "{line}");
@@ -2850,8 +3258,8 @@ mod tests {
         s.operation(&rewarded(0, 10, 11));
         let line = s.reward_request_line();
         assert!(line.starts_with("2 distinct dropset rows requested"), "{line}");
-        assert!(line.contains("1 from +0xA8 on 1 missions"), "{line}");
-        assert!(line.contains("1 from +0xAA on 1 missions"), "{line}");
+        assert!(line.contains("1 from +0xA0 on 1 missions"), "{line}");
+        assert!(line.contains("1 from +0xA2 on 1 missions"), "{line}");
         // The expected figures are on the same line as the measured ones, so a
         // wrong count is visible without a second tool.
         assert!(line.contains("vanilla build 25116796 reads 219 (208 from 243, 13 from 18)"), "{line}");
@@ -2914,8 +3322,8 @@ mod tests {
         s.row(&drow(2, 0));
         let v = s.verdict();
         assert!(v.contains("NO REWARD DATA"), "{v}");
-        assert!(v.contains("record+0x30"), "{v}");
-        assert!(v.contains("record+0x28"), "{v}");
+        assert!(v.contains(&format!("record+0x{:X}", parsed::dropset::ROW_ENTRY_COUNT)), "{v}");
+        assert!(v.contains(&format!("record+0x{:X}", parsed::dropset::ROW_ENTRIES)), "{v}");
     }
 
     #[test]
@@ -2965,6 +3373,7 @@ mod tests {
                 draws: 0,
                 declared_entries: 1,
                 no_drop_ppm: 0,
+                weight_sum: None,
                 entries: vec![junk],
             });
         }
@@ -2986,6 +3395,7 @@ mod tests {
                 draws: 1,
                 declared_entries: 1,
                 no_drop_ppm: 0,
+                weight_sum: None,
                 entries: vec![DropsetEntry { item_row: u32::from(item), ..entry(0, u32::from(item), 3) }],
             });
         }
@@ -3009,6 +3419,7 @@ mod tests {
                 draws: 1,
                 declared_entries: 1,
                 no_drop_ppm: 0,
+                weight_sum: None,
                 // Amount and weight identical everywhere, item row varying.
                 entries: vec![DropsetEntry { weight: 10_000, ..entry(0, 4000 + i as u32, 1) }],
             });
@@ -3048,6 +3459,7 @@ mod tests {
                 draws: 1,
                 declared_entries: 1,
                 no_drop_ppm: 0,
+                weight_sum: None,
                 entries: vec![entry(0, 4242, 1 + i64::from(i))],
             });
         }
@@ -3117,6 +3529,7 @@ mod tests {
                 draws: 0,
                 declared_entries: taken.len() as u32,
                 no_drop_ppm: 0,
+                weight_sum: None,
                 entries: taken,
             });
         }
@@ -3187,6 +3600,7 @@ mod tests {
                 row: row as u16,
                 draws: 1 + (row % 3) as i32,
                 no_drop_ppm: row as i64,
+                weight_sum: None,
                 declared_entries: entries.len() as u32,
                 entries,
             });
@@ -3445,34 +3859,194 @@ mod tests {
     /// it means for the one effect that can outlive the plugin.
     #[test]
     fn the_banking_gate_line_says_what_each_byte_means() {
-        use globals::{banking_gate_line, DEFERRED_REWARD_GATE_RVA, SURPLUS_WORKER_GATE_RVA};
+        use globals::banking_gate_line;
+        const D: Option<usize> = Some(0x714FE68);
+        const S: Option<usize> = Some(0x7127CF8);
         // The reading that would let the README's warning be deleted.
-        let l = banking_gate_line(Some(0), Some(1));
-        assert!(l.contains("0x6BC6AA8"), "{l}");
+        let l = banking_gate_line(D, Some(0), S, Some(1));
+        assert!(l.contains("0x714FE68"), "{l}");
+        assert!(l.contains("0x7127CF8"), "{l}");
         assert!(l.contains("nothing is ever banked"), "{l}");
         assert!(l.contains("no mission defers its payout"), "{l}");
         // Deferral on, surplus term off: something is stored, but not because
-        // of +0xC4.
-        let l = banking_gate_line(Some(1), Some(0));
+        // of the operator count.
+        let l = banking_gate_line(D, Some(1), S, Some(0));
         assert!(l.contains("does not carry the surplus-worker term"), "{l}");
         // Both open: the warning stands exactly as written.
-        let l = banking_gate_line(Some(1), Some(1));
+        let l = banking_gate_line(D, Some(1), S, Some(1));
         assert!(l.contains("both gates are open"), "{l}");
         assert!(l.contains("after the plugin is removed"), "{l}");
         // An unmapped page says so rather than claiming a reading.
-        let l = banking_gate_line(None, Some(1));
+        let l = banking_gate_line(D, None, S, Some(1));
         assert!(l.contains("would not read"), "{l}");
         assert!(l.contains("the warning in the README stands"), "{l}");
-        // Every line names both addresses and the read-only promise.
+        // A signature that did not resolve says so, and a byte read without an
+        // address cannot turn into a verdict.
+        let l = banking_gate_line(None, Some(0), S, Some(0));
+        assert!(l.contains("not found by signature on this build"), "{l}");
+        assert!(l.contains("would not read"), "{l}");
+        assert!(l.contains("the warning in the README stands"), "{l}");
+        // Every line keeps the read-only promise.
         for l in [
-            banking_gate_line(Some(0), Some(0)),
-            banking_gate_line(None, None),
-            banking_gate_line(Some(2), None),
+            banking_gate_line(D, Some(0), S, Some(0)),
+            banking_gate_line(None, None, None, None),
+            banking_gate_line(D, Some(2), S, None),
         ] {
-            assert!(l.contains(&format!("0x{DEFERRED_REWARD_GATE_RVA:X}")), "{l}");
-            assert!(l.contains(&format!("0x{SURPLUS_WORKER_GATE_RVA:X}")), "{l}");
             assert!(l.contains("nothing here acts on either"), "{l}");
         }
     }
 
+    /// The two gate reads laid out the way build 26345091 assembles them,
+    /// resolved by signature: each RIP-relative `cmp` lands on its own byte.
+    #[test]
+    fn the_banking_gates_resolve_by_signature() {
+        use globals::{resolve_gates, DEFERRED_GATE_CMP_AT};
+        let mut img = vec![0u8; 0x400];
+        // Surplus read at 0x100: 44 38 3D disp32, then the arithmetic.
+        let surplus: &[u8] = &[
+            0x44, 0x38, 0x3D, 0, 0, 0, 0, 0x74, 0x31, 0x41, 0x8B, 0x86, 0xB0, 0x00, 0x00, 0x00,
+            0x48, 0x8B, 0x4D, 0xC0, 0x48, 0x2B, 0xC8, 0x48, 0x39, 0x45, 0xC0, 0x49, 0x0F, 0x46,
+            0xCF, 0x48, 0x63, 0x05, 0, 0, 0, 0, 0x48, 0x0F, 0xAF, 0xC1, 0x48, 0x69, 0xC8, 0x10,
+            0x27, 0x00, 0x00,
+        ];
+        img[0x100..0x100 + surplus.len()].copy_from_slice(surplus);
+        let cmp = 0x101;
+        img[cmp + 2..cmp + 6].copy_from_slice(&((0x3F8 - (cmp + 6)) as i32).to_le_bytes());
+        // Deferred read at 0x200: je rel32, 44 38 3D disp32, je rel32, list build.
+        let deferred: &[u8] = &[
+            0x0F, 0x84, 0xAA, 0, 0, 0, 0x44, 0x38, 0x3D, 0, 0, 0, 0, 0x0F, 0x84, 0x9D, 0, 0, 0,
+            0x49, 0x8B, 0x44, 0x24, 0x10, 0x48, 0x8D, 0x50, 0x08, 0x48, 0x85, 0xC0, 0x49, 0x0F,
+            0x44, 0xD7, 0x41, 0xB0, 0x01,
+        ];
+        img[0x200..0x200 + deferred.len()].copy_from_slice(deferred);
+        let cmp = 0x200 + DEFERRED_GATE_CMP_AT;
+        img[cmp + 2..cmp + 6].copy_from_slice(&((0x3F0 - (cmp + 6)) as i32).to_le_bytes());
+        assert_eq!(resolve_gates(&img), (Ok(0x3F0), Ok(0x3F8)));
+
+        // A ModRM that is not RIP-relative is refused, not decoded as one.
+        let mut bad = img.clone();
+        bad[0x200 + DEFERRED_GATE_CMP_AT + 1] = 0x7D;
+        let (d, s) = resolve_gates(&bad);
+        assert!(d.unwrap_err().contains("does not decode"));
+        assert_eq!(s, Ok(0x3F8));
+        // A second copy is ambiguous; nothing at all is "not found".
+        let mut two = img.clone();
+        two.extend_from_slice(&img[0x100..0x100 + surplus.len()]);
+        assert!(resolve_gates(&two).1.unwrap_err().contains("ambiguous"));
+        let (d, s) = resolve_gates(&[0u8; 64]);
+        assert!(d.unwrap_err().contains("not found"));
+        assert!(s.unwrap_err().contains("not found"));
+    }
+
+
+    // -----------------------------------------------------------------------
+    // The write gate: nothing is written until a vanilla census confirms
+    // -----------------------------------------------------------------------
+
+    /// A mission census that a correct layout produces: varied, in band.
+    fn good_missions() -> Summary {
+        let mut s = Summary::new();
+        for i in 0..50 {
+            s.operation(&op(1, i, 20 + (i as u32 % 12) * 10, 1 + (i as u32) % 5, &[]));
+        }
+        s
+    }
+
+    /// A reward census that a correct layout produces: varied amounts, weights
+    /// and items, and every row's weights adding up to its cached total.
+    fn good_rewards() -> RewardSummary {
+        let mut s = RewardSummary::new(10);
+        for r in 0..10u16 {
+            s.row(&drow(r, 3));
+        }
+        s
+    }
+
+    #[test]
+    fn clean_censuses_pass_the_layout_checks() {
+        assert_eq!(good_missions().layout_check(), Ok(()));
+        assert_eq!(good_rewards().layout_check(), Ok(()));
+        // And the reward verdict names the weight-total agreement.
+        let v = good_rewards().verdict();
+        assert!(v.contains("weight totals: 10/10 fully read rows match"), "{v}");
+    }
+
+    #[test]
+    fn a_wrong_or_flat_mission_census_fails_the_check() {
+        assert!(Summary::new().layout_check().unwrap_err().contains("no mission"));
+        let mut noise = Summary::new();
+        for i in 0..40u32 {
+            noise.operation(&op(1, i as usize, 0x1400_0000 + i, 0xFFFF_0000 + i, &[]));
+        }
+        assert!(noise.layout_check().unwrap_err().contains("not LOOKS RIGHT"));
+        // In band but flat: what a wrong offset onto a constant field reads.
+        let mut flat = Summary::new();
+        for i in 0..40 {
+            flat.operation(&op(1, i, 30, 1 + (i as u32) % 3, &[]));
+        }
+        assert!(flat.layout_check().unwrap_err().contains("duration 30"));
+        let mut flat_ops = Summary::new();
+        for i in 0..40 {
+            flat_ops.operation(&op(1, i, 20 + (i as u32 % 12) * 10, 1, &[]));
+        }
+        assert!(flat_ops.layout_check().unwrap_err().contains("minimum operator count 1"));
+    }
+
+    #[test]
+    fn a_reward_census_whose_weights_do_not_add_up_fails_the_check() {
+        let mut s = RewardSummary::new(10);
+        for r in 0..10u16 {
+            let mut row = drow(r, 3);
+            if r == 4 {
+                row.weight_sum = row.weight_sum.map(|w| w + 1);
+            }
+            s.row(&row);
+        }
+        let e = s.layout_check().unwrap_err();
+        assert!(e.contains("only 9/10 rows"), "{e}");
+        // No readable total anywhere is "unchecked", never a pass.
+        let mut none = RewardSummary::new(4);
+        for r in 0..4u16 {
+            none.row(&DropsetRow { weight_sum: None, ..drow(r, 3) });
+        }
+        assert!(none.layout_check().unwrap_err().contains("weight total"));
+        // A short read is not compared at all: its sum would be partial.
+        let mut short = RewardSummary::new(1);
+        short.row(&DropsetRow { declared_entries: 9, ..drow(1, 3) });
+        assert!(short.layout_check().unwrap_err().contains("weight total"));
+        assert!(RewardSummary::new(3).layout_check().is_err());
+    }
+
+    #[test]
+    fn the_write_gate_refuses_until_a_census_confirms_and_then_latches() {
+        let mut g = WriteGate::new();
+        // Nothing seen: both refuse, rewards because the missions do.
+        assert!(g.missions().unwrap_err().contains("no vanilla mission census"));
+        assert!(g.rewards().unwrap_err().contains("no vanilla mission census"));
+        // A failed census refuses and says why.
+        g.note_missions(Err("x".into()));
+        assert!(g.missions().unwrap_err().contains("failed this launch's census: x"));
+        // A later clean one confirms; a later failure cannot undo it, because
+        // every census after a write describes the plugin's own output.
+        g.note_missions(Ok(()));
+        g.note_missions(Err("after the write".into()));
+        assert_eq!(g.missions(), Ok(()));
+        // Rewards need their own confirmation on top of the missions'.
+        assert!(g.rewards().unwrap_err().contains("no vanilla reward census"));
+        g.note_rewards(good_rewards().layout_check());
+        assert_eq!(g.rewards(), Ok(()));
+    }
+
+    #[test]
+    fn the_refusal_line_is_said_once_per_reason() {
+        let mut g = WriteGate::new();
+        let why = g.missions().unwrap_err();
+        let line = g.refusal_line(false, &why).expect("first time is said");
+        assert!(line.starts_with("writes disabled (missions): no vanilla mission census"), "{line}");
+        assert!(line.contains("as DryRun=1 does"), "{line}");
+        assert_eq!(g.refusal_line(false, &why), None, "the same reason is not repeated");
+        // The other pass has its own line, and a new reason is said again.
+        assert!(g.refusal_line(true, &why).is_some());
+        assert!(g.refusal_line(false, "another reason").is_some());
+    }
 }

@@ -48,7 +48,7 @@ use std::fmt::Write as _;
 ///
 /// They are **parsed-object** offsets - the objects the record loader produced -
 /// not offsets into the raw table bytes, the same distinction
-/// [`crate::node::parsed`] and `desert_gatherer::hook`'s own `mod parsed` make.
+/// [`crate::node::parsed`] and `desert_harvest::gatherer::hook`'s own `mod parsed` make.
 pub mod parsed {
     /// One parsed `buffinfo` record: the head the census reads as one block.
     ///

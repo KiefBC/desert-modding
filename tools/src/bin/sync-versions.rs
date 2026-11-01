@@ -20,7 +20,7 @@
 //!   3. the `**Version <version>**` line near the top -> that crate's version
 //!
 //! Only one crate ships now: desert-tooling, which builds `DesertTooling.asi`.
-//! desert-looter, desert-gatherer, desert-overlay and desert-dispatch are
+//! desert-harvest, desert-overlay, desert-dispatch and desert-core are
 //! internal libraries linked into it - versioned for their own sake, never
 //! tagged, no README of their own - so they are in `CRATES` (their numbers
 //! still appear in the docs' tables) but not in `SHIPPING`.
@@ -54,10 +54,9 @@ use regex::{Captures, Regex};
 
 use desert_tools::paths;
 
-const CRATES: [&str; 6] = [
+const CRATES: [&str; 5] = [
     "desert-tooling",
-    "desert-looter",
-    "desert-gatherer",
+    "desert-harvest",
     "desert-overlay",
     "desert-dispatch",
     "desert-core",
@@ -174,8 +173,8 @@ fn sync(text: &str, versions: &[(&str, String)], re: &Rewrites) -> String {
     for raw in text.split_inclusive('\n') {
         let mut line = raw.to_string();
 
-        // Longest name wins: "desert-looter" is not a substring of another
-        // crate today, but a future "desert-looter-cli" would be ambiguous.
+        // Longest name wins: "desert-harvest" is not a substring of another
+        // crate today, but a future "desert-harvest-cli" would be ambiguous.
         // Strictly longer, so that a line naming two crates of equal name
         // length picks the first one in CRATES, as Python's `max` did.
         let mut named: Option<&str> = None;
@@ -427,18 +426,18 @@ mod tests {
         let re = Rewrites::new();
         let line = "| `desert-core` | 0.0.1    | nothing | never |\n";
         let out = sync(line, &versions(), &re);
-        assert_eq!(out, "| `desert-core` | 1.5.0    | nothing | never |\n");
+        assert_eq!(out, "| `desert-core` | 1.4.0    | nothing | never |\n");
     }
 
     #[test]
     fn longest_crate_name_wins_and_ties_go_to_the_first() {
         let re = Rewrites::new();
-        // Both desert-gatherer and desert-dispatch are 15 characters; CRATES
-        // lists the gatherer first, so its version is the one written.
-        let line = "| desert-gatherer + desert-dispatch | 0.0.1 |\n";
+        // Both desert-harvest and desert-overlay are 14 characters; CRATES
+        // lists the harvest crate first, so its version is the one written.
+        let line = "| desert-overlay + desert-harvest | 0.0.1 |\n";
         assert_eq!(
             sync(line, &versions(), &re),
-            "| desert-gatherer + desert-dispatch | 1.2.0 |\n"
+            "| desert-overlay + desert-harvest | 1.1.0 |\n"
         );
     }
 
@@ -453,11 +452,12 @@ mod tests {
     }
 
     #[test]
-    fn a_dmm_tag_is_not_a_gatherer_tag() {
+    fn a_dmm_tag_is_not_a_crate_tag() {
         let re = Rewrites::new();
-        // desert-gatherer is a prefix of desert-gatherer-dmm, but the pack is
-        // versioned x.y and is not a crate: the semver pattern must not reach
-        // into its tag and leave `desert-gatherer-dmm-v1.2.0` behind.
+        // The pack is versioned x.y and is not a crate: no crate's semver
+        // pattern may reach into its tag and leave `desert-gatherer-dmm-v1.2.0`
+        // behind. (It used to share a prefix with the desert-gatherer crate,
+        // now merged into desert-harvest; the tag must still pass untouched.)
         let text = "desert-gatherer-dmm-v1.1\n";
         assert_eq!(sync(text, &versions(), &re), text);
     }
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn a_file_with_no_trailing_newline_survives_the_round_trip() {
         let re = Rewrites::new();
-        let text = "| desert-core | 1.5.0 |";
+        let text = "| desert-core | 1.4.0 |";
         assert_eq!(sync(text, &versions(), &re), text);
     }
 }

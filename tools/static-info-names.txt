@@ -7,7 +7,9 @@
 # which is a much earlier warning than a byte signature going stale.
 #
 # 149 types; 216 distinct names (149 class names,
-# 67 lowercase table names that differ from their class name).
+# 67 lowercase table names that differ from their class name) through build 25477059.
+# 2026-11-01, build 26345091: `reviepointinfo` is gone from the exe (the class name
+# RevivePointInfo stays), so 215 names.
 
 AIActionAttributeInfo
 AIDialogStringInfo
@@ -204,7 +206,6 @@ questgaugeinfo
 questgroupinfo
 questinfo
 regioninfo
-reviepointinfo
 sequencerspawninfo
 sheetmusicinfo
 skillgroupinfo
@@ -225,3 +226,13 @@ tribeinfo
 uifiltergroupinfo
 uimaptextureinfo
 vehicleinfo
+
+# 2026-11-01, build 26345091: six table names passed by accessor sites that were not
+# in the registry list before (five new tables, and KeyMap, whose loader is a
+# different function).
+ManagementNeedsSynergyInfo
+HousingObjectGroupInfo
+KeyMap
+managementbuffinfo
+statchangeInfo
+NpcNameInfo

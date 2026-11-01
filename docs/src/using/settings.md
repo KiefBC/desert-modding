@@ -1,55 +1,50 @@
 # Settings quick reference
 
-Source: `schema()` in `desert-looter/src/config.rs`, `desert-gatherer/src/config.rs`, `desert-overlay/src/config.rs` and `desert-dispatch/src/config.rs`; the `Font` key from `desert-overlay/src/config.rs` and `desert-tooling/DesertTooling.ini`.
+Source: `schema()` in `desert-harvest/src/config.rs` (with the field lists in `desert-harvest/src/looter/config.rs` and `desert-harvest/src/gatherer/config.rs`), `desert-overlay/src/config.rs` and `desert-dispatch/src/config.rs`; the `Font` key from `desert-overlay/src/config.rs` and `desert-tooling/DesertTooling.ini`.
 
-Every key lives in `DesertTooling.ini` beside the game exe, under its subsystem's `[Section]` header. `Enabled` and `Debug` exist under all four sections and mean different things in each, and `DryRun` exists under `[Gatherer]` and `[Dispatch]`, so a key belongs to the header above it. Each table below lists the key, its default, the range the menu and the parser accept, and the menu tab it is drawn on. Booleans are written `1`/`0`. The long form of every setting is in the manual's [Settings section](../repo/desert-tooling/index.md#settings-deserttoolingini), and the shipped `DesertTooling.ini` carries a comment above every key.
+Every key lives in `DesertTooling.ini` beside the game exe, under its subsystem's `[Section]` header. `Enabled` and `Debug` exist under all three sections and mean different things in each, and `DryRun` exists under `[Harvest]` and `[Dispatch]`, so a key belongs to the header above it. Each table below lists the key, its default, the range the menu and the parser accept, and the menu tab it is drawn on. Booleans are written `1`/`0`. The long form of every setting is in the manual's [Settings section](../repo/desert-tooling/index.md#settings-deserttoolingini), and the shipped `DesertTooling.ini` carries a comment above every key.
 
-## `[Looter]`
+## `[Harvest]`
+
+Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]` and `[Gatherer]`; an ini that still has them is migrated on the first launch (see [Install and upgrade](install.md)). `Enabled` and `Debug` are read by both halves; every other key belongs to one of them. The rows are in the order the menu draws them.
 
 | key | default | range | tab | meaning |
 |---|---|---|---|---|
-| `Enabled` | 1 | 0/1 | Looter | master switch; 0 = no gathering, no hotkeys, nothing logged |
-| `AutoGather` | 0 | 0/1 | Looter | automatic gathering on from the start (F10 flips it) |
-| `GatherForaging` | 1 | 0/1 | Looter | plants, fruit, berries, mushrooms, crops; never the water well |
-| `GatherLogging` | 1 | 0/1 | Looter | firewood cut from felled trees |
-| `GatherMining` | 1 | 0/1 | Looter | the `collect_mine` family: rocks, veins, stalactites |
-| `GatherOre` | 1 | 0/1 | Looter | the `collect_ore` family: ore deposits and sulfur stone |
-| `GatherMoney` | 0 | 0/1 | Looter | also pick up coin props lying in the world (untested in game) |
-| `GatherItems` | 1 | 0/1 | Looter | also pick up basic items on the ground (`item_basic_*`) |
-| `GatherGear` | 0 | 0/1 | Looter | also pick up dropped weapons and armour |
-| `GatherUnarmed` | 1 | 0/1 | Looter | also target nodes the game has not armed with interaction data |
-| `GatherBugs` | 1 | 0/1 | Looter | catch insects within `GatherRange` |
-| `GatherFish` | 1 | 0/1 | Looter | catch fish within `GatherRange` by hand |
-| `GatherCarcass` | 0 | 0/1 | Looter | loot animal carcasses without the skinning animation |
-| `Hunting` | 1 | 1..100 | Looter | multiplier on what a looted carcass gives, however it is looted |
-| `ScanRange` | 40 | 1..200 | Looter | survey radius in game metres |
-| `SurveyLines` | 200 | 16..2000 | Debug | actor lines one F11 survey prints |
-| `GatherRange` | 6 | 1..50 | Looter | the gather key and auto mode pick the nearest node within this many metres |
-| `GatherInterval` | 500 | 100..60000 | Looter | milliseconds between two automatic sends |
-| `NodeCooldown` | 8000 | 100..60000 | Looter | milliseconds to leave a node alone after sending for it |
-| `StackLimit` | 999 | 10..1000000 | Looter | with a full bag, still gather onto a stack unless it would pass this |
+| `Enabled` | 1 | 0/1 | Harvest | master switch; 0 = no gathering, no hotkeys, vanilla yields (anything already multiplied is put back). Every hook stays installed |
+| `AutoGather` | 0 | 0/1 | Harvest | automatic gathering on from the start (F10 flips it). 0 with the multipliers set is "multipliers without auto-loot" |
+| `GatherForaging` | 1 | 0/1 | Harvest | plants, fruit, berries, mushrooms, crops; never the water well |
+| `GatherLogging` | 1 | 0/1 | Harvest | firewood cut from felled trees |
+| `GatherMining` | 1 | 0/1 | Harvest | the `collect_mine` family: rocks, veins, stalactites |
+| `GatherOre` | 1 | 0/1 | Harvest | the `collect_ore` family: ore deposits and sulfur stone |
+| `GatherMoney` | 0 | 0/1 | Harvest | also pick up coin props lying in the world (untested in game); the amount is the `Money` multiplier below |
+| `GatherItems` | 1 | 0/1 | Harvest | also pick up basic items on the ground (`item_basic_*`) |
+| `GatherGear` | 0 | 0/1 | Harvest | also pick up dropped weapons and armour |
+| `GatherUnarmed` | 1 | 0/1 | Harvest | also target nodes the game has not armed with interaction data |
+| `GatherBugs` | 1 | 0/1 | Harvest | catch insects within `GatherRange` |
+| `GatherFish` | 1 | 0/1 | Harvest | catch fish within `GatherRange` by hand |
+| `GatherCarcass` | 0 | 0/1 | Harvest | loot animal carcasses without the skinning animation |
+| `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass gives, however it is looted |
+| `ScanRange` | 40 | 1..200 | Harvest | survey radius in game metres |
+| `GatherRange` | 6 | 1..50 | Harvest | the gather key and auto mode pick the nearest node within this many metres |
+| `GatherInterval` | 500 | 100..60000 | Harvest | milliseconds between two automatic sends |
+| `NodeCooldown` | 8000 | 100..60000 | Harvest | milliseconds to leave a node alone after sending for it |
+| `StackLimit` | 999 | 10..1000000 | Harvest | with a full bag, still gather onto a stack unless it would pass this |
+| `Foraging` | 1 | 1..100 | Harvest | yield of plants, fruit, berries, mushrooms, crops, and the water well |
+| `Logging` | 1 | 1..100 | Harvest | yield of firewood |
+| `Mining` | 1 | 1..100 | Harvest | yield of the `collect_mine` family |
+| `Ore` | 1 | 1..100 | Harvest | yield of the `collect_ore` family |
+| `Money` | 1 | 1..100 | Harvest | the placed coin and silver bar props only |
+| `Bugs` | 1 | 1..100 | Harvest | insects caught by hand (a code patch on the catch count) |
+| `Fish` | 1 | 1..100 | Harvest | fish caught by hand (the same patch) |
 | `KeyToggle` | F10 | key name | Settings | toggle automatic gathering |
 | `KeyScan` | F11 | key name | Settings | write the survey to the log |
 | `KeyGather` | F9 | key name | Settings | gather the nearest node once |
 | `KeyRecord` | F7 | key name | Settings | toggle the event recorder |
-| `Debug` | 0 | 0/1 | Debug | very verbose survey dump on the next F11 |
+| `Debug` | 0 | 0/1 | Debug | very verbose survey dump on the next F11, the non-gather records (capped at 400 lines) and one line per creature caught |
 | `LogReceived` | 0 | 0/1 | Debug | log every item the game hands the player as `[recv] item <key> x<count>` |
+| `SurveyLines` | 200 | 16..2000 | Debug | actor lines one F11 survey prints |
 | `BagTab` | 1 | -1..15 | Debug | which inventory tab counts as the bag; -1 = the tab with the largest capacity |
-
-## `[Gatherer]`
-
-| key | default | range | tab | meaning |
-|---|---|---|---|---|
-| `Enabled` | 1 | 0/1 | Gatherer | master switch; 0 = vanilla yields, and anything already multiplied is put back |
-| `DryRun` | 0 | 0/1 | Debug | log what would change and write nothing |
-| `Foraging` | 1 | 1..100 | Gatherer | plants, fruit, berries, mushrooms, crops, and the water well |
-| `Logging` | 1 | 1..100 | Gatherer | firewood |
-| `Mining` | 1 | 1..100 | Gatherer | the `collect_mine` family |
-| `Ore` | 1 | 1..100 | Gatherer | the `collect_ore` family |
-| `Money` | 1 | 1..100 | Gatherer | the placed coin and silver bar props only |
-| `Bugs` | 1 | 1..100 | Gatherer | insects caught by hand (a code patch on the catch count) |
-| `Fish` | 1 | 1..100 | Gatherer | fish caught by hand (the same patch) |
-| `Debug` | 0 | 0/1 | Debug | also log the non-gather records (capped at 400 lines) and one line per creature caught |
+| `DryRun` | 0 | 0/1 | Debug | yield multipliers only: log what would change and write nothing. Auto-loot still runs |
 | `DumpTable` | 0 | 0/1 | Debug | write the vanilla `gimmickinfo` table to `DesertTooling.gimmickinfo.bin`; needs `DryRun=1` |
 
 ## `[Overlay]`
@@ -89,4 +84,4 @@ The menu notes on this section: `Theme` changes live; everything else here is re
 
 ## Multipliers at 1 are vanilla
 
-Every multiplier ships at 1, which is vanilla: the seven under `[Gatherer]`, `Hunting` under `[Looter]`, and `Speed` and `Rewards` under `[Dispatch]`. Deleting `DesertTooling.ini` makes the plugin write a fresh one at every default on the next launch, which turns all of them off.
+Every multiplier ships at 1, which is vanilla: the seven yield multipliers and `Hunting` under `[Harvest]`, and `Speed` and `Rewards` under `[Dispatch]`. Deleting `DesertTooling.ini` makes the plugin write a fresh one at every default on the next launch, which turns all of them off.

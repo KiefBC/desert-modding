@@ -18,13 +18,49 @@ pub struct Section {
     pub raw_offset: u32,
 }
 
+/// The index of the exception directory (`.pdata`, the `RUNTIME_FUNCTION`
+/// table) among the optional header's data directories: the fourth one.
+pub const EXCEPTION_DIRECTORY: usize = 3;
+
+/// The names of the sixteen data directories, in order, for printing.
+pub const DATA_DIRECTORY_NAMES: [&str; 16] = [
+    "export",
+    "import",
+    "resource",
+    "exception",
+    "security",
+    "basereloc",
+    "debug",
+    "architecture",
+    "globalptr",
+    "tls",
+    "load_config",
+    "bound_import",
+    "iat",
+    "delay_import",
+    "clr",
+    "reserved",
+];
+
+/// One data directory: an RVA and a size, both zero when it is absent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DataDirectory {
+    pub rva: u32,
+    pub size: u32,
+}
+
 /// A parsed PE32+ image header, holding a borrow of the whole file.
 #[derive(Debug, Clone)]
 pub struct Pe<'a> {
     pub data: &'a [u8],
     pub image_base: u64,
     pub size_of_image: u32,
+    /// The COFF header's `TimeDateStamp`.
+    pub timestamp: u32,
     pub sections: Vec<Section>,
+    /// As many as `NumberOfRvaAndSizes` says, at most sixteen, and only those
+    /// that fit inside the optional header.
+    pub data_directories: Vec<DataDirectory>,
 }
 
 fn u16_at(d: &[u8], off: usize) -> Result<u16> {
@@ -61,6 +97,7 @@ impl<'a> Pe<'a> {
             bail!("not a PE file: no PE signature at {pe:#x}");
         }
         let nsections = u16_at(data, pe + 6)? as usize;
+        let timestamp = u32_at(data, pe + 8)?;
         let opt_size = u16_at(data, pe + 20)? as usize;
         let opt = pe + 24;
         let magic = u16_at(data, opt)?;
@@ -69,6 +106,18 @@ impl<'a> Pe<'a> {
         }
         let size_of_image = u32_at(data, opt + 56)?;
         let image_base = u64_at(data, opt + 24)?;
+
+        // `NumberOfRvaAndSizes` at +108, the directories from +112, eight bytes
+        // each. A hand-built header that stops short of them has none, which
+        // is not an error: nothing that only wants sections should fail on it.
+        let mut data_directories = Vec::new();
+        if opt_size >= 112 {
+            let count = (u32_at(data, opt + 108)? as usize).min(16).min((opt_size - 112) / 8);
+            for i in 0..count {
+                let at = opt + 112 + i * 8;
+                data_directories.push(DataDirectory { rva: u32_at(data, at)?, size: u32_at(data, at + 4)? });
+            }
+        }
 
         let table = opt + opt_size;
         let mut sections = Vec::with_capacity(nsections);
@@ -92,7 +141,40 @@ impl<'a> Pe<'a> {
             data,
             image_base,
             size_of_image,
+            timestamp,
             sections,
+            data_directories,
+        })
+    }
+
+    /// Data directory `i`, if the header has that many and it is not empty.
+    pub fn data_directory(&self, i: usize) -> Option<DataDirectory> {
+        self.data_directories.get(i).copied().filter(|d| d.rva != 0 && d.size != 0)
+    }
+
+    /// The exception directory: where the `RUNTIME_FUNCTION` table is.
+    ///
+    /// Found through the data directory and never through a section name.
+    /// This exe renames its sections on every build, and the section holding
+    /// this table has been `.link`, all of `.trace`, and something else again;
+    /// the directory entry is right on all of them.
+    pub fn exception_directory(&self) -> Option<DataDirectory> {
+        self.data_directory(EXCEPTION_DIRECTORY)
+    }
+
+    pub fn size_of_image(&self) -> u32 {
+        self.size_of_image
+    }
+
+    pub fn timestamp(&self) -> u32 {
+        self.timestamp
+    }
+
+    /// The section whose virtual range holds `rva`, if any.
+    pub fn section_of(&self, rva: u32) -> Option<&Section> {
+        self.sections.iter().find(|s| {
+            let end = s.virtual_address.saturating_add(s.virtual_size.max(s.raw_size));
+            rva >= s.virtual_address && rva < end
         })
     }
 
@@ -176,4 +258,47 @@ pub fn import_dlls(data: &[u8]) -> Result<Vec<String>> {
     names.sort();
     names.dedup();
     Ok(names)
+}
+
+/// Every import address table slot, as slot RVA -> `dll!name` (`dll!#ordinal`
+/// for an import by ordinal), the DLL name lowercased as [`import_dlls`]
+/// writes it.
+///
+/// This is what names an import thunk: a `jmp [rip+slot]` whose slot is in
+/// this map is a call into that DLL, and `retarget calls` prints the name in
+/// place of a pattern for it.
+pub fn import_slots(data: &[u8]) -> Result<std::collections::HashMap<u32, String>> {
+    use object::read::pe::{Import, PeFile64};
+    use object::LittleEndian as LE;
+
+    let file = PeFile64::parse(data).context("cannot parse as a 64-bit PE")?;
+    let mut out = std::collections::HashMap::new();
+    let Some(table) = file.import_table().context("cannot read the import table")? else {
+        return Ok(out);
+    };
+    let mut descriptors = table.descriptors().context("cannot walk the import descriptors")?;
+    while let Some(desc) = descriptors.next().context("truncated import descriptor")? {
+        let dll = table
+            .name(desc.name.get(LE))
+            .map(|n| String::from_utf8_lossy(n).to_ascii_lowercase())
+            .unwrap_or_else(|_| "?".to_string());
+        let dll = dll.strip_suffix(".dll").unwrap_or(&dll).to_string();
+        let first = desc.first_thunk.get(LE);
+        let lookup = match desc.original_first_thunk.get(LE) {
+            0 => first,
+            o => o,
+        };
+        let Ok(mut thunks) = table.thunks(lookup) else { continue };
+        let mut i = 0u32;
+        while let Ok(Some(thunk)) = thunks.next::<object::pe::ImageNtHeaders64>() {
+            let name = match table.import::<object::pe::ImageNtHeaders64>(thunk) {
+                Ok(Import::Name(_, n)) => String::from_utf8_lossy(n).into_owned(),
+                Ok(Import::Ordinal(o)) => format!("#{o}"),
+                Err(_) => "?".to_string(),
+            };
+            out.insert(first + i * 8, format!("{dll}!{name}"));
+            i += 1;
+        }
+    }
+    Ok(out)
 }

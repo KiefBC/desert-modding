@@ -12,7 +12,7 @@
 //! somehow beats `init` lands in `DEFAULT_LOG_NAME` rather than panicking.
 //!
 //! Every subsystem shares that one file, so every line carries the tag of the
-//! crate that wrote it (`looter`, `gatherer`, `overlay`, `tooling`). The
+//! crate that wrote it (`harvest`, `overlay`, `dispatch`, `tooling`). The
 //! [`log!`](crate::log!) macro takes it from the calling crate's own `LOG_TAG`;
 //! see the macro for why that costs no call-site changes.
 
@@ -155,7 +155,7 @@ pub fn write_tagged(tag: &str, msg: &str) {
 /// `crate::` inside a `macro_rules!` body is resolved where the macro is
 /// *invoked*, not where it is defined, so this expands to the invoking crate's
 /// own `LOG_TAG` constant - which every crate that logs must declare at its
-/// root (`pub const LOG_TAG: &str = "looter";`). That is deliberate: it tags
+/// root (`pub const LOG_TAG: &str = "harvest";`). That is deliberate: it tags
 /// every line by subsystem without touching a single one of the hundreds of
 /// existing `crate::log!` call sites. A crate that forgets the constant does
 /// not log untagged lines, it fails to compile.
@@ -190,8 +190,8 @@ mod tests {
     fn line_shapes() {
         assert_eq!(line(1.5, 42, None, "hello"), "[    1.500] [tid    42] hello");
         assert_eq!(
-            line(1.5, 42, Some("looter"), "hello"),
-            "[    1.500] [tid    42] [looter] hello",
+            line(1.5, 42, Some("harvest"), "hello"),
+            "[    1.500] [tid    42] [harvest] hello",
             "the tag sits between the thread id and the message"
         );
         // the two columns are the widths the log has always used, so a tagged

@@ -57,7 +57,7 @@ allowed_imports := "advapi32 api-ms-win-core-synch-l1-2-0 api-ms-win-core-winrt-
 default:
     @just --list --unsorted
 
-# Release build of the plugin (Windows x64). `just build desert-looter` for one crate.
+# Release build of the plugin (Windows x64). `just build desert-harvest` for one crate.
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
 
@@ -101,8 +101,9 @@ test-win:
 
 # The #[ignore]d tests against the real CrimsonDesert.exe: signatures, vtable, record loader. Run after a game update.
 test-game:
-    {{nix}} cargo test --release --target {{native}} -p desert-looter --test game_exe -- --ignored --nocapture
+    {{nix}} cargo test --release --target {{native}} -p desert-harvest --test game_exe -- --ignored --nocapture
     {{nix}} cargo test --release --target {{native}} -p desert-core -- --ignored --nocapture
+    {{nix}} cargo test --release --target {{native}} -p desert-dispatch --test banking_real -- --ignored --nocapture
 
 # Clippy on both targets; any warning fails.
 clippy:
@@ -146,6 +147,11 @@ logo: tools
 sigscan: tools
     {{tools_bin}}/sigscan
 
+# Re-target after a game update: `just retarget report` first, then `triage`,
+# `census`, `calls`, `callers`, `prologue`, `pe`. `just retarget --help` lists them.
+retarget *args: tools
+    {{tools_bin}}/retarget {{args}}
+
 # Re-export the Ghidra evidence tree into evidence/ (needs Ghidra running on
 # Windows with GhidraMCP listening). Resumable: existing files are not
 # re-fetched. `just evidence --depth 2` and any other flag is passed through.
@@ -176,14 +182,14 @@ install: build
      done
 
 # One plugin means one log: the old `glog` and `olog` recipes are gone, and every
-# line carries its subsystem's tag, so `just log | grep '\[gatherer\]'` is what
+# line carries its subsystem's tag, so `just log | grep '\[harvest\]'` is what
 # they were for.
 
 # Follow DesertTooling.log from the game folder.
 log:
     tail -n 40 -F "{{bin64}}/DesertTooling.log"
 
-# Show the learned yields cache (the looter's node -> item table, written beside the log).
+# Show the learned yields cache (the auto-loot half's node -> item table, written beside the log).
 yields:
     @shopt -s nullglob; \
      files=("{{bin64}}"/Desert*.yields); \
@@ -203,11 +209,11 @@ clean:
 # still matches this build.
 
 # The table is the plugin's own dump, <bin64>/DesertTooling.gimmickinfo.bin,
-# written by one launch with `[Gatherer] DumpTable=1` and `DryRun=1`
+# written by one launch with `[Harvest] DumpTable=1` and `DryRun=1`
 # (CD_DMM_TABLE overrides it; DMM's backup copy is the last resort), and the
 # build id is the Steam appmanifest's (CD_APPMANIFEST). The tool resolves both
 # itself - tools/src/paths.rs - so they are passed on only when given here,
-# positionally: `just dmm-rebase /path/to/clean.bin 25477059`. Anything
+# positionally: `just dmm-rebase /path/to/clean.bin 26361232`. Anything
 # starting with `-` goes to the tool as a flag, in any position, so
 # `just dmm-rebase --dry-run` verifies and prints the report without writing.
 # `[positional-arguments]` is what keeps a table path with spaces in it (the

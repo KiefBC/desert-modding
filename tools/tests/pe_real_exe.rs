@@ -36,46 +36,65 @@ fn headers_are_the_expected_shape() {
     assert_eq!(pe.sections.len(), 12);
 
     // DO NOT select a section by its name. This exe's section names are
-    // scrambled, and scrambled differently on every build. Build 25477059:
+    // scrambled, and scrambled differently on every build. Build 26361232:
     //
-    //   .rsrc .xdata .rdata .00cfg .tls$ .tls .xtext .xtls .text .shared
-    //   .impdata .trace
+    //   .sxdata .xtls .udata .debug$P .reloc .data .link .xtext .rdata .sdata
+    //   .rodata .shared
     //
-    // and the 82 MB first one holding the code is the one called `.rsrc`.
-    // There IS a `.text` again, but it is a 1.8 MB section near the end of the
-    // image (RVA 0x16F10000, CODE|READ and not even EXECUTE) that the import
-    // directory points into; it is not where the functions are. The exception
-    // directory (data directory 3) is the whole of `.trace` on this build.
+    // and the 89 MB first one holding the code is the one called `.sxdata`.
+    // `.xtext` is the 200 MB one that is not where the functions start, and
+    // the exception directory (data directory 3) is the whole of `.shared`.
     //
-    // Build 25246367 was `.idata .arch .debug$P .tls$ .shared .xcode .00cfg
-    // .sbss .text1 .trace .xtls .link`, code in `.idata`, no `.text` at all,
-    // and the exception directory in `.link` with `.trace` a 560-byte stub. An
-    // earlier version of this test asserted a `.text` section existed and
-    // failed against that build; asserting one did NOT exist failed against
-    // this one.
+    // 26356046, the hotfix it replaced, was `.xtext .shared .sdata .didata
+    // .trace .xcode .data .text .ecode .rsrc .tls .rdata`: the code in the
+    // first section, then called `.xtext`, a `.text` that was the 200 MB one,
+    // and the exception directory the whole of `.rdata`.
+    //
+    // 26345091, the build this retarget was derived on and which Steam
+    // replaced the same day, was `.trace .xtls .reloc .arch .text1 .shared
+    // .data2 .didata .debug .data1 .xtext .edata`: the same twelve sections at
+    // nearly the same addresses, every name different, the code in `.trace`
+    // and the exception directory in `.edata`. A hotfix rename is enough to
+    // break a name-keyed lookup. Build 25477059 was `.rsrc .xdata .rdata
+    // .00cfg .tls$ .tls .xtext .xtls .text .shared .impdata .trace`, code in
+    // `.rsrc` and the exception directory all of `.trace`. Build 25246367 was
+    // `.idata .arch .debug$P .tls$ .shared .xcode .00cfg .sbss .text1 .trace
+    // .xtls .link`, code in `.idata`, the exception directory in `.link`, and
+    // no `.text` at all: an earlier version of this test asserted a `.text`
+    // existed and failed against that build; asserting one did NOT exist
+    // failed against the next.
     //
     // The lesson generalises past this assert: nothing in tools/ may select a
     // section by NAME. Match on the address range, which is what the section
-    // table actually means.
+    // table actually means, and find the exception directory through the data
+    // directory, which is what `Pe::exception_directory` does.
     let names: Vec<&str> = pe.sections.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(
         names,
         [
-            ".rsrc", ".xdata", ".rdata", ".00cfg", ".tls$", ".tls", ".xtext", ".xtls", ".text",
-            ".shared", ".impdata", ".trace",
+            ".sxdata", ".xtls", ".udata", ".debug$P", ".reloc", ".data", ".link", ".xtext", ".rdata",
+            ".sdata", ".rodata", ".shared",
         ],
         "the section names moved again - a game update, not a parser bug"
     );
-    // `get_pos` (RVA 0x17FA220 on 25477059, see tests/dis_cli.rs) is code, and
-    // the section that holds it is not the one named `.text`.
-    let get_pos = 0x17F_A220;
-    let holding = pe
-        .sections
-        .iter()
-        .find(|s| s.virtual_address <= get_pos && get_pos < s.virtual_address + s.virtual_size)
-        .expect("get_pos is in no section");
-    assert_eq!(holding.name, ".rsrc");
+    // `get_pos` (RVA 0x19375C0 on 26361232, 0x1937610 on 26356046 as on
+    // 26345091, see tests/dis_cli.rs) is code, in the section that happens to
+    // be called `.sxdata` this build (`.xtext` on 26356046).
+    let get_pos = 0x193_75C0;
+    let holding = pe.section_of(get_pos).expect("get_pos is in no section");
+    assert_eq!(holding.name, ".sxdata");
     assert_eq!(holding.virtual_address, 0x1000);
+
+    // The exception directory, found by index and never by name.
+    let x = pe.exception_directory().expect("the exe has an exception directory");
+    assert_eq!((x.rva, x.size), (0x13D9_A000, 0x2D_8844));
+    assert_eq!(pe.section_of(x.rva).map(|s| s.name.as_str()), Some(".shared"));
+    assert_eq!(pe.size_of_image(), 0x1407_3000);
+    assert_eq!(pe.timestamp(), 0x6AE6_E3E8);
+    let funcs = desert_tools::funcs::FunctionTable::from_image(&pe.image(), x.rva, x.size).unwrap();
+    assert_eq!((funcs.len(), funcs.chained), (248_667, 51_083));
+    let (_, root) = funcs.containing(get_pos + 0x20).expect("get_pos has a RUNTIME_FUNCTION");
+    assert_eq!(root.begin, get_pos);
     assert!(pe.size_of_image as usize > data.len() / 2);
 }
 

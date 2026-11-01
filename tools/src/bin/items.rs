@@ -21,7 +21,7 @@
 //! ```
 //!
 //! Reads the clean `gimmickinfo` table body - the plugin's own dump
-//! (`<bin64>/DesertTooling.gimmickinfo.bin`, written under `[Gatherer]
+//! (`<bin64>/DesertTooling.gimmickinfo.bin`, written under `[Harvest]
 //! DumpTable=1`) when it exists, else the copy DMM writes out
 //! (`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`); `paths::dmm_table` has
 //! the rule. It carries record-relative offsets only and so needs no rebasing

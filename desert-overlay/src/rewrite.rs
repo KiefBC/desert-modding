@@ -10,10 +10,10 @@
 //! headers, key order, key spelling, the spacing around the `=` and the file's
 //! line ending all come out the way they went in.
 //!
-//! **The section is the whole point.** `DesertTooling.ini` holds `[Looter]`,
-//! `[Gatherer]` and `[Overlay]` in one file, `Enabled` exists in all three and
-//! `Debug` in two, so a key match on its own would write the looter's checkbox
-//! into the gatherer's settings. Every match here is therefore gated on the
+//! **The section is the whole point.** `DesertTooling.ini` holds `[Harvest]`,
+//! `[Overlay]` and `[Dispatch]` in one file and `Enabled` exists in all three,
+//! so a key match on its own would write one subsystem's checkbox into
+//! another's settings. Every match here is therefore gated on the
 //! header the line falls under, matched the way [`desert_core::ini::entries`]
 //! reports it (bracket-stripped, trimmed, ASCII case-insensitive); pairs that
 //! sit before any header at all belong to no section and are never touched. A
@@ -21,13 +21,15 @@
 //! at the end of the file, and a section that is not in the file at all is
 //! appended with its header first.
 //!
-//! [`write_atomically`] writes `<name>.ini.tmp` beside the target and renames
-//! it over the original. `std::fs::rename` on Windows is `MoveFileEx` with
-//! `MOVEFILE_REPLACE_EXISTING`, so the swap replaces the file rather than
-//! failing, and a subsystem that stats the ini one second later either sees the
-//! whole old file or the whole new one - never a half-written one.
+//! [`write_atomically`] (now in [`desert_core::ini`], re-exported here so the
+//! store's call sites stay as they were) writes `<name>.ini.tmp` beside the
+//! target and renames it over the original. `std::fs::rename` on Windows is
+//! `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`, so the swap replaces the file
+//! rather than failing, and a subsystem that stats the ini one second later
+//! either sees the whole old file or the whole new one - never a half-written
+//! one.
 
-use std::path::{Path, PathBuf};
+pub use desert_core::ini::{temp_path, write_atomically};
 
 /// One line of the file as it will be written back: its body (no terminator)
 /// and the terminator it carried, which is `""` only for a last line that had
@@ -185,32 +187,6 @@ fn rewrite_line(body: &str, updates: &[(&str, String)], seen: &mut [bool]) -> St
     let gap_len = after.len() - after.trim_start().len();
     let gap = after.get(..gap_len).unwrap_or("");
     format!("{key}={gap}{value}")
-}
-
-/// Where [`write_atomically`] stages the new content: `DesertTooling.ini` ->
-/// `DesertTooling.ini.tmp`, in the same directory so the rename is a
-/// same-volume move rather than a copy.
-pub fn temp_path(path: &Path) -> PathBuf {
-    let mut s = path.as_os_str().to_os_string();
-    s.push(".tmp");
-    PathBuf::from(s)
-}
-
-/// Write `contents` to `path` through a temporary file and a rename.
-///
-/// The subsystems poll the ini's modified time roughly once a second and
-/// re-read it when it moves; a truncate-then-write would give them a window in
-/// which the file is empty and every key falls back to its default. The rename
-/// makes the change one indivisible step. A failure leaves the original
-/// untouched and the temporary file removed.
-pub fn write_atomically(path: &Path, contents: &str) -> std::io::Result<()> {
-    let tmp = temp_path(path);
-    std::fs::write(&tmp, contents)?;
-    if let Err(e) = std::fs::rename(&tmp, path) {
-        let _ = std::fs::remove_file(&tmp);
-        return Err(e);
-    }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -448,23 +424,5 @@ Theme=banner
         let once = rewrite("[Looter]\n; c\nEnabled=1\n", "Looter", &updates);
         let twice = rewrite(&once, "Looter", &updates);
         assert_eq!(once, twice);
-    }
-
-    #[test]
-    fn temp_path_sits_beside_the_target() {
-        let p = Path::new("/game/bin64/DesertTooling.ini");
-        assert_eq!(temp_path(p), Path::new("/game/bin64/DesertTooling.ini.tmp"));
-    }
-
-    #[test]
-    fn write_atomically_replaces_an_existing_file() {
-        let dir = std::env::temp_dir().join(format!("desert-overlay-rewrite-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("DesertTooling.ini");
-        std::fs::write(&path, "Enabled=1\n").unwrap();
-        write_atomically(&path, "Enabled=0\n").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "Enabled=0\n");
-        assert!(!temp_path(&path).exists(), "the staging file is gone after the rename");
-        std::fs::remove_dir_all(&dir).ok();
     }
 }
