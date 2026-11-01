@@ -13,7 +13,8 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
 Game build 26361232. Re-targeted on 26345091 and re-pinned to the 26356046 and then the 26361232
 hotfix the same day, 2026-11-01. 26345091 and 26356046 were measured offline only; 26361232 has had
-dry-run launches, which found the stream and record-header changes below, and one live launch. The harvest merge below was written on
+dry-run launches, which found the stream and record-header changes below, and live launches, which
+found the parsed-record change below and verified the yields, the catch hook and `Hunting` in game. The harvest merge below was written on
 25477059.
 
 **Re-targeted to game build 26361232.** Build 26345091 (2026-10-31) changed how the game's
@@ -50,6 +51,20 @@ to what you set is a PATCH, and a PATCH before the untagged MINOR it follows fol
   stay vanilla because something changed: `[gimmick] WARN no record header parsed in N records:
   the record format changed; yields stay vanilla` and `[gimmick] WARN no record stream read in N
   records: the stream layout changed; yields stay vanilla`. Nothing changes in the ini.
+- **Moving a yield slider in game works again on 26361232, and the plugin finds the parsed record
+  layout itself.** Changing a multiplier while playing rewrites the records the game has already
+  loaded, and 26361232 moved where those records keep their key and their output list, so the first
+  live launch skipped all 279 (`key mismatch 279`). The plugin now knows both layouts (through
+  25477059, and 26361232's) and checks each against every remembered record before writing, with a
+  general probe after them. It says which one it uses, `[live] parsed layout: key +0x10, list +0x128
+  -> +0x0, count +0x128 -> +0x8, entry 16, block item +0x68, min +0x20, max +0x28 (probed against 279
+  remembered records)`, and a slider move then reads `... 0 skipped; N scalars written`. If no
+  layout fits: `[live] WARN parsed layout not found (...); sliders have no effect until the next
+  load, the hook still multiplies at load`. A record whose current values are not a whole multiple
+  of vanilla is skipped as `yield not a multiple of vanilla`. With `Debug=1` the search also
+  prints where it looked (the path from a record to its item, and hex windows of the record, an
+  entry and a block), which is how the 26361232 layout was read. The multiplier applied at launch
+  was never affected.
 - Re-derived: `alloc_event`, `enqueue`, `own_check_site`, `loot_grant` and `category fn`, so the
   log still says `[sig] 9 found, 0 missing`. The `enqueue` and `loot_grant` hooks now steal 15
   bytes (were 14 and 13), the first safe boundary on the new code.
@@ -146,8 +161,14 @@ is taken away; nothing you had set is lost.
 
 - **Tench (fish class `0x65`) is caught with `GatherFish=1`.** It was passed over as an unknown
   class until a hand catch recorded it: `00 08 FF 21 0A 10 B0 03`, `class=65`, item 29809.
+- **Fish class `0x44` (item 29810) is caught with `GatherFish=1` and multiplied by `Fish`.** Two
+  hand-caught type-06 fish have carried it, on 25477059 and on 26361232. A type-06 class-`0x44`
+  carcass that paid Bird_Meat and Feather on 25246367 remains the one observation against it.
+- **The catch hook counts what it sees**: `[catch] stat: grants seen N, type unreadable N, not a
+  catchable type N, class unreadable N, unknown class N, multiplied N, left at 1x N`, printed with
+  the 60-second summary when it moved, plus a once-only line when its 500-line cap is reached.
 - **`Debug=1` logs one line per creature caught** (`[Gatherer]` until the merge above, `[Harvest]` now):
-  `[catch] debug: type=06 class=65 chr=4005`, just before its `[recv]` line. The other `[catch]`
+  `[catch] debug: actor=0x.. type=06 class=65 chr=4005`, just before its `[recv]` line. The other `[catch]`
   lines are once per class per session, so a second species on an already-logged class was
   silent; this one names every catch.
 - **The F11 survey prints each creature's species row** as `chr=`, beside `type=` and `cat=`.
@@ -162,9 +183,8 @@ is taken away; nothing you had set is lost.
 
 - **The Rice Fish is caught as a bug.** It reads the insect class `0x80` on type 06, the same pair
   as the insects, so `GatherBugs` and `Bugs` take and multiply it, not `GatherFish` and `Fish`.
-- **Fish class `0x44` (item 29810) is still skipped.** It is a type-06 fish on 25477059, but on
-  25246367 a type-06 class-`0x44` carcass paid Bird_Meat and Feather, so the type does not
-  separate the two the way it does for `0x23`.
+- **A fish class is still not a species.** The type-06 class-`0x44` carcass of 25246367 above
+  means the type may not separate a fish from a bird on that class the way it does for `0x23`.
 
 ## [0.9.0] - 2026-09-24
 

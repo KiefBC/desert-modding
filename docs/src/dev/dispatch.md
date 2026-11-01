@@ -6,7 +6,7 @@ Sources: `desert-dispatch/src/lib.rs`, `scan.rs`, `apply.rs`, `node.rs`, `buff.r
 
 The dispatch subsystem began as a read-only census of the game's dispatch missions (**FactionOperation** internally) and now also edits them. It still installs **no hook and patches no game code**, so its place in `desert-tooling`'s spawn list cannot matter, and `Enabled=0` at launch means nothing is read for the session.
 
-A dispatch mission is not its own table: it is a 0x120-byte sub-record inside a `FactionNodeInfo` record, pointer at `record+0xA0`, count at `+0xA8`. `node.rs`'s `mod parsed` is the whole offset table.
+A dispatch mission is not its own table: it is a 0x120-byte sub-record inside a `FactionNodeInfo` record, pointer at `record+0xC0`, count at `+0xC8` on 26345091 and later (`+0xA0` and `+0xA8` through 25477059). `node.rs`'s `mod parsed` is the whole offset table.
 
 ## Reaching the tables
 
