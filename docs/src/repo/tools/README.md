@@ -1,3 +1,3 @@
-*Included verbatim from `tools/README.md`; edit the original.*
+*Included verbatim from `crates/tools/README.md`; edit the original.*
 
-{{#include ../../../../tools/README.md}}
+{{#include ../../../../crates/tools/README.md}}

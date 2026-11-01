@@ -1,6 +1,6 @@
 # Install and upgrade
 
-Source: root `README.md` (Install), `desert-tooling/README.md` (Upgrading, Install, Conflicts with DMM), `justfile` (`install`).
+Source: root `README.md` (Install), `crates/desert-tooling/README.md` (Upgrading, Install, Conflicts with DMM), `justfile` (`install`).
 
 ## Requirements
 

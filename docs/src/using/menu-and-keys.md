@@ -1,6 +1,6 @@
 # Menu and hotkeys
 
-Source: `desert-harvest/src/entry.rs` (main loop), `desert-harvest/src/config.rs`, `desert-harvest/src/looter/config.rs` and `desert-overlay/src/config.rs` `schema()` (key defaults, field order), `desert-harvest/src/looter/recorder.rs` (F7 caps), `desert-overlay/src/ui.rs` (tabs), `desert-tooling/README.md` (The menu, Keys).
+Source: `crates/desert-harvest/src/entry.rs` (main loop), `crates/desert-harvest/src/config.rs`, `crates/desert-harvest/src/looter/config.rs` and `crates/desert-overlay/src/config.rs` `schema()` (key defaults, field order), `crates/desert-harvest/src/looter/recorder.rs` (F7 caps), `crates/desert-overlay/src/ui.rs` (tabs), `crates/desert-tooling/README.md` (The menu, Keys).
 
 ## The menu
 

@@ -1,3 +1,3 @@
-*Included verbatim from `desert-tooling/README.md`; edit the original.*
+*Included verbatim from `crates/desert-tooling/README.md`; edit the original.*
 
-{{#include ../../../../desert-tooling/README.md}}
+{{#include ../../../../crates/desert-tooling/README.md}}

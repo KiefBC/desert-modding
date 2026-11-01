@@ -18,7 +18,7 @@ game's `bin64`).
 
 | Mod | Version | What it does |
 | --- | --- | --- |
-| [desert-tooling](desert-tooling) | 0.10.0 | Auto-loot, gathering yields, dispatch levers and the in-game menu, in one plugin |
+| [desert-tooling](crates/desert-tooling) | 0.10.0 | Auto-loot, gathering yields, dispatch levers and the in-game menu, in one plugin |
 
 One `DesertTooling.asi`, one `DesertTooling.ini`, one `DesertTooling.log`. It
 carries three subsystems, each with its own section in that ini and its own tag
@@ -31,10 +31,10 @@ on every log line:
   mission rewards, a dump of both into the log, and a read-only buff/stat
   census (`[buffs]`).
 
-They live in [`desert-harvest/`](desert-harvest),
-[`desert-overlay/`](desert-overlay) and
-[`desert-dispatch/`](desert-dispatch), which are internal libraries now: they build no `.asi`, are never tagged and
-are never released on their own. Also here: [`desert-core/`](desert-core), the
+They live in [`crates/desert-harvest/`](crates/desert-harvest),
+[`crates/desert-overlay/`](crates/desert-overlay) and
+[`crates/desert-dispatch/`](crates/desert-dispatch), which are internal libraries now: they build no `.asi`, are never tagged and
+are never released on their own. Also here: [`crates/desert-core/`](crates/desert-core), the
 shared plumbing they all link (logging, safe memory reads, hooks, PE/pattern
 scanning), and [`desert-gatherer-dmm/`](desert-gatherer-dmm), the older
 offset-patch version of the gathering multiplier for people on Definitive Mod
@@ -70,7 +70,7 @@ Editing the gathering multipliers from the in-game menu takes effect on the
 table once, about nine seconds after launch, but the plugin rewrites the records
 it already loaded right after the ini change is picked up. How, and what the log
 shows:
-<https://github.com/KiefBC/desert-modding/blob/main/desert-tooling/README.md#how-a-changed-multiplier-becomes-live>.
+<https://github.com/KiefBC/desert-modding/blob/main/crates/desert-tooling/README.md#how-a-changed-multiplier-becomes-live>.
 
 The `[Dispatch]` settings edit tables the game re-reads from its own files every
 launch, so they are not saved into your game: turn them back and the missions go
@@ -127,7 +127,7 @@ The `justfile` wraps the common tasks; run `just` to list them.
 ## More
 
 [`VERSIONING.md`](VERSIONING.md) covers the versioning scheme and release
-procedure. Changelog: [desert-tooling](desert-tooling/CHANGELOG.md).
+procedure. Changelog: [desert-tooling](crates/desert-tooling/CHANGELOG.md).
 
 ## License
 

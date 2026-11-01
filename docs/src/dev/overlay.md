@@ -1,8 +1,8 @@
 # Overlay internals
 
-Sources: `desert-overlay/src/lib.rs`, `ui.rs`, `rewrite.rs`, `store.rs`, `desert-core/src/schema.rs`, `desert-tooling/src/lib.rs`, root `Cargo.toml`, `.cargo/config.toml`, `CLAUDE.md` (How Desert Overlay works). Evidence: `docs/reference-overlay.md`.
+Sources: `crates/desert-overlay/src/lib.rs`, `ui.rs`, `rewrite.rs`, `store.rs`, `crates/desert-core/src/schema.rs`, `crates/desert-tooling/src/lib.rs`, root `Cargo.toml`, `.cargo/config.toml`, `CLAUDE.md` (How Desert Overlay works). Evidence: `docs/reference-overlay.md`.
 
-Read `docs/reference-overlay.md` before touching `desert-overlay/src/ui.rs` or `vendor/hudhook`: it records the swapchain, DPI, HDR, font and input traps that each cost a launch to find, and how to verify a change in game.
+Read `docs/reference-overlay.md` before touching `crates/desert-overlay/src/ui.rs` or `vendor/hudhook`: it records the swapchain, DPI, HDR, font and input traps that each cost a launch to find, and how to verify a change in game.
 
 ## Start-up
 

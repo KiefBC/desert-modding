@@ -1,6 +1,6 @@
 # Current state
 
-Sources: `git tag`, `git ls-remote --tags origin`, `gh release list`, `git log` on `dev` and `main`, `Cargo.toml` files, `desert-gatherer-dmm/dmm_pack.json`, `desert-tooling/CHANGELOG.md`, `TODO.md`, the GitHub branch-protection API. Collected on **2026-11-01**; everything below is a snapshot of that day.
+Sources: `git tag`, `git ls-remote --tags origin`, `gh release list`, `git log` on `dev` and `main`, `Cargo.toml` files, `desert-gatherer-dmm/dmm_pack.json`, `crates/desert-tooling/CHANGELOG.md`, [Open design questions](open-questions.md), the GitHub branch-protection API. Collected on **2026-11-01**; everything below is a snapshot of that day.
 
 ## Game build
 
@@ -19,11 +19,11 @@ Steam build **26361232**, installed 2026-11-01 about 16:55 UTC, the second hotfi
 
 | Package | Version | Source |
 | --- | --- | --- |
-| `desert-tooling` (the plugin) | 0.10.0 | `desert-tooling/Cargo.toml` |
-| `desert-core` | 0.7.0 | `desert-core/Cargo.toml` |
-| `desert-harvest` | 0.6.0 | `desert-harvest/Cargo.toml` (the merge of `desert-looter` 0.5.0 and `desert-gatherer` 0.4.0) |
-| `desert-overlay` | 0.3.0 | `desert-overlay/Cargo.toml` |
-| `desert-dispatch` | 0.3.0 | `desert-dispatch/Cargo.toml` |
+| `desert-tooling` (the plugin) | 0.10.0 | `crates/desert-tooling/Cargo.toml` |
+| `desert-core` | 0.7.0 | `crates/desert-core/Cargo.toml` |
+| `desert-harvest` | 0.6.0 | `crates/desert-harvest/Cargo.toml` (the merge of `desert-looter` 0.5.0 and `desert-gatherer` 0.4.0) |
+| `desert-overlay` | 0.3.0 | `crates/desert-overlay/Cargo.toml` |
+| `desert-dispatch` | 0.3.0 | `crates/desert-dispatch/Cargo.toml` |
 | DMM pack | 1.2 | `desert-gatherer-dmm/dmm_pack.json` |
 
 `just check-versions` prints the same list from the sources and is the answer to trust over this table.
@@ -43,20 +43,6 @@ Six tags exist, identical locally and on `origin`:
 
 So 0.7.0, 0.8.0 and 0.9.0 exist only on `dev`, with CHANGELOG entries and no tag (0.10.0 likewise once committed), and DMM pack 1.3 is in source and unreleased. The four `desert-looter-v*` and `desert-gatherer-v*` tags are the pre-merge plugins' and name crates that no longer exist; they stay as history. The `Tagged` column in `VERSIONING.md` and the release links in the root `README.md` already name `desert-tooling-v0.10.0`: `just sync-versions` writes them from `Cargo.toml`, so they name the next release by design (see [Known drift](known-drift.md)).
 
-## Open design entries in `TODO.md`
+## Open design questions
 
-Headings whose **Status** line is not resolved or shipped, in file order:
-
-| Entry | Status |
-| --- | --- |
-| The item-instance lever | OPEN, untested |
-| Trade goods: 29 records that are not one line each, and 397 that are a different problem | OPEN, re-costed 2026-09-12 |
-| The second yield route the gatherer multiplies nothing in | OPEN |
-| The unclassified records: 297 carrying 308 blocks | OPEN |
-| Digging: a gathering activity the mod cannot even see | OPEN |
-| Extracting item names and the category triple from the `.paz` archives | OPEN, deliberately deferred |
-| Drop *rate* levers | original lead CLOSED; a larger one it uncovered is OPEN |
-| Two tagged, block-carrying records the tag census says belong in `Logging` | DECIDED to add, NOT DONE |
-| An item display-name table | DECIDED, design agreed, nothing built |
-
-The full text is [Design notes (TODO.md)](../repo/TODO.md).
+Nine design questions are still open or decided and not yet built, from the item-instance lever to the item display-name table, plus the money pouch lever found on 2026-11-01. Each has its status and the one check that would settle it on [Open design questions](open-questions.md).

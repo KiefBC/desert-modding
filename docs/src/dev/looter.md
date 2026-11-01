@@ -1,6 +1,6 @@
 # Looter internals
 
-Sources: `desert-harvest/src/entry.rs`, `desert-harvest/src/looter/entry.rs`, `game.rs`, `hunting.rs`, `CLAUDE.md` (How the looter works). Evidence: `docs/reference-internals.md`, which the source comments cite by section; `docs/reference-ledger.md` for every address and offset.
+Sources: `crates/desert-harvest/src/entry.rs`, `crates/desert-harvest/src/looter/entry.rs`, `game.rs`, `hunting.rs`, `CLAUDE.md` (How the looter works). Evidence: `docs/reference-internals.md`, which the source comments cite by section; `docs/reference-ledger.md` for every address and offset.
 
 Read `docs/reference-internals.md` before changing `game.rs`, `events.rs` or `actors.rs`.
 

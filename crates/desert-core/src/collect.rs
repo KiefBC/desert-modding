@@ -1,0 +1,457 @@
+//! Gather-node records of Crimson Desert build 25116796, generated from the
+//! Desert Gatherer DMM pack (gimmickinfo records patched by that pack) plus
+//! crates/tools/extra-families.json (the records DMM has no module for).
+//! `(record key, record name, family)`. Regenerate with crates/tools/target/x86_64-unknown-linux-gnu/release/gen-collect-names.
+//!
+//! That generator rewrites this whole file and it is now safe to run straight
+//! over it: it owns the enum, the rows, both lookups AND the tests below,
+//! including the `family_by_name` note and `non_gather_records_stay_out`,
+//! which earlier versions dropped. Anything hand-added HERE still dies on the
+//! next run - add it to the generator instead.
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Family {
+    /// Also the water drawn from a WATER WELL: `gimmick_well_0001_parts01` (key
+    /// 1001081, item 22008, a fixed 5..5), the one record in this table that is
+    /// not from the DMM pack. It comes from crates/tools/extra-families.json,
+    /// which the gen-collect-names tool verifies against DMM's clean
+    /// gimmickinfo table body on every run. Water from a well is gathered out
+    /// of the world like everything else here, so it lives here rather than in
+    /// a family of its own. The other water source, the breakable pot
+    /// `Background_Breakable_66`, and the market-stall goods hand the player a
+    /// pre-built item instance and never read their record, so a table edit
+    /// cannot reach them; they are listed as `records_not_enabled` in the same
+    /// file and the `foraging_records_not_enabled_stay_out` test below keeps
+    /// them out. See docs/findings/2026-09-12-water-wells.md section 11.
+    Foraging,
+
+    Logging,
+    Mining,
+    Ore,
+
+    /// The CURRENCY multiplier: the money props placed in the world, and
+    /// nothing else. Item 1 is the game's one money item (the bag names it
+    /// `Money_Copper`; copper, silver and gold are display units over one
+    /// count, so 2500 copper reads as 25 silver), and these are the only
+    /// gimmickinfo records paying it that are pickups. A placed coin prop reads
+    /// its output block - three vanilla hand pickups of
+    /// `gimmick_item_common_coin_0001` on 2026-09-13, build 25246367, paid x15,
+    /// x14, x15 inside its 10..15 block, and one pickup at Money=3 the same day
+    /// paid x30 against a bag delta of exactly +30
+    /// (docs/findings/2026-09-12-water-wells.md section 13.7; CONFIRMED IN GAME
+    /// on build 25246367) - so the same block edit that multiplies a bush
+    /// multiplies them, and `hook::reapply` is what reached them live. This is
+    /// the ONLY family allowed to pay item 1, and every record in it must pay
+    /// item 1 and nothing else; the gen-collect-names tool enforces both
+    /// halves. What it reaches is money lying in the world and nothing else:
+    /// not enemy drops, not quest rewards, not coin pouches, not chests, not
+    /// shop prices, not dispatch rewards. The three donation-box coin records
+    /// are not pickups and are kept out below.
+    Money,
+}
+
+pub const COLLECT_RECORDS: &[(u32, &str, Family)] = &[
+    (1003687, "amaranth_01", Family::Foraging),
+    (17020034, "apple_01", Family::Foraging),
+    (1002645, "Asparagus_01", Family::Foraging),
+    (1002648, "Barley_01", Family::Foraging),
+    (1002996, "bean_01", Family::Foraging),
+    (17020001, "begonia_01", Family::Foraging),
+    (17020030, "blackberry_01", Family::Foraging),
+    (17020029, "blueberry_01", Family::Foraging),
+    (1005401, "Buckwheat_01", Family::Foraging),
+    (17010002, "bush_sage_01", Family::Foraging),
+    (17010003, "bush_sage_01_red", Family::Foraging),
+    (1002508, "cabbage_01", Family::Foraging),
+    (1002644, "Cacao_01", Family::Foraging),
+    (17020021, "carrot_01", Family::Foraging),
+    (2530061, "cave_break_stalac_02", Family::Mining),
+    (1005631, "cd_gimmick_ct_mushroom_hericium_wood_brokentree_01_parts01", Family::Foraging),
+    (1005632, "cd_gimmick_ct_mushroom_phellinus_wood_brokentree_01_parts01", Family::Foraging),
+    (1005633, "cd_gimmick_ct_mushroom_shiitake_wood_brokentree_01_parts01", Family::Foraging),
+    (1005634, "cd_gimmick_ct_poisonmushroom_wood_brokentree_01_parts01", Family::Foraging),
+    (1003627, "Chaya_01", Family::Foraging),
+    (1002333, "Chlorella_01", Family::Foraging),
+    (1002643, "Coffee_01", Family::Foraging),
+    (17020024, "corn_01", Family::Foraging),
+    (17020009, "cotton_01", Family::Foraging),
+    (1002827, "cucumber_01", Family::Foraging),
+    (17020032, "desertwatermelon_01", Family::Foraging),
+    (1000844, "Dulse_01", Family::Foraging),
+    (1002651, "Elderberry_01", Family::Foraging),
+    (1003625, "Ensete_01", Family::Foraging),
+    (1002647, "Fennel_01", Family::Foraging),
+    (1002642, "Figs_01", Family::Foraging),
+    (1002971, "firewood_0001", Family::Logging),
+    (1006738, "firewood_0001_Fine", Family::Logging),
+    (1003241, "firewood_0001_index01", Family::Logging),
+    (1006736, "firewood_0001_index01_Fine", Family::Logging),
+    (1006737, "firewood_0001_index01_Premium", Family::Logging),
+    (1003242, "firewood_0001_index02", Family::Logging),
+    (1006742, "firewood_0001_index02_Fine", Family::Logging),
+    (1006743, "firewood_0001_index02_Premium", Family::Logging),
+    (1003243, "firewood_0001_index03", Family::Logging),
+    (1006740, "firewood_0001_index03_Fine", Family::Logging),
+    (1006741, "firewood_0001_index03_Premium", Family::Logging),
+    (1010009, "firewood_0001_index04", Family::Logging),
+    (1010010, "firewood_0001_index04_Fine", Family::Logging),
+    (1010011, "firewood_0001_index04_Premium", Family::Logging),
+    (1010268, "firewood_0001_index05", Family::Logging),
+    (1010269, "firewood_0001_index05_Fine", Family::Logging),
+    (1010270, "firewood_0001_index05_Premium", Family::Logging),
+    (1010271, "firewood_0001_index06", Family::Logging),
+    (1010272, "firewood_0001_index06_Fine", Family::Logging),
+    (1010273, "firewood_0001_index06_Premium", Family::Logging),
+    (1006739, "firewood_0001_Premium", Family::Logging),
+    (1003244, "firewood_0002", Family::Logging),
+    (1006744, "firewood_0002_Fine", Family::Logging),
+    (1003245, "firewood_0002_index01", Family::Logging),
+    (1006746, "firewood_0002_index01_Fine", Family::Logging),
+    (1006747, "firewood_0002_index01_Premium", Family::Logging),
+    (1003246, "firewood_0002_index02", Family::Logging),
+    (1006764, "firewood_0002_index02_Fine", Family::Logging),
+    (1006765, "firewood_0002_index02_Premium", Family::Logging),
+    (1010027, "firewood_0002_index03", Family::Logging),
+    (1010028, "firewood_0002_index03_Fine", Family::Logging),
+    (1010029, "firewood_0002_index03_Premium", Family::Logging),
+    (1010030, "firewood_0002_index04", Family::Logging),
+    (1010031, "firewood_0002_index04_Fine", Family::Logging),
+    (1010032, "firewood_0002_index04_Premium", Family::Logging),
+    (1010033, "firewood_0002_index05", Family::Logging),
+    (1010034, "firewood_0002_index05_Fine", Family::Logging),
+    (1010035, "firewood_0002_index05_Premium", Family::Logging),
+    (1010080, "firewood_0002_index06", Family::Logging),
+    (1010081, "firewood_0002_index06_Fine", Family::Logging),
+    (1010082, "firewood_0002_index06_Premium", Family::Logging),
+    (1010083, "firewood_0002_index07", Family::Logging),
+    (1010084, "firewood_0002_index07_Fine", Family::Logging),
+    (1010085, "firewood_0002_index07_Premium", Family::Logging),
+    (1010123, "firewood_0002_index08", Family::Logging),
+    (1010124, "firewood_0002_index08_Fine", Family::Logging),
+    (1010125, "firewood_0002_index08_Premium", Family::Logging),
+    (1006745, "firewood_0002_Premium", Family::Logging),
+    (1003247, "firewood_0003", Family::Logging),
+    (1006748, "firewood_0003_Fine", Family::Logging),
+    (1003248, "firewood_0003_index01", Family::Logging),
+    (1006750, "firewood_0003_index01_Fine", Family::Logging),
+    (1006751, "firewood_0003_index01_Premium", Family::Logging),
+    (1003249, "firewood_0003_index02", Family::Logging),
+    (1006766, "firewood_0003_index02_Fine", Family::Logging),
+    (1006767, "firewood_0003_index02_Premium", Family::Logging),
+    (1010086, "firewood_0003_index03", Family::Logging),
+    (1010087, "firewood_0003_index03_Fine", Family::Logging),
+    (1010088, "firewood_0003_index03_Premium", Family::Logging),
+    (1006749, "firewood_0003_Premium", Family::Logging),
+    (1000674, "firewood_1001", Family::Logging),
+    (1000877, "firewood_1001_Fine", Family::Logging),
+    (1010036, "firewood_1001_index01", Family::Logging),
+    (1010037, "firewood_1001_index01_Fine", Family::Logging),
+    (1010038, "firewood_1001_index01_Premium", Family::Logging),
+    (1010126, "firewood_1001_index02", Family::Logging),
+    (1010127, "firewood_1001_index02_Fine", Family::Logging),
+    (1010128, "firewood_1001_index02_Premium", Family::Logging),
+    (1010286, "firewood_1001_index03", Family::Logging),
+    (1010287, "firewood_1001_index03_Fine", Family::Logging),
+    (1010288, "firewood_1001_index03_Premium", Family::Logging),
+    (1010289, "firewood_1001_index04", Family::Logging),
+    (1010290, "firewood_1001_index04_Fine", Family::Logging),
+    (1010291, "firewood_1001_index04_Premium", Family::Logging),
+    (1000973, "firewood_1001_Premium", Family::Logging),
+    (1003206, "firewood_1002", Family::Logging),
+    (1006752, "firewood_1002_Fine", Family::Logging),
+    (1003250, "firewood_1002_index01", Family::Logging),
+    (1006754, "firewood_1002_index01_Fine", Family::Logging),
+    (1006755, "firewood_1002_index01_Premium", Family::Logging),
+    (1003251, "firewood_1002_index02", Family::Logging),
+    (1006756, "firewood_1002_index02_Fine", Family::Logging),
+    (1006757, "firewood_1002_index02_Premium", Family::Logging),
+    (1009163, "firewood_1002_index03", Family::Logging),
+    (1006758, "firewood_1002_index03_Fine", Family::Logging),
+    (1006759, "firewood_1002_index03_Premium", Family::Logging),
+    (1007827, "firewood_1002_index04", Family::Logging),
+    (1007828, "firewood_1002_index04_Fine", Family::Logging),
+    (1007829, "firewood_1002_index04_Premium", Family::Logging),
+    (1010012, "firewood_1002_index05", Family::Logging),
+    (1010013, "firewood_1002_index05_Fine", Family::Logging),
+    (1010014, "firewood_1002_index05_Premium", Family::Logging),
+    (1010068, "firewood_1002_index06", Family::Logging),
+    (1010069, "firewood_1002_index06_Fine", Family::Logging),
+    (1010070, "firewood_1002_index06_Premium", Family::Logging),
+    (1010071, "firewood_1002_index07", Family::Logging),
+    (1010072, "firewood_1002_index07_Fine", Family::Logging),
+    (1010073, "firewood_1002_index07_Premium", Family::Logging),
+    (1010074, "firewood_1002_index08", Family::Logging),
+    (1010075, "firewood_1002_index08_Fine", Family::Logging),
+    (1010076, "firewood_1002_index08_Premium", Family::Logging),
+    (1010274, "firewood_1002_index09", Family::Logging),
+    (1010275, "firewood_1002_index09_Fine", Family::Logging),
+    (1010276, "firewood_1002_index09_Premium", Family::Logging),
+    (1010277, "firewood_1002_index10", Family::Logging),
+    (1010278, "firewood_1002_index10_Fine", Family::Logging),
+    (1010279, "firewood_1002_index10_Premium", Family::Logging),
+    (1006753, "firewood_1002_Premium", Family::Logging),
+    (1009553, "firewood_1003", Family::Logging),
+    (1009554, "firewood_1003_Fine", Family::Logging),
+    (1010283, "firewood_1003_index01", Family::Logging),
+    (1010284, "firewood_1003_index01_Fine", Family::Logging),
+    (1010285, "firewood_1003_index01_Premium", Family::Logging),
+    (1009555, "firewood_1003_Premium", Family::Logging),
+    (1010015, "firewood_2001", Family::Logging),
+    (1010016, "firewood_2001_Fine", Family::Logging),
+    (1010018, "firewood_2001_index01", Family::Logging),
+    (1010019, "firewood_2001_index01_Fine", Family::Logging),
+    (1010020, "firewood_2001_index01_Premium", Family::Logging),
+    (1010021, "firewood_2001_index02", Family::Logging),
+    (1010022, "firewood_2001_index02_Fine", Family::Logging),
+    (1010023, "firewood_2001_index02_Premium", Family::Logging),
+    (1010280, "firewood_2001_index03", Family::Logging),
+    (1010281, "firewood_2001_index03_Fine", Family::Logging),
+    (1010282, "firewood_2001_index03_Premium", Family::Logging),
+    (1010017, "firewood_2001_Premium", Family::Logging),
+    (1003252, "firewood_2002", Family::Logging),
+    (1006760, "firewood_2002_Fine", Family::Logging),
+    (1003253, "firewood_2002_index01", Family::Logging),
+    (1006762, "firewood_2002_index01_Fine", Family::Logging),
+    (1006763, "firewood_2002_index01_Premium", Family::Logging),
+    (1010024, "firewood_2002_index02", Family::Logging),
+    (1010025, "firewood_2002_index02_Fine", Family::Logging),
+    (1010026, "firewood_2002_index02_Premium", Family::Logging),
+    (1010077, "firewood_2002_index03", Family::Logging),
+    (1010078, "firewood_2002_index03_Fine", Family::Logging),
+    (1010079, "firewood_2002_index03_Premium", Family::Logging),
+    (1006761, "firewood_2002_Premium", Family::Logging),
+    (1003254, "firewood_2003", Family::Logging),
+    (1006768, "firewood_2003_Fine", Family::Logging),
+    (1006769, "firewood_2003_Premium", Family::Logging),
+    (17020022, "garlic_01", Family::Foraging),
+    (1000183, "gimmick_item_common_coin_0001", Family::Money),
+    (1006419, "gimmick_item_common_coin_0002", Family::Money),
+    (1000712, "gimmick_item_common_silverbar_0001", Family::Money),
+    (1001261, "gimmick_kudzu_vine_0001", Family::Foraging),
+    (1004924, "gimmick_stalactite_0003", Family::Mining),
+    (1004925, "gimmick_stalactite_0004", Family::Mining),
+    (1001081, "gimmick_well_0001_parts01", Family::Foraging),
+    (17010010, "ginseng_01", Family::Foraging),
+    (1001538, "ginseng_02", Family::Foraging),
+    (17020035, "grape_01", Family::Foraging),
+    (17020011, "lavender_01", Family::Foraging),
+    (17020012, "lavender_01_blue", Family::Foraging),
+    (17020013, "lavender_01_white", Family::Foraging),
+    (17020014, "lavender_01_yellow", Family::Foraging),
+    (1002830, "lentils_01", Family::Foraging),
+    (17020028, "linum_01", Family::Foraging),
+    (17020003, "marigold_01", Family::Foraging),
+    (17030001, "mine_bluestone", Family::Mining),
+    (17030021, "mine_bluestone_cave", Family::Mining),
+    (17030002, "mine_copper", Family::Mining),
+    (17030020, "mine_copper_cave", Family::Mining),
+    (17030003, "mine_diamond", Family::Mining),
+    (1000445, "mine_diamond_attach", Family::Mining),
+    (17030019, "mine_diamond_cave", Family::Mining),
+    (17030004, "mine_gold", Family::Mining),
+    (17030018, "mine_gold_cave", Family::Mining),
+    (17030005, "mine_greenstone", Family::Mining),
+    (17030017, "mine_greenstone_cave", Family::Mining),
+    (17030006, "mine_iron", Family::Mining),
+    (1000446, "mine_iron_attach", Family::Mining),
+    (17030016, "mine_iron_cave", Family::Mining),
+    (17030007, "mine_redstone", Family::Mining),
+    (1000447, "mine_redstone_attach", Family::Mining),
+    (17030015, "mine_redstone_cave", Family::Mining),
+    (1002637, "mine_rock_01", Family::Mining),
+    (1002638, "mine_rock_02", Family::Mining),
+    (1002639, "mine_rock_03", Family::Mining),
+    (1001350, "mine_rock_04", Family::Mining),
+    (1001351, "mine_rock_05", Family::Mining),
+    (1001352, "mine_rock_06", Family::Mining),
+    (1001353, "mine_rock_07", Family::Mining),
+    (1001354, "mine_rock_08", Family::Mining),
+    (1001482, "mine_rock_09", Family::Mining),
+    (17030008, "mine_ruby", Family::Mining),
+    (17030014, "mine_ruby_cave", Family::Mining),
+    (17030009, "mine_silver", Family::Mining),
+    (17030013, "mine_silver_cave", Family::Mining),
+    (1001255, "mine_stone_01", Family::Mining),
+    (17030010, "mine_whitestone", Family::Mining),
+    (17030012, "mine_whitestone_cave", Family::Mining),
+    (17010008, "mushroom_hericium_01", Family::Foraging),
+    (17010006, "mushroom_phellinus_01", Family::Foraging),
+    (17010007, "mushroom_shiitake_01", Family::Foraging),
+    (1002828, "navet_01", Family::Foraging),
+    (1002894, "Oleander_01", Family::Foraging),
+    (17020004, "oliganthus_01", Family::Foraging),
+    (17020023, "onion_01", Family::Foraging),
+    (1003626, "opuntia_01", Family::Foraging),
+    (17020037, "orange_01", Family::Foraging),
+    (170800011, "ore_bismuth_01", Family::Ore),
+    (17080003, "ore_BlueStone_01", Family::Ore),
+    (17080005, "ore_copper_01", Family::Ore),
+    (17080006, "ore_diamond_01", Family::Ore),
+    (17080007, "ore_gold_01", Family::Ore),
+    (17080002, "ore_GreenStone_01", Family::Ore),
+    (17070001, "ore_iron_01", Family::Ore),
+    (17080001, "ore_RedStone_01", Family::Ore),
+    (17080009, "ore_ruby_01", Family::Ore),
+    (170800010, "ore_silver_01", Family::Ore),
+    (1001256, "ore_stone_01", Family::Ore),
+    (1001728, "ore_stone_02", Family::Ore),
+    (1001739, "ore_stone_03", Family::Ore),
+    (1000889, "ore_sulfurstone_01", Family::Ore),
+    (17080004, "ore_WhiteStone_01", Family::Ore),
+    (17020005, "pansy_01", Family::Foraging),
+    (1002831, "parsley_01", Family::Foraging),
+    (17020036, "peach_01", Family::Foraging),
+    (1003705, "pear_02", Family::Foraging),
+    (17020020, "peas_01", Family::Foraging),
+    (17020006, "peony_01", Family::Foraging),
+    (1002640, "Pineapple_01", Family::Foraging),
+    (1002641, "Pomegranate_01", Family::Foraging),
+    (17020025, "potato_01", Family::Foraging),
+    (1002511, "pumpkin_01", Family::Foraging),
+    (1004933, "Rare_Collect_Kudzu", Family::Foraging),
+    (1004936, "Rare_Collect_Stalactites", Family::Ore),
+    (17020031, "raspberry_01", Family::Foraging),
+    (1002829, "redbeet_01", Family::Foraging),
+    (17020010, "rock_orchids_01", Family::Foraging),
+    (17020015, "rosemary_01", Family::Foraging),
+    (17020016, "rosemary_01_pink", Family::Foraging),
+    (17020017, "rosemary_01_white", Family::Foraging),
+    (17020018, "rosemary_01_yellow", Family::Foraging),
+    (1006310, "rubber_Seed_0002", Family::Foraging),
+    (1002652, "Strawberry_01", Family::Foraging),
+    (17020026, "sweetpotato_01", Family::Foraging),
+    (1003688, "Taro_01", Family::Foraging),
+    (17020027, "tomato_01", Family::Foraging),
+    (17020007, "variegatum_01", Family::Foraging),
+    (17020019, "veratrum_01", Family::Foraging),
+    (1002646, "Victorialis_01", Family::Foraging),
+    (17020008, "villosa_01", Family::Foraging),
+    (17010004, "weed_croton_04", Family::Foraging),
+    (17010005, "weed_harsam_01", Family::Foraging),
+    (17010001, "weed_sophora_01", Family::Foraging),
+    (1002649, "Wheat_01", Family::Foraging),
+];
+
+/// Family of a gather record by its key, if it is one.
+pub fn family_by_key(key: u32) -> Option<Family> {
+    COLLECT_RECORDS.iter().find(|(k, _, _)| *k == key).map(|(_, _, f)| *f)
+}
+
+/// Family of a gather record by its name (case-insensitive), if it is one.
+/// Exact record names only. Tried and rejected (2026-09-06): treating the
+/// felled-tree chunks (`log_*`) as Logging. The pickup event is ignored for
+/// them; the chunk actor even survives having its `firewood_*` materials cut
+/// out. Only the materials are gather nodes.
+pub fn family_by_name(name: &str) -> Option<Family> {
+    COLLECT_RECORDS.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(name)).map(|(_, _, f)| *f)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn non_gather_records_stay_out() {
+        assert_eq!(family_by_name("log_1002_index07"), None);
+        assert_eq!(family_by_name("gimmick_tree_cd_crop_apple_02_collect"), None);
+        assert_eq!(family_by_name("item_basic_onehand"), None);
+        assert_eq!(family_by_name("firewood_1002_index07"), Some(Family::Logging));
+    }
+
+    #[test]
+    fn known_records() {
+        assert_eq!(family_by_name("peony_01"), Some(Family::Foraging));
+        assert_eq!(family_by_key(17020006), Some(Family::Foraging));
+        assert_eq!(family_by_name("ore_copper_01"), Some(Family::Ore));
+        assert_eq!(family_by_name("gimmick_gate_metal_lattice_01_dungeon"), None);
+        assert_eq!(COLLECT_RECORDS.len(), 279);
+    }
+
+    /// Rows from crates/tools/extra-families.json, not from the DMM pack.
+    /// Items paid: 22008.
+    #[test]
+    fn foraging_extra_records_are_present() {
+        let extra: &[(u32, &str)] = &[
+            (1001081, "gimmick_well_0001_parts01"),
+        ];
+        for &(key, name) in extra {
+            assert_eq!(family_by_key(key), Some(Family::Foraging), "{name}");
+            assert_eq!(family_by_name(name), Some(Family::Foraging), "{name}");
+        }
+        assert_eq!(
+            COLLECT_RECORDS.iter().filter(|(_, _, f)| *f == Family::Foraging).count(),
+            83
+        );
+    }
+
+    /// `records_not_enabled` in crates/tools/extra-families.json: records a table
+    /// edit was measured or argued not to reach - they hand the player a
+    /// pre-built item instance and never read their output block (see
+    /// docs/findings/2026-09-12-water-wells.md section 11), or they are
+    /// not pickups at all; each record's `why` in that file says which.
+    /// They must stay OUT of the table, not sit in it inert: a row here
+    /// would be an edit the log reports and the player never sees.
+    #[test]
+    fn foraging_records_not_enabled_stay_out() {
+        let out: &[(u32, &str)] = &[
+            (21030076, "Background_Breakable_66"),
+            (1001130, "gimmick_item_trade_cheese_01"),
+            (1001167, "gimmick_item_trade_cheese_02"),
+            (1001131, "gimmick_item_trade_fishmeat_01"),
+            (1001168, "gimmick_item_trade_fishmeat_02"),
+            (1001160, "gimmick_item_trade_flour_02"),
+            (1001120, "gimmick_item_trade_flour_03"),
+            (1001129, "gimmick_item_trade_ginseng_01"),
+            (1001166, "gimmick_item_trade_ginseng_02"),
+            (1001123, "gimmick_item_trade_honey_01"),
+            (1001128, "gimmick_item_trade_pepper_01"),
+            (1001132, "gimmick_item_trade_pepper_03"),
+            (1001162, "gimmick_item_trade_salt_02"),
+            (1001127, "gimmick_item_trade_salt_03"),
+            (1001122, "gimmick_item_trade_sugar_01"),
+            (1001118, "gimmick_item_trade_sugar_03"),
+        ];
+        for &(key, name) in out {
+            assert_eq!(family_by_key(key), None, "{name}");
+            assert_eq!(family_by_name(name), None, "{name}");
+        }
+    }
+
+    /// Rows from crates/tools/extra-families.json, not from the DMM pack.
+    /// Items paid: 1.
+    #[test]
+    fn money_extra_records_are_present() {
+        let extra: &[(u32, &str)] = &[
+            (1000183, "gimmick_item_common_coin_0001"),
+            (1006419, "gimmick_item_common_coin_0002"),
+            (1000712, "gimmick_item_common_silverbar_0001"),
+        ];
+        for &(key, name) in extra {
+            assert_eq!(family_by_key(key), Some(Family::Money), "{name}");
+            assert_eq!(family_by_name(name), Some(Family::Money), "{name}");
+        }
+        assert_eq!(
+            COLLECT_RECORDS.iter().filter(|(_, _, f)| *f == Family::Money).count(),
+            3
+        );
+    }
+
+    /// `records_not_enabled` in crates/tools/extra-families.json: records a table
+    /// edit was measured or argued not to reach - they hand the player a
+    /// pre-built item instance and never read their output block (see
+    /// docs/findings/2026-09-12-water-wells.md section 11), or they are
+    /// not pickups at all; each record's `why` in that file says which.
+    /// They must stay OUT of the table, not sit in it inert: a row here
+    /// would be an edit the log reports and the player never sees.
+    #[test]
+    fn money_records_not_enabled_stay_out() {
+        let out: &[(u32, &str)] = &[
+            (1005717, "gimmick_box_donation_reward_coin_01"),
+            (1005718, "gimmick_box_donation_reward_coin_02"),
+            (1005719, "gimmick_box_donation_reward_coin_03"),
+        ];
+        for &(key, name) in out {
+            assert_eq!(family_by_key(key), None, "{name}");
+            assert_eq!(family_by_name(name), None, "{name}");
+        }
+    }
+}

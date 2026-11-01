@@ -1,6 +1,6 @@
 # Dispatch internals
 
-Sources: `desert-dispatch/src/lib.rs`, `scan.rs`, `apply.rs`, `node.rs`, `buff.rs`, `config.rs`, `desert-core/src/gimmick.rs`, `CLAUDE.md` (How Desert Dispatch works). Evidence: `docs/findings/2026-09-10-dispatch.md`; `docs/reference-internals.md` §20 (§20.3.1 duration, §20.5 and §20.18 banking, §20.14 accessor census, §20.17 and §20.22 `dropsetinfo`).
+Sources: `crates/desert-dispatch/src/lib.rs`, `scan.rs`, `apply.rs`, `node.rs`, `buff.rs`, `config.rs`, `crates/desert-core/src/gimmick.rs`, `CLAUDE.md` (How Desert Dispatch works). Evidence: `docs/findings/2026-09-10-dispatch.md`; `docs/reference-internals.md` §20 (§20.3.1 duration, §20.5 and §20.18 banking, §20.14 accessor census, §20.17 and §20.22 `dropsetinfo`).
 
 ## What it is
 
@@ -16,12 +16,12 @@ Across the plugin, startup makes 8 full passes over the image:
 
 | Site | Passes |
 | --- | --- |
-| `desert-harvest/src/looter/game.rs` `pattern::find_unique_multi`, the nine signatures | 1 (was one per signature) |
-| `desert-harvest/src/looter/game.rs` `rtti::vtables_for_class` | 3 |
-| `desert-harvest/src/looter/tables.rs` accessor scan, no base | 1 |
-| `desert-harvest/src/gatherer/entry.rs` accessor scan, no base | 1 |
-| `desert-harvest/src/gatherer/catch.rs` `CATCH_SITE` | 1 |
-| `desert-dispatch/src/scan.rs` accessor scan, with base | 1 |
+| `crates/desert-harvest/src/looter/game.rs` `pattern::find_unique_multi`, the nine signatures | 1 (was one per signature) |
+| `crates/desert-harvest/src/looter/game.rs` `rtti::vtables_for_class` | 3 |
+| `crates/desert-harvest/src/looter/tables.rs` accessor scan, no base | 1 |
+| `crates/desert-harvest/src/gatherer/entry.rs` accessor scan, no base | 1 |
+| `crates/desert-harvest/src/gatherer/catch.rs` `CATCH_SITE` | 1 |
+| `crates/desert-dispatch/src/scan.rs` accessor scan, with base | 1 |
 
 The three RTTI walks are a dependency chain (descriptor, then locator, then vtable), so they cannot be batched like the signatures.
 

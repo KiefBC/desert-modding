@@ -143,7 +143,7 @@ There used to be three ladders here, one per shipped `.asi`, and all three clear
 2026-09-08. Desert Gatherer always did: it reaches the record loader through the accessor that
 names `gimmickinfo`, and the catch site by signature. Desert Overlay had no game addresses to
 resolve at all. Desert Looter was the last holdout, carrying `ITEM_INFO_SLOT` and `GIMMICK_INFO_SLOT`
-as bare RVAs in what is now [`desert-harvest/src/looter/tables.rs`](desert-harvest/src/looter/tables.rs); both are resolved by
+as bare RVAs in what is now [`crates/desert-harvest/src/looter/tables.rs`](crates/desert-harvest/src/looter/tables.rs); both are resolved by
 content through `desert_core::gimmick`, and there is no bare image address left anywhere in the
 workspace. That rung is cleared for the whole plugin, because it is cleared for every subsystem in
 it.
@@ -183,7 +183,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
 
 ## Cutting a release
 
-1. Bump `version` in `desert-tooling/Cargo.toml`. That's the single source of truth: the log's first
+1. Bump `version` in `crates/desert-tooling/Cargo.toml`. That's the single source of truth: the log's first
    line prints `CARGO_PKG_VERSION`, so nothing else needs editing to stay honest. (Bumping a library
    crate is bookkeeping and releases nothing; only `desert-tooling` is tagged.)
 2. Run `just sync-versions` to pull that number through the version tables in this file, the top
@@ -228,7 +228,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    its mod page as a new version of the existing file, with the CHANGELOG entry as the Nexus
    changelog. Both packages are separate files on one page (`crimsondesert/mods/3369`), so a
    tag only ever touches its own file. The mod page's version follows the file and the previous
-   version is archived. Which file each tag goes to is `tools/nexus-targets.json`; a package with no
+   version is archived. Which file each tag goes to is `crates/tools/nexus-targets.json`; a package with no
    `file_id` there is skipped, and its GitHub release still happens. The API can only add a version
    to a file that already exists, so a mod page and its first file are created by hand on the site,
    once; `desert-tooling`'s was, on 2026-09-09, and both packages now have a `file_id`. A brand new

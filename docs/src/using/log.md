@@ -1,6 +1,6 @@
 # Reading the log
 
-Source: `desert-core/src/log.rs` (`line`, `emit`), the `LOG_TAG` constants of each crate, the log calls in `desert-harvest/src/entry.rs`, `desert-harvest/src/looter/{game,entry,hunting}.rs`, `desert-harvest/src/gatherer/{entry,hook,catch}.rs`, `desert-overlay/src/lib.rs`, `desert-dispatch/src/node.rs`; file names from `desert-tooling/src/lib.rs`, `desert-overlay/src/rewrite.rs`, `desert-harvest/src/looter/entry.rs`, `desert-harvest/src/gatherer/dump.rs`.
+Source: `crates/desert-core/src/log.rs` (`line`, `emit`), the `LOG_TAG` constants of each crate, the log calls in `crates/desert-harvest/src/entry.rs`, `crates/desert-harvest/src/looter/{game,entry,hunting}.rs`, `crates/desert-harvest/src/gatherer/{entry,hook,catch}.rs`, `crates/desert-overlay/src/lib.rs`, `crates/desert-dispatch/src/node.rs`; file names from `crates/desert-tooling/src/lib.rs`, `crates/desert-overlay/src/rewrite.rs`, `crates/desert-harvest/src/looter/entry.rs`, `crates/desert-harvest/src/gatherer/dump.rs`.
 
 `DesertTooling.log` sits in `bin64` beside the game exe. Every subsystem writes into it, and it is append-only: it grows every session and is safe to delete at any time. Developers can follow it with `just log`.
 

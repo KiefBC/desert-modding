@@ -5,7 +5,7 @@
 # so `just build` is enough either way.
 #
 # Nothing here shells out to python3, objdump, zip or sha256sum any more. Every
-# support script in tools/ is a Rust binary built by `just tools`, and the dev
+# support script in crates/tools/ is a Rust binary built by `just tools`, and the dev
 # shell is now needed only for the Rust toolchain and the mingw linker.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -20,17 +20,17 @@ bin64 := env("CD_BIN64", "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bi
 
 # The clean gimmickinfo table body and the Steam appmanifest are not named
 # here: the only recipe that needs them, `dmm-rebase`, hands the choice to the
-# tool, which applies tools/src/paths.rs's rule (CD_DMM_TABLE, else the
+# tool, which applies crates/tools/src/paths.rs's rule (CD_DMM_TABLE, else the
 # plugin's dump in bin64, else DMM's backup copy; CD_APPMANIFEST for the build
 # id). One rule in one place, instead of a copy here that could drift from it.
 
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
 
-# Where `just tools` puts the support binaries. Everything in tools/ is Rust
+# Where `just tools` puts the support binaries. Everything in crates/tools/ is Rust
 # now: there are no .py or .sh files left there, and no recipe shells out to
 # python3, objdump, zip or sha256sum any more.
-tools_bin := "tools/target/" + native + "/release"
+tools_bin := "crates/tools/target/" + native + "/release"
 
 # Every DLL DesertTooling.asi is allowed to import. All of these ship WITH
 # Windows, so an .asi that imports only these loads in bin64 with nothing
@@ -61,10 +61,10 @@ default:
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
 
-# tools/ is its OWN cargo workspace, excluded from this one, because everything
+# crates/tools/ is its OWN cargo workspace, excluded from this one, because everything
 # here cross-compiles to Windows and none of the tools do.
 #
-# CARGO_BUILD_TARGET is not decoration. tools/.cargo/config.toml pins the host
+# CARGO_BUILD_TARGET is not decoration. crates/tools/.cargo/config.toml pins the host
 # target, but cargo discovers config by walking up from the CURRENT DIRECTORY,
 # not from --manifest-path - so run from the repo root, the tools pick up the
 # ROOT config instead and try to cross-compile themselves to Windows, failing
@@ -72,21 +72,21 @@ build crate="":
 # over both config files, which lets every recipe below stay in the repo root,
 # where a relative path handed to a tool still means what it says.
 
-# Build the support tools in tools/ (host binaries, their own workspace).
+# Build the support tools in crates/tools/ (host binaries, their own workspace).
 tools:
-    CARGO_BUILD_TARGET={{native}} {{nix}} cargo build --release --manifest-path tools/Cargo.toml
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo build --release --manifest-path crates/tools/Cargo.toml
 
 # Clippy and unit tests for the tools (host target only; nothing here ships).
 tools-check:
-    CARGO_BUILD_TARGET={{native}} {{nix}} cargo clippy --manifest-path tools/Cargo.toml --all-targets -- -D warnings
-    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path tools/Cargo.toml
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo clippy --manifest-path crates/tools/Cargo.toml --all-targets -- -D warnings
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml
 
 # Separate from `tools-check` for the same reason `test-game` is separate from
 # `test`: a CI runner has no game, no DMM table and no Ghidra.
 
 # The tools' tests needing the game exe, DMM's table or a built plugin.
 tools-check-game: tools
-    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path tools/Cargo.toml -- --ignored
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml -- --ignored
 
 # Unit tests on both targets: native Linux, then the Windows binaries via WSL interop.
 test: test-native test-win
@@ -139,7 +139,7 @@ docs:
 docs-serve:
     {{nix}} mdbook serve docs -n 127.0.0.1 -p 3000
 
-# Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
+# Rasterise assets/logo.svg into crates/desert-overlay/src/logo.rgba (the menu's header logo).
 logo: tools
     {{tools_bin}}/logo-to-rgba
 
@@ -199,7 +199,7 @@ yields:
 # Remove build output and dist/.
 clean:
     {{nix}} cargo clean
-    {{nix}} cargo clean --manifest-path tools/Cargo.toml
+    {{nix}} cargo clean --manifest-path crates/tools/Cargo.toml
     rm -rf dist
 
 # --- DMM pack (desert-gatherer-dmm/) --------------------------------------
@@ -212,7 +212,7 @@ clean:
 # written by one launch with `[Harvest] DumpTable=1` and `DryRun=1`
 # (CD_DMM_TABLE overrides it; DMM's backup copy is the last resort), and the
 # build id is the Steam appmanifest's (CD_APPMANIFEST). The tool resolves both
-# itself - tools/src/paths.rs - so they are passed on only when given here,
+# itself - crates/tools/src/paths.rs - so they are passed on only when given here,
 # positionally: `just dmm-rebase /path/to/clean.bin 26361232`. Anything
 # starting with `-` goes to the tool as a flag, in any position, so
 # `just dmm-rebase --dry-run` verifies and prints the report without writing.

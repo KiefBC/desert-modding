@@ -41,11 +41,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-            tools/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'tools/Cargo.lock', 'flake.lock') }}
+            crates/tools/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock', 'crates/tools/Cargo.lock', 'flake.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
-      # tools/ is a separate cargo workspace of host binaries, and the version
+      # crates/tools/ is a separate cargo workspace of host binaries, and the version
       # check below is one of them. This step is where a tools build breaks, so
       # that a failure there does not read as a docs-drift failure.
       #

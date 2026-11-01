@@ -45,7 +45,7 @@ The root `Cargo.toml` carries
 hudhook = { path = "vendor/hudhook" }
 ```
 
-and `desert-overlay/Cargo.toml` still asks for `hudhook = "0.9.2"` from the
+and `crates/desert-overlay/Cargo.toml` still asks for `hudhook = "0.9.2"` from the
 registry as if nothing had happened. It is a `[patch]` rather than a path
 dependency on purpose: the version stays 0.9.2 everywhere, `Cargo.lock` records
 it as such, and going back to the published crate is one deleted section.

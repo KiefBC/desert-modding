@@ -1,5 +1,5 @@
 /target
-/tools/target
+/crates/tools/target
 /result
 result-*
 *:Zone.Identifier
@@ -16,3 +16,6 @@ __pycache__/
 /docs/reference-*.md
 /docs/findings/
 /docs/archive/
+
+# A third-party trainer once dropped into the root; never commit it again.
+/TRINITY/

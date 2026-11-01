@@ -1,6 +1,6 @@
 # Gatherer internals
 
-Sources: `desert-harvest/src/gatherer/entry.rs`, `hook.rs`, `catch.rs`, `dump.rs`, `desert-harvest/src/entry.rs`, `desert-core/src/gimmick.rs`, `desert-core/src/creature.rs`, `CLAUDE.md` (How the gatherer works). Evidence: `docs/reference-internals.md` §16, §17, §19.6.
+Sources: `crates/desert-harvest/src/gatherer/entry.rs`, `hook.rs`, `catch.rs`, `dump.rs`, `crates/desert-harvest/src/entry.rs`, `crates/desert-core/src/gimmick.rs`, `crates/desert-core/src/creature.rs`, `CLAUDE.md` (How the gatherer works). Evidence: `docs/reference-internals.md` §16, §17, §19.6.
 
 ## The record-loader hook
 

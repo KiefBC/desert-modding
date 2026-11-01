@@ -1,6 +1,6 @@
 # Settings quick reference
 
-Source: `schema()` in `desert-harvest/src/config.rs` (with the field lists in `desert-harvest/src/looter/config.rs` and `desert-harvest/src/gatherer/config.rs`), `desert-overlay/src/config.rs` and `desert-dispatch/src/config.rs`; the `Font` key from `desert-overlay/src/config.rs` and `desert-tooling/DesertTooling.ini`.
+Source: `schema()` in `crates/desert-harvest/src/config.rs` (with the field lists in `crates/desert-harvest/src/looter/config.rs` and `crates/desert-harvest/src/gatherer/config.rs`), `crates/desert-overlay/src/config.rs` and `crates/desert-dispatch/src/config.rs`; the `Font` key from `crates/desert-overlay/src/config.rs` and `crates/desert-tooling/DesertTooling.ini`.
 
 Every key lives in `DesertTooling.ini` beside the game exe, under its subsystem's `[Section]` header. `Enabled` and `Debug` exist under all three sections and mean different things in each, and `DryRun` exists under `[Harvest]` and `[Dispatch]`, so a key belongs to the header above it. Each table below lists the key, its default, the range the menu and the parser accept, and the menu tab it is drawn on. Booleans are written `1`/`0`. The long form of every setting is in the manual's [Settings section](../repo/desert-tooling/index.md#settings-deserttoolingini), and the shipped `DesertTooling.ini` carries a comment above every key.
 

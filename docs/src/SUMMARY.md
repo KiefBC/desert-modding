@@ -25,9 +25,9 @@
 - [Tools](repo/tools/README.md)
 - [Re-targeting and analysis tools](dev/retarget.md)
 - [Versioning and releases](repo/VERSIONING.md)
-- [Design notes (TODO.md)](repo/TODO.md)
 - [hudhook fork changes](repo/vendor/hudhook/DESERT-CHANGES.md)
 - [Known drift](dev/known-drift.md)
+- [Open design questions](dev/open-questions.md)
 
 # Reverse-engineering record (local only)
 

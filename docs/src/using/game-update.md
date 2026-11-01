@@ -1,6 +1,6 @@
 # After a game update
 
-Source: `desert-tooling/README.md` (How it survives game updates), the refusal log calls in `desert-harvest/src/looter/game.rs`, `desert-harvest/src/gatherer/{entry,hook,catch}.rs`, `desert-dispatch/src/node.rs`.
+Source: `crates/desert-tooling/README.md` (How it survives game updates), the refusal log calls in `crates/desert-harvest/src/looter/game.rs`, `crates/desert-harvest/src/gatherer/{entry,hook,catch}.rs`, `crates/desert-dispatch/src/node.rs`.
 
 This page is the player side. The developer checklist is in [Build, test and just recipes](../dev/build-and-test.md).
 

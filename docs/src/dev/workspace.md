@@ -1,6 +1,23 @@
 # Workspace and rules
 
-Sources: root `Cargo.toml`, `clippy.toml`, each crate's `src/lib.rs`, `CLAUDE.md` (Architecture).
+Sources: root `Cargo.toml`, the repo root listing, `clippy.toml`, each crate's `src/lib.rs`, `CLAUDE.md` (Architecture).
+
+## Layout
+
+```
+desert-mods/
+  Cargo.toml  Cargo.lock  justfile  flake.nix  clippy.toml  .cargo/
+  crates/
+    desert-core  desert-harvest  desert-dispatch  desert-overlay  desert-tooling
+    tools               its own cargo workspace, excluded from the root one
+  desert-gatherer-dmm/  the DMM pack (data, not a crate)
+  docs/                 the mdBook (tracked) and the RE record (gitignored)
+  vendor/hudhook/       the patched hudhook fork
+  assets/  .github/
+  analysis/  evidence/  dist/  target/    gitignored
+```
+
+Every Cargo crate lives under `crates/`, the usual Rust layout, so the root holds only what spans the workspace: the manifest, the `justfile`, `docs/`, the DMM pack and `vendor/`. Crate names in `-p` flags and release tags such as `desert-tooling-v0.10.0` are not paths and did not change when the crates moved on 2026-11-01.
 
 ## Crates
 
@@ -13,7 +30,7 @@ Sources: root `Cargo.toml`, `clippy.toml`, each crate's `src/lib.rs`, `CLAUDE.md
 | `desert-dispatch` | rlib | nothing, linked in | `start()` |
 | `desert-gatherer-dmm/` | data, not a crate | the DMM offset-patch pack | none |
 
-`tools/` is a separate cargo workspace of host binaries, excluded from this one (`exclude = ["tools"]`), because everything here cross-compiles to Windows and the tools do not.
+`crates/tools/` is a separate cargo workspace of host binaries, excluded from this one (`exclude = ["crates/tools"]`), because everything here cross-compiles to Windows and the tools do not.
 
 `desert-tooling` holds no policy. Its thread inits the log, seeds the ini if it is missing, migrates an old `[Looter]`/`[Gatherer]` pair into `[Harvest]` (`desert_harvest::migrate`), refuses to go on if a pre-merge `.asi` is loaded, and starts one named thread per subsystem (`desert-harvest`, `desert-dispatch`, `desert-overlay`). Each subsystem keeps its own ini `[Section]`, log tag and `schema()`. The looter and the gatherer share one of each: they act on the same in-game system, so they are one crate, one `[Harvest]` section, one `[harvest]` tag and one menu tab, with the two halves kept as separate modules. Anything that is plumbing rather than mod policy belongs in `desert-core`, so the logger and the memory reads exist once.
 
@@ -46,7 +63,7 @@ Every crate splits its modules into always-compiled and `#[cfg(windows)]`, so `c
 | `desert-overlay` | `config dynmodel logo rewrite store theme themes` | `cursor trace ui` |
 | `desert-dispatch` | `buff config gate node remember` | `apply census scan` (private) |
 
-`desert-tooling` is Windows-only almost end to end. hudhook and imgui are declared under `[target.'cfg(windows)'.dependencies]` in `desert-overlay/Cargo.toml` and do not build natively.
+`desert-tooling` is Windows-only almost end to end. hudhook and imgui are declared under `[target.'cfg(windows)'.dependencies]` in `crates/desert-overlay/Cargo.toml` and do not build natively.
 
 ## Logging and re-exports
 
