@@ -1,0 +1,25 @@
+# mod-status.toml - the live status card on the Nexus page and in the README.
+# Drawn every 15 minutes by .github/workflows/status.yml (https://github.com/KiefBC/mod-status).
+# `build` must equal paths::CALIBRATED_BUILD and the Steam build in crates/desert-tooling/README.md:
+# `just check-versions` fails until they agree, so re-target, README and card move in one commit.
+
+[source]
+kind = "steam"
+app_id = 3321460            # the number in the game's store URL: store.steampowered.com/app/<app_id>
+# version_regex = '(?i)patch notes.*?version\s*(\d+(?:\.\d+)+)'   # the default; group 1 is the version
+# For a game not on Steam:  kind = "manual"  build = "1.2.3"  (edit it when the game updates)
+
+[render]
+layout = "card"
+theme = "crimson-desert"    # "nexus", "crimson-desert", or a path like "./my-theme.toml"
+title_prefix = "LIVE STATUS // AUTO-CHECKED"
+
+# One [[mod]] table per mod; each gets <key>.gif, <key>.png and <key>.json.
+[[mod]]
+key = "desert-tooling"
+label = "Desert Tooling"
+build = "26361232"          # the Steam build you verified the mod on
+date = "2026-11-01"         # when (YYYY-MM-DD)
+status = "working"          # working | broken | wip    - shown while the game is still on `build`
+on_update = "untested"      # untested | broken         - shown once Steam's build moves past it
+note = ""                   # optional one-liner next to the status

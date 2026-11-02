@@ -10,6 +10,14 @@ game's `bin64`).
 
 <br clear="left">
 
+[![Desert Tooling status](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FKiefBC%2Fdesert-modding%2Fbadges%2Fdesert-tooling.json)](mod-status.toml)
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/KiefBC/desert-modding/badges/desert-tooling.gif" alt="Live status of Desert Tooling against the current Steam build" width="640">
+</p>
+
+<p align="center"><em>Live status, checked against Steam every 15 minutes by <a href="https://github.com/KiefBC/mod-status">mod-status</a>: it turns to "game updated - untested" when a patch lands.</em></p>
+
 <p align="center">
   <img src="assets/readme_image.webp" alt="The Desert Tooling in-game menu: a row of tabs, the first one open on its presets, gather families and ranges" width="560">
 </p>

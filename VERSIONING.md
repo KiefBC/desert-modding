@@ -215,7 +215,9 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    version. CI checks it, so a stale table fails the build rather than shipping
    quietly. You never edit a version by hand anywhere except the one source of truth.
 3. Write the CHANGELOG entry in the same commit: version, date, game build, and Added / Changed /
-   Fixed. `just sync-versions` fails until this exists: it is the one part of a bump that cannot
+   Fixed. When the game build changed, update `build` and `date` of the `desert-tooling` card in
+   `mod-status.toml` in the same commit as the README's build line (`just check-versions` fails
+   until it, the README and `paths::CALIBRATED_BUILD` agree). `just sync-versions` fails until this exists: it is the one part of a bump that cannot
    be generated, and the release notes are built from it.
 
    When `dev` carried more than one bump since the last tag, as 0.7.0 to 0.10.0 did after the

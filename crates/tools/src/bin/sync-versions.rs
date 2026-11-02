@@ -42,6 +42,14 @@
 //! this check nothing notices a missing entry until the release workflow
 //! builds the notes, which is after the tag has been pushed.
 //!
+//! The same goes for the game build the plugin is verified on, which three
+//! files state and none of them can be generated from the others:
+//! `paths::CALIBRATED_BUILD`, the `Steam build **N**` line in the shipping
+//! crate's README, and the `build` of the `desert-tooling` card in
+//! `mod-status.toml` (the live status card on the Nexus page, which flips to
+//! "untested" when Steam's build moves past it). All three must agree, so a
+//! re-target that forgets the card fails `just check-versions`.
+//!
 //! Ported from the retired `sync-versions.py`. Its output is consumed by `just
 //! check-versions` and by both GitHub workflows, so the exit codes and every
 //! line of the drift report are reproduced exactly; only the `--help` text is
@@ -72,6 +80,10 @@ const PACK_DIR: &str = "desert-gatherer-dmm";
 const PACK_MANIFEST: &str = "dmm_pack.json";
 /// The pack's release tag prefix: `desert-gatherer-dmm-v<x.y>`.
 const PACK_TAG: &str = "desert-gatherer-dmm";
+
+/// The mod-status card config, and the `[[mod]]` in it that tracks the plugin.
+const STATUS_CONFIG: &str = "mod-status.toml";
+const STATUS_KEY: &str = "desert-tooling";
 
 const SEMVER: &str = r"\d+\.\d+\.\d+";
 /// The pack's x.y version inside its tag. Digits only, so the `<x.y>` and
@@ -316,6 +328,65 @@ fn missing_changelog_entries(root: &Path, versions: &[(&str, String)]) -> Result
     Ok(missing)
 }
 
+/// The `build = "N"` of the `[[mod]]` table whose `key` is `key`, read line by
+/// line rather than through a TOML parser: the file is ours and this is the
+/// one value needed from it.
+fn status_card_build(text: &str, key: &str) -> Option<String> {
+    let value = |line: &str, name: &str| -> Option<String> {
+        let rest = line.trim().strip_prefix(name)?.trim_start().strip_prefix('=')?;
+        let rest = rest.trim_start().strip_prefix('"')?;
+        rest.split_once('"').map(|(v, _)| v.to_string())
+    };
+    for table in text.split("[[mod]]").skip(1) {
+        // A later [section] ends the table.
+        let body = table.split("\n[").next().unwrap_or(table);
+        if body.lines().any(|l| value(l, "key").as_deref() == Some(key)) {
+            return body.lines().find_map(|l| value(l, "build"));
+        }
+    }
+    None
+}
+
+/// The `Steam build **N**` line in a shipping crate's README.
+fn readme_build(text: &str) -> Option<String> {
+    let re = Regex::new(r"Steam build \*\*(\d+)\*\*").unwrap();
+    re.captures(text).map(|c| c[1].to_string())
+}
+
+/// Disagreements between the three places that name the verified game build.
+fn build_drift(root: &Path) -> Result<Vec<String>> {
+    let want = paths::CALIBRATED_BUILD;
+    let mut drift = Vec::new();
+
+    let config = root.join(STATUS_CONFIG);
+    let text = std::fs::read_to_string(&config)
+        .with_context(|| format!("cannot read {}", config.display()))?;
+    match status_card_build(&text, STATUS_KEY) {
+        Some(b) if b == want => {}
+        Some(b) => drift.push(format!(
+            "{STATUS_CONFIG}: the `{STATUS_KEY}` card says build {b}, paths::CALIBRATED_BUILD is {want}"
+        )),
+        None => drift.push(format!(
+            "{STATUS_CONFIG}: no [[mod]] with key = \"{STATUS_KEY}\" and a build"
+        )),
+    }
+
+    for crate_name in SHIPPING {
+        let path = paths::crate_dir_in(root, crate_name).join("README.md");
+        let text = std::fs::read_to_string(&path)
+            .with_context(|| format!("cannot read {}", path.display()))?;
+        let name = format!("{}/{crate_name}/README.md", paths::CRATES_DIR);
+        match readme_build(&text) {
+            Some(b) if b == want => {}
+            Some(b) => drift.push(format!(
+                "{name}: says Steam build {b}, paths::CALIBRATED_BUILD is {want}"
+            )),
+            None => drift.push(format!("{name}: no `Steam build **N**` line")),
+        }
+    }
+    Ok(drift)
+}
+
 /// The pack's module files, in the order `sorted(PACK_DIR.glob("*.json"))` gave
 /// them, so the drift report lists them the same way it always has.
 fn pack_modules(root: &Path) -> Result<Vec<PathBuf>> {
@@ -410,6 +481,18 @@ fn main() -> Result<()> {
         );
     }
 
+    // Checked, never written, like the CHANGELOG: which build the plugin was
+    // verified on is a fact only a human can state.
+    let drift = build_drift(&root)?;
+    if !drift.is_empty() {
+        for line in &drift {
+            eprintln!("sync-versions: {line}");
+        }
+        eprintln!(
+            "sync-versions: the verified game build must agree everywhere; update {STATUS_CONFIG}'s build and date in the same commit as the README build line"
+        );
+    }
+
     if cli.check && !stale.is_empty() {
         eprintln!("sync-versions: out of date: {}", stale.join(", "));
         eprintln!("sync-versions: the sources of truth say {listed}");
@@ -418,10 +501,10 @@ fn main() -> Result<()> {
     }
     if !stale.is_empty() {
         println!("sync-versions: updated {} ({listed})", stale.join(", "));
-    } else if missing.is_empty() {
+    } else if missing.is_empty() && drift.is_empty() {
         println!("sync-versions: already in sync ({listed})");
     }
-    std::process::exit(i32::from(!missing.is_empty()));
+    std::process::exit(i32::from(!missing.is_empty() || !drift.is_empty()));
 }
 
 #[cfg(test)]
@@ -524,6 +607,37 @@ mod tests {
         let re = Rewrites::new();
         let text = "{ \"version\": \"unreleased\" }\n";
         assert_eq!(sync_pack_module(text, "1.1", &re), text);
+    }
+
+    #[test]
+    fn status_card_build_reads_the_right_mod() {
+        let text = "[source]\nkind = \"steam\"\n\n\
+                    [[mod]]\nkey = \"other\"\nbuild = \"1\"\n\n\
+                    [[mod]]\nkey   = \"desert-tooling\"  # comment\n\
+                    label = \"Desert Tooling\"\nbuild = \"26361232\"   # verified\n\n\
+                    [render]\nbuild = \"9\"\n";
+        assert_eq!(
+            status_card_build(text, "desert-tooling").as_deref(),
+            Some("26361232")
+        );
+        assert_eq!(status_card_build(text, "other").as_deref(), Some("1"));
+        assert_eq!(status_card_build(text, "missing"), None);
+        // A table without a build does not borrow the next section's.
+        let no_build = "[[mod]]\nkey = \"desert-tooling\"\n[render]\nbuild = \"9\"\n";
+        assert_eq!(status_card_build(no_build, "desert-tooling"), None);
+    }
+
+    #[test]
+    fn readme_build_line() {
+        let text = "**Version 0.10.0**, for Crimson Desert Enhanced, Steam build **26361232**.\n";
+        assert_eq!(readme_build(text).as_deref(), Some("26361232"));
+        assert_eq!(readme_build("Steam build 26361232"), None);
+    }
+
+    #[test]
+    fn the_status_card_names_the_calibrated_build() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        assert_eq!(build_drift(&root).unwrap(), Vec::<String>::new());
     }
 
     #[test]
