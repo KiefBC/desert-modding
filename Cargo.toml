@@ -2,8 +2,9 @@
 #
 #   desert-core     rlib, ships nothing: hooks, guarded reads, logger, PE/RTTI,
 #                   byte patterns, ini parsing, schema, the gather-record table.
-#   desert-looter   rlib, the auto-loot subsystem       -> [Looter]   [looter]
-#   desert-gatherer rlib, the gathering yield multiplier -> [Gatherer] [gatherer]
+#   desert-harvest  rlib, auto-loot and the gathering    -> [Harvest]  [harvest]
+#                   yield multipliers, one subsystem in two halves
+#                   (src/looter/, src/gatherer/) on one thread.
 #   desert-overlay  rlib, the in-game settings menu      -> [Overlay]  [overlay]
 #                   Its hudhook/imgui dependencies are declared in its own
 #                   manifest, not here: one crate uses them, and they only
@@ -14,9 +15,9 @@
 #                   it edits parsed static-info records on its own thread, and
 #                   those are re-read from disk every launch.
 #   desert-tooling  cdylib -> DesertTooling.asi. The workspace's ONLY cdylib
-#                   and only DllMain: it links the four subsystems, gates on
+#                   and only DllMain: it links the three subsystems, gates on
 #                   the host exe, opens the one DesertTooling.log, seeds the one
-#                   DesertTooling.ini from all four schemas, and starts one
+#                   DesertTooling.ini from all three schemas, and starts one
 #                   thread per subsystem.
 #
 # desert-gatherer-dmm/ is the DMM data mod (JSON offset patches), not a crate.
@@ -24,20 +25,27 @@
 [workspace]
 resolver = "2"
 members = [
-    "desert-core",
-    "desert-looter",
-    "desert-gatherer",
-    "desert-overlay",
-    "desert-dispatch",
-    "desert-tooling",
+    "crates/desert-core",
+    "crates/desert-harvest",
+    "crates/desert-overlay",
+    "crates/desert-dispatch",
+    "crates/desert-tooling",
 ]
+
+# crates/tools/ is its own workspace, not a member of this one. Everything here is
+# cross-compiled to Windows (see .cargo/config.toml); the tools are host
+# binaries that read the game exe and build the release zips, and pinning the
+# host target for them is crates/tools/.cargo/config.toml's job. Excluding the
+# directory is what stops `cargo build` at the root from pulling them in and
+# trying to cross-compile them.
+exclude = ["crates/tools"]
 
 [workspace.package]
 edition = "2021"
 license = "MIT"
 
 [workspace.dependencies]
-desert-core = { path = "desert-core" }
+desert-core = { path = "crates/desert-core" }
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_System_SystemServices",

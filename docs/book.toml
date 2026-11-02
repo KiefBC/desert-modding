@@ -1,0 +1,16 @@
+[book]
+title = "Desert Tooling"
+src = "src"
+language = "en"
+
+[build]
+# target/ is gitignored.
+build-dir = "../target/book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/KiefBC/desert-modding"
+
+[output.html.fold]
+enable = true
+level = 1

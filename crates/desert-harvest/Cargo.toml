@@ -1,0 +1,24 @@
+[package]
+name = "desert-harvest"
+version = "0.6.0"
+description = "Desert Harvest - Crimson Desert auto-loot and gathering yield multipliers (subsystem of DesertTooling.asi)"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "desert_harvest"
+# rlib only. `desert-tooling` is the single cdylib and the only DllMain; it
+# links this in as the harvest subsystem. rlib alone still lets
+# `cargo test --target x86_64-unknown-linux-gnu` link and run the
+# platform-independent unit tests natively on Linux.
+crate-type = ["rlib"]
+
+[dependencies]
+desert-core.workspace = true
+
+# The auto-loot half calls MessageBeep and GetCurrentThreadId.
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true

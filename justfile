@@ -1,8 +1,12 @@
 # Crimson Desert mods - task runner. `just` (or `just --list`) shows the recipes.
 #
 # Every recipe works from inside `nix develop` and from a plain shell: outside
-# the dev shell each cargo/python/zip command is re-run through
-# `nix develop --command`, so `just build` is enough either way.
+# the dev shell each cargo command is re-run through `nix develop --command`,
+# so `just build` is enough either way.
+#
+# Nothing here shells out to python3, objdump, zip or sha256sum any more. Every
+# support script in crates/tools/ is a Rust binary built by `just tools`, and the dev
+# shell is now needed only for the Rust toolchain and the mingw linker.
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -14,14 +18,19 @@ nix := if env("IN_NIX_SHELL", "") == "" { "nix develop --command" } else { "" }
 # Where the game lives; override with CD_BIN64=/path/to/bin64.
 bin64 := env("CD_BIN64", "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64")
 
-# DMM's extracted clean gimmickinfo table; override with CD_DMM_TABLE.
-dmm_table := env("CD_DMM_TABLE", "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin")
-
-# Steam appmanifest holding the build id; override with CD_APPMANIFEST.
-appmanifest := env("CD_APPMANIFEST", bin64 / "../../../appmanifest_3321460.acf")
+# The clean gimmickinfo table body and the Steam appmanifest are not named
+# here: the only recipe that needs them, `dmm-rebase`, hands the choice to the
+# tool, which applies crates/tools/src/paths.rs's rule (CD_DMM_TABLE, else the
+# plugin's dump in bin64, else DMM's backup copy; CD_APPMANIFEST for the build
+# id). One rule in one place, instead of a copy here that could drift from it.
 
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
+
+# Where `just tools` puts the support binaries. Everything in crates/tools/ is Rust
+# now: there are no .py or .sh files left there, and no recipe shells out to
+# python3, objdump, zip or sha256sum any more.
+tools_bin := "crates/tools/target/" + native + "/release"
 
 # Every DLL DesertTooling.asi is allowed to import. All of these ship WITH
 # Windows, so an .asi that imports only these loads in bin64 with nothing
@@ -48,9 +57,36 @@ allowed_imports := "advapi32 api-ms-win-core-synch-l1-2-0 api-ms-win-core-winrt-
 default:
     @just --list --unsorted
 
-# Release build of the plugin (Windows x64). `just build desert-looter` for one crate.
+# Release build of the plugin (Windows x64). `just build desert-harvest` for one crate.
 build crate="":
     {{nix}} cargo build --release {{ if crate == "" { "" } else { "-p " + crate } }}
+
+# crates/tools/ is its OWN cargo workspace, excluded from this one, because everything
+# here cross-compiles to Windows and none of the tools do.
+#
+# CARGO_BUILD_TARGET is not decoration. crates/tools/.cargo/config.toml pins the host
+# target, but cargo discovers config by walking up from the CURRENT DIRECTORY,
+# not from --manifest-path - so run from the repo root, the tools pick up the
+# ROOT config instead and try to cross-compile themselves to Windows, failing
+# with "can't find crate for core". Setting the target in the environment wins
+# over both config files, which lets every recipe below stay in the repo root,
+# where a relative path handed to a tool still means what it says.
+
+# Build the support tools in crates/tools/ (host binaries, their own workspace).
+tools:
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo build --release --manifest-path crates/tools/Cargo.toml
+
+# Clippy and unit tests for the tools (host target only; nothing here ships).
+tools-check:
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo clippy --manifest-path crates/tools/Cargo.toml --all-targets -- -D warnings
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml
+
+# Separate from `tools-check` for the same reason `test-game` is separate from
+# `test`: a CI runner has no game, no DMM table and no Ghidra.
+
+# The tools' tests needing the game exe, DMM's table or a built plugin.
+tools-check-game: tools
+    CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml -- --ignored
 
 # Unit tests on both targets: native Linux, then the Windows binaries via WSL interop.
 test: test-native test-win
@@ -65,8 +101,9 @@ test-win:
 
 # The #[ignore]d tests against the real CrimsonDesert.exe: signatures, vtable, record loader. Run after a game update.
 test-game:
-    {{nix}} cargo test --release --target {{native}} -p desert-looter --test game_exe -- --ignored --nocapture
+    {{nix}} cargo test --release --target {{native}} -p desert-harvest --test game_exe -- --ignored --nocapture
     {{nix}} cargo test --release --target {{native}} -p desert-core -- --ignored --nocapture
+    {{nix}} cargo test --release --target {{native}} -p desert-dispatch --test banking_real -- --ignored --nocapture
 
 # Clippy on both targets; any warning fails.
 clippy:
@@ -78,38 +115,59 @@ audit:
     {{nix}} cargo audit
 
 # Everything a commit should pass: clippy, tests, audit, doc versions, imports.
-ci: clippy test audit check-versions check-imports
+ci: clippy test tools-check audit check-versions check-imports
 
 # Fail if a built plugin imports a DLL that is not part of Windows. Part of `just ci`.
-check-imports: build
-    {{nix}} tools/check-imports.sh {{allowed_imports}}
+check-imports: build tools
+    {{tools_bin}}/check-imports {{allowed_imports}}
 
 # Rewrite the version tables in README.md / VERSIONING.md from the Cargo.toml versions.
-sync-versions:
-    {{nix}} python3 tools/sync-versions.py
+sync-versions: tools
+    {{tools_bin}}/sync-versions
 
 # Fail if those docs have drifted from the Cargo.toml versions. Part of `just ci`.
-check-versions:
-    {{nix}} python3 tools/sync-versions.py --check
+check-versions: tools
+    {{tools_bin}}/sync-versions --check
 
-# Rasterise assets/logo.svg into desert-overlay/src/logo.rgba (the menu's header logo).
-logo:
-    {{nix}} python3 tools/logo-to-rgba.py
+# Build the documentation book in docs/; output in target/book. The
+# reverse-engineering part is local-only: on a fresh clone each of its missing
+# files logs a warning and the build still succeeds.
+docs:
+    {{nix}} mdbook build docs
+
+# Serve the book with live reload on http://127.0.0.1:3000.
+docs-serve:
+    {{nix}} mdbook serve docs -n 127.0.0.1 -p 3000
+
+# Rasterise assets/logo.svg into crates/desert-overlay/src/logo.rgba (the menu's header logo).
+logo: tools
+    {{tools_bin}}/logo-to-rgba
 
 # Re-check every byte signature against the game exe (each must hit once).
-sigscan:
-    {{nix}} python3 tools/sigscan.py
+sigscan: tools
+    {{tools_bin}}/sigscan
+
+# Re-target after a game update: `just retarget report` first, then `triage`,
+# `census`, `calls`, `callers`, `prologue`, `pe`. `just retarget --help` lists them.
+retarget *args: tools
+    {{tools_bin}}/retarget {{args}}
 
 # Re-export the Ghidra evidence tree into evidence/ (needs Ghidra running on
 # Windows with GhidraMCP listening). Resumable: existing files are not
 # re-fetched. `just evidence --depth 2` and any other flag is passed through.
-evidence *flags:
-    {{nix}} python3 tools/evidence.py {{flags}}
+evidence *flags: tools
+    {{tools_bin}}/evidence {{flags}}
 
 # Build the release zips into dist/ (the plugin, the DMM pack, SHA256SUMS).
+#
+# The {{nix}} prefix is still needed here, unlike the other tool recipes: `dist`
+# itself spawns `cargo build --release` for the Windows target, which needs the
+# mingw linker from the dev shell. The tool no longer shells out to zip, unzip
+# or sha256sum - cargo is the only external program it runs.
+
 # `just dist desert-tooling` builds only that package, as a release tag does.
-dist *packages:
-    {{nix}} tools/dist.sh {{packages}}
+dist *packages: tools
+    {{nix}} {{tools_bin}}/dist {{packages}}
 
 # Copy the built plugin into the game's bin64 as DesertTooling.asi. Refuses while the game runs.
 install: build
@@ -124,14 +182,14 @@ install: build
      done
 
 # One plugin means one log: the old `glog` and `olog` recipes are gone, and every
-# line carries its subsystem's tag, so `just log | grep '\[gatherer\]'` is what
+# line carries its subsystem's tag, so `just log | grep '\[harvest\]'` is what
 # they were for.
 
 # Follow DesertTooling.log from the game folder.
 log:
     tail -n 40 -F "{{bin64}}/DesertTooling.log"
 
-# Show the learned yields cache (the looter's node -> item table, written beside the log).
+# Show the learned yields cache (the auto-loot half's node -> item table, written beside the log).
 yields:
     @shopt -s nullglob; \
      files=("{{bin64}}"/Desert*.yields); \
@@ -141,25 +199,43 @@ yields:
 # Remove build output and dist/.
 clean:
     {{nix}} cargo clean
+    {{nix}} cargo clean --manifest-path crates/tools/Cargo.toml
     rm -rf dist
 
 # --- DMM pack (desert-gatherer-dmm/) --------------------------------------
 # Not part of build/test/ci: it rewrites the packaged patch offsets, which only
-# needs doing after a game update. Run `just test-game` first to confirm the
-# record loader and output-block signature still match this build.
+# needs doing after a game update. Run `just test-game` first: its pack oracle,
+# `multiply_reproduces_the_dmm_pack_edits`, confirms the output-block signature
+# still matches this build.
 
-# The table comes from DMM's backups (CD_DMM_TABLE) and the build id from the
-# Steam appmanifest (CD_APPMANIFEST). Either can be passed positionally instead:
-# `just dmm-rebase /path/to/clean.bin 25116796`.
+# The table is the plugin's own dump, <bin64>/DesertTooling.gimmickinfo.bin,
+# written by one launch with `[Harvest] DumpTable=1` and `DryRun=1`
+# (CD_DMM_TABLE overrides it; DMM's backup copy is the last resort), and the
+# build id is the Steam appmanifest's (CD_APPMANIFEST). The tool resolves both
+# itself - crates/tools/src/paths.rs - so they are passed on only when given here,
+# positionally: `just dmm-rebase /path/to/clean.bin 26361232`. Anything
+# starting with `-` goes to the tool as a flag, in any position, so
+# `just dmm-rebase --dry-run` verifies and prints the report without writing.
+# `[positional-arguments]` is what keeps a table path with spaces in it (the
+# default one has one) a single argument on its way through.
 
-# Rebase desert-gatherer-dmm/*.json onto the current game build. Takes no arguments.
-dmm-rebase table=dmm_table build="":
-    @test -f "{{table}}" || { echo "dmm-rebase: {{table}} not found (set CD_DMM_TABLE)" >&2; exit 1; }
-    @build="{{build}}"; \
-    if [ -z "$build" ]; then \
-        test -f "{{appmanifest}}" || { echo "dmm-rebase: {{appmanifest}} not found (set CD_APPMANIFEST, or pass the build id)" >&2; exit 1; }; \
-        build=$(sed -n 's/.*"buildid"[^"]*"\([0-9][0-9]*\)".*/\1/p' "{{appmanifest}}" | head -1); \
-        test -n "$build" || { echo "dmm-rebase: no buildid in {{appmanifest}}" >&2; exit 1; }; \
-    fi; \
-    echo "dmm-rebase: {{table}} -> build $build"; \
-    {{nix}} python3 desert-gatherer-dmm/rebase.py "{{table}}" "$build"
+# Rebase desert-gatherer-dmm/*.json onto the current game build. `--dry-run` writes nothing.
+[positional-arguments]
+dmm-rebase table="" build="" *flags: tools
+    #!/usr/bin/env bash
+    set -euo pipefail
+    flags=(); positional=()
+    for arg in "$@"; do
+        case "$arg" in
+            "") ;;
+            -*) flags+=("$arg") ;;
+            *) positional+=("$arg") ;;
+        esac
+    done
+    if [ "${#positional[@]}" -gt 2 ]; then
+        echo "dmm-rebase: at most a table and a build id, got: ${positional[*]}" >&2; exit 1
+    fi
+    args=()
+    if [ "${#positional[@]}" -ge 1 ]; then args+=(--table "${positional[0]}"); fi
+    if [ "${#positional[@]}" -ge 2 ]; then args+=(--build "${positional[1]}"); fi
+    exec {{tools_bin}}/dmm-rebase "${args[@]}" "${flags[@]}"

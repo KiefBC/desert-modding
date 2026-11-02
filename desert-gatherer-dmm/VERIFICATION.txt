@@ -1,8 +1,8 @@
 Automated package verification
 
 {
-  "game_build": "25116796",
-  "source_gimmickinfo_sha256": "95e2dcf4b3447cdf6186b9fa816065f4e09f3ce49fe7047fd111f1bb6517411a",
+  "game_build": "26361232",
+  "source_gimmickinfo_sha256": "3aba0954725e6fc91ca490a5e1afde21357190d58aee112dc9944872ef26bf1b",
   "module_count": 12,
   "categories": {
     "Foraging": {
@@ -32,7 +32,7 @@ Automated package verification
       "records": 82,
       "resource_outputs": 322,
       "scalar_patches": 644,
-      "simulated_patched_sha256": "f7a441be02980bd05779f4b11a3cd7e1eacd6675c354955992a3c78c3ba8ab54",
+      "simulated_patched_sha256": "d2406abba049cc77d3223f8392c56d76fe310447fd63e6b381e97fd61b1ffd83",
       "result": "PASS"
     },
     {
@@ -40,7 +40,7 @@ Automated package verification
       "records": 82,
       "resource_outputs": 322,
       "scalar_patches": 644,
-      "simulated_patched_sha256": "1f1cf15bae4bf9102bac34add3209e65e97c9fdeb0597bc794bb7f8294bd86ee",
+      "simulated_patched_sha256": "ade211e7c7c7dbf8427e22304fdb1de2c3b677b68460aab26a9a7903fd7b7036",
       "result": "PASS"
     },
     {
@@ -48,7 +48,7 @@ Automated package verification
       "records": 82,
       "resource_outputs": 322,
       "scalar_patches": 644,
-      "simulated_patched_sha256": "cea0ac15f2ec798fd19094470412e55638d35ccf8e48d371b158efa806e85056",
+      "simulated_patched_sha256": "305e176096d654242d56cb72222281e99988e9e214274a5b03bff41bd0658a81",
       "result": "PASS"
     },
     {
@@ -56,7 +56,7 @@ Automated package verification
       "records": 141,
       "resource_outputs": 141,
       "scalar_patches": 282,
-      "simulated_patched_sha256": "ed62b14ffd46624af1a0c8b2457236440108b0b49637e7fe49209b9f3592b650",
+      "simulated_patched_sha256": "0c043606c20ee8ef672977fce898733588dcd72d8bfc20f8209a813a4f501500",
       "result": "PASS"
     },
     {
@@ -64,7 +64,7 @@ Automated package verification
       "records": 141,
       "resource_outputs": 141,
       "scalar_patches": 282,
-      "simulated_patched_sha256": "c651f3bb2c006603558d8bfb8b109216f37d8a00d99bdd513d2494548335e72b",
+      "simulated_patched_sha256": "5435343b4e5e786045b8ddafa2c57b13fb71bbe9ea1bcc607dd79941ee66ae3f",
       "result": "PASS"
     },
     {
@@ -72,7 +72,7 @@ Automated package verification
       "records": 141,
       "resource_outputs": 141,
       "scalar_patches": 282,
-      "simulated_patched_sha256": "80b52db531dff587c9762361dd925ed67f4bef54b31fc7ffdc68b7a8967ea223",
+      "simulated_patched_sha256": "3acf0475362e833a5ff6338e489f4a88814d0fc160e15f636b8bf40ba677a9f0",
       "result": "PASS"
     },
     {
@@ -80,7 +80,7 @@ Automated package verification
       "records": 36,
       "resource_outputs": 108,
       "scalar_patches": 216,
-      "simulated_patched_sha256": "d13d6f3bab974d21af8dcb8d886afb4617cb2bfca86c28c9f9a2bf549fa1ed4b",
+      "simulated_patched_sha256": "3743d5fb121f1a53f4f4d325074b2c17c261a6d55c7e3b3c505ea9151327607f",
       "result": "PASS"
     },
     {
@@ -88,7 +88,7 @@ Automated package verification
       "records": 36,
       "resource_outputs": 108,
       "scalar_patches": 216,
-      "simulated_patched_sha256": "223f19d054ab3bb3a94614d87ec5bda013b01055180e95aafa4b94ae3e0ccf5c",
+      "simulated_patched_sha256": "8921d12b9776b0aa27e05ca8184652931f594fbf23f736e654fd1d776b953174",
       "result": "PASS"
     },
     {
@@ -96,7 +96,7 @@ Automated package verification
       "records": 36,
       "resource_outputs": 108,
       "scalar_patches": 216,
-      "simulated_patched_sha256": "be4a8b12db08ac294096e4c09eb8e39dd64db3994ed565825a949cdea6561716",
+      "simulated_patched_sha256": "5c63e5567cf5510e7f349cf6af39f3853609a724b27815178ccc088dc49a9da1",
       "result": "PASS"
     },
     {
@@ -104,7 +104,7 @@ Automated package verification
       "records": 16,
       "resource_outputs": 16,
       "scalar_patches": 32,
-      "simulated_patched_sha256": "261c35a96a5681c6e1ff6f92a3d163f19d24310a4c5f10c3ed770605499c6bea",
+      "simulated_patched_sha256": "465587d5519ddebd537986891298ba6d0ee0610c3e508433b06458eeae74dcd7",
       "result": "PASS"
     },
     {
@@ -112,7 +112,7 @@ Automated package verification
       "records": 16,
       "resource_outputs": 16,
       "scalar_patches": 32,
-      "simulated_patched_sha256": "3b532f8e0b795e0961ad28a8705d8664f8f0eeec3b459c0a4adb52d558f0571b",
+      "simulated_patched_sha256": "a35e6db4bd7453b0459be4e6ff5b355ea4f8c7320a67e28b665cae6e8ff1082b",
       "result": "PASS"
     },
     {
@@ -120,7 +120,7 @@ Automated package verification
       "records": 16,
       "resource_outputs": 16,
       "scalar_patches": 32,
-      "simulated_patched_sha256": "d97a285d3a001ebb13bb3442e2484dd527f60a695a7467de1238d9580fbdca80",
+      "simulated_patched_sha256": "e17546f8f7c9d10b9b15d7dd33a1d2faefb6432358ca8ee013d3361778d7f833",
       "result": "PASS"
     }
   ],
@@ -131,7 +131,7 @@ Automated package verification
       "Logging": 5
     },
     "scalar_patches": 498,
-    "simulated_patched_sha256": "d83866f4d6974ba721beae7a08fb397d5e81f4374cf23ee6c62e02514e6ccfb6",
+    "simulated_patched_sha256": "2a5867f4ca2365149529a5371aaf284f7d77fa946a4f410364af8fc6d66ac006",
     "result": "PASS"
   },
   "result": "PASS"
