@@ -1,0 +1,20 @@
+[package]
+name = "desert-pazdump"
+version = "0.1.0"
+description = "Desert PazDump - reverse-engineering aid that records every archive entry the game decrypts (not a shipped mod)"
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[lib]
+name = "desert_pazdump"
+crate-type = ["cdylib"]
+
+[dependencies]
+desert-core.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
