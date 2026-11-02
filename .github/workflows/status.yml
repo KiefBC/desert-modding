@@ -1,7 +1,7 @@
 # .github/workflows/status.yml - copy into your mod's repo as is.
 # Every 15 minutes: read the game's Steam build, redraw the cards, push them to the `badges` branch.
-# Run it by hand (Actions -> mod status -> Run workflow) to pin a status after you have tested.
-name: mod status
+# Run it by hand (Actions -> baise -> Run workflow) to pin a status after you have tested.
+name: baise
 on:
   schedule: [{ cron: "*/15 * * * *" }]
   workflow_dispatch:
@@ -11,5 +11,5 @@ on:
 permissions: { contents: write }
 jobs:
   status:
-    uses: KiefBC/mod-status/.github/workflows/status.yml@v0.1.0
+    uses: KiefBC/baise/.github/workflows/status.yml@v0.2.0
     with: { mod: "${{ inputs.mod }}", status: "${{ inputs.status }}" }

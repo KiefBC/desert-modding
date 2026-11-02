@@ -62,7 +62,7 @@ fn fixture(root: &Path) {
     // The live status card: its build is checked against the README line above
     // and paths::CALIBRATED_BUILD.
     write(
-        "mod-status.toml",
+        "baise.toml",
         &format!(
             "[source]\nkind = \"steam\"\napp_id = 3321460\n\n\
              [[mod]]\nkey = \"desert-tooling\"\nlabel = \"Desert Tooling\"\n\
@@ -265,7 +265,7 @@ fn a_status_card_on_another_build_fails_in_both_modes() {
     // checked, never written, so `--check` and the rewrite both exit 1.
     let dir = tempfile::tempdir().unwrap();
     fixture(dir.path());
-    let card = dir.path().join("mod-status.toml");
+    let card = dir.path().join("baise.toml");
     let before = std::fs::read_to_string(&card).unwrap();
     std::fs::write(&card, before.replace(BUILD, "1")).unwrap();
 
