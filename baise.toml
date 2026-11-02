@@ -12,7 +12,7 @@ app_id = 3321460            # the number in the game's store URL: store.steampow
 [render]
 layout = "card"
 theme = "crimson-desert"    # "nexus", "crimson-desert", or a path like "./my-theme.toml"
-title_prefix = "LIVE STATUS // AUTO-CHECKED"
+title_prefix = "LIVE STATUS"
 
 # One [[mod]] table per mod; each gets <key>.gif, <key>.png and <key>.json.
 [[mod]]
@@ -23,3 +23,8 @@ date = "2026-11-01"         # when (YYYY-MM-DD)
 status = "working"          # working | broken | wip    - shown while the game is still on `build`
 on_update = "untested"      # untested | broken         - shown once Steam's build moves past it
 note = ""                   # optional one-liner next to the status
+# Up to 3 lines on the card as "<name>: <version>"; bump them when a release is tagged.
+releases = [
+  { name = "Desert Tooling",  version = "0.11.0" },   # crates/desert-tooling/Cargo.toml
+  { name = "Desert Gatherer", version = "1.4" },      # desert-gatherer-dmm/dmm_pack.json
+]

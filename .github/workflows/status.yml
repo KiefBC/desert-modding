@@ -11,5 +11,5 @@ on:
 permissions: { contents: write }
 jobs:
   status:
-    uses: KiefBC/baise/.github/workflows/status.yml@v0.2.0
+    uses: KiefBC/baise/.github/workflows/status.yml@v0.3.0
     with: { mod: "${{ inputs.mod }}", status: "${{ inputs.status }}" }
