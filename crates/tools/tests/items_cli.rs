@@ -1,9 +1,9 @@
 //! End-to-end checks on the `items` binary.
 //!
-//! The offline ones build a tiny synthetic table body, so a bare `cargo test`
-//! passes on a machine that has never dumped the table. The ones that need the
-//! real 22 MB body are `#[ignore]`d and say so; run them with
-//! `cargo test -- --ignored`.
+//! The offline ones build a tiny synthetic table body in a `--tables`
+//! directory, so a bare `cargo test` passes on a machine with no game. The ones
+//! that need the real body read it out of the game's archives and are
+//! `#[ignore]`d; run them with `cargo test -- --ignored`.
 //!
 //! Every run here passes `--json`/`--doc` into a temporary directory. Nothing
 //! in this file may write `analysis/` or `docs/`: a test that clobbers the
@@ -80,18 +80,17 @@ fn read_json(p: &Path) -> Value {
 #[test]
 fn a_cache_built_by_the_other_detector_is_ignored() {
     let dir = tempfile::tempdir().unwrap();
-    let table = dir.path().join("table.bin");
-    std::fs::write(&table, fixture()).unwrap();
-    let t = table.to_str().unwrap();
+    std::fs::write(dir.path().join("gimmickinfo.staticinfobody"), fixture()).unwrap();
+    let t = dir.path().to_str().unwrap();
     let sj = dir.path().join("shipped.json");
     let lj = dir.path().join("loose.json");
     let sd = dir.path().join("shipped.md");
     let ld = dir.path().join("loose.md");
     let (sjs, ljs) = (sj.to_str().unwrap(), lj.to_str().unwrap());
 
-    let o = items(&["--table", t, "--json", sjs, "--doc", sd.to_str().unwrap()]);
+    let o = items(&["--tables", t, "--json", sjs, "--doc", sd.to_str().unwrap()]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
-    let o = items(&["--loose", "--table", t, "--json", ljs, "--doc", ld.to_str().unwrap()]);
+    let o = items(&["--loose", "--tables", t, "--json", ljs, "--doc", ld.to_str().unwrap()]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
 
     // The detector block is what a loaded cache is identified by, and only the
@@ -109,7 +108,7 @@ fn a_cache_built_by_the_other_detector_is_ignored() {
     // lookup must walk the table again rather than answer out of it, which it
     // proves by knowing about the loose-only id at all.
     std::fs::copy(&sj, &lj).unwrap();
-    let o = items(&["--loose", "--table", t, "--json", ljs, "--list"]);
+    let o = items(&["--loose", "--tables", t, "--json", ljs, "--list"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     assert!(
         stdout(&o).contains("LOOSE-ONLY"),
@@ -121,10 +120,10 @@ fn a_cache_built_by_the_other_detector_is_ignored() {
     // report ids the plugin cannot see.
     std::fs::copy(&lj, &sj).unwrap();
     // (`lj` currently holds the shipped copy, so rebuild the loose one first.)
-    let o = items(&["--loose", "--rescan", "--table", t, "--json", ljs, "--doc", ld.to_str().unwrap()]);
+    let o = items(&["--loose", "--rescan", "--tables", t, "--json", ljs, "--doc", ld.to_str().unwrap()]);
     assert!(o.status.success());
     std::fs::copy(&lj, &sj).unwrap();
-    let o = items(&["--table", t, "--json", sjs, "--list"]);
+    let o = items(&["--tables", t, "--json", sjs, "--list"]);
     assert!(o.status.success(), "{}", String::from_utf8_lossy(&o.stderr));
     let out = stdout(&o);
     assert!(!out.contains("LOOSE-ONLY"), "default lookup leaked loose rows: {out}");
@@ -136,17 +135,16 @@ fn a_cache_built_by_the_other_detector_is_ignored() {
 #[test]
 fn a_loose_rebuild_leaves_the_default_pair_alone() {
     let dir = tempfile::tempdir().unwrap();
-    let table = dir.path().join("table.bin");
-    std::fs::write(&table, fixture()).unwrap();
-    let t = table.to_str().unwrap();
+    std::fs::write(dir.path().join("gimmickinfo.staticinfobody"), fixture()).unwrap();
+    let t = dir.path().to_str().unwrap();
     let sj = dir.path().join("shipped.json");
     let sd = dir.path().join("shipped.md");
     let lj = dir.path().join("loose.json");
     let ld = dir.path().join("loose.md");
 
-    items(&["--table", t, "--json", sj.to_str().unwrap(), "--doc", sd.to_str().unwrap()]);
+    items(&["--tables", t, "--json", sj.to_str().unwrap(), "--doc", sd.to_str().unwrap()]);
     let before = (std::fs::read(&sj).unwrap(), std::fs::read(&sd).unwrap());
-    items(&["--loose", "--table", t, "--json", lj.to_str().unwrap(), "--doc", ld.to_str().unwrap()]);
+    items(&["--loose", "--tables", t, "--json", lj.to_str().unwrap(), "--doc", ld.to_str().unwrap()]);
     let after = (std::fs::read(&sj).unwrap(), std::fs::read(&sd).unwrap());
     assert_eq!(before, after, "a loose run modified the default artifacts");
     assert!(lj.exists() && ld.exists());
@@ -156,19 +154,14 @@ fn a_loose_rebuild_leaves_the_default_pair_alone() {
 /// to do about it.
 #[test]
 fn a_missing_table_is_reported_not_panicked() {
-    let o = items(&["--table", "/nonexistent/gimmickinfo.bin", "--rescan", "--list"]);
+    let o = items(&["--tables", "/nonexistent", "--rescan", "--list"]);
     assert!(!o.status.success());
     let err = String::from_utf8_lossy(&o.stderr);
-    assert!(err.contains("cannot read the clean table body"), "{err}");
-    assert!(err.contains("--table"), "{err}");
+    assert!(err.contains("cannot read the gimmickinfo table body"), "{err}");
+    assert!(err.contains("--tables"), "{err}");
 }
 
-// ------------------------------------------------- needs the real table body
-
-fn real_table() -> Option<String> {
-    let p = desert_tools::paths::dmm_table();
-    p.is_file().then(|| p.to_str().unwrap().to_string())
-}
+// ------------------------------------------- needs the game's archives
 
 /// The five numbers findings section 9 confirmed three independent ways, as
 /// re-measured on build 26361232, the first `NameFirst` body (572 / 895 / 215
@@ -176,13 +169,11 @@ fn real_table() -> Option<String> {
 /// `FAIL` here means the table or the walk moved and nothing downstream should
 /// be trusted until it is explained.
 #[test]
-#[ignore = "needs the clean gimmickinfo body"]
+#[ignore = "needs the installed game's archives"]
 fn the_shipped_walk_still_finds_581_904_220() {
-    let Some(t) = real_table() else { return };
     let dir = tempfile::tempdir().unwrap();
     let j = dir.path().join("items.json");
     let o = items(&[
-        "--table", &t,
         "--json", j.to_str().unwrap(),
         "--doc", dir.path().join("doc.md").to_str().unwrap(),
     ]);
@@ -198,14 +189,12 @@ fn the_shipped_walk_still_finds_581_904_220() {
 /// The loose walk is a *superset*, not a different answer: its own three counts
 /// plus the relations that tie it to the shipped one.
 #[test]
-#[ignore = "needs the clean gimmickinfo body"]
+#[ignore = "needs the installed game's archives"]
 fn the_loose_walk_is_a_superset_of_the_shipped_one() {
-    let Some(t) = real_table() else { return };
     let dir = tempfile::tempdir().unwrap();
     let j = dir.path().join("items-loose.json");
     let o = items(&[
         "--loose",
-        "--table", &t,
         "--json", j.to_str().unwrap(),
         "--doc", dir.path().join("doc.md").to_str().unwrap(),
     ]);
@@ -232,14 +221,13 @@ fn the_loose_walk_is_a_superset_of_the_shipped_one() {
 /// Item `1` is money and `22008` is water, both by evidence the name inference
 /// cannot see, and both keep their reason in the output.
 #[test]
-#[ignore = "needs the clean gimmickinfo body"]
+#[ignore = "needs the installed game's archives"]
 fn the_curated_ids_keep_their_names_and_reasons() {
-    let Some(t) = real_table() else { return };
-    let o = items(&["--table", &t, "--rescan", "22008"]);
+    let o = items(&["--rescan", "22008"]);
     let out = stdout(&o);
     assert!(out.starts_with("item 22008  water   [curated]"), "{out}");
     assert!(out.contains("GIMMICK_WATER_PICKUP"), "{out}");
-    let o = items(&["--table", &t, "--rescan", "1"]);
+    let o = items(&["--rescan", "1"]);
     let out = stdout(&o);
     assert!(out.starts_with("item 1  money   [curated]"), "{out}");
     assert!(out.contains("belongs in `Money` only"), "{out}");

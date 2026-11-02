@@ -33,8 +33,8 @@ fn live_summary(cfg: &Config) -> String {
 }
 
 /// `DesertTooling.gimmickinfo.bin` beside the log, where `DumpTable=1` writes
-/// the table body and where the justfile and `crates/tools/src/paths.rs` look for it
-/// first. The same `exe_dir()` the log and the looter's yields cache use.
+/// the table body. The same `exe_dir()` the log and the looter's yields cache
+/// use.
 fn dump_path() -> std::path::PathBuf {
     log::exe_dir().join(dump::FILE_NAME)
 }

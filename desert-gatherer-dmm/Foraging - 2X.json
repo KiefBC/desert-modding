@@ -1,6 +1,6 @@
 {
   "name": "Foraging - 2X",
-  "version": "1.3",
+  "version": "1.4",
   "author": "KiefBC",
   "description": "Multiplies foraging node minimum and maximum yields by 2. Select no more than one Foraging rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,20 +10,60 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Foraging - 2X",
-    "version": "1.3",
+    "version": "1.4",
     "author": "KiefBC",
     "description": "2x yields for foraging nodes.",
     "allow_partial_apply": true
   },
   "coverage": {
-    "records": 82,
-    "resource_outputs": 322,
-    "scalar_patches": 644
+    "records": 97,
+    "resource_outputs": 337,
+    "scalar_patches": 674
   },
   "patches": [
     {
       "game_file": "gamedata/gimmickinfo.pabgb",
       "changes": [
+        {
+          "offset": 3374180,
+          "record_key": 1001081,
+          "record_rel_offset": 748,
+          "entry": "gimmick_well_0001_parts01",
+          "rel_offset": 673,
+          "label": "Foraging: gimmick_well_0001_parts01 output 1.1 minimum (5 -> 10)",
+          "original": "0500000000000000",
+          "patched": "0a00000000000000"
+        },
+        {
+          "offset": 3374188,
+          "record_key": 1001081,
+          "record_rel_offset": 756,
+          "entry": "gimmick_well_0001_parts01",
+          "rel_offset": 681,
+          "label": "Foraging: gimmick_well_0001_parts01 output 1.1 maximum (5 -> 10)",
+          "original": "0500000000000000",
+          "patched": "0a00000000000000"
+        },
+        {
+          "offset": 6538332,
+          "record_key": 12030001,
+          "record_rel_offset": 532,
+          "entry": "docking_core_small",
+          "rel_offset": 447,
+          "label": "Foraging: docking_core_small output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 6538340,
+          "record_key": 12030001,
+          "record_rel_offset": 540,
+          "entry": "docking_core_small",
+          "rel_offset": 455,
+          "label": "Foraging: docking_core_small output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
         {
           "offset": 9862919,
           "record_key": 1005631,
@@ -6445,6 +6485,86 @@
           "patched": "0200000000000000"
         },
         {
+          "offset": 10039382,
+          "record_key": 1010595,
+          "record_rel_offset": 1461,
+          "entry": "Collect_Wood_Branch_01",
+          "rel_offset": 1364,
+          "label": "Foraging: Collect_Wood_Branch_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10039390,
+          "record_key": 1010595,
+          "record_rel_offset": 1469,
+          "entry": "Collect_Wood_Branch_01",
+          "rel_offset": 1372,
+          "label": "Foraging: Collect_Wood_Branch_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10041977,
+          "record_key": 1010584,
+          "record_rel_offset": 1466,
+          "entry": "Collect_Wood_Branch_Hard_01",
+          "rel_offset": 1364,
+          "label": "Foraging: Collect_Wood_Branch_Hard_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10041985,
+          "record_key": 1010584,
+          "record_rel_offset": 1474,
+          "entry": "Collect_Wood_Branch_Hard_01",
+          "rel_offset": 1372,
+          "label": "Foraging: Collect_Wood_Branch_Hard_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10044566,
+          "record_key": 1010597,
+          "record_rel_offset": 1463,
+          "entry": "Collect_Bamboo_Branch_01",
+          "rel_offset": 1364,
+          "label": "Foraging: Collect_Bamboo_Branch_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10044574,
+          "record_key": 1010597,
+          "record_rel_offset": 1471,
+          "entry": "Collect_Bamboo_Branch_01",
+          "rel_offset": 1372,
+          "label": "Foraging: Collect_Bamboo_Branch_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10047601,
+          "record_key": 1010598,
+          "record_rel_offset": 1468,
+          "entry": "Collect_Bamboo_Branch_Hard_01",
+          "rel_offset": 1364,
+          "label": "Foraging: Collect_Bamboo_Branch_Hard_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10047609,
+          "record_key": 1010598,
+          "record_rel_offset": 1476,
+          "entry": "Collect_Bamboo_Branch_Hard_01",
+          "rel_offset": 1372,
+          "label": "Foraging: Collect_Bamboo_Branch_Hard_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
           "offset": 10537485,
           "record_key": 1001261,
           "record_rel_offset": 432,
@@ -6463,6 +6583,186 @@
           "label": "Foraging: gimmick_kudzu_vine_0001 output 1.1 maximum (2 -> 4)",
           "original": "0200000000000000",
           "patched": "0400000000000000"
+        },
+        {
+          "offset": 10541273,
+          "record_key": 1004935,
+          "record_rel_offset": 836,
+          "entry": "Rare_Collect_Rubber",
+          "rel_offset": 751,
+          "label": "Foraging: Rare_Collect_Rubber output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10541281,
+          "record_key": 1004935,
+          "record_rel_offset": 844,
+          "entry": "Rare_Collect_Rubber",
+          "rel_offset": 759,
+          "label": "Foraging: Rare_Collect_Rubber output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10570716,
+          "record_key": 17060001,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_01",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_01 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10570724,
+          "record_key": 17060001,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_01",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_01 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10571578,
+          "record_key": 17060002,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_02",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_02 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10571586,
+          "record_key": 17060002,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_02",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_02 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10572440,
+          "record_key": 17060003,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_03",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_03 output 1.1 minimum (3 -> 6)",
+          "original": "0300000000000000",
+          "patched": "0600000000000000"
+        },
+        {
+          "offset": 10572448,
+          "record_key": 17060003,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_03",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_03 output 1.1 maximum (6 -> 12)",
+          "original": "0600000000000000",
+          "patched": "0c00000000000000"
+        },
+        {
+          "offset": 10573302,
+          "record_key": 17060004,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_04",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_04 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10573310,
+          "record_key": 17060004,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_04",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_04 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10574164,
+          "record_key": 17060005,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_05",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_05 output 1.1 minimum (2 -> 4)",
+          "original": "0200000000000000",
+          "patched": "0400000000000000"
+        },
+        {
+          "offset": 10574172,
+          "record_key": 17060005,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_05",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_05 output 1.1 maximum (4 -> 8)",
+          "original": "0400000000000000",
+          "patched": "0800000000000000"
+        },
+        {
+          "offset": 10575026,
+          "record_key": 17060006,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_06",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_06 output 1.1 minimum (3 -> 6)",
+          "original": "0300000000000000",
+          "patched": "0600000000000000"
+        },
+        {
+          "offset": 10575034,
+          "record_key": 17060006,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_06",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_06 output 1.1 maximum (6 -> 12)",
+          "original": "0600000000000000",
+          "patched": "0c00000000000000"
+        },
+        {
+          "offset": 10575888,
+          "record_key": 17060007,
+          "record_rel_offset": 441,
+          "entry": "seockcheong_07",
+          "rel_offset": 358,
+          "label": "Foraging: seockcheong_07 output 1.1 minimum (4 -> 8)",
+          "original": "0400000000000000",
+          "patched": "0800000000000000"
+        },
+        {
+          "offset": 10575896,
+          "record_key": 17060007,
+          "record_rel_offset": 449,
+          "entry": "seockcheong_07",
+          "rel_offset": 366,
+          "label": "Foraging: seockcheong_07 output 1.1 maximum (8 -> 16)",
+          "original": "0800000000000000",
+          "patched": "1000000000000000"
+        },
+        {
+          "offset": 10592905,
+          "record_key": 1000856,
+          "record_rel_offset": 662,
+          "entry": "Gimmick_Item_RazorClam_0001",
+          "rel_offset": 585,
+          "label": "Foraging: Gimmick_Item_RazorClam_0001 output 1.1 minimum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
+        },
+        {
+          "offset": 10592913,
+          "record_key": 1000856,
+          "record_rel_offset": 670,
+          "entry": "Gimmick_Item_RazorClam_0001",
+          "rel_offset": 593,
+          "label": "Foraging: Gimmick_Item_RazorClam_0001 output 1.1 maximum (1 -> 2)",
+          "original": "0100000000000000",
+          "patched": "0200000000000000"
         }
       ]
     }

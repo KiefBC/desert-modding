@@ -624,7 +624,7 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     let has = |needle: &str| comps.iter().any(|(_, n)| n.contains(needle));
     if has("ClientAiActorComponent") || has("ClientCharacterControlActorComponent") {
         // The dead test comes **first**, and the order is the whole point.
-        // `catch_class` reads the status kind byte (+0x2C8) and ignores the
+        // `catch_class` reads the status kind byte (`STATUS_KIND_OFF`) and ignores the
         // dead flag beside it, so a corpse satisfies every test it makes and
         // classifies `Catchable` - and `Kind::Catchable` is in the gatherer's
         // candidate set, so until this arm existed F9 beside a dead animal
@@ -875,12 +875,34 @@ pub fn bag_tab(tabs: &[InventoryTab], wanted: Option<i16>) -> Option<InventoryTa
 
 /// Bytes the reference mod reads off `ClientStatusActorComponent` to reject
 /// things that are not loot:
-/// `+0x2C8`: 1 = quest item, 0x0F = shop goods, 0x11 = decoration;
-/// `+0x273`: **the alive/dead flag, 0 alive and 1 dead** - see
+/// `+0x2E8` (`+0x2C8` before 26361232): 1 = quest item, 0x0F = shop goods,
+/// 0x11 = decoration;
+/// `+0x293`: **the alive/dead flag, 0 alive and 1 dead** - see
 /// [`is_skinnable_carcass`] for the live readings that settled it. The
 /// reference mod read this byte as "6 = catchable creature", which it is not.
-pub const STATUS_KIND_OFF: usize = 0x2C8;
-pub const STATUS_FLAG_OFF: usize = 0x273;
+///
+/// The flag was `+0x273` on 25246367 (measured live; which later build moved
+/// it is not known) and is `+0x293` on 26361232: the game's own catch/carcass
+/// branch, the function holding the catch-count site (`0x2DD61E0`), now reads
+/// `cmp byte [*(*(actor+0x68)+0x20)+0x293], 0` at `+0x2DD65F0` and jumps to the
+/// catch site when it is 0, where 25116796's copy (`FUN_142a73c20`) tested
+/// `+0x273` in the same branch beside the same owner read (`sub+0x118`, then
+/// `+0x20`). Exe-wide, `cmp byte [reg+0x293], 0` occurs 226 times on 26361232
+/// and `+0x273` twice. Reading the old offset made every corpse read alive
+/// (2026-11-02 launch: a killed watercock surveyed `status=E0/00` and was
+/// offered as a class-0x44 fish), so no carcass was ever classified.
+///
+/// The kind byte moved by the same 0x20, and so did everything else past
+/// `+0x5A` (species `+0x30` and category `+0x5A` did not). The component's
+/// initialiser proves it: 25116796's `FUN_1416f97a0` stores `0xA13` at `+0x270`
+/// (the dword whose high byte is the flag), a global at `+0x2C0`, `0` at
+/// `+0x2C8` and `0x28` at `+0x2D0`; on 26361232 the one instruction exe-wide
+/// that stores `0xA13` as a dword (`+0x18C433E`) does it at `+0x290`, followed
+/// by the global at `+0x2E0`, `0` at `+0x2E8` and `0x2A` at `+0x2F0`. The old
+/// offset read unrelated bytes (`E0` on a dead watercock, `D3` on live
+/// beetles) where every creature used to read 0.
+pub const STATUS_KIND_OFF: usize = 0x2E8;
+pub const STATUS_FLAG_OFF: usize = 0x293;
 /// The value [`STATUS_FLAG_OFF`] carries on a dead actor. 0 is alive.
 pub const DEAD_FLAG: u8 = 1;
 
@@ -981,7 +1003,7 @@ impl Catchable {
 ///
 /// `None` means the actor is not a catch candidate at all: its type byte is
 /// not one of `creature::CATCHABLE_TYPES`, its `ClientStatusActorComponent`
-/// kind byte (+0x2C8) is not 0, or the category byte is not readable. That
+/// kind byte (`STATUS_KIND_OFF`) is not 0, or the category byte is not readable. That
 /// trio is what
 /// [`Kind::Catchable`] means, so the survey still lists every actor this
 /// returns `Some` for, whichever class comes back.
@@ -1010,7 +1032,7 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
     if !creature::CATCHABLE_TYPES.contains(&ty) {
         return None;
     }
-    // No status-kind test. `status+0x2C8 == 0` was part of the first-cut
+    // No status-kind test. `status kind == 0` was part of the first-cut
     // catch rule (section 15.3), which the class gate below superseded
     // (section 15.5), and it cost real catches on 26361232: on 2026-11-02 23
     // live type-06 `cat=80` bugs in reach read `0x3C` or `0xD3` there, in two
@@ -1034,7 +1056,7 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
 ///
 /// Two bytes, both of which the mod already reads: the actor type byte is one
 /// of `creature::CATCHABLE_TYPES` (3 or 6), and the
-/// `ClientStatusActorComponent` flag byte at [`STATUS_FLAG_OFF`] (`+0x273`)
+/// `ClientStatusActorComponent` flag byte at [`STATUS_FLAG_OFF`] (`+0x293` on 26361232, `+0x273` before)
 /// is 1. **That flag is the alive/dead bit: 0 alive, 1 dead.**
 ///
 /// Established live on build 25246367 (`docs/findings/2026-09-15-skinning.md`
@@ -1050,7 +1072,7 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
 /// `06` (seven of them) and `03` (one), both already in `CATCHABLE_TYPES`.
 ///
 /// The game corroborates it statically: its own carcass gate
-/// (`FUN_142a75360`) branches on `status+0x273` before it ever looks at the
+/// (`FUN_142a75360` on 25246367) branches on that byte before it ever looks at the
 /// owner id.
 ///
 /// The type gate is what keeps this to **animals**. Types 4 and 5 - human and
@@ -1059,7 +1081,7 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
 ///
 /// An unreadable actor answers `false`, the same way `is_catchable_type` and
 /// `catch_class` do: when the mod cannot tell, it leaves the thing alone.
-/// Nothing new is read here either - `+0x273` sits inside the range
+/// Nothing new is read here either - the flag sits inside the range
 /// `events::creature_preflight` already proves readable before a send - so
 /// this retires the health words at `+0x2CC`/`+0x2D0`/`+0x2D4` and the
 /// handler's own `*(*(actor+0x68)+0xC8)` corpse test as things anyone has to

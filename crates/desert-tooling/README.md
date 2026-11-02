@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.10.1**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.11.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -209,13 +209,13 @@ pickup event it sends when you press E.
 ## What the Gatherer does
 
 Every gathering node in the game carries a minimum and a maximum quantity for
-each item it can produce. Desert Tooling multiplies both, in 279 records across
+each item it can produce. Desert Tooling multiplies both, in 294 records across
 five independent families:
 
 | family | what it covers | records |
 |---|---|---|
-| Foraging | plants, fruit, berries, mushrooms, crops, and the water you draw from a **water well** | 83 |
-| Logging | firewood cut from felled trees (`firewood_*`) | 141 |
+| Foraging | plants, fruit, berries, mushrooms, crops, tree branches, wild rock honey, and the water you draw from a **water well** | 97 |
+| Logging | firewood cut from felled trees (`firewood_*`) and firewood piles | 142 |
 | Mining | the `collect_mine` family: rocks, veins, cave variants, breakable stalactites | 36 |
 | Ore Nodes | the `collect_ore` family: `ore_*` deposits, sulfur stone, collectible stalactites | 16 |
 | Money | the coins placed in the world: **money lying around, and nothing else** | 3 |
@@ -225,8 +225,8 @@ game but are separate families in the game's data; set both if you want all
 mining-style gathering raised together. Nothing is patched on disk: the numbers
 are multiplied in memory as the game loads them.
 
-They are the game's own groupings (the 275 records it classes as gather nodes,
-the same four the DMM pack covered) plus four records the pack never had: the
+They are read off the game's own data (how each record is interacted with, and
+what it pays out), plus a few records that data alone does not mark, among them the
 three placed money records, which are the `Money` family and get their own
 section below, and the water well, which pays out through the same kind of
 record as a bush and so sits under `Foraging`. Water from a well is a thing you gather out of the world
@@ -340,9 +340,10 @@ multiplier preset** change the same minimum/maximum quantities, on disk.
 
 If either is mounted while this `.asi` is installed, the two stack: a mounted
 DMM 5X plus `Mining=2` here gives 10x. **Unmount both in DMM before using this
-plugin.** The `desert-gatherer-dmm/` directory in this repository is that pack;
-this plugin is its replacement, not its companion. The one record with nothing
-on the DMM side to stack with is the water well, which the pack never covered.
+plugin.** The `desert-gatherer-dmm/` directory in this repository is that pack,
+for players who use DMM without an ASI loader; it is generated from the same
+records this plugin multiplies (all but the three Money records), so every one
+of them stacks.
 
 ## Settings (`DesertTooling.ini`)
 
@@ -383,7 +384,7 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `LogReceived` | 0 | 1 = log every item the game hands you as `[recv] item <key> x<count>`, plugin-caused or not (capped at 500 a session); for measuring yields. Coin props are not logged: measure money with the bag line of two F11 surveys |
 | `KeyToggle`, `KeyScan`, `KeyGather`, `KeyRecord` | F10, F11, F9, F7 | see the key names below |
 | `DryRun` | 0 | 1 = log every yield change that would be made and write nothing; for troubleshooting and after game updates. The yield multipliers only: auto-loot still runs |
-| `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. For the offline tools (`CD_DMM_TABLE`); nothing in the game needs it |
+| `DumpTable` | 0 | 1 = on the next launch, write the game's vanilla gimmickinfo table body to `DesertTooling.gimmickinfo.bin` beside the log (about 22 MB, once per session, logged as `[dump]`). Needs `DryRun=1` so nothing in the copy is multiplied; without it the log says it was ignored. A diagnostic copy; nothing in the game or the tools needs it |
 | `Foraging` | 1 | multiplier for plants and crops, and for the water drawn from a water well, 1..100 |
 | `Logging` | 1 | multiplier for firewood, 1..100 |
 | `Mining` | 1 | multiplier for `collect_mine`, 1..100 |
@@ -564,9 +565,9 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 14,210 records on build 26361232 (13,941 on 25477059), 279 of which this plugin multiplies. They are the
-275 the game classes as gather nodes, plus the water well and the three placed
-money records. Roughly
+called `gimmickinfo`: 14,210 records on build 26361232 (13,941 on 25477059), 294 of which this plugin multiplies: the gather nodes as the game's own data
+marks them, plus the water well, the wild rock honey, three stalactites and the
+three placed money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
 a preload pass that reads every record in order, parses each one into an object
 in memory, stores the object's pointer in a slot table, and then closes the
@@ -669,7 +670,7 @@ Everything the plugin touches lives in `bin64` next to the exe:
 | `DesertTooling.log` | append-only log of what the plugin did; grows every session | yes, any time |
 | `DesertTooling.yields` | a small cache of "this node gave this item, this many", learned while you play; refines the stacking rule at a full bag | yes, it relearns itself |
 | `DesertTooling.ini.tmp` | transient: the menu writes the new ini here and renames it over `DesertTooling.ini`, so it is normally gone a moment later | yes |
-| `DesertTooling.gimmickinfo.bin` | the game's vanilla `gimmickinfo` table body, about 22 MB, for the offline tools; written once per session only with `[Harvest] DumpTable=1` and `DryRun=1` | yes |
+| `DesertTooling.gimmickinfo.bin` | the game's vanilla `gimmickinfo` table body, about 22 MB, a diagnostic copy; written once per session only with `[Harvest] DumpTable=1` and `DryRun=1` | yes |
 
 The log is the first thing to look at when something seems off. Every line
 carries the subsystem that wrote it, so one file still separates cleanly:

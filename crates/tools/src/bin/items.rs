@@ -20,13 +20,12 @@
 //! docs/reference-items-loose.md   loose run can never clobber the default)
 //! ```
 //!
-//! Reads the clean `gimmickinfo` table body - the plugin's own dump
-//! (`<bin64>/DesertTooling.gimmickinfo.bin`, written under `[Harvest]
-//! DumpTable=1`) when it exists, else the copy DMM writes out
-//! (`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`); `paths::dmm_table` has
-//! the rule. It carries record-relative offsets only and so needs no rebasing
-//! for a game update. Also reads `crates/desert-core/src/collect.rs` for the current
-//! `Family` of each record.
+//! Reads the `gimmickinfo` table body out of the installed game's archives
+//! (`desert_tools::paz`), or from a directory of extracted copies with
+//! `--tables` (`just extract-tables` writes `analysis/tables/`). It carries
+//! record-relative offsets only and so needs no rebasing for a game update.
+//! Also reads `crates/desert-core/src/collect.rs` for the current `Family` of
+//! each record.
 //!
 //! Method, and its limits, because the doc states them and this is where they
 //! are implemented (`docs/findings/2026-09-12-water-wells.md` sections 3, 5, 7
@@ -134,10 +133,12 @@ pub struct Args {
     /// re-walk the table instead of reading the cache for the detector in use
     #[arg(long)]
     pub rescan: bool,
-    /// clean gimmickinfo body ($CD_DMM_TABLE, else the plugin's dump in
-    /// bin64 if present, else DMM's backup copy)
-    #[arg(long, default_value_os_t = desert_tools::paths::dmm_table())]
-    pub table: PathBuf,
+    /// a directory of extracted tables to read gimmickinfo.staticinfobody
+    /// from (`just extract-tables` writes analysis/tables/) [default: the
+    /// installed game's archives, under $CD_GAME_DIR or the parent of
+    /// $CD_BIN64]
+    #[arg(long, value_name = "DIR")]
+    pub tables: Option<PathBuf>,
     #[arg(long = "json")]
     pub json_out: Option<PathBuf>,
     #[arg(long = "doc")]
@@ -269,7 +270,7 @@ fn run(args: &Args, w: &mut dyn Write) -> Result<()> {
         || args.unclassified
         || args.list;
     if !querying {
-        let d = dataset::build(&args.table, &collect_rs, args.detector(), false, w)?;
+        let d = dataset::build(args.tables.as_deref(), &collect_rs, args.detector(), false, w)?;
         if let Some(p) = json_out.parent() {
             std::fs::create_dir_all(p)?;
         }
@@ -432,7 +433,7 @@ mod tests {
             list: false,
             loose: false,
             rescan: false,
-            table: PathBuf::from("/x"),
+            tables: Some(PathBuf::from("/x")),
             json_out: None,
             doc_out: None,
         };

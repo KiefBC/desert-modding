@@ -1,4 +1,4 @@
-//! The clean table body, and the two walks over it.
+//! The `gimmickinfo` table body, and the two walks over it.
 //!
 //! Everything here is a port of the retired `items.py`'s `Table` class and the
 //! constants above it, and the reasoning in those comments is the part worth
@@ -10,20 +10,11 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{anyhow, Result};
-use regex::Regex;
 
-// Block layout, from desert_core::gimmick. ITEM_AT is the corrected +1; the
-// constant said 5 until 2026-09-12, which is four bytes of zero padding
-// (findings section 5). Keep these in step with crates/desert-core/src/gimmick.rs.
-pub const BLOCK: usize = 68;
-pub const ITEM_AT: usize = 1;
-pub const ITEM_TAIL_AT: usize = 60;
-pub const PAD_AT: usize = ITEM_AT + 4;
-pub const PAD_TAIL_AT: usize = ITEM_TAIL_AT + 4;
-pub const MIN_AT: usize = 42;
-pub const MAX_AT: usize = 50;
-pub const MAX_COUNT: u32 = 64;
-pub const MAX_QTY: u64 = 100_000;
+// Block layout: `desert_tools::outputs`, the tools' one port of
+// desert_core::gimmick's. ITEM_AT is the corrected +1; the constant said 5
+// until 2026-09-12, which is four bytes of zero padding (findings section 5).
+pub use desert_tools::outputs::{BLOCK, ITEM_AT, MAX_AT, MIN_AT, PAD_AT, PAD_TAIL_AT};
 
 /// `PAD_TAIL_AT` is the second half of `block_ok`'s pad clause, and calling it
 /// a pad is only true of the population that clause admits. What the
@@ -70,7 +61,7 @@ const BAD_NAME_CHARS: &[u8] = b"/.\\ <>=\"'\t";
 /// The 572 are a strict subset of the 588; the 16 extra lists differ only in
 /// carrying a nonzero `u32` at `PAD_TAIL_AT`, which the deserialiser says is
 /// the list entry's key field (see [`ENTRY_KEY_AT`]) rather than a pad.
-/// **None of the 16 is one of the 275 gather records the DMM pack edits** -
+/// **None of the 16 is in a `collect.rs` row** (rows pay shipped blocks) -
 /// they are chests, dig sites and dungeon loot:
 /// `Temple_Chest_01`, `dff_chest_24`, `gimmick_item_dropset_treasurebox_01`,
 /// `clawmachine_capsule_01`, `Action_dig_01`, `gimmick_Dig_land_0001`, the
@@ -83,40 +74,9 @@ const BAD_NAME_CHARS: &[u8] = b"/.\\ <>=\"'\t";
 /// that has since been corrected; the key-echo discriminator in
 /// [`Table::records`] is what rules such headers out. See
 /// `docs/findings/2026-09-12-water-wells.md` section 7.)
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Detector {
-    Shipped,
-    Loose,
-}
+pub use desert_tools::outputs::Detector;
 
-impl Detector {
-    pub fn name(self) -> &'static str {
-        match self {
-            Detector::Shipped => "shipped",
-            Detector::Loose => "loose",
-        }
-    }
-
-    pub fn summary(self) -> &'static str {
-        match self {
-            Detector::Shipped => {
-                "both equality clauses, exactly desert_core::gimmick::block_ok - the \
-                 population the plugin sees and the gatherer multiplies"
-            }
-            Detector::Loose => {
-                "the item-id clause only; the pad clause dropped. Finds everything the \
-                 shipped detector finds plus 16 lists the mod cannot see"
-            }
-        }
-    }
-
-    /// Whether `+5` must equal `+64`. The whole difference between the two.
-    pub fn pad_clause(self) -> bool {
-        matches!(self, Detector::Shipped)
-    }
-}
-
-/// The clean table body, with the two walks findings section 8 records.
+/// The table body, with the two walks findings section 8 records.
 ///
 /// The Python's `Table` carried the [`Detector`] it was opened with as a
 /// default and every walk took an optional override. Here every walk takes the
@@ -129,18 +89,34 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn open(path: &Path) -> Result<Table> {
+    /// The `gimmickinfo` body, and a description of where it came from: out
+    /// of `<tables>/gimmickinfo.staticinfobody` when a directory of extracted
+    /// copies is given, else out of the installed game's archives.
+    pub fn load(tables: Option<&Path>) -> Result<(Table, String)> {
+        use desert_tools::staticinfo::{archive_path, BODY_EXT};
+        const TABLE: &str = "gimmickinfo";
         // One flat message, because `main` prints it the way the Python's
         // `die()` did: `items: <what went wrong>`, hint on the second line.
-        let b = std::fs::read(path).map_err(|e| {
-            anyhow!(
-                "cannot read the clean table body {}: {e}\n  \
-                 the plugin writes it to bin64 under [Harvest] DumpTable=1 \
-                 and DryRun=1; pass --table if it lives elsewhere.",
-                path.display()
-            )
-        })?;
-        Ok(Table { b })
+        let hint = "pass --tables DIR (extracted copies, `just extract-tables`) or set \
+                    CD_GAME_DIR to the install holding the archives.";
+        match tables {
+            Some(dir) => {
+                let path = dir.join(format!("{TABLE}{BODY_EXT}"));
+                let b = std::fs::read(&path)
+                    .map_err(|e| anyhow!("cannot read the gimmickinfo table body {}: {e}\n  {hint}", path.display()))?;
+                Ok((Table { b }, path.display().to_string()))
+            }
+            None => {
+                let game = desert_tools::paths::game_dir();
+                let inner = archive_path(TABLE, BODY_EXT);
+                let b = desert_tools::paz::Archive::open(&game)
+                    .and_then(|a| a.read(&inner))
+                    .map_err(|e| {
+                        anyhow!("cannot read the gimmickinfo table body out of the archives under {}: {e:#}\n  {hint}", game.display())
+                    })?;
+                Ok((Table { b }, format!("{inner} in the archives under {}", game.display())))
+            }
+        }
     }
 
     #[inline]
@@ -160,44 +136,17 @@ impl Table {
     /// two copies of the item id must agree, and so must `PAD_AT` and
     /// `PAD_TAIL_AT`. Under [`Detector::Loose`] the second clause is dropped
     /// and nothing else changes. Which clause buys what, and why `PAD_TAIL_AT`
-    /// is not really a pad, is on [`Detector`] and [`ENTRY_KEY_AT`].
+    /// is not really a pad, is on [`Detector`] and [`ENTRY_KEY_AT`]. The walk
+    /// itself calls `desert_tools::outputs` directly; this is what the tests
+    /// below pin the two detectors with.
+    #[cfg(test)]
     pub fn block_ok(&self, at: usize, d: Detector) -> bool {
-        let b = &self.b;
-        if at + BLOCK > b.len() {
-            return false;
-        }
-        if b[at] != 1 || b[at + 58] != 0xFF || b[at + 59] != 0xFF {
-            return false;
-        }
-        if b[at + ITEM_AT..at + ITEM_AT + 4] != b[at + ITEM_TAIL_AT..at + ITEM_TAIL_AT + 4] {
-            return false;
-        }
-        if d.pad_clause() && b[at + PAD_AT..at + PAD_AT + 4] != b[at + PAD_TAIL_AT..at + PAD_TAIL_AT + 4]
-        {
-            return false;
-        }
-        let (mn, mx) = (self.u64(at + MIN_AT), self.u64(at + MAX_AT));
-        1 <= mn && mn <= mx && mx <= MAX_QTY
+        desert_tools::outputs::block_ok(&self.b, at, d)
     }
 
     /// Greedy, non-overlapping walk for `u32 count` + count blocks.
     pub fn output_lists(&self, d: Detector) -> Vec<(usize, u32)> {
-        let n = self.b.len();
-        let mut out = Vec::new();
-        let mut i = 0usize;
-        while i + 4 <= n {
-            let c = self.u32(i);
-            if (1..=MAX_COUNT).contains(&c)
-                && i + 4 + c as usize * BLOCK <= n
-                && (0..c as usize).all(|k| self.block_ok(i + 4 + k * BLOCK, d))
-            {
-                out.push((i, c));
-                i += 4 + c as usize * BLOCK;
-            } else {
-                i += 1;
-            }
-        }
-        out
+        desert_tools::outputs::output_lists(&self.b, d).into_iter().map(|(o, c)| (o, c as u32)).collect()
     }
 
     /// Every length-prefixed, NUL-terminated printable string in the body,
@@ -309,31 +258,16 @@ fn is_digits(s: &str) -> bool {
 
 // ------------------------------------------------------------------ collect.rs
 
-/// `record key -> (record name, Family)` from the generated key table.
+/// `record key -> (record name, Family)` from the generated key table
+/// (`desert_tools::collect_rows`).
 pub fn read_collect(path: &Path) -> Result<HashMap<u32, (String, String)>> {
-    let text = std::fs::read_to_string(path)
-        .map_err(|e| anyhow!("cannot read {}: {e}", path.display()))?;
-    let row = Regex::new(r#"^\s*\((\d+),\s*"([^"]+)",\s*Family::(\w+)\)"#).unwrap();
-    let mut rows = HashMap::new();
-    for line in text.lines() {
-        if let Some(m) = row.captures(line) {
-            rows.insert(
-                m[1].parse::<u32>().unwrap(),
-                (m[2].to_string(), m[3].to_string()),
-            );
-        }
-    }
-    anyhow::ensure!(
-        !rows.is_empty(),
-        "no COLLECT_RECORDS rows parsed out of {}",
-        path.display()
-    );
-    Ok(rows)
+    Ok(desert_tools::collect_rows::read(path)?.into_iter().map(|r| (r.key, (r.name, r.family))).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use desert_tools::outputs::{ITEM_TAIL_AT, MAX_QTY};
 
     /// A 68-byte output block. The named offsets are the point of the test:
     /// the item id lives at `+1` and is echoed at `+60`, `+5` is the only real

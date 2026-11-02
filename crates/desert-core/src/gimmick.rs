@@ -4,8 +4,8 @@
 //!
 //! The gatherer subsystem of `DesertTooling.asi` hooks the loader and rewrites
 //! the raw table bytes in memory just before the game parses each record, which
-//! is what makes it a drop-in replacement for the `desert-gatherer-dmm/` offset
-//! patches: same edits, but computed from the bytes instead of from a
+//! is what made it a drop-in replacement for the on-disk offset-patch packs
+//! it superseded: the same edits, but computed from the bytes instead of from a
 //! build-specific offset list.
 //!
 //! Everything here is a pure function over a byte slice, so it compiles and is
@@ -21,10 +21,10 @@
 //! then its fields. **On 26361232 the header changed shape**: `u32 name_len`,
 //! the name with no terminator, `u32 key`, `0x00`, `u32 path_len`, a prefab
 //! path, a `u8` flag; see [`HeaderShape`]. Everything after the header (the
-//! output lists and their blocks) is found by signature and did not care. DMM's extracted copy of the body is
-//! `<DMM>/backups/gimmickinfo_pabgb_clean.bin` (22,325,302 bytes, sha256
-//! `95e2dcf4b3447cdf6186b9fa816065f4e09f3ce49fe7047fd111f1bb6517411a`) and it is
-//! byte-identical to what the game loads into memory.
+//! output lists and their blocks) is found by signature and did not care. The
+//! body in the game's archive (`gamedata/binarystaticinfo__/bin/gimmickinfo.staticinfobody`,
+//! which `crates/tools` reads) is byte-identical to what the game loads into
+//! memory.
 //!
 //! Inside a gather record, resource outputs are stored as one or more lists: a
 //! `u32 count` followed by `count` blocks of exactly [`BLOCK`] bytes:
@@ -44,7 +44,7 @@
 //! had the item id 4 bytes too high (at `+5` and `+64`, which are the two zero
 //! pads), and so did the block builders in this file's own tests and in
 //! `crates/desert-core/tests/props.rs`, which is why nothing caught it. Confirmed over
-//! **all 896** output blocks of `gimmickinfo_pabgb_clean.bin`: `u32@+1 != 0`
+//! **all 896** output blocks of build 25246367's clean table: `u32@+1 != 0`
 //! 896/896, `u32@+1 == u32@+60` 896/896, `u32@+5 == 0` 896/896, `u32@+64 == 0`
 //! 896/896. [`MIN_AT`], [`MAX_AT`], [`BLOCK`] and the `FF FF` are unaffected, so
 //! [`multiply`], which writes only the two scalars, was never wrong; what was
@@ -53,11 +53,11 @@
 //! against. See `docs/findings/2026-09-12-water-wells.md` section 5.
 //!
 //! That signature (count 1..=64, every block valid, `1 <= min <= max <=`
-//! [`MAX_QTY`]) was cross-checked offline against the whole 22 MB table: inside
-//! the 275 gather records the DMM pack edits it finds exactly the 587 blocks the
-//! pack touches, and nothing else: no false positives.
-//! This ports the pack's original locator, `desert-gatherer-dmm/rebase.py`,
-//! which is now the Rust `dmm-rebase` in `crates/tools/src/bin/dmm-rebase.rs`.
+//! [`MAX_QTY`]) was cross-checked offline against the whole table: inside the
+//! 275 gather records the old offset pack edited it found exactly the 587
+//! blocks the pack touched, and nothing else: no false positives. On
+//! 26361232 `multiply` doubles every block of every `collect` row and nothing
+//! else (`tests/gimmick_real.rs`, against the archive's table).
 //!
 //! # The loader
 //!
@@ -814,7 +814,7 @@ fn block_ok(rec: &[u8], at: usize) -> bool {
     // the parsed loop reads into `entry+0x08` (section 16.1), and records that
     // share a value share a drop group. Reading it as a pad is right for every
     // record the plugin edits and wrong in general. None of
-    // them is one of the 275 gather records the DMM pack edits; they are chests,
+    // them is one of the 275 gather records the old offset pack edited; they are chests,
     // dig sites and dungeon loot: `Temple_Chest_01` (key 16060036),
     // `dff_chest_24` (16060043), `gimmick_item_dropset_treasurebox_01`
     // (1005213), `clawmachine_capsule_01` (1007407), `Action_dig_01`
@@ -2819,7 +2819,7 @@ mod tests {
     /// 2026-09-12 they all agreed with `ITEM_AT`/`ITEM_TAIL_AT` about a layout
     /// four bytes off from the game's and none of them could have caught it.
     /// This one writes the bytes by hand at the offsets measured over all 896
-    /// output blocks of `gimmickinfo_pabgb_clean.bin` and never names the
+    /// output blocks of build 25246367's clean table and never names the
     /// constants, so it fails if either moves again. `peony_01`'s first block is
     /// the real-world case, asserted against the fixture itself in
     /// `crates/desert-core/tests/gimmick_real.rs`.

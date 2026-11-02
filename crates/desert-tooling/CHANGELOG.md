@@ -9,6 +9,42 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.11.0] - 2026-11-02
+
+Game build 26361232, the same build as 0.10.1. The gathering families are now read off the game's
+own data instead of a list taken from the DMM pack, which adds 15 records to them, and auto-skinning
+works again. Nothing changes in the ini. Verified in game on 2026-11-02: the load-time patch
+(`[stat] ... recognised 294`) and two carcasses skinned by auto-gather with their loot doubled.
+
+### Changed
+
+- **The five gathering families are decided by the game's records, not by a list.** Which family a
+  gather node belongs to now comes from how the game itself treats the record: how it is
+  interacted with (collected, scooped or picked up), the knowledge it teaches, and what material the
+  items it pays out are. The plugin knows **294** records, up from 279: `Foraging` 97 (was 83),
+  `Logging` 142 (was 141), `Mining` 36, `Ore Nodes` 16, `Money` 3. Every record you had before is
+  still in the same family. Because your existing `Foraging` and `Logging` settings now reach the
+  new records too, yields from those nodes change without you touching anything; set the family to
+  1 to keep them vanilla. The new records have not been measured in game yet.
+
+### Added
+
+- **`Foraging` covers 14 more records:** four tree and bamboo branch nodes, Rubber, Razor Clam, the
+  Creature Power Core and the seven Wild Rock Honey nodes.
+- **`Logging` covers the firewood pile** (`gimmick_wood_firewood_0001`).
+
+### Fixed
+
+- **Auto-gather skins carcasses again, and no longer tries to catch a dead animal.** 26361232 moved
+  the alive/dead flag in a creature's status data, so every corpse read as alive: `GatherCarcass`
+  found nothing to skin, and a dead bird whose class is also a fish class was offered as a fish and
+  sent a catch event that failed. The flag is read where the game now keeps it, and F11 shows a
+  fresh kill as `status=00/01` and lists it as `Carcass`. Skinning by hand was never affected.
+- **The shop-goods, quest-item and decoration check reads the right byte again.** The same move
+  shifted the status byte that keeps those out of auto-loot, so it read unrelated values (`E0`,
+  `D3`) where creatures read 0. It is read at its new place, and the survey's `status=` column is
+  meaningful again.
+
 ## [0.10.1] - 2026-11-02
 
 Game build 26361232, the same build as 0.10.0. Fixes for the auto-loot half of Desert Harvest,

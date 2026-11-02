@@ -1,28 +1,39 @@
-//! Source 2: `crates/tools/extra-families.json`, and the two-way money rule.
+//! `crates/tools/extra-families.json`: the overrides on the rule, and the
+//! two-way money rule.
 //!
-//! FORMAT of crates/tools/extra-families.json: a JSON object mapping family name ->
-//! {note, records, records_not_enabled?, candidates_not_enabled?}, where
+//! The rule in `classify` decides most rows from the records themselves. This
+//! file holds what no field settles, and nothing else:
+//!
+//! FORMAT: a JSON object mapping family name ->
+//! {note?, records?, records_not_enabled?, candidates_not_enabled?}, where
 //!
 //!   note                     free text: what the entry adds and how sure we
 //!                            are. Emitted as a doc comment on the enum
-//!                            variant.
-//!   records                  {"<record key>": {name, items, why}} - the
-//!                            SOURCE OF TRUTH: the gimmickinfo records this
-//!                            entry adds, by key. `name` is the record's name,
+//!                            variant, after the rule's own sentence.
+//!   records                  {"<record key>": {name, items, why}}: records
+//!                            assigned to this family although the rule does
+//!                            not pick them. `name` is the record's name,
 //!                            `items` the item ids its resource-output blocks
-//!                            carry (derived data, verified in `table`), `why`
-//!                            the evidence that a table edit reaches the
-//!                            player through this record.
-//!   records_not_enabled      optional, same shape: records measured or argued
-//!                            to be unreachable by a table edit and
-//!                            deliberately NOT rows. Verified against the body
-//!                            the same way, and emitted only as a test
-//!                            asserting they stay out of the table, so the
-//!                            trace is machine-checked rather than a paragraph
-//!                            somebody has to find.
+//!                            carry (derived data, re-derived from the table
+//!                            and compared on every run), `why` the reason no
+//!                            field marks the record and the evidence that a
+//!                            table edit reaches the player through it.
+//!   records_not_enabled      optional, same shape: records that are never
+//!                            rows, whether or not the rule picks them, each
+//!                            with the measurement or argument that a table
+//!                            edit does not reach the player through it.
+//!                            Emitted as a test asserting they stay out.
 //!   candidates_not_enabled   optional {"<item id>": "why not"} - items
 //!                            considered and deferred, recorded so the
 //!                            decision is visible. Never emitted.
+//!
+//! An entry needs `records` or `records_not_enabled`. A family that is not one
+//! of the rule's four (`Money`) is emitted as a variant of its own.
+//!
+//! The generator refuses an override that is not in the table, whose stored
+//! items disagree with the table, or that is redundant with the rule (a record
+//! the rule already puts in that family) or contradicts it (a record the rule
+//! puts in another family: a record has one family).
 //!
 //! Entries are record-keyed, not item-keyed, and that is a finding rather than
 //! a convenience. The same item (water, 22008) comes from two records, and only
@@ -30,9 +41,7 @@
 //! the breakable pot, hands the player a pre-built item instance and the table
 //! is never consulted (docs/findings/2026-09-12-water-wells.md section 11). So
 //! which RECORD a row names is what decides whether the multiplier reaches
-//! anything, and the item is only what it pays. An earlier item-keyed form of
-//! this file expanded 22008 to both records and shipped a pot row that did
-//! nothing.
+//! anything, and the item is only what it pays.
 
 use anyhow::{bail, Result};
 use serde_json::Value;
@@ -45,7 +54,7 @@ pub const MONEY_FAMILY: &str = "Money";
 
 #[derive(Debug)]
 /// One record of one family: the name and `why` are quoted straight out of the
-/// json, `items` is derived data the clean-body walk re-derives and checks.
+/// json, `items` is derived data the per-record walk re-derives and checks.
 pub struct Record {
     pub key: u32,
     pub name: String,
@@ -68,7 +77,7 @@ pub struct FamilySpec {
 
 impl FamilySpec {
     /// The two record maps, paired with whether a record in them must own an
-    /// output block. Both are verified against the clean body the same way.
+    /// output block. Both are verified against the table the same way.
     pub fn fields(&self) -> [(&'static str, &[Record], bool); 2] {
         [
             ("records", &self.records, true),
@@ -90,12 +99,6 @@ pub fn py_ints(v: &[u32]) -> String {
     format!("[{}]", inner.join(", "))
 }
 
-/// Python's `repr` of a list of strings, for the same reason as [`q`].
-pub fn py_strs(v: &[String]) -> String {
-    let inner: Vec<String> = v.iter().map(|s| q(s)).collect();
-    format!("[{}]", inner.join(", "))
-}
-
 /// The two-way money rule, applied to one record's item list.
 ///
 /// A record paying item 1 inside `Foraging` or any other gathering family would
@@ -106,10 +109,10 @@ pub fn py_strs(v: &[String]) -> String {
 /// gathering family and a gathering item can never ride into Money; the two
 /// refusals are each other's mirror.
 ///
-/// Checked twice for every record: once on the `items` stored in the json and
-/// again on what the clean body says the record pays. `source` names which of
-/// the two the list came from ("stored" for the json, "the clean body" for the
-/// walk) so the message says which one disagreed.
+/// Checked on the `items` stored in the json, and on what the table says every
+/// row pays, rule rows included. `source` names which of the two the list came
+/// from ("stored" for the json, "the table" for the walk) so the message says
+/// which one disagreed.
 pub fn check_money_rule(
     location: &str,
     name: &str,
@@ -206,8 +209,8 @@ pub fn read_extras(path: &str, text: &str) -> Result<Vec<FamilySpec>> {
         let records = read_record_map(path, family, "records", body.get("records"))?;
         let records_not_enabled =
             read_record_map(path, family, "records_not_enabled", body.get("records_not_enabled"))?;
-        if records.is_empty() {
-            bail!("{path}: {family} has no records; it is the source of truth");
+        if records.is_empty() && records_not_enabled.is_empty() {
+            bail!("{path}: {family} has neither records nor records_not_enabled");
         }
         let mut both: Vec<u32> = records
             .iter()
@@ -277,7 +280,7 @@ mod tests {
     #[test]
     fn money_rule_refuses_anything_but_money_in_money() {
         // The mirror half: a material riding into the economy lever.
-        let err = check_money_rule("where", "coin", "Money", &[1, 22008], "the clean body")
+        let err = check_money_rule("where", "coin", "Money", &[1, 22008], "the table")
             .unwrap_err()
             .to_string();
         assert!(err.contains("and nothing else"), "{err}");
@@ -288,7 +291,9 @@ mod tests {
     #[test]
     fn a_family_needs_records() {
         let err = read_extras("p.json", r#"{"Foo": {"note": "n"}}"#).unwrap_err().to_string();
-        assert!(err.contains("has no records"), "{err}");
+        assert!(err.contains("has neither records nor records_not_enabled"), "{err}");
+        let json = r#"{"Foo": {"records_not_enabled": {"7": {"name": "a", "items": [2], "why": ""}}}}"#;
+        assert_eq!(read_extras("p.json", json).unwrap()[0].records_not_enabled.len(), 1);
     }
 
     #[test]

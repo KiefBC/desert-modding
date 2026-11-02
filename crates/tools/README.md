@@ -14,8 +14,10 @@ Two kinds of thing live here, and the difference matters:
 These were thirteen Python and bash scripts until the port. They are thirteen
 Rust binaries now, in one package (`desert-tools`), and the `.py`/`.sh`
 originals are gone. A fourteenth, `dmm-rebase`, replaced the last Python in
-the repo, the DMM pack's own `rebase.py`, and a fifteenth, `retarget`
-(2026-11-01), replaced Ghidra in the re-target procedure. What that bought, in the order it matters:
+the repo, the DMM pack's own `rebase.py`; `dmm-pack` (2026-11-02) replaced it
+in turn, generating the pack from the game's own table instead of rebasing the
+published one. `retarget` (2026-11-01) replaced Ghidra in the re-target
+procedure. What that bought, in the order it matters:
 
 * **The dev shell is needed for far less.** No tool shells out to `objdump`,
   `zip`, `unzip`, `sha256sum` or `python3` any more. The only external program
@@ -40,13 +42,13 @@ a sentence that has always been wrong (see **Known defects**).
 ```
 just tools              build them (host target, release)
 just tools-check        clippy + unit tests; part of `just ci`
-just tools-check-game   the #[ignore]d tests needing the game exe, DMM's
-                        table or a built plugin
+just tools-check-game   the #[ignore]d tests needing the game exe, the table
+                        dump or a built plugin
 ```
 
 `tools-check-game` is separate from `tools-check` for exactly the reason
-`test-game` is separate from `test`: a CI runner has no game, no DMM table and
-no Ghidra.
+`test-game` is separate from `test`: a CI runner has no game, no table dump
+and no Ghidra.
 
 Every tool is **run with the repo root as the working directory**, and none of
 them resolves a default path against it. `desert_tools::paths::repo_root()`
@@ -68,9 +70,14 @@ from the exception directory). `records` came with build 26361232: it probes
 the `gimmickinfo` record header shape at the first record (`KeyFirst`, `u32
 key, u32 name_len, name, 0x00`, through 25477059; `NameFirst`, `u32 name_len,
 name, u32 key, u8 0, u32 path_len, path, u8 flag`, on 26361232) and walks a
-name-first table header by header, exactly, so `gen-collect-names`, `items`
-and `dmm-rebase` all read both shapes. Anything only one binary needs stays in
-that binary.
+name-first table header by header, exactly, so `gen-collect-names` and
+`items` both read both shapes. `paz` and `staticinfo` (2026-11-02)
+read the game's data archives and split a static-info table into records; see
+`paz` below. `outputs` (2026-11-02) is the tools' one port of the plugin's
+output-block walk (`desert_core::gimmick::{block_ok, output_lists}`, plus the
+loose detector), shared by `gen-collect-names`, `items` and `dmm-pack`, and
+`collect_rows` the one reader of `collect.rs`'s `COLLECT_RECORDS` rows, shared
+by the same three. Anything only one binary needs stays in that binary.
 
 ## Its own cargo workspace, and the config trap
 
@@ -117,10 +124,10 @@ not even the dev shell. That was diffed against
 the shell version was deleted: identical, 10 entries.
 
 ### `dist` (`just dist`, and the release workflow)
-Builds the release zips into `dist/`, one per package, plus `SHA256SUMS`.
-There are only two packages: `DesertTooling-{version}.zip` (the one `.asi`,
-its `.ini`, README, CHANGELOG and LICENSE) and the DMM pack; nothing bundles
-anything else any more.
+Builds the release zip into `dist/`, plus `SHA256SUMS`. There is one package:
+`DesertTooling-{version}.zip` (the one `.asi`, its `.ini`, README, CHANGELOG
+and LICENSE). The DMM pack that used to be a second package was retired on
+2026-11-02.
 
 **It starts by deleting `dist/`.** Do not run it expecting the previous build
 to survive.
@@ -161,10 +168,7 @@ checksum table would be noise.
 
 ### `sync-versions` (`just sync-versions`, `just check-versions`, and CI)
 Keeps the version numbers in `README.md`, `VERSIONING.md` and each shipping
-crate's `README.md` in step with the crate `Cargo.toml` files, and the twelve
-`desert-gatherer-dmm/*.json` module files in step with `dmm_pack.json` (the DMM
-pack is not a crate and has its own `x.y` source of truth; each module repeats
-it twice, once at the top level and once inside `modinfo`). `--check` is
+crate's `README.md` in step with the crate `Cargo.toml` files. `--check` is
 read-only and is what CI runs; without it the tool rewrites those files in
 place.
 
@@ -175,65 +179,50 @@ exit 0 on a bump whose entry nobody has written yet. Without it, a missing entry
 goes unnoticed until the release workflow builds the notes - which is after the
 tag has been pushed, and a tag is the release.
 
-### `dmm-rebase` (`just dmm-rebase`)
-Rebases the DMM pack's twelve module files onto a new game build, and
-regenerates `desert-gatherer-dmm/VERIFICATION.txt`. Run it after a game update,
-once `just test-game`'s pack oracle (`multiply_reproduces_the_dmm_pack_edits`)
-has passed; `desert-gatherer-dmm/README.md` has the whole procedure. Not part
-of `just ci`: it only has work to do when the game changes.
+### `dmm-pack` (`just dmm-pack`)
+Generates the DMM pack's twelve module files and
+`desert-gatherer-dmm/VERIFICATION.txt` from two inputs: the game's own
+`gimmickinfo` table, out of its archives (`--tables DIR` reads extracted copies
+instead), and the `Foraging`, `Logging`, `Mining` and `Ore` rows of
+`crates/desert-core/src/collect.rs` (`--collect FILE`). Run it after a game
+update or a change to `collect.rs`, once `just test-game`'s pack oracle
+(`multiply_reproduces_the_dmm_pack_edits`) has passed;
+`desert-gatherer-dmm/README.md` has the whole procedure. Not part of `just ci`:
+it only has work to do when the game or the rows change.
 
 ```
-just dmm-rebase                        defaults for both inputs
-just dmm-rebase <table> <build>        either or both given positionally
-just dmm-rebase --dry-run              verify and print the report, write nothing
+just dmm-pack                          archive table, appmanifest build, the real pack
+just dmm-pack --tables analysis/tables extracted copies instead of the archives
+just dmm-pack --build ID --version X.Y override the build id and the stamped version
+just dmm-pack --pack-dir DIR           write somewhere else (the tests do)
+just dmm-pack --dry-run                build, verify and print the report, write nothing
 ```
 
-Two inputs. The clean `gimmickinfo` table body comes from
-`paths::dmm_table()` - the plugin's own dump
-`<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
-`[Harvest] DumpTable=1` and `DryRun=1`, unless `CD_DMM_TABLE` names another
-copy (DMM's backup is the last resort). The build id comes from the Steam
-appmanifest (`CD_APPMANIFEST`); with neither a `--build` nor a manifest it
-refuses rather than stamp the pack with a guess. The first line it prints is
-the table's size, SHA-256 and the build, so a run on the wrong table shows
-itself immediately.
+The build id comes from the Steam appmanifest (`CD_APPMANIFEST`); with neither
+a `--build` nor a manifest it refuses rather than stamp the pack with a guess.
+The version defaults to the one in `dmm_pack.json`, which it only reads. The
+first line it prints is the table's size, SHA-256 and the build, then one line
+per category with its coverage against the published pack's.
 
-Each change is found again by record key and name, then by the 68-byte output
-block's signature within `SEARCH_WINDOW` (1024 bytes) of where its list used to
-sit in the record, and the vanilla bytes are checked at the new offset before
-`offset`, `record_rel_offset` and `rel_offset` are rewritten. Per module it
-prints how many output lists stayed put inside their record and how many
-shifted. On 25477059 none shifted; the 26361232 rebase (pack 1.3) relocated
-every list, each 120 to 320 bytes nearer its record start, because the new
-record header moved the bodies.
+Each row's record is found by key in the table's own offsets header, its
+header name must be the row's, and its blocks are exactly what
+`desert_tools::outputs` finds with the shipped detector, the plugin's walk. A
+row with no block is an error. Each block gives a minimum (`+42`) and a maximum
+(`+50`) change at `original * rate`, rates 2, 5 and 10; changes are in offset
+order, the label's `output G.B` is list `G` of the record and block `B` of the
+list, and the files are written in the pack's exact shape and CRLF, so a
+regeneration that changed nothing diffs as nothing (the `#[ignore]`d
+`regenerating_reproduces_the_committed_pack_byte_for_byte` holds it to that).
 
-**All or nothing.** Every module is verified, and the whole report built,
-before anything is written; then every file goes to a temporary sibling and is
-renamed into place. The Python this replaces wrote module by module, so a
-record it could not resolve in module seven left a pack half on one build and
-half on the other. An overlap between two categories' offsets is a failure too
-(the Python wrote `"result": "FAIL"` and exited 0).
-
-**Output fidelity.** The module files are CRLF in git and are written back
-CRLF, formatted exactly as Python's `json.dumps(obj, indent=2,
-ensure_ascii=False)` - which serde_json's pretty printer matches once
-`preserve_order` keeps every key where it was. So a rebase diff is the offset
-lines and `game_build`, nothing else. That is not taken on trust: a unit test
-round-trips every committed module and `VERIFICATION.txt` byte for byte, and the
-first real run (build 25477059) produced output identical, all thirteen files,
-to `rebase.py` run on the same table. `tests/dmm_rebase.rs` covers a rebase, a
-dry run, a failure part way through that must leave every file untouched, and
-(ignored, needs the table) that rebasing the committed pack onto its own table
-changes nothing.
-
-It uses `desert_tools::sha256`, the library's dependency-free SHA-256 that
-`dist` uses for `SHA256SUMS`, for the table digest and the simulated
-patched-table digests in the report.
+**All or nothing.** Every module is built, and the whole report, before
+anything is written; then every file goes to a temporary sibling and is renamed
+into place. An overlap between two categories' offsets is a failure, since
+mixing one rate per category is only safe while they are disjoint.
 
 ### `nexus-target` + `nexus-targets.json` (release workflow only)
 Maps a tag to the Nexus Mods file it updates, and emits `key=value` lines for
-`$GITHUB_OUTPUT`. All packages share one mod page, so the JSON records which
-file each tag owns. A target with an empty `file_id` is the documented opt-out:
+`$GITHUB_OUTPUT`. The JSON records which file on the mod page each tag owns;
+today that is one, `desert-tooling`. A target with an empty `file_id` is the documented opt-out:
 the tool prints `publish=false` and the upload steps skip. No network access;
 it is pure lookup and validation, so a misconfigured target fails in a second
 instead of half way through an upload.
@@ -634,13 +623,10 @@ it they give, and which `Family` (if any) covers it today. This is the
 answer to "the gatherer multiplies yields by record and there is no way
 to look up what an item id *is*".
 
-It walks the clean `gimmickinfo` table body (`--table` overrides). The
-preferred source is the plugin's own dump,
-`<bin64>/DesertTooling.gimmickinfo.bin`, written by one launch with
-`[Harvest] DumpTable=1` and `DryRun=1`; DMM's copy
-(`/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin`) is the fallback when
-there is no dump, and `CD_DMM_TABLE` beats both. The bytes are identical -
-the dump is preferred because DMM deletes its backups at will. The body
+It walks the `gimmickinfo` table body out of the installed game's archives
+(`desert_tools::paz`, `CD_GAME_DIR` or the parent of `CD_BIN64`), or from a
+directory of extracted copies with `--tables DIR` (`just extract-tables`
+writes `analysis/tables/`). The body
 carries record-relative offsets only and so needs no rebasing for a game
 update, as long as the record shape holds: it reads both header shapes
 through `records`, and on a name-first table every record is found by an
@@ -680,7 +666,7 @@ in `analysis/` and `docs/`. None is edited by hand; regenerate instead.
 #### `--loose`: the population the mod cannot see
 
 There are two detectors and `items` makes the choice a named one - the
-`Detector` enum, `Shipped` and `Loose`, in `items/table.rs` - not a
+`Detector` enum, `Shipped` and `Loose`, in `desert_tools::outputs` - not a
 boolean threaded through the walk. Both check the block's shape and
 require the two copies of the item
 id at `+1` and `+60` to agree; `shipped` additionally requires `+5` to
@@ -699,8 +685,8 @@ content - `Temple_Chest_01`, `dff_chest_24`,
 `gimmick_item_dropset_treasurebox_01`, `clawmachine_capsule_01`,
 `Action_dig_01`, `gimmick_Dig_land_0001`, the
 `gimmick_abyssone_bridge_gate_*` set, `gimmick_marni_teleportation_*` -
-and **none of them is one of the 275 gather records the DMM pack
-edits**, so nothing the gatherer does today reaches any of them.
+and **none of them is in a `collect.rs` row** (a row has to pay a block the
+plugin edits), so nothing the gatherer does reaches any of them.
 
 **Treat the loose output as weaker evidence than the default, because it
 is.** Its doc says so at the top and both reasons are concrete: nine of
@@ -777,36 +763,92 @@ differs from the one the default doc gives it carries
 `name_in_default_doc` saying so.
 
 ### `gen-collect-names`
-Regenerates `crates/desert-core/src/collect.rs` from the Desert Gatherer DMM pack
-plus `crates/tools/extra-families.json`.
+Regenerates `crates/desert-core/src/collect.rs` from the game's own tables:
+`gimmickinfo`, `iteminfo`, `interactioninfo` and `knowledgeinfo`, read out of
+the archives by default or from `--tables DIR` (extracted copies), plus the
+overrides in `crates/tools/extra-families.json` and the English record names in
+`analysis/strings/gimmick.eng.tsv` (`--strings`; every row needs one, and a row
+without one is an error naming it).
 
 **It rewrites the whole file**, and it owns everything in it - the enum, the
 rows, both lookups and every test, including the hand-written `family_by_name`
 note and the `non_gather_records_stay_out` test that earlier versions dropped -
 so running it straight over the file is safe. Anything added to `collect.rs` by
 hand still dies on the next run; add it to the generator. `--out <file>` writes
-somewhere else, which is the way to diff a change before it lands.
+somewhere else, which is the way to diff a change before it lands. Every run
+prints the rows per family and every record added, removed or moved against the
+file it replaces, with the decoded fields that put it there.
 
-`extra-families.json` is the second input: records the pack has no module for,
-**keyed by record** (the water well, added to `Foraging`, and the three placed
-money props, which are the `Money` family on their own), with the item ids each
-pays stored as derived data. Item 1 is money and the rule on it is two-way:
-every family but `Money` refuses a record that pays it, and `Money` refuses a
-record that pays anything else - so a yield slider can never become an economy
-lever by accident, and the economy lever can never pick up a material. When
-the clean table body is present (the plugin's dump or DMM's copy, chosen as
-`items` chooses) the generator re-derives those from the bytes
-and refuses to write on any mismatch; when it is absent it prints a banner
-saying the rows were not verified. The walk only answers if it reproduces
-`CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide counts and
-three anchor records, taken on build 26361232 (581 lists / 904 blocks / 14210
-records; `firewood_0001`'s list at table offset 10136473, +1796 from its record
-start, `gimmick_well_0001_parts01` at 3374134, +731, `Background_Breakable_66`
-at 807359, +1393) - and a refusal names that build and the installed one, so after a game update it says which side moved.
-Records measured to be unreachable by a
-table edit are kept in the same file as `records_not_enabled`, verified the
-same way and emitted only as a test that keeps them out. `spec` has the format
-and the reasons.
+A row is a record that pays at least one output block the plugin multiplies
+(the per-record walk is `desert_core::gimmick::block_ok` exactly), whose family
+the rule in `gen-collect-names/classify.rs` decides (`analysis/FINDINGS.md`
+section 7.2): `Foraging` is a first interaction override of `Gimmick_Collect` or
+`Gimmick_Scoop`, `Ore` is `Gimmick_PickUp` with a `knowledgeInfo`, `Mining` is
+`collectFilter_Dev == 2`, and `Logging` is `Gimmick_PickUp` with no knowledge
+whose every paid item has the `wood` material (`lookup3("wood", 0xC5EDE)` in
+`iteminfo`). A record two rules claim is an error, not a precedence.
+
+`extra-families.json` holds only what no field settles, **keyed by record**:
+overrides that put a record in a family the rule does not pick (the water well
+and the Wild Rock Honey records in `Foraging`, three stalactites in `Mining`,
+the three placed money props as `Money`), and `records_not_enabled`, records
+that are never rows whether or not the rule picks them (the water pot, the
+market stalls, the coin and timber donation boxes), emitted as a test that keeps
+them out. The item ids each pays are stored as derived data and re-derived from
+the table on every run; a mismatch, an override the table does not have, or one
+the rule already covers is a refusal. Item 1 is money and the rule on it is
+two-way: every family but `Money` refuses a record that pays it, and `Money`
+refuses a record that pays anything else. Nothing is decoded unless the body
+reproduces `CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide
+counts and three anchor records, taken on build 26361232 (581 lists / 904
+blocks / 14210 records; `firewood_0001`'s list at table offset 10136473, +1796
+from its record start, `gimmick_well_0001_parts01` at 3374134, +731,
+`Background_Breakable_66` at 807359, +1393) - and a refusal names that build
+and the installed one, so after a game update it says which side moved.
+`spec` has the format and the reasons.
+
+### `paz` (`just extract-tables`; `list` and `cat` by hand)
+Reads the game's data archives offline: each group's `<group>/0.pamt` index
+and its `<n>.paz` containers, the format in `analysis/FINDINGS.md` section 7.
+It is the Rust port of `analysis/pamt.py`, `pamt_names.py`, `lz4block.py` and
+`staticinfo.py`; the library half is `desert_tools::paz` (index, name tries,
+LZ4 block decoder, `Group`, `Archive`) and `desert_tools::staticinfo` (a
+table's header split into records).
+
+```
+paz list [--group G] [--prefix P]     tsv: group, path, size, comp_size, flags
+paz cat <path> -o FILE                one decoded file, by its full path
+paz extract-tables [--out DIR]        every .staticinfobody/.staticinfoheader
+                                      (default <repo>/analysis/tables)
+```
+
+`--game-dir` on all three, default `CD_GAME_DIR`, else `bin64/..`
+(`paths::game_dir`). A path is looked up in group `0008` first, then in every
+other group that parses; `0016` is a 96-byte stub index and is skipped with a
+note. `list` with no `--group` reproduces `analysis/paz-listing-26361232.tsv`
+exactly (1,781,842 files in 33 groups, sorted; the column order differs).
+
+**Encrypted entries are refused, never written as ciphertext**: encryption kind
+3 (`flags` bits 20-23) is the virtualised cipher of FINDINGS 7.1, and only the
+in-game oracle (`crates/desert-pazdump`) gets past it. Compression kinds other
+than 0 (stored) and 2 (LZ4 block) are errors too. Every read is bounds-checked;
+a truncated or malformed index is an error naming the field, not a panic.
+
+A container longer than the index says is allowed and noted (`list` prints a
+`note:` line): on 26361232, `0004/1.paz` and `0004/3.paz` carry a few KB past
+their indexed size, and `0009/40.paz` is a 913 MB file from 2026-09-18 that the
+2026-10-30 index lists at 147 MB. Every entry still lies inside the indexed
+length, which `Group::open` checks. A container shorter than the index is an
+error.
+
+`staticinfo::split` handles more header shapes than `staticinfo.py` did (a
+`u16` or `u32` count and a `u32` key): on 26361232 the count is also a `u8`
+once, and the key is a `u16` on 40 tables, a `u8` on 7, a `u64` once and 12
+bytes once. All 137 tables split. `tests/paz_real.rs` (ignored, so
+`just tools-check-game`) checks all 274 extracted files byte for byte against
+`analysis/tables/`, the `gimmickinfo` entries against the listing, its 14210
+records, and that an encrypted entry is refused. `extract-tables` takes about
+1.3 s.
 
 ## Known defects
 

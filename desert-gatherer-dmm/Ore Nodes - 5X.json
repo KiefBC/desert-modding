@@ -1,6 +1,6 @@
 {
   "name": "Ore Nodes - 5X",
-  "version": "1.3",
+  "version": "1.4",
   "author": "KiefBC",
   "description": "Multiplies ore nodes node minimum and maximum yields by 5. Select no more than one Ore Nodes rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,7 +10,7 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Ore Nodes - 5X",
-    "version": "1.3",
+    "version": "1.4",
     "author": "KiefBC",
     "description": "5x yields for ore nodes nodes.",
     "allow_partial_apply": true

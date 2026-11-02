@@ -55,7 +55,8 @@
 // `gen-collect-names` does. It lives here rather than in the library because
 // nothing else needs it - `lib.rs` says only what more than one tool uses
 // belongs there. The SHA-256 that used to sit beside it is in the library now
-// (`desert_tools::sha256`), because `dmm-rebase` became its second user.
+// (`desert_tools::sha256`), because `dmm-rebase` (now `dmm-pack`) became its
+// second user.
 #[path = "dist/archive.rs"]
 mod archive;
 
@@ -255,8 +256,8 @@ fn package_dmm(root: &Path, dist: &Path, stamp: zip::DateTime) -> Result<PathBuf
     // Fixed order: the manifest, then the twelve modules by name (byte order,
     // so the order does not drift with the locale), then the docs. Up to 1.1
     // the zip also carried the pack's rebaser, `rebase.py`. Its replacement
-    // is the `dmm-rebase` binary in crates/tools/, which is built with the rest of
-    // this repo and has no business in a download for DMM users.
+    // is the `dmm-pack` generator in crates/tools/, which is built with the rest
+    // of this repo and has no business in a download for DMM users.
     let modules = pack_modules(&src)?;
     if modules.len() != 12 {
         bail!("expected 12 pack modules, got {}", modules.len());

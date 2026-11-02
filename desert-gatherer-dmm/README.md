@@ -33,7 +33,7 @@ These activities may appear similar in-game, but changing one family does not af
 
 ## Installation
 
-1. Import or drag `DesertGatherer-DMM-1.3.zip` into Definitive Mod Manager.
+1. Import or drag `DesertGatherer-DMM-1.4.zip` into Definitive Mod Manager.
 2. Check the desired module(s), using at most one rate per category.
 3. Mount mods.
 
@@ -45,31 +45,32 @@ Disable DMM's built-in gathering multiplier preset if it is mounted; it edits th
 
 This pack changes the minimum and maximum item quantities produced by genuine foraging, logging, mining, and ore collection nodes. It does not alter enemy loot, chests, fishing, skinning, quests, Abyss objects, artifacts, gates, or fast travel.
 
-Built against Crimson Desert Enhanced Steam build 26361232 (pack version 1.3), from the plugin's own dump of that build's clean `gimmickinfo` table (17,621,227 bytes, sha256 `3aba0954725e6fc91ca490a5e1afde21357190d58aee112dc9944872ef26bf1b`, 14,210 records). This build changed the table more than any before it. Each record's header now starts with its name and carries the key after it, and inside every record the output lists moved: each one sits 120 to 320 bytes nearer the start of its record than in 1.2. So this time the offsets inside each record were stale too, not only the records' positions, and every list was found again by searching its record rather than by carrying 1.2's offsets across. The items, minimums and maximums are unchanged: the same 275 records, 587 output blocks and 1174 offsets per rate tier as 1.2, with no change in coverage.
+Built against Crimson Desert Enhanced Steam build 26361232 (pack version 1.4, 2026-11-02), from the game's own `gimmickinfo` table read straight out of its archives (17,621,227 bytes, sha256 `3aba0954725e6fc91ca490a5e1afde21357190d58aee112dc9944872ef26bf1b`, 14,210 records). The game build and the table are the same as 1.3's; what changed is where the record list comes from. Every module is now generated from the records the DesertTooling plugin multiplies, which `gen-collect-names` derives from the game's own records, so the pack and the plugin cover exactly the same nodes and the same output blocks:
 
-Version 1.2 targeted build 25477059; inside each record nothing had moved since 1.1, so that rebase changed only absolute offsets. Version 1.1 targeted build 25116796 and also applied unchanged on build 25246367. Version 1.0 targeted build 24994088. None of them applies on 26361232.
+- Foraging: 82 -> 97 records (322 -> 337 outputs). New: the water well (`gimmick_well_0001_parts01`), razor clams, rare rubber, the four wood and bamboo branch nodes, `docking_core_small` and the seven `seockcheong` nodes.
+- Logging: 141 -> 142 records (141 -> 142 outputs). New: `gimmick_wood_firewood_0001`.
+- Mining: 36 records, 108 outputs, unchanged.
+- Ore Nodes: 16 records, 16 outputs, unchanged.
 
+Every record 1.3 already patched is patched at the same offsets with the same values: 291 records, 603 output blocks and 1206 offsets per rate tier, against 1.3's 275, 587 and 1174.
+
+Version 1.3 targeted the same build 26361232. That build changed the table more than any before it: each record's header starts with its name and carries the key after it, and inside every record the output lists sit 120 to 320 bytes nearer the start of the record than in 1.2, so every list had to be found again rather than carried across. Version 1.2 targeted build 25477059; inside each record nothing had moved since 1.1, so that rebase changed only absolute offsets. Version 1.1 targeted build 25116796 and also applied unchanged on build 25246367. Version 1.0 targeted build 24994088. None of 1.0 to 1.2 applies on 26361232.
 
 ## Verified coverage
 
-- Foraging: 82 records, 322 outputs, 644 scalar edits per rate option
-- Logging: 141 records, 141 outputs, 282 scalar edits per rate option
+- Foraging: 97 records, 337 outputs, 674 scalar edits per rate option
+- Logging: 142 records, 142 outputs, 284 scalar edits per rate option
 - Mining: 36 records, 108 outputs, 216 scalar edits per rate option
 - Ore Nodes: 16 records, 16 outputs, 32 scalar edits per rate option
 
-## Updating for a new game build
+## Regenerating for a new game build
 
-Record positions move whenever the game updates, and DMM's automatic offset relocation only recovers some of them. To rebase the pack:
+Record positions move whenever the game updates, and DMM's automatic offset relocation only recovers some of them. The pack is not edited by hand: `dmm-pack` (`crates/tools/src/bin/dmm-pack.rs`) generates all twelve modules and `VERIFICATION.txt` from two inputs, the game's own `gimmickinfo` table and the `Foraging`, `Logging`, `Mining` and `Ore` rows of `crates/desert-core/src/collect.rs`. For every row it finds the record by key, checks the record's name, walks its output blocks exactly the way the plugin does, and writes each block's minimum (+42) and maximum (+50) times the rate. To regenerate:
 
-1. Launch the game once with `[Harvest] DumpTable=1` and `DryRun=1` (menu Debug tab), which writes `bin64/DesertTooling.gimmickinfo.bin`: the plugin's own copy of the clean table, taken from the game's loader buffer. (`CD_DMM_TABLE` points the tools at another copy instead, such as the one DMM extracts to `<DMM folder>\backups\gimmickinfo_pabgb_clean.bin`. DMM deletes that copy at will; on 2026-11-01 it was gone, and the tests that use it skip with a printed reason.)
-2. The new build id is read from `steamapps\appmanifest_3321460.acf` automatically; nothing to do unless the manifest is somewhere unusual (`CD_APPMANIFEST`).
-3. **Structural check (catches the failure mode that would break the rebase, before spending time on it).** Run `just test-game` (the pack oracle lives in `crates/desert-core/tests/gimmick_real.rs`). Its `multiply_reproduces_the_dmm_pack_edits` resolves every record in the new clean table, runs the actual `gimmick::multiply` signature logic (the code the ASI ships) against it, and asserts it reproduces every edit in the current `desert-gatherer-dmm/*2X.json` files byte-for-byte (exact record-relative offsets, exact old/new values, exact record/block/patch counts). This is a stronger check than reading a decompile: it is the real signature code running against the real new data, not a human judgment call.
-   - **A clean table is a precondition, not an option: if it is absent the cross-check passes by skipping**, printing a banner saying the oracle did not run and the run proved nothing. Do not read that `ok` as a structural check: it never happened. The test finds the table by the same rule as the tools: `CD_DMM_TABLE`, else the plugin's dump from step 1, else DMM's backup copy.
-   - Nothing in the cross-check is pinned to a game build. It locates every record by key and name and compares `record_rel_offset` rather than absolute offsets, so it runs against any build's clean table with no constants to update and without the pack being rebased first. That is what makes it usable as a pre-check here. **The caveat is the record shape.** It reads both header shapes (key first, through 25477059; name first with the key after it, on 26361232), but a record-relative offset only carries across builds whose records have the same internal layout. 26361232 moved every output list 120 to 320 bytes within its record, so 1.2's offsets do not match there, and the oracle passes only against the pack rebased for that shape.
-   - Six other tests in the same run carry build-pinned addresses (`LOADER_RVA` in the record-loader test among them) and can fail right after an update until someone re-pins them; they print the real resolved values when they do. They say nothing about the pack. `multiply_reproduces_the_dmm_pack_edits` is the one that matters here.
-   - If the oracle passes cleanly (counts still 275 records / 587 blocks / 1174 offsets, no missing/extra offsets, no out-of-range values), the byte-signature assumptions the rebase depends on (68-byte blocks, minimum at +42, maximum at +50) are confirmed good for this build. Proceed to rebase.
-   - If it fails on the pack cross-check itself, the block format likely changed. Only then is it worth decompiling the loader in Ghidra to see what moved. Compare control flow and struct offsets by eye or ask Claude to judge equivalence, never a literal text-diff, since Ghidra renames local variables between decompile runs even when a function hasn't changed.
-4. Run `just dmm-rebase` (`just dmm-rebase --dry-run` first to see the report without writing anything).
-
-   The tool (`crates/tools/src/bin/dmm-rebase.rs`) re-locates every record by key and name, finds each resource-output list by its byte signature, verifies the vanilla values still match, rewrites all module JSONs, and regenerates `VERIFICATION.txt`. It checks every module before writing any, so if a single patch cannot be resolved unambiguously it writes nothing at all. It looks for each list within `SEARCH_WINDOW` (1024 bytes) of its last known position inside the record; if it fails on one or two specific records after step 3 passed, a list has most likely moved further than that, not changed format.
-5. Bump the pack version in `dmm_pack.json`, run `just sync-versions` (it carries the version into every module file), and update the "Built against build ..." paragraph under "What Version" above, which is also the release notes, once the rebase and its `VERIFICATION.txt` both come back clean.
+1. `just extract-tables`. Writes the game's static-info tables out of its archives into `analysis/tables/`, where the pack oracle reads them. (`dmm-pack` itself reads the archives directly; `--tables analysis/tables` makes it read the extracted copies instead.) If the game update changed which records gather, run `gen-collect-names` first so `collect.rs` follows it: the pack takes its records from there.
+2. `just test-game`. Its `multiply_reproduces_the_dmm_pack_edits` (in `crates/desert-core/tests/gimmick_real.rs`) runs the plugin's own `gimmick::multiply` against every record the committed pack names and asserts it edits exactly the pack's record-relative offsets with exactly the pack's values. Before regenerating, that says whether the block format the generator assumes (68-byte blocks, minimum at +42, maximum at +50) still holds on this build; after it, that the new pack and the plugin agree.
+   - **The table is a precondition: if `analysis/tables/` is empty the oracle passes by skipping**, printing a banner saying it did not run and proved nothing. Do not read that `ok` as a check.
+   - If it fails on a mismatch, the block format likely changed. Only then is it worth decompiling the loader to see what moved.
+3. `just dmm-pack --dry-run`. Builds everything in memory, prints per-category coverage against the published pack and the full `VERIFICATION.txt`, and writes nothing. The build id comes from `steamapps\appmanifest_3321460.acf` (`CD_APPMANIFEST`, or `--build ID`); there is no fallback.
+4. `just dmm-pack`. Writes the twelve modules and `VERIFICATION.txt`. It checks every row and every module before writing any, so a row whose record is missing, renamed or pays no output block writes nothing at all, and so does an overlap between two categories (which would make mixing rates unsafe).
+5. Diff the result (`git diff --stat desert-gatherer-dmm`). Records already in the pack should only move offsets; records added or removed should be the ones `collect.rs` added or removed. Then bump the pack version in `dmm_pack.json`, rerun `just dmm-pack` (it stamps that version into every module), run `just sync-versions`, and update the paragraph under "What Version" above, which is also the release notes.

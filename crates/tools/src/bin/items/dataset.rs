@@ -99,14 +99,14 @@ fn opt_str(s: &Option<String>) -> Value {
 /// self-check lines, which a lookup that happens to miss its cache does not
 /// want on stdout in front of its answer.
 pub fn build(
-    table_path: &Path,
+    tables: Option<&Path>,
     collect_rs: &Path,
     detector: Detector,
     quiet: bool,
     out: &mut dyn std::io::Write,
 ) -> Result<Value> {
     let loose = detector == Detector::Loose;
-    let t = Table::open(table_path)?;
+    let (t, source) = Table::load(tables)?;
     let lists = t.output_lists(detector);
     // A loose build walks the body twice, because "which of these lists can the
     // plugin actually see?" is the whole question it exists to answer. The
@@ -453,7 +453,7 @@ pub fn build(
     );
 
     let mut data = Map::new();
-    data.insert("source".into(), table_path.display().to_string().into());
+    data.insert("source".into(), source.into());
     data.insert("source_bytes".into(), t.b.len().into());
     data.insert("generator".into(), super::GENERATOR.into());
     data.insert(

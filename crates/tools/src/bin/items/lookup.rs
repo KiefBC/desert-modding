@@ -31,7 +31,7 @@ pub fn load(args: &Args, json_out: &Path, collect_rs: &Path, out: &mut dyn Write
             }
         }
     }
-    super::dataset::build(&args.table, collect_rs, args.detector(), true, out)
+    super::dataset::build(args.tables.as_deref(), collect_rs, args.detector(), true, out)
 }
 
 pub fn fmt_amount(it: &Value) -> String {

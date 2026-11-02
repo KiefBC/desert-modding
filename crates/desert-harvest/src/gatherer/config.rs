@@ -11,13 +11,14 @@
 //! replaces the default.
 //!
 //! The family multiplier keys are the independent gather families of
-//! `desert_core::collect::Family`, and four of the five carry the vocabulary
-//! the DMM pack used (`desert-gatherer-dmm/README.md`): Foraging, Logging,
+//! `desert_core::collect::Family`. Four of the five are read off the game's
+//! own records (the family rule in
+//! `crates/tools/src/bin/gen-collect-names/classify.rs`): Foraging, Logging,
 //! Mining and Ore Nodes are separate internal families, and setting one does
-//! not touch the others. `Foraging` also covers the one record that is not
-//! from the pack, the water well - see the field's doc comment below.
+//! not touch the others. `Foraging` also covers records no field marks, the
+//! water well among them - see the field's doc comment below.
 //!
-//! `Money` is the fifth family and the odd one out: the DMM pack never had it,
+//! `Money` is the fifth family and the odd one out: no offset pack ever had it,
 //! and what it multiplies is money rather than a material. Mechanically it is
 //! the same lever as the other four - the placed coin and silver bar props
 //! read an output block like any other node, so the same table edit reaches
@@ -63,9 +64,9 @@ pub struct Config {
     pub debug: bool,
     /// 1 = on the loader's first call, copy the whole gimmickinfo table body
     /// out of its stream buffer and write it to
-    /// [`crate::gatherer::dump::FILE_NAME`] beside the log, once per session. The
-    /// offline tools read it in place of DMM's backup copy, which DMM deletes
-    /// at will. **Needs `dry_run`**: several game threads multiply records
+    /// [`crate::gatherer::dump::FILE_NAME`] beside the log, once per session: a
+    /// diagnostic copy of the loader buffer, which the offline tools no longer
+    /// need (they read the game's archives). **Needs `dry_run`**: several game threads multiply records
     /// in that same buffer while the copy is read, so only a hook that writes
     /// nothing guarantees the file is vanilla; without `DryRun=1` this is
     /// logged as ignored and nothing is copied. Read once, at the first
@@ -73,7 +74,7 @@ pub struct Config {
     pub dump_table: bool,
     /// Yield multiplier for `Family::Foraging` (plants, fruit, mushrooms,
     /// crops, and the water drawn from a water well - `gimmick_well_0001_parts01`,
-    /// the one record in the family the DMM pack never had. Its block is a fixed
+    /// an override, since no field of the record marks it. Its block is a fixed
     /// `5..5`, so a 3 pays exactly 15 - and on 2026-09-13 it did, with the bag
     /// count logged either side of the take (`Water x33` -> `x48` at
     /// `Foraging=3`, `analysis/logs/DesertTooling-2026-09-13-well-x15-x30.log`).
@@ -373,11 +374,11 @@ pub(crate) fn fields() -> Vec<Field> {
             ..mult(
                 "Foraging",
                 "Plants, fruit, berries, mushrooms, crops, and the water you draw from a water \
-                 well. 83 records. A well pays a fixed amount, so at 3 a well that gave 5 gives \
+                 well. 97 records. A well pays a fixed amount, so at 3 a well that gave 5 gives \
                  exactly 15.",
             )
         },
-        mult("Logging", "Firewood cut from felled trees (firewood_*). 141 records."),
+        mult("Logging", "Firewood cut from felled trees (firewood_*). 142 records."),
         mult(
             "Mining",
             "The collect_mine family: mine_* rocks and veins, breakable stalactites. 36 records.",
@@ -412,7 +413,7 @@ pub(crate) fn fields() -> Vec<Field> {
                     "DumpTable",
                     "Dump table",
                     Kind::Bool { default: d.dump_table },
-                    "Write the game's vanilla gimmickinfo table body to DesertTooling.gimmickinfo.bin beside the log on the next launch. Needs DryRun=1, so nothing in the copy is multiplied; without it this is ignored. About 22 MB, written once per session. The offline tools read it (CD_DMM_TABLE) in place of DMM's backup copy.",
+                    "Write the game's vanilla gimmickinfo table body to DesertTooling.gimmickinfo.bin beside the log on the next launch. Needs DryRun=1, so nothing in the copy is multiplied; without it this is ignored. About 22 MB, written once per session. It is a diagnostic copy of the loader buffer; the offline tools read the game's archives instead.",
                 )
             },
         ),

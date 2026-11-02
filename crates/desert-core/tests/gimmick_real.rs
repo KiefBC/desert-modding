@@ -1,13 +1,11 @@
 //! Runs only on request:
 //! `cargo test --release --target x86_64-unknown-linux-gnu -p desert-core -- --ignored --nocapture`
 //!
-//! Needs the Steam install at the path below. A clean `gimmickinfo` body is
-//! needed by the pack cross-check alone, and *any* build's copy of one does:
-//! that test compares record-relative coordinates and so is pinned to no game
-//! build at all, unlike the RVA constants further down. The body is DMM's
-//! artifact, not this repo's, so when it is absent that one test prints a skip
-//! notice and passes without proving anything, rather than failing for a missing
-//! file nobody deleted. Every other test here needs only the exe.
+//! Needs the Steam install at the path below, and for the four table tests
+//! the game's own `gimmickinfo` table as `just extract-tables` writes it into
+//! `analysis/tables/` (or `CD_TABLES`). When the table is absent those four
+//! print a skip notice and pass without proving anything, rather than failing
+//! for a file nobody deleted. Every other test here needs only the exe.
 //! Same shape as `crates/desert-harvest/tests/game_exe.rs`: these are the tests to run
 //! after a game update, because they are what break first.
 
@@ -19,46 +17,64 @@ use desert_core::pattern::{Found, Pattern};
 use desert_core::pe;
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
-/// The plugin's own copy of the clean table body, written beside its log by one
-/// launch with `[Harvest] DumpTable=1` and `DryRun=1` (desert-tooling 0.9.0, under
-/// `[Gatherer]` before 0.10.0).
-const TABLE_DUMP: &str =
-    "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/DesertTooling.gimmickinfo.bin";
-/// DMM's extracted copy of the same bytes, which DMM deletes and restores at will.
-const DMM_TABLE: &str = "/mnt/f/DMM/backups/gimmickinfo_pabgb_clean.bin";
-
-/// The clean `gimmickinfo` body, by the same three-step rule the tools and the
-/// justfile apply (`crates/tools/src/paths.rs::dmm_table`): `CD_DMM_TABLE` if set, else
-/// the plugin's dump if it exists, else DMM's backup. Until 2026-09-24 this was
-/// the DMM path alone, and with that file gone both fixture tests below passed
-/// by skipping for two weeks while their banners went unread in a green run -
-/// which is exactly the failure the banners describe. A `desert-core` test
-/// cannot depend on `desert_tools` (a separate workspace), so the rule is
-/// repeated here rather than imported; keep the two in step.
-fn table_path() -> std::path::PathBuf {
-    if let Some(p) = std::env::var_os("CD_DMM_TABLE") {
+/// The directory of extracted static-info tables: `CD_TABLES`, else
+/// `<repo>/analysis/tables`, where `just extract-tables` writes them out of
+/// the game's archives. A `desert-core` test cannot depend on `desert_tools`
+/// (a separate workspace), so the archive is not read here directly.
+fn tables_dir() -> std::path::PathBuf {
+    if let Some(p) = std::env::var_os("CD_TABLES") {
         return std::path::PathBuf::from(p);
     }
-    let dump = std::path::PathBuf::from(TABLE_DUMP);
-    if dump.is_file() {
-        return dump;
-    }
-    std::path::PathBuf::from(DMM_TABLE)
+    std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../analysis/tables"))
 }
-const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../desert-gatherer-dmm");
-/// The pack's own generated record of what it was built against. Only the build
-/// number is read from it, and only to print it: a hard-coded `22_325_302` table
-/// length and a hard-coded build number in an assertion message used to live
-/// here, and both were a second copy of a fact the pack states about itself.
-const VERIFICATION: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../desert-gatherer-dmm/VERIFICATION.txt");
-/// Steam's own record of the build that is installed, which is necessarily the
-/// fixture's build as well: both the plugin's dump and DMM's extract come out of
-/// the *installed* game, so no other build's body can turn up. Printed beside the
-/// pack's build every run as context and nothing more - the cross-check compares
-/// record-relative coordinates and does not care whether the two agree - but
-/// when it does fail, whether they diverged is the first thing a reader needs.
-const APPMANIFEST: &str = "/mnt/f/SteamLibrary/steamapps/appmanifest_3321460.acf";
+
+/// The `gimmickinfo` body, byte-identical to what the game loads.
+fn table_path() -> std::path::PathBuf {
+    tables_dir().join("gimmickinfo.staticinfobody")
+}
+
+/// The offsets table beside it: a `u16` count, then `count` x `{u32 key,
+/// u32 body offset}` (the shape `crates/tools/src/staticinfo.rs` probes for
+/// `gimmickinfo`).
+fn header_path() -> std::path::PathBuf {
+    tables_dir().join("gimmickinfo.staticinfoheader")
+}
+
+/// `key -> (start, end)` of every record, from the header, or why not.
+fn record_ranges(header: &[u8], body_len: usize) -> Result<BTreeMap<u32, (usize, usize)>, String> {
+    let count = header.get(..2).and_then(|b| b.try_into().ok()).map(u16::from_le_bytes).ok_or("no count")? as usize;
+    if header.len() != 2 + count * 8 {
+        return Err(format!("{} header bytes for {count} records of 8", header.len()));
+    }
+    let entries: Vec<(u32, usize)> = (0..count)
+        .filter_map(|i| Some((u32_at(header, 2 + i * 8)?, u32_at(header, 6 + i * 8)? as usize)))
+        .collect();
+    let mut out = BTreeMap::new();
+    for (i, &(key, start)) in entries.iter().enumerate() {
+        let end = entries.get(i + 1).map_or(body_len, |e| e.1);
+        if !(start < end && end <= body_len) {
+            return Err(format!("record {key}: {start}..{end}"));
+        }
+        if out.insert(key, (start, end)).is_some() {
+            return Err(format!("key {key} twice"));
+        }
+    }
+    Ok(out)
+}
+
+/// The loud notice a table test prints instead of passing quietly.
+fn skipped(what: &str) {
+    let bar = "=".repeat(76);
+    println!("\n{bar}");
+    println!("!! SKIPPED: {what} DID NOT RUN. THIS TEST PROVED NOTHING. !!");
+    println!("{bar}");
+    println!("missing fixture: {}", table_path().display());
+    println!();
+    println!("Run `just extract-tables` to write the game's static-info tables into");
+    println!("analysis/tables/ (CD_TABLES overrides the directory). Read this as a hole");
+    println!("in coverage, not a pass.");
+    println!("{bar}\n");
+}
 
 /// RVA of the `gimmickinfo` record loader on Steam build 26361232, the same as
 /// on 26356046 and on 26345091, where it was re-derived (was
@@ -167,99 +183,30 @@ fn hex(b: &[u8]) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// Pack cross-check
+// The archive table: records, output blocks and `multiply`
 // ---------------------------------------------------------------------------
 
-/// Minimal JSON field reader: no serde, no new dependencies. The pack files are
-/// machine-written by `dmm-rebase` (`crates/tools/src/bin/dmm-rebase.rs`), so every change object
-/// has its fields in the same order (`offset`, `record_key`,
-/// `record_rel_offset`, `entry`, ...) and plain string searching is enough.
-fn number_after(text: &str, key: &str, from: usize) -> Option<(u64, usize)> {
-    let at = text.get(from..)?.find(key)? + from + key.len();
-    let rest = text.get(at..)?;
-    let digits: String = rest.trim_start().chars().take_while(char::is_ascii_digit).collect();
-    if digits.is_empty() {
-        return None;
-    }
-    Some((digits.parse().ok()?, at))
-}
-
-fn string_after(text: &str, key: &str, from: usize) -> Option<(String, usize)> {
-    let at = text.get(from..)?.find(key)? + from + key.len();
-    let rest = text.get(at..)?;
-    let open = rest.find('"')? + 1;
-    let close = rest.get(open..)?.find('"')? + open;
-    Some((rest.get(open..close)?.to_string(), at + close))
-}
-
-/// A record is identified by its key and its name, the way the pack does it.
+/// A record is identified by its key and its name.
 type Record = (u32, String);
-/// One pack family: which **record-relative** offsets it patches in each record.
-type Family = BTreeMap<Record, BTreeSet<usize>>;
 
-/// `(record key, record name) -> the record-relative offsets that family patches
-/// in it`. `None` if a change object does not have its fields in that documented
-/// order.
-///
-/// `record_rel_offset`, not `offset`: the absolute one is build-specific, while
-/// `offset - record_rel_offset` is the same for every change in a record (key
-/// 1005631: 12517954-1758 == 12517962-1766 == 12516196), so the relative one is
-/// a coordinate that survives a game update. It is counted from the record's
-/// `u32` key - exactly where `locate_records` points, and exactly where
-/// `gimmick::multiply` counts its own `Edit::offset` from - so the two sets
-/// compare with no arithmetic and no absolute address anywhere in the test.
-fn read_family(text: &str) -> Option<Family> {
-    let mut out: Family = BTreeMap::new();
-    let mut cur = 0usize;
-    // `offset` is read only to step onto this change object: the documented field
-    // order is `offset`, `record_key`, `record_rel_offset`, `entry`, so the three
-    // wanted fields all lie after it and before the next object's `offset`.
-    while let Some((_, at)) = number_after(text, "\"offset\":", cur) {
-        let (key, at) = number_after(text, "\"record_key\":", at)?;
-        let (rel, at) = number_after(text, "\"record_rel_offset\":", at)?;
-        let (entry, at) = string_after(text, "\"entry\":", at)?;
-        out.entry((key as u32, entry)).or_default().insert(rel as usize);
-        cur = at;
-    }
-    Some(out)
-}
-
-/// Where a located record sits: its first header byte, and its `u32` key
-/// (which the pack's `record_rel_offset` counts from) relative to that.
-#[derive(Debug, Clone, Copy)]
-struct Located {
-    start: usize,
-    key_off: usize,
-}
-
-/// Find every wanted record in one pass over the table, the same rule as
-/// `dmm-rebase`'s `locate_records`: the table's header shape is probed off its
-/// first record (`gimmick::detect_header_shape`), every offset is parsed
-/// strictly in that shape only, and each wanted `(key, name)` must hit exactly
-/// once. Scanning in both shapes would not do: a strict `KeyFirst` parse finds
-/// 36248 false headers in the 26361232 `NameFirst` body.
-///
-/// Every record that is not found exactly once is reported, not just the first:
-/// on a build newer than the pack's, a record legitimately renamed, removed or
-/// duplicated is the finding, and the caller turns the whole list into the
-/// answer to "is the published pack still safe for DMM users on this build".
-fn locate_records(
-    table: &[u8],
-    wanted: &BTreeSet<Record>,
-) -> Result<BTreeMap<Record, Located>, String> {
+/// Find every wanted record in one pass over the table, by content alone (the
+/// header offsets table is not consulted, so this is an independent check on
+/// it): the table's header shape is probed off its first record
+/// (`gimmick::detect_header_shape`), every offset is parsed strictly in that
+/// shape only, and each wanted `(key, name)` must hit exactly once. Scanning in
+/// both shapes would not do: a strict `KeyFirst` parse finds 36248 false
+/// headers in the 26361232 `NameFirst` body. Returns each record's first
+/// header byte.
+fn locate_records(table: &[u8], wanted: &BTreeSet<Record>) -> Result<BTreeMap<Record, usize>, String> {
     let shape = gimmick::detect_header_shape(table)
         .ok_or("the table's first record validates as neither header shape (or as both)")?;
-    let mut hits: BTreeMap<Record, Vec<Located>> = BTreeMap::new();
+    let mut hits: BTreeMap<Record, Vec<usize>> = BTreeMap::new();
     for p in 0..table.len() {
         let Some(rest) = table.get(p..) else { break };
         if let Some(h) = gimmick::parse_header_as(rest, shape) {
-            let key_off = match shape {
-                gimmick::HeaderShape::KeyFirst => 0,
-                gimmick::HeaderShape::NameFirst => 4 + h.name.len(),
-            };
             let k = (h.key, h.name);
             if wanted.contains(&k) {
-                hits.entry(k).or_default().push(Located { start: p, key_off });
+                hits.entry(k).or_default().push(p);
             }
         }
     }
@@ -275,12 +222,7 @@ fn locate_records(
         }
     }
     if !bad.is_empty() {
-        return Err(format!(
-            "{} of the {} records the pack names are not in this table exactly once:\n{}",
-            bad.len(),
-            wanted.len(),
-            bad.join("\n")
-        ));
+        return Err(format!("{} records not in this table exactly once:\n{}", bad.len(), bad.join("\n")));
     }
     Ok(out)
 }
@@ -338,180 +280,233 @@ fn one_shared_scan_answers_what_a_scan_per_call_answers() {
     }
 }
 
-/// The only oracle that `gimmick::multiply` reproduces the released DMM pack's
-/// published edits: all 1174 of them, by offset and by value, recomputed from a
-/// clean `gimmickinfo` body.
+/// Every independently found min/max field in a record: a `u32` count of
+/// 1..=64 at any offset, followed by that many 68-byte blocks with flag 1 at
+/// `+0` and `FF FF` at `+58`, the minimum at `+42` and the maximum at `+50`.
+/// Looser than `gimmick::block_ok` on purpose (no range check, no item or pad
+/// clause, every start tried), so an edit `multiply` makes anywhere but a
+/// block's two scalars cannot hide in it.
+fn block_scalar_offsets(rec: &[u8]) -> BTreeSet<usize> {
+    let mut out = BTreeSet::new();
+    for at in 0..rec.len() {
+        let Some(count) = u32_at(rec, at) else { break };
+        if !(1..=64).contains(&count) {
+            continue;
+        }
+        let blocks: Vec<usize> = (0..count as usize).map(|k| at + 4 + k * 68).collect();
+        let shaped = blocks.iter().all(|&b| {
+            rec.get(b) == Some(&1) && rec.get(b + 58) == Some(&0xFF) && rec.get(b + 59) == Some(&0xFF) && b + 68 <= rec.len()
+        });
+        if shaped {
+            for b in blocks {
+                out.insert(b + 42);
+                out.insert(b + 50);
+            }
+        }
+    }
+    out
+}
+
+/// `gimmick::multiply` at 2 against every `collect::COLLECT_RECORDS` row, on
+/// the game's own table: each row gets at least one edit, every edit lands on
+/// a block's min or max field (found by [`block_scalar_offsets`], not by
+/// `multiply`'s own detector), reads the vanilla `u64` that is really there,
+/// and doubles it. The rows are derived from this same archive table, so this
+/// is the check that every row is one the hook can actually multiply.
 ///
-/// Nothing in here is pinned to a game build. Records are found by key and name
-/// rather than by address, and the offsets compared are the pack's
-/// `record_rel_offset` against `multiply`'s own record-relative `Edit::offset`,
-/// so any build's clean table answers the question and the pack never needs
-/// rebasing for this test's sake. That is the whole point: the body the pack was
-/// built against (build 25116796) can never be obtained again - no backup
-/// survives anywhere and DMM only ever extracts from the installed build - so
-/// the `table.len() == 22_325_302` this used to assert, and the SHA-256 pin that
-/// briefly replaced it, were both checks against a dead artifact that would
-/// have failed on every future fixture with nothing actually wrong.
+/// Records are cut out of the body by the archive's own offsets table, the
+/// same split the game's manager keeps at `mgr+0x28`, and each slice is
+/// exactly what the record-loader hook is handed.
+#[test]
+#[ignore]
+fn multiply_doubles_every_collect_record_from_the_archive_table() {
+    let (Ok(table), Ok(header)) = (std::fs::read(table_path()), std::fs::read(header_path())) else {
+        skipped("THE COLLECT-ROW MULTIPLY CHECK");
+        return;
+    };
+    println!("table: {} ({} bytes)", table_path().display(), table.len());
+    let ranges = record_ranges(&header, table.len()).expect("the header splits the body");
+    assert_eq!(ranges.len(), 14210, "records on build 26361232");
+    let shape = gimmick::detect_header_shape(&table).expect("the first record has one header shape");
+
+    let (mut records, mut blocks, mut scalars, mut most) = (0usize, 0usize, 0usize, 0usize);
+    for &(key, name, family, display) in desert_core::collect::COLLECT_RECORDS {
+        let &(start, end) = ranges.get(&key).unwrap_or_else(|| panic!("{name} ({key}) is not in the table"));
+        let rec = &table[start..end];
+        let h = gimmick::parse_header_as(rec, shape).unwrap_or_else(|| panic!("{name}: no header"));
+        assert_eq!((h.key, h.name.as_str()), (key, name), "the row names the record at its key");
+        assert!(!display.is_empty(), "{name}: no display name");
+
+        let edits = gimmick::multiply(rec, 2);
+        assert!(!edits.is_empty(), "{name} ({family:?}): multiply finds nothing to edit");
+        let fields = block_scalar_offsets(rec);
+        for e in &edits {
+            assert!(fields.contains(&e.offset), "{name}: edit at +{} is not a block's min or max", e.offset);
+            let vanilla = u64::from_le_bytes(rec[e.offset..e.offset + 8].try_into().unwrap());
+            assert_eq!(e.old, vanilla, "{name}: +{} old", e.offset);
+            assert_eq!(e.new, 2 * e.old, "{name}: +{} new", e.offset);
+        }
+        assert_eq!(edits.len() % 2, 0, "{name}: min and max in pairs");
+        records += 1;
+        blocks += edits.len() / 2;
+        scalars += edits.len();
+        most = most.max(edits.len() / 2);
+    }
+    println!("{records} records, {blocks} blocks, {scalars} scalars doubled; at most {most} blocks in one record");
+    // Build 26361232, measured 2026-11-02 against the archive's table.
+    assert_eq!((records, blocks, scalars), (294, 606, 1212));
+    // `desert_harvest::gatherer::remember` keeps at most 8 blocks a record.
+    assert!(most <= 8, "a row has {most} blocks");
+}
+
+// ---------------------------------------------------------------------------
+// The DMM pack against `multiply`
+// ---------------------------------------------------------------------------
+
+const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../desert-gatherer-dmm");
+
+/// Minimal JSON field reader: no serde, no new dependencies. The pack files are
+/// machine-written by `dmm-pack` (`crates/tools/src/bin/dmm-pack.rs`), so every
+/// change object has its fields in the same order (`offset`, `record_key`,
+/// `record_rel_offset`, `entry`, `rel_offset`, `label`, `original`, `patched`)
+/// and plain string searching is enough.
+fn number_after(text: &str, key: &str, from: usize) -> Option<(u64, usize)> {
+    let at = text.get(from..)?.find(key)? + from + key.len();
+    let rest = text.get(at..)?;
+    let digits: String = rest.trim_start().chars().take_while(char::is_ascii_digit).collect();
+    if digits.is_empty() {
+        return None;
+    }
+    Some((digits.parse().ok()?, at))
+}
+
+fn string_after(text: &str, key: &str, from: usize) -> Option<(String, usize)> {
+    let at = text.get(from..)?.find(key)? + from + key.len();
+    let rest = text.get(at..)?;
+    let open = rest.find('"')? + 1;
+    let close = rest.get(open..)?.find('"')? + open;
+    Some((rest.get(open..close)?.to_string(), at + close))
+}
+
+/// A `u64` written as 16 little-endian hex digits, the pack's `original` and
+/// `patched`.
+fn le_hex(s: &str) -> Option<u64> {
+    if s.len() != 16 {
+        return None;
+    }
+    let mut b = [0u8; 8];
+    for (i, byte) in b.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(s.get(2 * i..2 * i + 2)?, 16).ok()?;
+    }
+    Some(u64::from_le_bytes(b))
+}
+
+/// One pack family: `(key, name) -> record-relative offset -> (old, new)`.
+type PackFamily = BTreeMap<Record, BTreeMap<usize, (u64, u64)>>;
+
+/// Every change of one module, by record. `None` if a change object does not
+/// have its fields in the documented order, or a value does not parse.
 ///
-/// The two halves fail for different reasons and say which: `locate_records`
-/// failing means the published pack is stale for some record on this build,
-/// while an offset or value mismatch means `multiply` and the pack disagree
-/// about the record layout they are both reading.
+/// `record_rel_offset`, not `offset`: it counts from the record's `u32` key,
+/// which `multiply`'s own `Edit::offset` reaches by adding the key's position in
+/// the record, so the two sets compare without trusting any absolute address.
+fn read_pack_family(text: &str) -> Option<PackFamily> {
+    let mut out: PackFamily = BTreeMap::new();
+    let mut cur = 0usize;
+    while let Some((_, at)) = number_after(text, "\"offset\":", cur) {
+        let (key, at) = number_after(text, "\"record_key\":", at)?;
+        let (rel, at) = number_after(text, "\"record_rel_offset\":", at)?;
+        let (entry, at) = string_after(text, "\"entry\":", at)?;
+        let (old, at) = string_after(text, "\"original\":", at)?;
+        let (new, at) = string_after(text, "\"patched\":", at)?;
+        let prev = out.entry((u32::try_from(key).ok()?, entry)).or_default().insert(rel as usize, (le_hex(&old)?, le_hex(&new)?));
+        if prev.is_some() {
+            return None;
+        }
+        cur = at;
+    }
+    Some(out)
+}
+
+/// The DMM pack is exactly what `gimmick::multiply` does, record by record, on
+/// the game's own table.
+///
+/// For every change in `desert-gatherer-dmm/* - 2X.json`, the record named by
+/// `record_key` and `entry` is cut out of the body by the archive's offsets
+/// table, `multiply(rec, 2)` is run over it, and the two must agree exactly:
+/// the same record-relative offsets (no edit missing, none extra) with the same
+/// old and new values. That is the property the pack exists to have - a DMM user
+/// and a plugin user get the same nodes, the same blocks and the same numbers -
+/// and the check `dmm-pack` cannot make about itself, because it walks the
+/// blocks with the tools' port of the detector and this runs the plugin's.
+///
+/// Before regenerating after a game update this says whether the block format
+/// still holds on the new build; after it, that the regenerated pack and the
+/// plugin agree. Same fixture and skip contract as the multiply check above.
 #[test]
 #[ignore]
 fn multiply_reproduces_the_dmm_pack_edits() {
-    // A repo file, generated by `dmm-rebase` (crates/tools/). If it cannot be read
-    // or does not name what it should, the pack is broken - that is a real
-    // failure, not a missing-fixture skip.
-    let verification = std::fs::read_to_string(VERIFICATION)
-        .expect("desert-gatherer-dmm/VERIFICATION.txt readable");
-    let (pack_build, _) = string_after(&verification, "\"game_build\":", 0)
-        .expect("VERIFICATION.txt names game_build");
-
-    // Context, not a check. The comparison below is build-independent, so these
-    // two are allowed to differ and nothing gates on them. They are printed
-    // unconditionally because when something here does fail, whether the builds
-    // diverged is what separates "rebase the pack" from "a real regression in
-    // `multiply`". The fixture's build is necessarily the installed one: DMM
-    // extracts the clean table from the installed game and from nowhere else.
-    let installed = std::fs::read_to_string(APPMANIFEST)
-        .ok()
-        .and_then(|acf| string_after(&acf, "\"buildid\"", 0).map(|(v, _)| v))
-        .unwrap_or_else(|| "unknown".to_owned());
-    println!("pack built against game build {pack_build}; installed game build {installed}");
-
-    // The clean body comes from a game launch (the plugin's dump) or from DMM,
-    // and nothing in this repo can create one offline. Its absence is therefore
-    // not a regression and must not read as one - but a quiet `return` would
-    // look exactly like a pass in `--nocapture` output, so say plainly that
-    // nothing was proved.
-    let bar = "=".repeat(76);
-    let table_path = table_path();
-    let Ok(table) = std::fs::read(&table_path) else {
-        println!("\n{bar}");
-        println!("!! SKIPPED: THE DMM PACK ORACLE DID NOT RUN. THIS TEST PROVED NOTHING. !!");
-        println!("{bar}");
-        println!("missing fixture: {}", table_path.display());
-        println!();
-        println!("`gimmick::multiply` was NOT checked against the pack's 1174 published");
-        println!("scalar edits on this run. Read this as a hole in coverage, not a pass.");
-        println!();
-        println!("To get one: set `[Harvest] DumpTable=1` and `DryRun=1` in DesertTooling.ini");
-        println!("(the menu's Debug tab), launch the game once, and the plugin writes");
-        println!("{TABLE_DUMP}");
-        println!("about ten seconds in. Then set both back to 0. CD_DMM_TABLE overrides the");
-        println!("path; DMM's backup copy at {DMM_TABLE} is the fallback.");
-        println!();
-        println!("ANY build's clean body will do, the installed build included. This test");
-        println!("compares record-relative coordinates and never an address, so it needs");
-        println!("no particular build's table and the pack needs no rebasing for it.");
-        println!("{bar}\n");
+    let (Ok(table), Ok(header)) = (std::fs::read(table_path()), std::fs::read(header_path())) else {
+        skipped("THE DMM PACK ORACLE");
         return;
     };
-    println!("table: {} ({} bytes)", table_path.display(), table.len());
+    println!("table: {} ({} bytes)", table_path().display(), table.len());
+    let ranges = record_ranges(&header, table.len()).expect("the header splits the body");
+    let shape = gimmick::detect_header_shape(&table).expect("the first record has one header shape");
 
-    // No digest and no length assertion: there is nothing left to pin either to.
-    // All that is required of the table is that it be a clean one, and a patched
-    // one fails loudly below on `e.new == e.old * 2` rather than passing quietly.
-    println!("table: {} bytes", table.len());
-
-    let mut families: Vec<(String, Family)> = Vec::new();
+    // A repo file, generated by `dmm-pack`. If it cannot be read or does not
+    // parse, the pack is broken: a real failure, not a missing-fixture skip.
     let mut names: Vec<String> = std::fs::read_dir(PACK)
         .expect("desert-gatherer-dmm present")
         .filter_map(|e| e.ok())
         .map(|e| e.file_name().to_string_lossy().into_owned())
-        .filter(|n| n.ends_with("2X.json"))
+        .filter(|n| n.ends_with(" - 2X.json"))
         .collect();
     names.sort();
-    assert_eq!(names.len(), 4, "expected four 2X families, got {names:?}");
-    for n in names {
+    assert_eq!(names.len(), 4, "expected four 2X modules, got {names:?}");
+
+    let (mut records, mut blocks, mut scalars) = (0usize, 0usize, 0usize);
+    let mut seen: BTreeSet<u32> = BTreeSet::new();
+    for n in &names {
         let text = std::fs::read_to_string(format!("{PACK}/{n}")).expect("pack json readable");
-        let family = read_family(&text).expect("pack json fields in the documented order");
-        families.push((n, family));
-    }
-
-    // One pass over the 22 MB table finds every record all four families name.
-    let wanted: BTreeSet<Record> =
-        families.iter().flat_map(|(_, f)| f.keys().cloned()).collect();
-    let starts = match locate_records(&table, &wanted) {
-        Ok(s) => s,
-        // Not a fixture problem and not a `multiply` problem: the pack names a
-        // record this table does not hold exactly once, which means the
-        // *published* pack is stale for that record - DMM would fail to locate
-        // it, or worse locate the wrong one. This failing is the answer to "is
-        // the released pack still safe on this build", so the message names
-        // every record involved rather than only the first.
-        Err(e) => panic!(
-            "\n{bar}\nthe published DMM pack is stale against this table.\n{e}\n\
-             Records the pack patches were renamed, removed or duplicated between\n\
-             build {pack_build} (the pack's) and build {installed} (this table's).\n\
-             The pack needs rebasing with `just dmm-rebase` before it is\n\
-             safe for DMM users on that build. `gimmick::multiply` is not implicated.\n{bar}"
-        ),
-    };
-    let mut sorted: Vec<usize> = starts.values().map(|l| l.start).collect();
-    sorted.sort_unstable();
-    println!("records located: {} (all unique)", starts.len());
-
-    let mut grand_offsets = 0usize;
-    let mut grand_records = 0usize;
-    for (name, family) in &families {
+        let family = read_pack_family(&text).unwrap_or_else(|| panic!("{n}: change fields not in the documented order"));
         let mut offsets = 0usize;
-        for (rec, pack) in family {
-            let Located { start, key_off } = *starts.get(rec).expect("record located");
-            // The record ends where the next known record begins; 64 KiB is the
-            // fallback for the last one (the largest gather record is far
-            // smaller than that).
-            let next = sorted.iter().copied().find(|&s| s > start).unwrap_or(usize::MAX);
-            let end = next.min(start + 65536).min(table.len());
-            let slice = table.get(start..end).expect("record slice");
-
-            // The pack counts from the record's `u32` key, `multiply` from the
-            // slice start (the record's first header byte); on a `KeyFirst`
-            // table the two are the same byte, on a `NameFirst` table the key
-            // is `4 + name_len` in. `last` trims the edits `multiply` finds
-            // past the end of what this family published - the slice can run on
-            // into the next record's tail when `sorted` has no closer bound.
-            let last = *pack.iter().next_back().expect("family patches this record");
-            let got: BTreeSet<usize> = gimmick::multiply(slice, 2)
+        for ((key, name), pack) in &family {
+            assert!(seen.insert(*key), "{n}: record {key} is in two modules");
+            let &(start, end) = ranges.get(key).unwrap_or_else(|| panic!("{n}: {name} ({key}) is not in the table"));
+            let rec = &table[start..end];
+            let h = gimmick::parse_header_as(rec, shape).unwrap_or_else(|| panic!("{n}: {name}: no header"));
+            assert_eq!((h.key, h.name.as_str()), (*key, name.as_str()), "{n}: the pack names the record at its key");
+            // Where the `u32` key sits in the record: first on `KeyFirst`,
+            // after the length-prefixed name on `NameFirst`.
+            let key_off = match shape {
+                gimmick::HeaderShape::KeyFirst => 0,
+                gimmick::HeaderShape::NameFirst => 4 + h.name.len(),
+            };
+            let got: BTreeMap<usize, (u64, u64)> = gimmick::multiply(rec, 2)
                 .iter()
-                .filter_map(|e| e.offset.checked_sub(key_off))
-                .filter(|&o| o <= last)
+                .map(|e| (e.offset - key_off, (e.old, e.new)))
                 .collect();
-            assert_eq!(
-                got,
-                *pack,
-                "{name}: record {} {:?} at {start}: missing {:?}, extra {:?}",
-                rec.0,
-                rec.1,
-                pack.difference(&got).collect::<Vec<_>>(),
-                got.difference(pack).collect::<Vec<_>>()
-            );
-            // Every patch is a min/max pair, and the pack doubles vanilla 1..=8.
-            for e in gimmick::multiply(slice, 2) {
-                if e.offset.checked_sub(key_off).is_some_and(|o| pack.contains(&o)) {
-                    assert_eq!(e.new, e.old * 2);
-                    assert!((1..=8).contains(&e.old), "vanilla yield {} out of range", e.old);
-                }
+            if got != *pack {
+                let (g, p): (BTreeSet<_>, BTreeSet<_>) = (got.iter().collect(), pack.iter().collect());
+                panic!(
+                    "{n}: record {key} {name:?}: the pack has {:?} that multiply does not, multiply has {:?} that the pack does not",
+                    p.difference(&g).collect::<Vec<_>>(),
+                    g.difference(&p).collect::<Vec<_>>()
+                );
             }
             offsets += pack.len();
         }
-        println!(
-            "{name:<20} {:>3} records, {:>4} blocks, {:>4} u64 offsets: exact match",
-            family.len(),
-            offsets / 2,
-            offsets
-        );
-        grand_offsets += offsets;
-        grand_records += family.len();
+        println!("{n:<22} {:>3} records, {:>4} blocks, {:>4} u64 offsets: exact match", family.len(), offsets / 2, offsets);
+        records += family.len();
+        scalars += offsets;
+        blocks += offsets / 2;
     }
-    println!(
-        "total: {grand_records} records, {} blocks, {grand_offsets} u64 offsets",
-        grand_offsets / 2
-    );
-    assert_eq!(grand_offsets, 1174, "pack should carry 1174 scalar patches");
-    assert_eq!(grand_offsets / 2, 587, "587 output blocks");
-    assert_eq!(starts.len(), 275, "275 gather records");
+    println!("total: {records} records, {blocks} blocks, {scalars} u64 offsets");
+    // Pack 1.4 on build 26361232, measured 2026-11-02: every non-Money row of
+    // collect.rs (the three Money rows and their three blocks are the plugin's
+    // alone).
+    assert_eq!((records, blocks, scalars), (291, 603, 1206));
 }
 
 /// Where the item id is, against the table itself.
@@ -520,8 +515,8 @@ fn multiply_reproduces_the_dmm_pack_edits() {
 /// `+64`, the two zero pads - so `OutputBlock::item` read 0 for every block in
 /// the game, `desert_harvest::gatherer::remember` stored 0, and `hook::reapply`'s
 /// "is this the block I remembered" cross-check could never match. `multiply`
-/// writes only min/max and so was never affected, which is why the pack oracle
-/// above passed throughout and nothing else noticed.
+/// writes only min/max and so was never affected, which is why the multiply
+/// oracle passed throughout and nothing else noticed.
 ///
 /// Nothing synthetic can catch that class of mistake: the unit tests built their
 /// blocks with the same wrong offsets the code read them at. This is the test
@@ -530,40 +525,26 @@ fn multiply_reproduces_the_dmm_pack_edits() {
 /// records for it, and no block anywhere in the body has an item id of 0, which
 /// is what every single one of them had before the fix.
 ///
-/// Same fixture and the same skip contract as the pack oracle: the clean body is
-/// DMM's artifact, so its absence is a hole in coverage and says so, not a
-/// failure.
+/// Same fixture and the same skip contract as the multiply check above: the
+/// table's absence is a hole in coverage and says so, not a failure.
 #[test]
 #[ignore]
 fn output_blocks_read_the_item_id_the_table_actually_carries() {
-    let bar = "=".repeat(76);
-    let table_path = table_path();
-    let Ok(table) = std::fs::read(&table_path) else {
-        println!("\n{bar}");
-        println!("!! SKIPPED: THE ITEM-OFFSET CHECK DID NOT RUN. IT PROVED NOTHING. !!");
-        println!("{bar}");
-        println!("missing fixture: {}", table_path.display());
-        println!();
-        println!("`gimmick::ITEM_AT` / `ITEM_TAIL_AT` were NOT checked against real table");
-        println!("bytes on this run. They were wrong by 4 once and only the fixture can");
-        println!("say so. Read this as a hole in coverage, not a pass.");
-        println!();
-        println!("`multiply_reproduces_the_dmm_pack_edits` above prints how to get a clean");
-        println!("body; the same file serves both tests and any build's copy will do.");
-        println!("{bar}\n");
+    let Ok(table) = std::fs::read(table_path()) else {
+        skipped("THE ITEM-OFFSET CHECK (`gimmick::ITEM_AT` / `ITEM_TAIL_AT` against real bytes)");
         return;
     };
     println!("table: {} bytes", table.len());
 
-    // Locate one record the same way the pack oracle does, and bound the slice
-    // with the next record so the blocks read are certainly this record's.
+    // Locate one record by content, and bound the slice generously; the first
+    // block read is certainly this record's.
     let peony: Record = (17_020_006, "peony_01".to_owned());
     let wanted: BTreeSet<Record> = [peony.clone()].into_iter().collect();
     let start = locate_records(&table, &wanted)
         .expect("peony_01 is in this table exactly once")
         .get(&peony)
-        .expect("located")
-        .start;
+        .copied()
+        .expect("located");
     let end = (start + 65536).min(table.len());
     let slice = table.get(start..end).expect("record slice");
     let first = *gimmick::output_blocks(slice).first().expect("peony_01 has output blocks");
@@ -602,24 +583,19 @@ fn output_blocks_read_the_item_id_the_table_actually_carries() {
     println!("all {} blocks: item at +1 == item at +60 != 0, both pads zero", all.len());
 }
 
-/// The table body the installed build dumps is a `NameFirst` table: its first
+/// The installed build's table body is a `NameFirst` table: its first
 /// record validates as that shape and no other, a strict scan in that shape
 /// finds 14210 headers with 14210 distinct keys (one per record the game's
-/// manager counts), and the well and the 26361232 example record sit where the
-/// dump put them. On 25477059 and before the same body was `KeyFirst`; the
+/// manager counts), and the well and the 26361232 example record sit where
+/// they always have. On 25477059 and before the same body was `KeyFirst`; the
 /// rule for which shape a table uses is what the gatherer latches in game.
 ///
-/// Same skip contract as the pack oracle: no dump, no proof, and it says so.
+/// Same skip contract as the multiply check: no table, no proof, and it says so.
 #[test]
 #[ignore]
 fn the_table_body_is_name_first_with_one_header_per_record() {
-    let bar = "=".repeat(76);
-    let table_path = table_path();
-    let Ok(table) = std::fs::read(&table_path) else {
-        println!("\n{bar}");
-        println!("!! SKIPPED: THE HEADER-SHAPE CHECK DID NOT RUN. IT PROVED NOTHING. !!");
-        println!("missing fixture: {} (DMM's backup may be gone; dump one from the game)", table_path.display());
-        println!("{bar}\n");
+    let Ok(table) = std::fs::read(table_path()) else {
+        skipped("THE HEADER-SHAPE CHECK");
         return;
     };
     let shape = gimmick::detect_header_shape(&table);

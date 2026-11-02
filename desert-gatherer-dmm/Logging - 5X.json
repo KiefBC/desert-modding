@@ -1,6 +1,6 @@
 {
   "name": "Logging - 5X",
-  "version": "1.3",
+  "version": "1.4",
   "author": "KiefBC",
   "description": "Multiplies logging node minimum and maximum yields by 5. Select no more than one Logging rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,15 +10,15 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Logging - 5X",
-    "version": "1.3",
+    "version": "1.4",
     "author": "KiefBC",
     "description": "5x yields for logging nodes.",
     "allow_partial_apply": true
   },
   "coverage": {
-    "records": 141,
-    "resource_outputs": 141,
-    "scalar_patches": 282
+    "records": 142,
+    "resource_outputs": 142,
+    "scalar_patches": 284
   },
   "patches": [
     {
@@ -441,6 +441,26 @@
           "entry": "firewood_0001_index02_Premium",
           "rel_offset": 1754,
           "label": "Logging: firewood_0001_index02_Premium output 1.1 maximum (1 -> 5)",
+          "original": "0100000000000000",
+          "patched": "0500000000000000"
+        },
+        {
+          "offset": 10177342,
+          "record_key": 1010558,
+          "record_rel_offset": 1838,
+          "entry": "gimmick_wood_firewood_0001",
+          "rel_offset": 1762,
+          "label": "Logging: gimmick_wood_firewood_0001 output 1.1 minimum (1 -> 5)",
+          "original": "0100000000000000",
+          "patched": "0500000000000000"
+        },
+        {
+          "offset": 10177350,
+          "record_key": 1010558,
+          "record_rel_offset": 1846,
+          "entry": "gimmick_wood_firewood_0001",
+          "rel_offset": 1770,
+          "label": "Logging: gimmick_wood_firewood_0001 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
         },

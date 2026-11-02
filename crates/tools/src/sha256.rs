@@ -1,6 +1,7 @@
-//! SHA-256, for the two tools that publish a digest: `dist` (the release
-//! checksums) and `dmm-rebase` (the clean table a pack was built from, and
-//! the simulated result of every module, in `VERIFICATION.txt`).
+//! SHA-256, for the three tools that publish a digest: `dist` (the release
+//! checksums), `retarget` (the exe a report was made from) and `dmm-pack` (the
+//! table a pack was built from, and the simulated result of every module, in
+//! `VERIFICATION.txt`).
 //!
 //! It lived in `src/bin/dist/` while `dist` was its only user; the second
 //! user is what moved it into the library, as `lib.rs` says it should.
@@ -178,7 +179,8 @@ pub fn hex(digest: &[u8; 32]) -> String {
 }
 
 /// One-shot lowercase hex digest of a buffer already in memory, which is what
-/// `dmm-rebase` has: the whole table body, and each simulated patch of it.
+/// `retarget` has (the whole exe, read once) and what `dmm-pack` has (the
+/// whole table body, and each simulated patch of it).
 pub fn hex_digest(data: &[u8]) -> String {
     let mut h = Sha256::new();
     h.update(data);
