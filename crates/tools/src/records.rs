@@ -10,7 +10,7 @@
 //! **Mirrors `desert_core::gimmick::{HeaderShape, parse_header_as}`**; `crates/tools/`
 //! does not depend on `desert-core`, deliberately, and
 //! `crates/desert-core/tests/gimmick_real.rs` asserts the same 14210 records off the
-//! same dump.
+//! same table body.
 //!
 //! The two shapes are told apart by probing the table's first record, never by
 //! scanning for either: a strict `KeyFirst` scan of the 26361232 body finds
@@ -33,7 +33,7 @@ pub struct Header {
     pub off: usize,
     pub key: u32,
     /// Where the `u32` key sits: `off` for `KeyFirst`, `off + 4 + name_len`
-    /// for `NameFirst`. The DMM pack's `record_rel_offset` counts from here.
+    /// for `NameFirst`.
     pub key_at: usize,
     pub name: String,
     /// One past the header's last byte (the NUL, or the flag byte): where the

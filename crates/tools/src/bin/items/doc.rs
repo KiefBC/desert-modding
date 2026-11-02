@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 
 use serde_json::Value;
 
-use desert_tools::paths::{CALIBRATED_BUILD, TABLE_DUMP_NAME};
+use desert_tools::paths::CALIBRATED_BUILD;
 
 use super::checks::{
     EXPECT_BLOCKS, EXPECT_ITEMS, EXPECT_LISTS, EXPECT_LOOSE_BLOCKS, EXPECT_LOOSE_LISTS,
@@ -192,22 +192,14 @@ pub fn render_doc(d: &Value) -> String {
         l.a("and `analysis/`.");
         l.a("");
     }
-    // Name what the body is by what was actually read: the plugin's dump is
-    // the default, but `--table` / `$CD_DMM_TABLE` can point anywhere.
+    // Name the body by what was actually read: the archives by default,
+    // `--tables` a directory of extracted copies.
     let source = d["source"].as_str().unwrap();
-    let is_dump = std::path::Path::new(source)
-        .file_name()
-        .is_some_and(|n| n == TABLE_DUMP_NAME);
     l.a(format!(
-        "Source: `{source}` ({} bytes), {}",
-        commas(d["source_bytes"].as_u64().unwrap()),
-        if is_dump { "the plugin's" } else { "a" }
+        "Source: `{source}` ({} bytes), the `gimmickinfo`",
+        commas(d["source_bytes"].as_u64().unwrap())
     ));
-    l.a(if is_dump {
-        "DumpTable dump of the clean `gimmickinfo` table body. The self-checks"
-    } else {
-        "clean `gimmickinfo` table body. The self-checks"
-    });
+    l.a("table body as the game's own archive stores it. The self-checks");
     l.a(format!(
         "are calibrated on build {CALIBRATED_BUILD}. Record-relative offsets only, so"
     ));
@@ -532,8 +524,8 @@ pub fn render_doc(d: &Value) -> String {
         l.a(format!("## The {} lists only this walk sees", lo_lists.len()));
         l.a("");
         l.a("These are the whole difference between the two detectors. **None of");
-        l.a("them is one of the 275 gather records the DMM pack edits**, and no");
-        l.a("gatherer slider reaches any of them today: they are chests, dig");
+        l.a("them is in a `collect.rs` row** (a row has to pay a block the plugin");
+        l.a("edits), and no gatherer slider reaches any of them: they are chests, dig");
         l.a("sites, dungeon loot, a claw machine and the Marni teleporters.");
         l.a("`+64` is the list entry's key field described above, and it is");
         l.a("nonzero on every block here - that is exactly what excludes them.");
@@ -782,7 +774,8 @@ pub fn render_doc(d: &Value) -> String {
     l.a("## Items by current `Family`");
     l.a("");
     l.a("`Family` comes from `crates/desert-core/src/collect.rs`, which is generated");
-    l.a("from the DMM pack. An item lands in a family because *a record that");
+    l.a("from the game's own tables by `gen-collect-names`' family rule and the");
+    l.a("overrides in `crates/tools/extra-families.json`. An item lands in a family because *a record that");
     l.a("yields it* is in that family, so an item can appear under two.");
     l.a("");
     for fam in order {

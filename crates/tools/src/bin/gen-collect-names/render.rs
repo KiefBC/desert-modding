@@ -8,6 +8,9 @@
 //! [`HAND_TEST`]); anything else hand-added to `collect.rs` still dies on the
 //! next run, so add it here instead.
 
+use desert_tools::paths::CALIBRATED_BUILD;
+
+use crate::classify::RULES;
 use crate::spec::FamilySpec;
 use crate::Rows;
 
@@ -29,6 +32,23 @@ const HAND_TEST: &[&str] = &[
     "        assert_eq!(family_by_name(\"firewood_1002_index07\"), Some(Family::Logging));",
     "    }",
 ];
+
+/// `s` as a Rust string literal: quotes and backslashes escaped, anything
+/// else (the display names are UTF-8) written as itself.
+fn rust_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            c if c.is_control() => out.push_str(&c.escape_default().to_string()),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
 
 /// `text` as `/// ` lines, hard-wrapped, with no trailing whitespace.
 fn wrap_doc(text: &str) -> Vec<String> {
@@ -59,55 +79,60 @@ fn indent(lines: Vec<String>) -> impl Iterator<Item = String> {
 
 /// The module header, the enum, the rows, both lookups and the fixed tests.
 fn render(rows: &Rows, order: &[String], spec: &[FamilySpec]) -> Vec<String> {
-    let mut out: Vec<String> = [
-        "//! Gather-node records of Crimson Desert build 25116796, generated from the",
-        "//! Desert Gatherer DMM pack (gimmickinfo records patched by that pack) plus",
-        "//! crates/tools/extra-families.json (the records DMM has no module for).",
-        "//! `(record key, record name, family)`. Regenerate with crates/tools/target/x86_64-unknown-linux-gnu/release/gen-collect-names.",
-        "//!",
-        "//! That generator rewrites this whole file and it is now safe to run straight",
-        "//! over it: it owns the enum, the rows, both lookups AND the tests below,",
-        "//! including the `family_by_name` note and `non_gather_records_stay_out`,",
-        "//! which earlier versions dropped. Anything hand-added HERE still dies on the",
-        "//! next run - add it to the generator instead.",
-        "",
-        "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
-        "pub enum Family {",
-    ]
-    .iter()
-    .map(|s| (*s).to_string())
-    .collect();
+    let header = [
+        format!("//! Gather-node records of Crimson Desert build {}, generated from the", CALIBRATED_BUILD),
+        "//! game's own archive tables (gimmickinfo, iteminfo, interactioninfo and".to_string(),
+        "//! knowledgeinfo) by the family rule in".to_string(),
+        "//! crates/tools/src/bin/gen-collect-names/classify.rs, plus the overrides in".to_string(),
+        "//! crates/tools/extra-families.json (records no field marks, the exclusions,".to_string(),
+        "//! and the Money family). A row is a record that pays at least one output".to_string(),
+        "//! block the record-loader hook multiplies, as `(record key, record name,".to_string(),
+        "//! family, display name)`; the display name is the record's English name".to_string(),
+        "//! from the game's own string table. Regenerate with".to_string(),
+        "//! crates/tools/target/x86_64-unknown-linux-gnu/release/gen-collect-names.".to_string(),
+    ];
+    let mut out: Vec<String> = header.into_iter().collect();
+    out.extend(
+        [
+            "//!",
+            "//! That generator rewrites this whole file and it is safe to run straight",
+            "//! over it: it owns the enum, the rows, both lookups AND the tests below,",
+            "//! including the `family_by_name` note and `non_gather_records_stay_out`.",
+            "//! Anything hand-added HERE dies on the next run - add it to the generator",
+            "//! instead.",
+            "",
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+            "pub enum Family {",
+        ]
+        .iter()
+        .map(|s| (*s).to_string()),
+    );
 
     for (i, family) in order.iter().enumerate() {
+        let rule = RULES.iter().find(|r| r.family == family).map(|r| r.text);
         let note = spec
             .iter()
             .find(|f| &f.name == family && !f.note.is_empty())
             .map(|f| f.note.as_str());
-        match note {
-            Some(note) => {
-                // A noted variant is set off by a blank line on each side, so
-                // the doc comment reads as belonging to one variant and not to
-                // the run of bare ones above it.
-                if i != 0 {
-                    out.push(String::new());
-                }
-                out.extend(indent(wrap_doc(note)));
-                out.push(format!("    {family},"));
-                if i + 1 < order.len() {
-                    out.push(String::new());
-                }
-            }
-            None => out.push(format!("    {family},")),
+        let doc: Vec<&str> = rule.into_iter().chain(note).collect();
+        // Each variant's doc comment is set off by a blank line on each side,
+        // so it reads as belonging to one variant.
+        if i != 0 {
+            out.push(String::new());
         }
+        if !doc.is_empty() {
+            out.extend(indent(wrap_doc(&doc.join(" "))));
+        }
+        out.push(format!("    {family},"));
     }
 
     out.extend(
-        ["}", "", "pub const COLLECT_RECORDS: &[(u32, &str, Family)] = &["]
+        ["}", "", "pub const COLLECT_RECORDS: &[(u32, &str, Family, &str)] = &["]
             .iter()
             .map(|s| (*s).to_string()),
     );
-    for (name, key, family) in rows.sorted_by_name() {
-        out.push(format!("    ({key}, \"{name}\", Family::{family}),"));
+    for r in rows.sorted_by_name() {
+        out.push(format!("    ({}, {}, Family::{}, {}),", r.key, rust_str(&r.name), r.family, rust_str(&r.display)));
     }
     out.extend(
         [
@@ -115,7 +140,7 @@ fn render(rows: &Rows, order: &[String], spec: &[FamilySpec]) -> Vec<String> {
             "",
             "/// Family of a gather record by its key, if it is one.",
             "pub fn family_by_key(key: u32) -> Option<Family> {",
-            "    COLLECT_RECORDS.iter().find(|(k, _, _)| *k == key).map(|(_, _, f)| *f)",
+            "    COLLECT_RECORDS.iter().find(|(k, _, _, _)| *k == key).map(|(_, _, f, _)| *f)",
             "}",
             "",
             "/// Family of a gather record by its name (case-insensitive), if it is one.",
@@ -127,7 +152,7 @@ fn render(rows: &Rows, order: &[String], spec: &[FamilySpec]) -> Vec<String> {
     out.extend(
         [
             "pub fn family_by_name(name: &str) -> Option<Family> {",
-            "    COLLECT_RECORDS.iter().find(|(_, n, _)| n.eq_ignore_ascii_case(name)).map(|(_, _, f)| *f)",
+            "    COLLECT_RECORDS.iter().find(|(_, n, _, _)| n.eq_ignore_ascii_case(name)).map(|(_, _, f, _)| *f)",
             "}",
             "",
             "#[cfg(test)]",
@@ -156,53 +181,56 @@ fn render(rows: &Rows, order: &[String], spec: &[FamilySpec]) -> Vec<String> {
     out
 }
 
-/// Two tests per `extra-families.json` entry.
+/// Up to two tests per `extra-families.json` entry.
 ///
-/// The first says its rows are in the table under the right family and that the
-/// family's total is what the DMM pack plus this entry add up to. The second is
-/// the more valuable one: every `records_not_enabled` record must resolve to NO
-/// family, by key and by name. Those are the records a table edit was measured
-/// not to reach, and a row for one would be work the log reports and the player
-/// never sees - which is exactly what shipped once.
+/// The first says its override rows are in the table under the right family
+/// and that the family's total (rule rows plus overrides) is what it is. The
+/// second is the more valuable one: every `records_not_enabled` record must
+/// resolve to NO family, by key and by name. Those are the records a table
+/// edit was measured or argued not to reach, some of which the rule would
+/// otherwise pick, and a row for one would be work the log reports and the
+/// player never sees - which is exactly what shipped once.
 fn render_extra_tests(spec: &[FamilySpec], rows: &Rows) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     for family in spec {
         let name = &family.name;
         let lower = name.to_lowercase();
         let total = rows.count_in_family(name);
-        let items: Vec<u32> = {
-            let mut v: Vec<u32> = family.records.iter().flat_map(|r| r.items.clone()).collect();
-            v.sort_unstable();
-            v.dedup();
-            v
-        };
-        let items = items.iter().map(u32::to_string).collect::<Vec<_>>().join(", ");
-        out.push(String::new());
-        out.push("    /// Rows from crates/tools/extra-families.json, not from the DMM pack.".to_string());
-        out.extend(indent(wrap_doc(&format!("Items paid: {items}."))));
-        out.push("    #[test]".to_string());
-        out.push(format!("    fn {lower}_extra_records_are_present() {{"));
-        // A named slice rather than an array literal in the `for` head:
-        // clippy's single_element_loop fires on the latter when an entry has
-        // exactly one record, and this must be clean at any count.
-        out.push("        let extra: &[(u32, &str)] = &[".to_string());
-        for (key, rname) in by_name(&family.records) {
-            out.push(format!("            ({key}, \"{rname}\"),"));
+        if !family.records.is_empty() {
+            let items: Vec<u32> = {
+                let mut v: Vec<u32> = family.records.iter().flat_map(|r| r.items.clone()).collect();
+                v.sort_unstable();
+                v.dedup();
+                v
+            };
+            let items = items.iter().map(u32::to_string).collect::<Vec<_>>().join(", ");
+            out.push(String::new());
+            out.extend(indent(wrap_doc("Override rows from crates/tools/extra-families.json: records the rule in gen-collect-names/classify.rs does not pick.")));
+            out.extend(indent(wrap_doc(&format!("Items paid: {items}."))));
+            out.push("    #[test]".to_string());
+            out.push(format!("    fn {lower}_extra_records_are_present() {{"));
+            // A named slice rather than an array literal in the `for` head:
+            // clippy's single_element_loop fires on the latter when an entry has
+            // exactly one record, and this must be clean at any count.
+            out.push("        let extra: &[(u32, &str)] = &[".to_string());
+            for (key, rname) in by_name(&family.records) {
+                out.push(format!("            ({key}, \"{rname}\"),"));
+            }
+            out.extend(
+                [
+                    "        ];".to_string(),
+                    "        for &(key, name) in extra {".to_string(),
+                    format!("            assert_eq!(family_by_key(key), Some(Family::{name}), \"{{name}}\");"),
+                    format!("            assert_eq!(family_by_name(name), Some(Family::{name}), \"{{name}}\");"),
+                    "        }".to_string(),
+                    "        assert_eq!(".to_string(),
+                    format!("            COLLECT_RECORDS.iter().filter(|(_, _, f, _)| *f == Family::{name}).count(),"),
+                    format!("            {total}"),
+                    "        );".to_string(),
+                    "    }".to_string(),
+                ],
+            );
         }
-        out.extend(
-            [
-                "        ];".to_string(),
-                "        for &(key, name) in extra {".to_string(),
-                format!("            assert_eq!(family_by_key(key), Some(Family::{name}), \"{{name}}\");"),
-                format!("            assert_eq!(family_by_name(name), Some(Family::{name}), \"{{name}}\");"),
-                "        }".to_string(),
-                "        assert_eq!(".to_string(),
-                format!("            COLLECT_RECORDS.iter().filter(|(_, _, f)| *f == Family::{name}).count(),"),
-                format!("            {total}"),
-                "        );".to_string(),
-                "    }".to_string(),
-            ],
-        );
         let skipped = by_name(&family.records_not_enabled);
         if skipped.is_empty() {
             continue;

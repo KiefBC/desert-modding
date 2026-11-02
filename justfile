@@ -19,10 +19,8 @@ nix := if env("IN_NIX_SHELL", "") == "" { "nix develop --command" } else { "" }
 bin64 := env("CD_BIN64", "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64")
 
 # The clean gimmickinfo table body and the Steam appmanifest are not named
-# here: the only recipe that needs them, `dmm-rebase`, hands the choice to the
-# tool, which applies crates/tools/src/paths.rs's rule (CD_DMM_TABLE, else the
-# plugin's dump in bin64, else DMM's backup copy; CD_APPMANIFEST for the build
-# id). One rule in one place, instead of a copy here that could drift from it.
+# here: the tools that need them resolve them through crates/tools/src/paths.rs.
+# One rule in one place, instead of a copy here that could drift from it.
 
 built := "target/x86_64-pc-windows-gnu/release"
 native := "x86_64-unknown-linux-gnu"
@@ -82,9 +80,12 @@ tools-check:
     CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml
 
 # Separate from `tools-check` for the same reason `test-game` is separate from
-# `test`: a CI runner has no game, no DMM table and no Ghidra.
+# `test`: a CI runner has no game, no table dump and no Ghidra.
 
-# The tools' tests needing the game exe, DMM's table or a built plugin.
+# The tools' tests needing the game exe, the game's archives, the table dump or a
+# built plugin. `-- --ignored` runs every #[ignore]d test in the workspace, so a
+# new file such as tests/paz_real.rs (the .pamt/.paz reader against the install
+# and analysis/tables/) is picked up with no change here.
 tools-check-game: tools
     CARGO_BUILD_TARGET={{native}} {{nix}} cargo test --manifest-path crates/tools/Cargo.toml -- --ignored
 
@@ -152,13 +153,19 @@ sigscan: tools
 retarget *args: tools
     {{tools_bin}}/retarget {{args}}
 
+# Extract every static-info table (.staticinfobody / .staticinfoheader) out of
+# the game's archives, group 0008, into analysis/tables/. `--out DIR` and
+# `--game-dir DIR` are passed through; CD_GAME_DIR overrides the install.
+extract-tables *args: tools
+    {{tools_bin}}/paz extract-tables {{args}}
+
 # Re-export the Ghidra evidence tree into evidence/ (needs Ghidra running on
 # Windows with GhidraMCP listening). Resumable: existing files are not
 # re-fetched. `just evidence --depth 2` and any other flag is passed through.
 evidence *flags: tools
     {{tools_bin}}/evidence {{flags}}
 
-# Build the release zips into dist/ (the plugin, the DMM pack, SHA256SUMS).
+# Build the release zip into dist/ (the plugin and SHA256SUMS).
 #
 # The {{nix}} prefix is still needed here, unlike the other tool recipes: `dist`
 # itself spawns `cargo build --release` for the Windows target, which needs the
@@ -203,39 +210,16 @@ clean:
     rm -rf dist
 
 # --- DMM pack (desert-gatherer-dmm/) --------------------------------------
-# Not part of build/test/ci: it rewrites the packaged patch offsets, which only
-# needs doing after a game update. Run `just test-game` first: its pack oracle,
-# `multiply_reproduces_the_dmm_pack_edits`, confirms the output-block signature
-# still matches this build.
+# Not part of build/test/ci: it regenerates the pack's twelve modules and
+# VERIFICATION.txt, which only needs doing after a game update or a change to
+# collect.rs. Run `just test-game` first: its pack oracle,
+# `multiply_reproduces_the_dmm_pack_edits`, confirms the output-block walk
+# still matches this build. The table comes out of the game's archives
+# (`--tables DIR` reads extracted copies instead), the build id from the Steam
+# appmanifest (CD_APPMANIFEST, or `--build ID`). Flags pass through, and
+# `[positional-arguments]` keeps a path with spaces in it one argument.
 
-# The table is the plugin's own dump, <bin64>/DesertTooling.gimmickinfo.bin,
-# written by one launch with `[Harvest] DumpTable=1` and `DryRun=1`
-# (CD_DMM_TABLE overrides it; DMM's backup copy is the last resort), and the
-# build id is the Steam appmanifest's (CD_APPMANIFEST). The tool resolves both
-# itself - crates/tools/src/paths.rs - so they are passed on only when given here,
-# positionally: `just dmm-rebase /path/to/clean.bin 26361232`. Anything
-# starting with `-` goes to the tool as a flag, in any position, so
-# `just dmm-rebase --dry-run` verifies and prints the report without writing.
-# `[positional-arguments]` is what keeps a table path with spaces in it (the
-# default one has one) a single argument on its way through.
-
-# Rebase desert-gatherer-dmm/*.json onto the current game build. `--dry-run` writes nothing.
+# Regenerate desert-gatherer-dmm/ from the game's gimmickinfo and collect.rs. `--dry-run` writes nothing.
 [positional-arguments]
-dmm-rebase table="" build="" *flags: tools
-    #!/usr/bin/env bash
-    set -euo pipefail
-    flags=(); positional=()
-    for arg in "$@"; do
-        case "$arg" in
-            "") ;;
-            -*) flags+=("$arg") ;;
-            *) positional+=("$arg") ;;
-        esac
-    done
-    if [ "${#positional[@]}" -gt 2 ]; then
-        echo "dmm-rebase: at most a table and a build id, got: ${positional[*]}" >&2; exit 1
-    fi
-    args=()
-    if [ "${#positional[@]}" -ge 1 ]; then args+=(--table "${positional[0]}"); fi
-    if [ "${#positional[@]}" -ge 2 ]; then args+=(--build "${positional[1]}"); fi
-    exec {{tools_bin}}/dmm-rebase "${args[@]}" "${flags[@]}"
+dmm-pack *args: tools
+    {{tools_bin}}/dmm-pack "$@"

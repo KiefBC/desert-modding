@@ -677,7 +677,7 @@ Scale=1.5
             assert!(!c.gather_money && !c.allows_family(Family::Money));
             assert!(schema().field("GatherMoney").is_some(), "the menu must offer GatherMoney");
             // No preset names it, the same as GatherBugs and GatherFish: a preset
-            // sets the four DMM families plus GatherItems and nothing else, so an
+            // sets the four gather families plus GatherItems and nothing else, so an
             // untested switch can never be turned on by pressing a button.
             for p in &schema().presets {
                 assert!(!p.set.iter().any(|(k, _)| k == "GatherMoney"), "{}", p.label);

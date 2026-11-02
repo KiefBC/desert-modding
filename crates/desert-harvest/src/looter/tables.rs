@@ -459,7 +459,7 @@ fn maybe_probe() {
     for i in 0..n {
         let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
         let Some(key) = rec.checked_add(layout.key).and_then(safe::read::<u32>) else { continue };
-        let Some(&(_, name, _)) = crate::collect::COLLECT_RECORDS.iter().find(|(k, _, _)| *k == key) else {
+        let Some(&(_, name, _, _)) = crate::collect::COLLECT_RECORDS.iter().find(|(k, _, _, _)| *k == key) else {
             continue;
         };
         named += 1;

@@ -6,14 +6,14 @@ Automated package verification
   "module_count": 12,
   "categories": {
     "Foraging": {
-      "records": 82,
-      "resource_outputs": 322,
-      "scalar_patches": 644
+      "records": 97,
+      "resource_outputs": 337,
+      "scalar_patches": 674
     },
     "Logging": {
-      "records": 141,
-      "resource_outputs": 141,
-      "scalar_patches": 282
+      "records": 142,
+      "resource_outputs": 142,
+      "scalar_patches": 284
     },
     "Mining": {
       "records": 36,
@@ -29,50 +29,50 @@ Automated package verification
   "options": [
     {
       "option": "Foraging - 10X",
-      "records": 82,
-      "resource_outputs": 322,
-      "scalar_patches": 644,
-      "simulated_patched_sha256": "d2406abba049cc77d3223f8392c56d76fe310447fd63e6b381e97fd61b1ffd83",
+      "records": 97,
+      "resource_outputs": 337,
+      "scalar_patches": 674,
+      "simulated_patched_sha256": "07362c02856b8ea558ba61b9c4af4dd281ba246cbd9c54c175454daa14e67353",
       "result": "PASS"
     },
     {
       "option": "Foraging - 2X",
-      "records": 82,
-      "resource_outputs": 322,
-      "scalar_patches": 644,
-      "simulated_patched_sha256": "ade211e7c7c7dbf8427e22304fdb1de2c3b677b68460aab26a9a7903fd7b7036",
+      "records": 97,
+      "resource_outputs": 337,
+      "scalar_patches": 674,
+      "simulated_patched_sha256": "a53db4a399222d23420d3681b13ea0f2705b9d7c1aebf1c8269b3de5a4c91a0f",
       "result": "PASS"
     },
     {
       "option": "Foraging - 5X",
-      "records": 82,
-      "resource_outputs": 322,
-      "scalar_patches": 644,
-      "simulated_patched_sha256": "305e176096d654242d56cb72222281e99988e9e214274a5b03bff41bd0658a81",
+      "records": 97,
+      "resource_outputs": 337,
+      "scalar_patches": 674,
+      "simulated_patched_sha256": "44284c05c3fdbe98819e4dff170d0f4db6082e621427a520a8d8360a1dfd2a47",
       "result": "PASS"
     },
     {
       "option": "Logging - 10X",
-      "records": 141,
-      "resource_outputs": 141,
-      "scalar_patches": 282,
-      "simulated_patched_sha256": "0c043606c20ee8ef672977fce898733588dcd72d8bfc20f8209a813a4f501500",
+      "records": 142,
+      "resource_outputs": 142,
+      "scalar_patches": 284,
+      "simulated_patched_sha256": "2a961e774458efcb3ba1cced2db063889f6223343c6b06922419c53a6eb2d53d",
       "result": "PASS"
     },
     {
       "option": "Logging - 2X",
-      "records": 141,
-      "resource_outputs": 141,
-      "scalar_patches": 282,
-      "simulated_patched_sha256": "5435343b4e5e786045b8ddafa2c57b13fb71bbe9ea1bcc607dd79941ee66ae3f",
+      "records": 142,
+      "resource_outputs": 142,
+      "scalar_patches": 284,
+      "simulated_patched_sha256": "b4452fc59d65574568193fbae4c69143d9f394af6918ee480aa255e94dff9147",
       "result": "PASS"
     },
     {
       "option": "Logging - 5X",
-      "records": 141,
-      "resource_outputs": 141,
-      "scalar_patches": 282,
-      "simulated_patched_sha256": "3acf0475362e833a5ff6338e489f4a88814d0fc160e15f636b8bf40ba677a9f0",
+      "records": 142,
+      "resource_outputs": 142,
+      "scalar_patches": 284,
+      "simulated_patched_sha256": "9dfd60f7718204797e9723c4680d8c2d08de4861a3344ade95a6d3c5e40404d7",
       "result": "PASS"
     },
     {
@@ -130,8 +130,8 @@ Automated package verification
       "Mining": 2,
       "Logging": 5
     },
-    "scalar_patches": 498,
-    "simulated_patched_sha256": "2a5867f4ca2365149529a5371aaf284f7d77fa946a4f410364af8fc6d66ac006",
+    "scalar_patches": 500,
+    "simulated_patched_sha256": "7c22592699b50c7ac978c792697fc9504ba1dfb47e0d6daf4ee5cc3b0e1c16cb",
     "result": "PASS"
   },
   "result": "PASS"

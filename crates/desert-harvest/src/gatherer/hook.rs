@@ -22,8 +22,8 @@
 //!   +0x58  ptr   array of record_count object pointers (null = not loaded)
 //!
 //! Stream (StreamLayout::NEW on 26361232; StreamLayout::OLD through 25477059)
-//!   +0x20  ptr   buffer: the raw table body, byte-identical to DMM's    (+0x10)
-//!                gimmickinfo_pabgb_clean.bin
+//!   +0x20  ptr   buffer: the raw table body, byte-identical to the archive's (+0x10)
+//!                gimmickinfo.staticinfobody
 //!   +0x28  u32   size                                                     (+0x18)
 //!   +0x2c  u32   cursor: at hook time, the start of the record being     (+0x1c)
 //!                loaded
@@ -87,8 +87,8 @@
 //! whole buffer - the table body, `size` bytes from the stream's buffer
 //! pointer - and hand it to
 //! the plugin's own thread, which writes it beside the log as
-//! [`crate::gatherer::dump::FILE_NAME`]. The offline tools read that file in place of
-//! DMM's backup copy. The copy has to be taken here for the same reason the
+//! [`crate::gatherer::dump::FILE_NAME`], a diagnostic copy of what the game
+//! loaded (the offline tools read the game's archives). The copy has to be taken here for the same reason the
 //! patch does: the buffer is gone a couple of seconds after the last load.
 //! The decision itself is [`crate::gatherer::dump::dump_decision`], pure and tested
 //! natively; see [`PENDING_DUMP`] for the hand-off.
@@ -397,7 +397,7 @@ fn first_warning_for(key: u32) -> bool {
 
 /// The name `desert_core::collect` has on file for a key.
 fn table_name(key: u32) -> Option<&'static str> {
-    collect::COLLECT_RECORDS.iter().find(|(k, _, _)| *k == key).map(|(_, n, _)| *n)
+    collect::COLLECT_RECORDS.iter().find(|(k, _, _, _)| *k == key).map(|(_, n, _, _)| *n)
 }
 
 /// `"3->6/5->10, 1->2/2->4"`: one `min->min/max->max` group per output block.
@@ -749,8 +749,8 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 // is `gimmick::ParsedLayout::OLD` now. Two notes from it stay true:
 //
 // - the entry's key field (`entry+0x08` with 16-byte entries) is zero on
-//   every gather record, measured over all 896 output blocks in DMM's clean
-//   body, so it identifies nothing and is checked against zero, never against
+//   every gather record, measured over all 896 output blocks in the clean
+//   body (build 25246367), so it identifies nothing and is checked against zero, never against
 //   an item id. The 142 blocks that carry a nonzero value there are chests,
 //   dig sites and dungeon loot (`docs/reference-internals.md` section 16);
 // - the block's item id was corrected on 2026-09-12 from `0x6C`, always zero,

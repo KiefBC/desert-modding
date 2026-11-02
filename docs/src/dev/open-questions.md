@@ -34,7 +34,7 @@ When built, it is its own key (`TradeGoods`, record-keyed, default `1`, ini text
 
 **OPEN.** The table holds 573 output lists and 896 blocks on 25477059; the gather families cover 276 records and 588 of those blocks, leaving 297 records carrying 308 blocks classified by nothing: containers, breakables, market props, dried food, donation boxes. The money records are the proof that a residual bucket is wrong, since a blanket `gimmick_item_*` family would have multiplied income. Each candidate group needs a record-keyed list in `crates/tools/extra-families.json` with evidence and a generator check, and first an answer to whether a table edit reaches the record at all (16 of the withdrawn `Ingredients` family's 17 rows were inert).
 
-Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/src/gatherer/remember.rs`; 279 used today): overrunning it leaves the excess vanilla with no log line.
+Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/src/gatherer/remember.rs`; 294 used today): overrunning it leaves the excess vanilla with no log line.
 
 **Settles it:** per group, one logged pickup at a multiplier. Census: `docs/findings/2026-09-12-water-wells.md` §7 (local).
 
@@ -64,7 +64,7 @@ Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/sr
 
 ## Two `Logging` records
 
-**DECIDED to add, not done.** The tag census found exactly two records with a `collect*` tag and an output block that no family covers: `log_bamboo_1001` (`1000669`, item `1002124`, `1..1`) and `gimmick_wood_firewood_0001` (`1010558`, item `710001`, `1..1`). The re-target unblocked it on 2026-09-24. The change: a `Logging` block in `crates/tools/extra-families.json`, one `HAND_TEST` assert in `gen-collect-names`' `render.rs`, regenerate (`COLLECT_RECORDS.len()` 279 to 281, `Logging` 141 to 143), then the help text, README row, ledger and loot-taxonomy note. Never hand-edit `collect.rs`. Each row stays CONFIRMED-STATIC until a pickup is logged, because a record holding an item instance ignores its block.
+**Half done (2026-11-02).** `gimmick_wood_firewood_0001` is a `Logging` row now: the archive-derived rule in `gen-collect-names` (`classify.rs`) picks it, because it is a `Gimmick_PickUp` record paying only wood-material items. `log_bamboo_1001` is still not a row: the rule does not pick it. The tag census found exactly two records with a `collect*` tag and an output block that no family covers: `log_bamboo_1001` (`1000669`, item `1002124`, `1..1`) and `gimmick_wood_firewood_0001` (`1010558`, item `710001`, `1..1`). The re-target unblocked it on 2026-09-24. The change: a `Logging` block in `crates/tools/extra-families.json`, one `HAND_TEST` assert in `gen-collect-names`' `render.rs`, regenerate (`COLLECT_RECORDS.len()` 279 to 281, `Logging` 141 to 143), then the help text, README row, ledger and loot-taxonomy note. Never hand-edit `collect.rs`. Each row stays CONFIRMED-STATIC until a pickup is logged, because a record holding an item instance ignores its block.
 
 **Settles it:** pick up a firewood pile (survey `name=gimmick_wood_firewood_0001`) at `Logging=3` and expect `[recv] item 710001 x3`; `x1` moves it to `records_not_enabled`. Bamboo waits until the player can cut a stalk. Source: `docs/findings/2026-09-12-loot-taxonomy.md` §2.2, §4A (local).
 

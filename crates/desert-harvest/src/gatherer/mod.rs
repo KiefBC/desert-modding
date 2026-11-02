@@ -6,18 +6,19 @@
 //! the instant between the loader being entered and the deserializer reading
 //! the record. Five independent families - Foraging, Logging, Mining, Ore
 //! Nodes and Money - each get their own multiplier from the `[Harvest]`
-//! section of `DesertTooling.ini`. The first four are the DMM pack's own
-//! families; the one record the pack never had is the water well, which sits
-//! in Foraging (water drawn from a well is gathered out of the world like
-//! everything else there) and comes from `crates/tools/extra-families.json`. Money is
+//! section of `DesertTooling.ini`. The first four are read off the game's own
+//! records by the family rule in `crates/tools/src/bin/gen-collect-names/classify.rs`;
+//! the records no field marks, the water well among them (it sits in Foraging:
+//! water drawn from a well is gathered out of the world like everything else
+//! there), are overrides in `crates/tools/extra-families.json`. Money is
 //! this plugin's own family and the odd one out: the three coin and silver bar
 //! props placed in the world read an output block like any other node, so the
 //! same edit reaches them, but what it multiplies is money rather than a
 //! material - it is the first balance lever here, and so it ships at 1.
 //!
-//! This replaces the DMM JSON pack in `desert-gatherer-dmm/`, which patched
-//! the same scalars on disk; **the pack and DMM's built-in gathering
-//! multiplier must be unmounted, or yields multiply twice.**
+//! This replaces DMM's Desert Gatherer JSON pack, which patched the same
+//! scalars on disk; **that pack and DMM's built-in gathering multiplier must
+//! be unmounted, or yields multiply twice.**
 //!
 //! Two further multipliers, Bugs and Fish, scale the creatures the player
 //! catches by hand. Those are not gimmick records and have no yields in any

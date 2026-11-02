@@ -247,7 +247,7 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    git push origin desert-tooling-v0.10.1
    ```
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
-   When the pack's version moved since its last tag (1.3 in source, 1.1 the last one tagged), it
+   When the pack's version moved since its last tag (1.4 in source, 1.1 the last one tagged), it
    gets its own tag on the same merge commit the same way, and its release notes are
    the "What Version" section of its README.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks

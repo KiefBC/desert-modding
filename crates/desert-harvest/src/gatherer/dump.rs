@@ -1,12 +1,11 @@
 //! `[Harvest] DumpTable=1`: the decision to copy the gimmickinfo table body
 //! out of the loader's stream buffer, and the name of the file it lands in.
 //!
-//! The offline tools in `crates/tools/` read the raw table body (`CD_DMM_TABLE`), and
-//! until this key existed the only copy of it on disk was the one DMM keeps in
-//! its backups folder - which DMM deletes and restores at will, so a tool run
-//! could find it gone. The game itself parks the identical bytes in the
-//! record loader's stream buffer while it loads the table (`hook.rs`'s module
-//! docs, `Stream +0x10`), so the plugin can take its own copy there, once per
+//! A diagnostic: the bytes the game actually loaded, to compare against what
+//! the offline tools in `crates/tools/` read out of the game's archives (they
+//! no longer read this file). The game parks the table body in the record
+//! loader's stream buffer while it loads the table (`hook.rs`'s module docs,
+//! `Stream +0x10`), so the plugin can take its own copy there, once per
 //! session, and write it beside the log.
 //!
 //! The copy happens in `hook.rs`, on a game thread, because the buffer is
@@ -18,9 +17,8 @@
 //! is `#[cfg(windows)]` (it reads game memory), and this has to be testable on
 //! the native Linux target like the rest of the pure logic.
 
-/// What the dump is written as, beside `DesertTooling.log` in `bin64`. The
-/// justfile and `crates/tools/src/paths.rs` look for this exact name before falling
-/// back to DMM's copy, so it is part of the interface and does not move.
+/// What the dump is written as, beside `DesertTooling.log` in `bin64`. Named
+/// in the ini's help text and in the docs, so it does not move.
 pub const FILE_NAME: &str = "DesertTooling.gimmickinfo.bin";
 
 /// The largest stream size a dump is taken for.
@@ -153,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    fn the_file_name_is_the_one_the_tools_look_for() {
+    fn the_file_name_is_the_one_the_help_names() {
         assert_eq!(FILE_NAME, "DesertTooling.gimmickinfo.bin");
     }
 }
