@@ -46,7 +46,7 @@
 //! files state and none of them can be generated from the others:
 //! `paths::CALIBRATED_BUILD`, the `Steam build **N**` line in the shipping
 //! crate's README, and the `build` of the `desert-tooling` card in
-//! `mod-status.toml` (the live status card on the Nexus page, which flips to
+//! `baise.toml` (the live status card on the Nexus page, which flips to
 //! "untested" when Steam's build moves past it). All three must agree, so a
 //! re-target that forgets the card fails `just check-versions`.
 //!
@@ -81,8 +81,8 @@ const PACK_MANIFEST: &str = "dmm_pack.json";
 /// The pack's release tag prefix: `desert-gatherer-dmm-v<x.y>`.
 const PACK_TAG: &str = "desert-gatherer-dmm";
 
-/// The mod-status card config, and the `[[mod]]` in it that tracks the plugin.
-const STATUS_CONFIG: &str = "mod-status.toml";
+/// The baise card config, and the `[[mod]]` in it that tracks the plugin.
+const STATUS_CONFIG: &str = "baise.toml";
 const STATUS_KEY: &str = "desert-tooling";
 
 const SEMVER: &str = r"\d+\.\d+\.\d+";

@@ -1,5 +1,5 @@
-# mod-status.toml - the live status card on the Nexus page and in the README.
-# Drawn every 15 minutes by .github/workflows/status.yml (https://github.com/KiefBC/mod-status).
+# baise.toml - the live status card on the Nexus page and in the README.
+# Drawn every 15 minutes by .github/workflows/status.yml (https://github.com/KiefBC/baise).
 # `build` must equal paths::CALIBRATED_BUILD and the Steam build in crates/desert-tooling/README.md:
 # `just check-versions` fails until they agree, so re-target, README and card move in one commit.
 
