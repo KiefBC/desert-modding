@@ -49,6 +49,20 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Everything the `nexus` job needs to know, computed here where the tools
+    # can run (see "Which Nexus file this tag publishes to" below).
+    outputs:
+      publish: ${{ steps.target.outputs.publish }}
+      version: ${{ steps.target.outputs.version }}
+      zip: ${{ steps.target.outputs.zip }}
+      display_name: ${{ steps.target.outputs.display_name }}
+      category: ${{ steps.target.outputs.category }}
+      update_mod_version: ${{ steps.target.outputs.update_mod_version }}
+      changelog: ${{ steps.target.outputs.changelog }}
+      game_domain: ${{ steps.target.outputs.game_domain }}
+      game_scoped_id: ${{ steps.target.outputs.game_scoped_id }}
+      file_id: ${{ steps.target.outputs.file_id }}
+      nexus_changelog: ${{ steps.nexus_changelog.outputs.text }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -87,22 +101,34 @@ jobs:
       - name: Build the tools
         run: nix develop --command just tools
 
-      # The `nexus` job needs two of these and runs on a bare runner with no Nix
-      # and no cargo cache. Uploading them here means they are built ONCE, with
-      # the toolchain flake.lock pins, rather than a second time against
-      # whatever Rust the runner image happens to ship.
-      - name: Keep the tools for the nexus job
-        uses: actions/upload-artifact@v4
-        with:
-          name: tools
-          path: |
-            crates/tools/target/x86_64-unknown-linux-gnu/release/nexus-target
-            crates/tools/target/x86_64-unknown-linux-gnu/release/release-notes
-          retention-days: 1
-          if-no-files-found: error
-
       - name: Tag matches the version in the source
         run: nix develop --command crates/tools/target/x86_64-unknown-linux-gnu/release/release-notes "$GITHUB_REF_NAME" --title
+
+      # Which of the two zips this tag is for, and which Nexus file it updates.
+      # Also validates the version and display name against what the API accepts,
+      # so a bad name is caught here, before anything is published anywhere.
+      # Computed in THIS job and handed to `nexus` as job outputs. The tools are
+      # built by the Nix toolchain and carry its glibc and loader paths, so they
+      # do not run on the bare runner `nexus` uses: the first 0.10.0 release
+      # shipped them there as an artifact and died on "cannot execute: required
+      # file not found" before it reached Nexus.
+      - name: Which Nexus file this tag publishes to
+        id: target
+        run: crates/tools/target/x86_64-unknown-linux-gnu/release/nexus-target "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+
+      # The changelog entry only. The release notes' file list and checksum table
+      # are GitHub's; the Files tab already lists what is on the page. The page's
+      # changelog is keyed by version string and appends, so both files can write
+      # to it without overwriting each other.
+      - name: Changelog for the Nexus page
+        id: nexus_changelog
+        if: steps.target.outputs.publish == 'true' && steps.target.outputs.changelog == 'true'
+        run: |
+          {
+            echo "text<<NEXUS_CHANGELOG_EOF"
+            crates/tools/target/x86_64-unknown-linux-gnu/release/release-notes "$GITHUB_REF_NAME" --changelog
+            echo "NEXUS_CHANGELOG_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Docs match Cargo.toml
         run: nix develop --command just check-versions
@@ -144,14 +170,14 @@ jobs:
 
   # Publishes the tagged package to the mod page, as a new version of the file
   # that is already there. One page, two files, both under Main: the DesertTooling
-  # ASI and the DMM pack. desert-tooling's target is skipped until its file_id is
-  # filled in - its file has to be created by hand on the page once, because the
-  # three .asi files it replaces are not it.
+  # ASI and the DMM pack. A package whose file_id is empty is skipped.
   #
   # A separate job, and deliberately so: it runs only after `release` has cut the
   # GitHub release, it re-downloads the assets from that release rather than
   # rebuilding, and if Nexus is down or rejects the upload you can re-run this
-  # job alone. Re-running `release` would fail on `gh release create`.
+  # job alone. Re-running `release` would fail on `gh release create`. A re-run
+  # keeps the outputs of the `release` job it needs, which is all this job reads:
+  # no checkout, no toolchain, no tool from the repo runs here.
   #
   # The Upload API only adds a VERSION to a file that already exists. It cannot
   # create a mod page, or the first file on one; those are done by hand, once,
@@ -169,43 +195,26 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-
-      # Built by the `release` job with the pinned toolchain; this runner has no
-      # Nix and no cargo cache, so it does not rebuild them.
-      - name: Fetch the tools
-        uses: actions/download-artifact@v4
-        with:
-          name: tools
-          path: tools-bin
-      - run: chmod +x tools-bin/*
-
-      # Which of the two zips this tag is for, and which Nexus file it updates.
-      # Also validates the version and display name against what the API accepts,
-      # so a bad name is caught here and not after the bytes are uploaded.
-      - name: Which Nexus file this tag publishes to
-        id: target
-        run: ./tools-bin/nexus-target "$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
-
       # From the release, not from a rebuild: the bytes that go to Nexus are the
-      # ones SHA256SUMS was computed over and the ones GitHub is serving.
+      # ones SHA256SUMS was computed over and the ones GitHub is serving. There
+      # is no checkout, so the repo is named explicitly.
       - name: Fetch the release assets and verify them
-        if: steps.target.outputs.publish == 'true'
+        if: needs.release.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release download "$GITHUB_REF_NAME" --dir dist --clobber
+          gh release download "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --dir dist --clobber
           cd dist && sha256sum --check --strict SHA256SUMS
 
       # The mod id the API wants is not the number in the page URL. Resolve it
       # from that number rather than keeping a second, invisible id in the JSON.
       - name: Resolve the Nexus mod id
         id: mod
-        if: steps.target.outputs.publish == 'true'
+        if: needs.release.outputs.publish == 'true'
         env:
           NEXUS_API_KEY: ${{ secrets.NEXUS_API_KEY }}
-          DOMAIN: ${{ steps.target.outputs.game_domain }}
-          SCOPED_ID: ${{ steps.target.outputs.game_scoped_id }}
+          DOMAIN: ${{ needs.release.outputs.game_domain }}
+          SCOPED_ID: ${{ needs.release.outputs.game_scoped_id }}
         run: |
           id=$(curl -sS --fail-with-body \
                  -H "apikey: $NEXUS_API_KEY" \
@@ -217,39 +226,27 @@ jobs:
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
 
-      # The changelog entry only. The release notes' file list and checksum table
-      # are GitHub's; the Files tab already lists what is on the page. The page's
-      # changelog is keyed by version string and appends, so both files can write
-      # to it without overwriting each other.
-      - name: Changelog for the Nexus page
-        id: changelog
-        if: steps.target.outputs.publish == 'true' && steps.target.outputs.changelog == 'true'
-        run: |
-          {
-            echo "text<<NEXUS_CHANGELOG_EOF"
-            ./tools-bin/release-notes "$GITHUB_REF_NAME" --changelog
-            echo "NEXUS_CHANGELOG_EOF"
-          } >> "$GITHUB_OUTPUT"
-
       # Pinned to a commit, not a tag: this action is handed an account-wide API
       # key, and a moved tag would silently change what runs. v1.0.0-beta.10.
       - name: Upload to Nexus Mods
-        if: steps.target.outputs.publish == 'true'
+        if: needs.release.outputs.publish == 'true'
         uses: Nexus-Mods/upload-action@c96019556046053aa26044b44396cd38929daf23
         with:
           api_key: ${{ secrets.NEXUS_API_KEY }}
-          file_id: ${{ steps.target.outputs.file_id }}
-          filename: dist/${{ steps.target.outputs.zip }}
-          version: ${{ steps.target.outputs.version }}
+          file_id: ${{ needs.release.outputs.file_id }}
+          filename: dist/${{ needs.release.outputs.zip }}
+          version: ${{ needs.release.outputs.version }}
           # Without the version: the Files tab has its own version column, and
           # these names are what the page's descriptions refer to.
-          display_name: ${{ steps.target.outputs.display_name }}
-          category: ${{ steps.target.outputs.category }}
+          display_name: ${{ needs.release.outputs.display_name }}
+          category: ${{ needs.release.outputs.category }}
           # Two files on one page, so at most one of them may own the page's
           # version field; `nexus-target` refuses a config where two do.
-          update_mod_version: ${{ steps.target.outputs.update_mod_version }}
+          update_mod_version: ${{ needs.release.outputs.update_mod_version }}
           # The version this replaces goes to the archive rather than sitting
           # beside it as a second file under the same heading.
           archive_existing_version: true
           mod_id: ${{ steps.mod.outputs.id }}
-          changelog: ${{ steps.changelog.outputs.text }}
+          # The changelog entry, as computed by `release` (empty when the
+          # target's `changelog` is off).
+          changelog: ${{ needs.release.outputs.nexus_changelog }}

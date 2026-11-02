@@ -245,10 +245,13 @@ are Rust binaries and need a toolchain, so `ci.yml` and `release.yml` both
 install Nix as their first step and build the tools before they gate anything.
 
 `release.yml` has a second job (`nexus`) that runs after the release is cut,
-and it does not install a toolchain of its own: the first job uploads
-`nexus-target` and `release-notes` as a build artifact named `tools`, and the
-`nexus` job downloads and `chmod +x`es them. Two Nix installs to run two
-lookups would be the slower and more fragile arrangement.
+and it does not install a toolchain of its own, nor does it run a tool at all:
+the `release` job runs `nexus-target` and `release-notes --changelog` itself
+and hands the results to `nexus` as job outputs. It used to ship the two
+binaries across as a build artifact instead, and that is why the first 0.10.0
+release failed: a binary built in the Nix shell carries the Nix store's glibc
+and loader paths, and on the bare runner it dies with "cannot execute:
+required file not found". Job outputs survive a re-run of `nexus` alone.
 
 ### `sigscan` + `reference-signatures.txt` (`just sigscan`)
 Scans the installed `CrimsonDesert.exe` for every byte signature the
