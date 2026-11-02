@@ -13,7 +13,9 @@
 //!
 //!   1. a table row whose first cell names a crate -> the cell holding a bare
 //!      version number is set to that crate's version
-//!   2. any `<crate>-v<version>` string anywhere -> the crate's version
+//!   2. any `<crate>-v<version>` string anywhere -> the crate's version, and
+//!      any `desert-gatherer-dmm-v<x.y>` string -> the DMM pack's version from
+//!      `dmm_pack.json` (digits only, so a `<x.y>` placeholder is left alone)
 //!
 //! and in the shipping crate's own `README.md`, additionally:
 //!
@@ -68,8 +70,13 @@ const SHIPPING: [&str; 1] = ["desert-tooling"];
 /// The DMM pack: a directory of JSON, versioned x.y, not a crate.
 const PACK_DIR: &str = "desert-gatherer-dmm";
 const PACK_MANIFEST: &str = "dmm_pack.json";
+/// The pack's release tag prefix: `desert-gatherer-dmm-v<x.y>`.
+const PACK_TAG: &str = "desert-gatherer-dmm";
 
 const SEMVER: &str = r"\d+\.\d+\.\d+";
+/// The pack's x.y version inside its tag. Digits only, so the `<x.y>` and
+/// `<version>` placeholders VERSIONING.md writes are never matched.
+const PACK_VERSION: &str = r"\d+\.\d+";
 /// A version *value* inside a JSON string: digits and dots, so the substitution
 /// cannot touch some future `"version": "unreleased"` by accident.
 const JSON_VERSION: &str = r"\d[\d.]*";
@@ -103,6 +110,8 @@ struct Rewrites {
     bare_version: Regex,
     /// One `<crate>-v<semver>` matcher per crate, in `CRATES` order.
     tag_refs: Vec<Regex>,
+    /// The DMM pack's `desert-gatherer-dmm-v<x.y>` tag.
+    pack_tag: Regex,
     /// The `**Version x.y.z**` line at the top of a shipping crate's README.
     version_line: Regex,
     /// A `"version": "x.y"` value in a DMM module file.
@@ -117,6 +126,7 @@ impl Rewrites {
                 .iter()
                 .map(|c| Regex::new(&format!("{}-v{SEMVER}", regex::escape(c))).unwrap())
                 .collect(),
+            pack_tag: Regex::new(&format!("{}-v{PACK_VERSION}", regex::escape(PACK_TAG))).unwrap(),
             version_line: Regex::new(&format!(r"(?m)^(\*\*Version ){SEMVER}(\*\*)")).unwrap(),
             json_version: Regex::new(&format!(r#"("version"\s*:\s*"){JSON_VERSION}(")"#)).unwrap(),
         }
@@ -168,7 +178,15 @@ fn version_of<'a>(versions: &'a [(&str, String)], crate_name: &str) -> &'a str {
         .expect("crate_versions covers every name in CRATES")
 }
 
-fn sync(text: &str, versions: &[(&str, String)], re: &Rewrites) -> String {
+/// Rebuild a `<name>-v<old>` match around a new version, cutting at the last
+/// `-v` rather than expanding `$`, which a version string will never contain
+/// but a name might grow.
+fn retag(matched: &str, version: &str) -> String {
+    let cut = matched.rfind("-v").expect("the pattern contains -v") + 2;
+    format!("{}{version}", &matched[..cut])
+}
+
+fn sync(text: &str, versions: &[(&str, String)], pack: &str, re: &Rewrites) -> String {
     let mut out = String::with_capacity(text.len());
     for raw in text.split_inclusive('\n') {
         let mut line = raw.to_string();
@@ -209,25 +227,28 @@ fn sync(text: &str, versions: &[(&str, String)], re: &Rewrites) -> String {
 
         for (tag_ref, (_, version)) in re.tag_refs.iter().zip(versions) {
             let replacement = tag_ref
-                .replace_all(&line, |caps: &Captures| {
-                    // The match is `<crate>-v<semver>`; rebuild it around the
-                    // new number rather than expanding `$`, which a version
-                    // string will never contain but a crate name might grow.
-                    let matched = &caps[0];
-                    let cut = matched.rfind("-v").expect("the pattern contains -v") + 2;
-                    format!("{}{version}", &matched[..cut])
-                })
+                .replace_all(&line, |caps: &Captures| retag(&caps[0], version))
                 .into_owned();
             line = replacement;
         }
+        line = re
+            .pack_tag
+            .replace_all(&line, |caps: &Captures| retag(&caps[0], pack))
+            .into_owned();
         out.push_str(&line);
     }
     out
 }
 
 /// A shipping crate's README: the general rules plus its own Version line.
-fn sync_readme(text: &str, crate_name: &str, versions: &[(&str, String)], re: &Rewrites) -> String {
-    let text = sync(text, versions, re);
+fn sync_readme(
+    text: &str,
+    crate_name: &str,
+    versions: &[(&str, String)],
+    pack: &str,
+    re: &Rewrites,
+) -> String {
+    let text = sync(text, versions, pack, re);
     let version = version_of(versions, crate_name);
     re.version_line
         .replacen(&text, 1, |caps: &Captures| {
@@ -316,6 +337,9 @@ fn main() -> Result<()> {
     let root = paths::repo_root()?;
     let re = Rewrites::new();
     let versions = crate_versions(&root)?;
+    // Read before the docs loop: the docs carry the pack's tag as well as
+    // the module files carrying its version.
+    let pack = pack_version(&root)?;
     let mut stale: Vec<String> = Vec::new();
 
     let mut targets: Vec<(String, PathBuf, Option<&str>)> = DOCS
@@ -334,8 +358,8 @@ fn main() -> Result<()> {
         let before = std::fs::read_to_string(&path)
             .with_context(|| format!("cannot read {}", path.display()))?;
         let after = match crate_name {
-            Some(c) => sync_readme(&before, c, &versions, &re),
-            None => sync(&before, &versions, &re),
+            Some(c) => sync_readme(&before, c, &versions, &pack, &re),
+            None => sync(&before, &versions, &pack, &re),
         };
         if before == after {
             continue;
@@ -347,7 +371,6 @@ fn main() -> Result<()> {
         }
     }
 
-    let pack = pack_version(&root)?;
     for path in pack_modules(&root)? {
         let before = std::fs::read_to_string(&path)
             .with_context(|| format!("cannot read {}", path.display()))?;
@@ -426,7 +449,7 @@ mod tests {
     fn table_cell_keeps_its_padding() {
         let re = Rewrites::new();
         let line = "| `desert-core` | 0.0.1    | nothing | never |\n";
-        let out = sync(line, &versions(), &re);
+        let out = sync(line, &versions(), "1.1", &re);
         assert_eq!(out, "| `desert-core` | 1.4.0    | nothing | never |\n");
     }
 
@@ -437,7 +460,7 @@ mod tests {
         // lists the harvest crate first, so its version is the one written.
         let line = "| desert-overlay + desert-harvest | 0.0.1 |\n";
         assert_eq!(
-            sync(line, &versions(), &re),
+            sync(line, &versions(), "1.1", &re),
             "| desert-overlay + desert-harvest | 1.1.0 |\n"
         );
     }
@@ -447,7 +470,7 @@ mod tests {
         let re = Rewrites::new();
         let text = "git push origin desert-tooling-v0.1.0\n";
         assert_eq!(
-            sync(text, &versions(), &re),
+            sync(text, &versions(), "1.1", &re),
             "git push origin desert-tooling-v1.0.0\n"
         );
     }
@@ -460,14 +483,26 @@ mod tests {
         // behind. (It used to share a prefix with the desert-gatherer crate,
         // now merged into desert-harvest; the tag must still pass untouched.)
         let text = "desert-gatherer-dmm-v1.1\n";
-        assert_eq!(sync(text, &versions(), &re), text);
+        assert_eq!(sync(text, &versions(), "1.1", &re), text);
+    }
+
+    #[test]
+    fn a_dmm_tag_follows_the_pack_and_a_placeholder_does_not() {
+        let re = Rewrites::new();
+        let text = "[desert-gatherer-dmm-v1.0](x/tag/desert-gatherer-dmm-v1.0)\n\
+                    tagged `desert-gatherer-dmm-v<x.y>`\n";
+        assert_eq!(
+            sync(text, &versions(), "1.3", &re),
+            "[desert-gatherer-dmm-v1.3](x/tag/desert-gatherer-dmm-v1.3)\n\
+             tagged `desert-gatherer-dmm-v<x.y>`\n"
+        );
     }
 
     #[test]
     fn readme_version_line_is_rewritten_once() {
         let re = Rewrites::new();
         let text = "# x\n\n**Version 0.0.1**, for the game.\n\n**Version 0.0.1** again.\n";
-        let out = sync_readme(text, "desert-tooling", &versions(), &re);
+        let out = sync_readme(text, "desert-tooling", &versions(), "1.1", &re);
         assert_eq!(
             out,
             "# x\n\n**Version 1.0.0**, for the game.\n\n**Version 0.0.1** again.\n"
@@ -495,6 +530,6 @@ mod tests {
     fn a_file_with_no_trailing_newline_survives_the_round_trip() {
         let re = Rewrites::new();
         let text = "| desert-core | 1.4.0 |";
-        assert_eq!(sync(text, &versions(), &re), text);
+        assert_eq!(sync(text, &versions(), "1.1", &re), text);
     }
 }

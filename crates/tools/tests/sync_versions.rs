@@ -153,6 +153,41 @@ fn the_rewrite_fixes_the_table_the_version_line_and_the_tag_example() {
 }
 
 #[test]
+fn a_stale_pack_link_is_named_and_follows_the_manifest() {
+    let dir = tempfile::tempdir().unwrap();
+    fixture(dir.path());
+    let readme = dir.path().join("README.md");
+    let versioning = dir.path().join("VERSIONING.md");
+    let stale_link = "[desert-gatherer-dmm-v1.0](https://example.invalid/tag/desert-gatherer-dmm-v1.0)\n";
+    let placeholder = "The pack is tagged `desert-gatherer-dmm-v<x.y>`.\n";
+    let readme_before = std::fs::read_to_string(&readme).unwrap() + stale_link;
+    std::fs::write(&readme, &readme_before).unwrap();
+    let versioning_before = std::fs::read_to_string(&versioning).unwrap() + placeholder;
+    std::fs::write(&versioning, &versioning_before).unwrap();
+
+    // --check names the doc whose pack link is stale, and only that one.
+    let out = run(dir.path(), &["--check"]);
+    assert_eq!(out.status.code(), Some(1));
+    let err = stderr(&out);
+    assert!(err.contains("sync-versions: out of date: README.md\n"), "{err}");
+    assert!(!err.contains("VERSIONING.md"), "{err}");
+    assert_eq!(std::fs::read_to_string(&readme).unwrap(), readme_before);
+
+    // The plain run rewrites both halves of the link to the manifest's 1.1.
+    let out = run(dir.path(), &[]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert!(stdout(&out).starts_with("sync-versions: updated README.md ("), "{}", stdout(&out));
+    let readme_after = std::fs::read_to_string(&readme).unwrap();
+    assert_eq!(readme_after.matches("desert-gatherer-dmm-v1.1").count(), 2, "{readme_after}");
+    assert!(!readme_after.contains("v1.0"), "{readme_after}");
+    // A placeholder has no digits and is never a tag to rewrite.
+    assert_eq!(std::fs::read_to_string(&versioning).unwrap(), versioning_before);
+
+    let again = run(dir.path(), &[]);
+    assert!(stdout(&again).contains("already in sync"));
+}
+
+#[test]
 fn a_pack_bump_rewrites_both_versions_and_keeps_the_files_crlf() {
     let dir = tempfile::tempdir().unwrap();
     fixture(dir.path());

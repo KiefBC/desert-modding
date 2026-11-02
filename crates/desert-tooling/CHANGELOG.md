@@ -17,6 +17,19 @@ dry-run launches, which found the stream and record-header changes below, and li
 found the parsed-record change below and verified the yields, the catch hook and `Hunting` in game. The harvest merge below was written on
 25477059.
 
+**Since 0.6.0, the last tagged release, this also carries 0.7.0, 0.8.0 and 0.9.0**, which were
+never tagged on their own; their entries below have the detail. Keys they name under `[Looter]` or
+`[Gatherer]` are under `[Harvest]` since this release.
+- **0.7.0**: `GatherCarcass`, skinning animal carcasses without the animation, off by default,
+  and two fixes that matter more than the feature: the looter no longer switches itself off
+  part-way through a long session, and the event recorder catches the rare events it exists to
+  catch.
+- **0.8.0**: `Hunting`, 1..100, how much a looted carcass gives, by the gather key or by hand. It
+  scales the game's own grant, a code hook rather than a table edit, so no other loot moves with
+  it.
+- **0.9.0**: `DumpTable`, which with `DryRun=1` writes the game's gimmickinfo table beside the log
+  once, and the re-target to game build 25477059, with the DMM pack rebased as pack 1.2.
+
 **Re-targeted to game build 26361232.** Build 26345091 (2026-10-31) changed how the game's
 compiler lays out code: a frame pointer in `r11`, so the accessor every static-info table is
 reached through now ends `lea rcx,[r11+0x10]` instead of `lea rcx,[rsp+0x70]`, the record-count
@@ -92,6 +105,9 @@ to what you set is a PATCH, and a PATCH before the untagged MINOR it follows fol
   re-targets did by hand, and Ghidra is out of the procedure. A hotfix build now costs one
   `just retarget report` and a re-pin of the tests, which is what 26356046 cost. 26361232 cost that and the two fixes above,
   which only a launch could find: neither the stream layout nor the record header is a signature.
+  Also behind it, and also invisible: every crate now lives under `crates/`, and the offline
+  tools have been Rust binaries in `crates/tools/` since 2026-09-16, before the 0.9.0 bump, whose
+  entry did not say so; the Python scripts they replaced are retired.
 
 **`[Looter]` and `[Gatherer]` become one section, `[Harvest]`. This is a breaking change to the
 ini, and your file is migrated for you on the first launch.** Auto-loot and the yield

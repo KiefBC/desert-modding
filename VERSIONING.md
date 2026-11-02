@@ -24,8 +24,9 @@ The version is about what a *player* sees, not what the source looks like. So th
   every key in them, its default, the values it takes. This is the big one; most bumps live here.
 - **The log prefixes people grep for**: the subsystem tag every line carries (`[harvest]`,
   `[overlay]`, `[dispatch]`, `[tooling]`) and the prefix after it (`[gimmick]`, `[recv]`, `[stat]`,
-  `[dry]`, `[gather]`, `[sig]`, `[hook]`, `[ini]`, `[survey]`). The tag, the prefix and the fields on
-  the line count; the prose after them doesn't.
+  `[dry]`, `[gather]`, `[sig]`, `[hook]`, `[ini]`, `[survey]`, `[catch]`, `[live]`, `[hunting]`,
+  `[dump]`, `[banking]`). The tag, the prefix and the fields on the line count; the prose after
+  them doesn't.
 - **The shipped file names**: `DesertTooling.asi`, `DesertTooling.ini`, `DesertTooling.log`, and the
   learned-yields cache written beside them.
 - **The hotkeys** and their defaults (F9, F10, F11, F7, and `Insert` for the menu).
@@ -35,7 +36,10 @@ that is the interface. Rewriting `game.rs` from scratch with identical behaviour
 much work it was, and so is moving code between `desert-harvest` and `desert-core`, because a player
 cannot tell. Merging two crates is a PATCH by that rule too; what made 0.10.0 a MINOR was not the
 merge of `desert-looter` and `desert-gatherer` into `desert-harvest` but the `[Looter]` and
-`[Gatherer]` sections becoming one `[Harvest]`, which a player does see.
+`[Gatherer]` sections becoming one `[Harvest]`, which a player does see. Moving every crate under
+`crates/` and rewriting the offline tools from Python into Rust were the same kind of non-event:
+both landed on `dev` after the 0.6.0 tag, neither earned a number, and both ship under the 0.10.0
+tag with the rest.
 
 ## What bumps what
 
@@ -129,6 +133,24 @@ rung.
 
 ### Where it sits
 
+**0.2**, as of 2026-11-02, and true again only since 0.10.0. The 2026-09-10 snapshot below says
+the rung was cleared and still true, with nothing in the workspace found by a bare address. That
+stopped holding the next day: the dispatch sliders of 2026-09-11 brought the two `[banking]` gates
+into `crates/desert-dispatch` as bare RVAs measured on build 25116796, and they shipped that way in
+0.6.0 and in every untagged version after it. 0.10.0 finds both by signature (`DEFERRED_GATE_SIG`
+and `SURPLUS_GATE_SIG` in [`crates/desert-dispatch/src/scan.rs`](crates/desert-dispatch/src/scan.rs)),
+so "no bare image address left anywhere in the workspace" is true again, as of 0.10.0 rather than
+since 2026-09-08. A rung is only worth claiming if it is taken back the day it stops being true, so
+the lapse is written down here rather than quietly repaired.
+
+**0.3** is still not claimed. The feature set reopened four times after 0.6.0: `GatherCarcass` in
+0.7.0, `Hunting` in 0.8.0, `DumpTable` in 0.9.0 and the `[Harvest]` merge in 0.10.0, each a MINOR
+by "What bumps what" and each a sign the set was not yet decided. The condition the 2026-09-10
+paragraph set still stands: the rung moves when the feature set is settled, not asserted.
+
+The rest of this section is the 2026-09-10 snapshot, kept as written; the two paragraphs above
+correct it where it no longer holds.
+
 **0.2**, as of 2026-09-10, down from 0.3, and the version went *up* in the same breath. That is
 the decoupling working, not a contradiction.
 
@@ -144,14 +166,15 @@ There used to be three ladders here, one per shipped `.asi`, and all three clear
 names `gimmickinfo`, and the catch site by signature. Desert Overlay had no game addresses to
 resolve at all. Desert Looter was the last holdout, carrying `ITEM_INFO_SLOT` and `GIMMICK_INFO_SLOT`
 as bare RVAs in what is now [`crates/desert-harvest/src/looter/tables.rs`](crates/desert-harvest/src/looter/tables.rs); both are resolved by
-content through `desert_core::gimmick`, and there is no bare image address left anywhere in the
-workspace. That rung is cleared for the whole plugin, because it is cleared for every subsystem in
-it.
+content through `desert_core::gimmick`, and on that date there was no bare image address left
+anywhere in the workspace. That rung is cleared for the whole plugin, because it is cleared for
+every subsystem in it.
 
-**0.3** wants the feature set decided, and the merge is what decided it. The two open questions were
-creature catching (settled by shipping it, under `GatherBugs` and `GatherFish`) and how many mods
-this actually is. It is one: auto-loot, yield multipliers and the menu that edits both, in a single
-`.asi` with a single ini, which is the shape it keeps.
+**0.3**, as claimed on 2026-09-08 and retracted two days later: it wants the feature set decided,
+and the merge was taken to have decided it. The two open questions then were creature catching
+(settled by shipping it, under `GatherBugs` and `GatherFish`) and how many mods this actually is.
+The answer was one: auto-loot, yield multipliers and the menu that edits both, in a single `.asi`
+with a single ini. Dispatch joined that `.asi` two days later, which is what falsified the claim.
 
 ### Why the first `desert-tooling` release is 0.3.0 and not 0.1.0
 
@@ -188,11 +211,19 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    crate is bookkeeping and releases nothing; only `desert-tooling` is tagged.)
 2. Run `just sync-versions` to pull that number through the version tables in this file, the top
    README and the mod's own README, and, for the DMM pack, from `dmm_pack.json` through its
-   twelve module files. CI checks it, so a stale table fails the build rather than shipping
+   twelve module files and the `desert-gatherer-dmm-v<x.y>` links in the docs onto the pack's
+   version. CI checks it, so a stale table fails the build rather than shipping
    quietly. You never edit a version by hand anywhere except the one source of truth.
 3. Write the CHANGELOG entry in the same commit: version, date, game build, and Added / Changed /
    Fixed. `just sync-versions` fails until this exists: it is the one part of a bump that cannot
    be generated, and the release notes are built from it.
+
+   When `dev` carried more than one bump since the last tag, as 0.7.0 to 0.10.0 did after the
+   0.6.0 tag, the newest entry opens with a short "Since `<last tag>`" paragraph naming each
+   skipped version and its headline. The `release-notes` tool publishes only the
+   tagged version's entry, to GitHub and to Nexus alike, so without it someone upgrading across
+   the gap reads about the last bump and nothing before it. The full CHANGELOG still ships inside
+   the zip; the paragraph is for the release page.
 4. Build the packages:
    ```bash
    just dist                   # both packages
@@ -207,13 +238,16 @@ and a MINOR if the new build needs something new from them: a key, a setting, a 
    `DesertGatherer.asi` or `DesertOverlay.asi` left from before the merge), launch, read
    `DesertTooling.log`. There's no automated in-game test, and a release nobody has run in the game
    isn't a release.
-6. Commit, get it onto `main` (the release branch), then tag the commit on `main` as
-   `<package>-v<version>` and push the tag:
+6. Commit, get it onto `main` (the release branch) through the `dev` -> `main` pull request, then
+   tag the merge commit on `main` as `<package>-v<version>` and push the tag:
    ```bash
    git tag desert-tooling-v0.10.0
    git push origin desert-tooling-v0.10.0
    ```
    The DMM pack is tagged `desert-gatherer-dmm-v<version>` with the version from `dmm_pack.json`.
+   When the pack's version moved since its last tag (1.3 in source, 1.1 the last one tagged), it
+   gets its own tag on the same merge commit the same way, and its release notes are
+   the "What Version" section of its README.
 7. Pushing the tag is the release. The `release` workflow (`.github/workflows/release.yml`) checks
    that the tagged commit is on `main` and that the tag's version equals the one in the source,
    re-runs the doc, clippy and test checks, builds **that package** with the `dist` tool on a clean
