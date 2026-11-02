@@ -36,6 +36,15 @@ static GIMMICK_INFO_SLOT: OnceLock<usize> = OnceLock::new();
 static GIMMICK_SLOT_ADDR: OnceLock<usize> = OnceLock::new();
 /// The `iteminfo` slot as an absolute address, for [`maybe_probe_items`].
 static ITEM_SLOT_ADDR: OnceLock<usize> = OnceLock::new();
+/// The `characterinfo` slot as an absolute address, for `crate::species`.
+/// Resolved in the same scan as the other two; only the absolute address is
+/// kept, since nothing here reads that table through an RVA.
+static CHARACTER_SLOT_ADDR: OnceLock<usize> = OnceLock::new();
+
+/// The `characterinfo` manager slot, once [`resolve_slots`] found it.
+pub fn character_slot_addr() -> Option<usize> {
+    CHARACTER_SLOT_ADDR.get().copied()
+}
 
 fn item_slot() -> Option<usize> {
     ITEM_INFO_SLOT.get().copied()
@@ -84,6 +93,17 @@ pub fn resolve_slots(m: &MainModule) {
             }
             Err(e) => crate::log!("[slot] {name:<22} NOT FOUND: {e}"),
         }
+    }
+    // The species table, for `crate::species`. A failure here costs only the
+    // Rice Fish correction: every catch is classified by its bytes as before.
+    match sites.manager_slot(m.bytes(), desert_core::gimmick::CHARACTER_TABLE) {
+        Ok(rva) => {
+            crate::log!("[slot] {:<22} = +0x{rva:X}", "characterinfo");
+            if let Some(addr) = m.base.checked_add(rva) {
+                let _ = CHARACTER_SLOT_ADDR.set(addr);
+            }
+        }
+        Err(e) => crate::log!("[slot] {:<22} NOT FOUND: {e}; species names off", "characterinfo"),
     }
 }
 
@@ -353,7 +373,7 @@ const WARN_AFTER: u32 = 3;
 
 /// A guarded read of `len` bytes at `addr`, for the pure readers in
 /// `desert_core::gimmick`.
-fn read_bytes(addr: usize, len: usize) -> Option<Vec<u8>> {
+pub(crate) fn read_bytes(addr: usize, len: usize) -> Option<Vec<u8>> {
     if !manager::plausible(addr) {
         return None;
     }

@@ -104,9 +104,15 @@ impl CatchClass {
 /// 1001238, 1001245).
 ///
 /// The Rice Fish reads 0x80 too (`type=06 class=80 chr=3935`, item 1001241,
-/// build 25477059), so it is caught - and multiplied - as a bug, under
-/// `GatherBugs` and `Bugs`. Neither byte tells it from the insects; its
-/// species row sits among theirs.
+/// build 25477059; `chr=3966` on 26361232), and neither byte tells it from
+/// the insects: its species row sits among theirs (bugs on 26361232 read chr
+/// 3887, 3888, 3895, 3902 and 3916). [`catch_class`] alone therefore answers
+/// [`CatchClass::Bug`] for it, which filed it under `GatherBugs` and `Bugs`.
+/// What does tell it apart is its **species record's name** in
+/// `characterinfo`, so [`catch_class_with_species`] lets a species the
+/// plugin has named a fish ([`is_fish_species_name`]) turn this one class on
+/// [`FISH_TYPES`] into [`CatchClass::Fish`]. Rows are not used as the key
+/// because they shift between game builds (3935 -> 3966); names do not.
 pub const BUG_CLASSES: &[u8] = &[0x80];
 
 /// Interaction category bytes seen on fish caught by hand.
@@ -230,6 +236,109 @@ pub fn catch_class(ty: u8, category: u8) -> Option<CatchClass> {
         Some(CatchClass::Fish)
     } else {
         None
+    }
+}
+
+/// Whether a species override may apply to this type and class: the class
+/// alone says [`CatchClass::Bug`] (one of [`BUG_CLASSES`]) and the type is one
+/// of [`FISH_TYPES`]. This is the **only** pair [`catch_class_with_species`]
+/// ever changes, and callers use it to skip reading the species row at all
+/// for every other creature.
+pub fn species_can_override(ty: u8, category: u8) -> bool {
+    BUG_CLASSES.contains(&category) && FISH_TYPES.contains(&ty)
+}
+
+/// [`catch_class`], corrected by the species: `fish_species` says the
+/// creature's `characterinfo` record is named a fish
+/// ([`is_fish_species_name`]).
+///
+/// Only one answer can change: a bug class on a fish type becomes
+/// [`CatchClass::Fish`] when the species is a fish (the Rice Fish, see
+/// [`BUG_CLASSES`]). The flag never turns a class [`catch_class`] does not
+/// know into a catch - `None` stays `None` whatever the species - and it never
+/// touches a fish class, a bug on a non-fish type (the Firefly Colony on type
+/// 3), or anything with `fish_species == false`, which is exactly
+/// [`catch_class`].
+pub fn catch_class_with_species(ty: u8, category: u8, fish_species: bool) -> Option<CatchClass> {
+    if fish_species && species_can_override(ty, category) {
+        return Some(CatchClass::Fish);
+    }
+    catch_class(ty, category)
+}
+
+/// The text that marks a `characterinfo` species name as a fish, matched
+/// case-insensitively anywhere in the name, on a name that also starts with
+/// [`ANIMAL_NAME_PREFIX`].
+///
+/// Read off the table on 26361232 (2026-11-02): the Rice Fish is
+/// `Animal_RiceFish` (row 3966), a hand-caught fish `Animal_Small_Beyaz_Fish_Wild_1`
+/// (4031); the insects are `Animal_Insect_*` (GrassHopper, Centipede,
+/// Dragonfly, GnatWide, Common_Buckeye). Without the prefix the bare `fish`
+/// rule marked 66 rows, most of them people and props
+/// (`NHM_Citizen_Fisherman_*`, `NHM_Fisherman_ToolFishingRod_*`). Not every
+/// fish says `fish` (`Animal_Normal_Tench_Wild_1`, row 4036), but those carry
+/// a fish class already; the rule only ever matters for a class-0x80 catch on
+/// a fish type ([`catch_class_with_species`]).
+pub const FISH_NAME_MARKERS: &[&str] = &["fish"];
+
+/// Every creature species name read so far starts with this.
+pub const ANIMAL_NAME_PREFIX: &str = "animal_";
+
+/// A name carrying this is the game's own word for an insect, whatever else
+/// it says: `Animal_Insect_StarFish` (row 3969 on 26361232) matched the fish
+/// rule until this was added.
+pub const INSECT_NAME_MARKER: &str = "_insect_";
+
+/// Does this `characterinfo` species name mark a fish? Case-insensitive
+/// substring match against [`FISH_NAME_MARKERS`].
+pub fn is_fish_species_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.starts_with(ANIMAL_NAME_PREFIX)
+        && !lower.contains(INSECT_NAME_MARKER)
+        && FISH_NAME_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+/// The species row is a `u16` (`ClientStatusActorComponent+0x30`), so a
+/// bitset of this many bits covers every row the game can name.
+pub const SPECIES_ROWS: usize = 1 << 16;
+const SPECIES_WORDS: usize = SPECIES_ROWS / 64;
+
+/// One bit per `characterinfo` row, lock-free: the plugin thread sets bits,
+/// a game-thread hook reads them. Bits are only ever set, never cleared, for
+/// the life of the process. 8 KiB, const-constructible, so it lives in a
+/// `static`.
+pub struct SpeciesBits {
+    words: [core::sync::atomic::AtomicU64; SPECIES_WORDS],
+}
+
+impl SpeciesBits {
+    pub const fn new() -> Self {
+        Self { words: [const { core::sync::atomic::AtomicU64::new(0) }; SPECIES_WORDS] }
+    }
+
+    /// Set `row`'s bit; true when it was not set before.
+    pub fn set(&self, row: u16) -> bool {
+        let Some(w) = self.words.get(usize::from(row >> 6)) else { return false };
+        let bit = 1u64 << (row & 63);
+        w.fetch_or(bit, core::sync::atomic::Ordering::Relaxed) & bit == 0
+    }
+
+    /// Is `row`'s bit set? One atomic load; safe on any thread.
+    pub fn contains(&self, row: u16) -> bool {
+        self.words
+            .get(usize::from(row >> 6))
+            .is_some_and(|w| w.load(core::sync::atomic::Ordering::Relaxed) & (1u64 << (row & 63)) != 0)
+    }
+
+    /// How many bits are set.
+    pub fn count(&self) -> usize {
+        self.words.iter().map(|w| w.load(core::sync::atomic::Ordering::Relaxed).count_ones() as usize).sum()
+    }
+}
+
+impl Default for SpeciesBits {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -429,6 +538,83 @@ mod tests {
             assert!(CATCH_STOLEN >= crate::trampoline::MIN_STOLEN);
             assert!(CATCH_STOLEN <= crate::trampoline::MAX_STOLEN);
         }
+    }
+
+    #[test]
+    fn the_fish_name_rule() {
+        // Real names, 26361232.
+        for n in ["Animal_RiceFish", "Animal_Small_Beyaz_Fish_Wild_1", "ANIMAL_CATFISH"] {
+            assert!(is_fish_species_name(n), "{n}");
+        }
+        for n in [
+            "",
+            "Animal_Insect_GrassHopper",
+            "Animal_Insect_Dragonfly",
+            "Animal_Raccoon_Wild_30042",
+            "NHM_Citizen_Fisherman_3451",
+            "NHM_Fisherman_ToolFishingRod_7038",
+            "Fish_RiceFish",
+            "Animal_Fis",
+            "Animal_Insect_StarFish",
+        ] {
+            assert!(!is_fish_species_name(n), "{n}");
+        }
+    }
+
+    /// The Rice Fish: class 0x80 on type 6, named a fish, is a fish.
+    #[test]
+    fn a_fish_species_turns_a_type_6_bug_into_a_fish() {
+        assert_eq!(catch_class_with_species(6, 0x80, true), Some(CatchClass::Fish));
+        assert_eq!(catch_class_with_species(6, 0x80, false), Some(CatchClass::Bug));
+        assert!(species_can_override(6, 0x80));
+    }
+
+    /// Only class 0x80 on a fish type is ever overridden: the Firefly Colony
+    /// (0x80 on type 3) stays a bug whatever its species flag says, and a
+    /// fish class stays a fish.
+    #[test]
+    fn only_a_bug_class_on_a_fish_type_is_overridden() {
+        for ty in 0u8..=255 {
+            for cat in 0u8..=255 {
+                let plain = catch_class(ty, cat);
+                assert_eq!(catch_class_with_species(ty, cat, false), plain, "type {ty} 0x{cat:02X}");
+                let with = catch_class_with_species(ty, cat, true);
+                if species_can_override(ty, cat) {
+                    assert_eq!(plain, Some(CatchClass::Bug));
+                    assert_eq!(with, Some(CatchClass::Fish));
+                } else {
+                    assert_eq!(with, plain, "type {ty} 0x{cat:02X}");
+                }
+            }
+        }
+        assert_eq!(catch_class_with_species(3, 0x80, true), Some(CatchClass::Bug));
+        assert!(!species_can_override(3, 0x80));
+        assert_eq!(catch_class_with_species(6, 0x23, true), Some(CatchClass::Fish));
+    }
+
+    /// The species flag can never make a catch out of a class nobody has
+    /// caught: the birds in flight (0x20), the deer (0x23 on type 3), an
+    /// NPC class.
+    #[test]
+    fn a_species_flag_never_creates_a_catch_from_an_unknown_class() {
+        for (ty, cat) in [(6u8, 0x20u8), (3, 0x23), (6, 0x2C), (3, 0x33), (5, 0x8C), (6, 0x00)] {
+            assert_eq!(catch_class(ty, cat), None);
+            assert_eq!(catch_class_with_species(ty, cat, true), None, "type {ty} 0x{cat:02X}");
+        }
+    }
+
+    #[test]
+    fn species_bits_set_and_read_every_row() {
+        let b = SpeciesBits::new();
+        assert_eq!(b.count(), 0);
+        for row in [0u16, 63, 64, 3966, 4031, u16::MAX] {
+            assert!(!b.contains(row));
+            assert!(b.set(row), "{row}");
+            assert!(!b.set(row), "second set of {row}");
+            assert!(b.contains(row));
+        }
+        assert_eq!(b.count(), 6);
+        assert!(!b.contains(3965) && !b.contains(3967) && !b.contains(1));
     }
 
     #[test]

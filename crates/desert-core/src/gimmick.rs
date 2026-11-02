@@ -652,6 +652,13 @@ pub const BUFF_TABLE: &[u8] = b"buffinfo";
 /// slot is `0x6C2E328` and its record loader `0x512A30`. Same census, same
 /// read-only pass.
 pub const STATUS_TABLE: &[u8] = b"statusinfo";
+/// The name the `characterinfo` accessor passes: the species table, indexed by
+/// the `u16` row a creature's `ClientStatusActorComponent+0x30` holds. A
+/// `45 31 C9` + `lea` copy of the template on 26361232 (census site
+/// `+0x8A29CB8`), so the base-less scan reaches it. Its accessor body was
+/// obfuscated code on 26345091 and 26356046; only the slot load in front of
+/// the head is used here. Read-only, by `desert-harvest`'s species set.
+pub const CHARACTER_TABLE: &[u8] = b"characterinfo";
 
 fn u32_at(b: &[u8], o: usize) -> Option<u32> {
     b.get(o..o.checked_add(4)?)?.try_into().ok().map(u32::from_le_bytes)
@@ -2443,6 +2450,18 @@ impl ItemNameVote {
             .unwrap_or(false)
     }
 
+    /// Every candidate that read an identifier from more than half the
+    /// sampled records and from at least `min`, most votes first, then by
+    /// offset and indirection (`**` before `*`).
+    pub fn ranked(&self, min: usize) -> Vec<(NameAt, usize)> {
+        let mut ok: Vec<(NameAt, usize)> =
+            self.candidates().filter(|&(_, h)| h >= min.max(1) && h * 2 > self.sampled).collect();
+        // `candidates` yields offset order, `**` first; a stable sort on the
+        // votes keeps that order among equals.
+        ok.sort_by_key(|&(_, h)| std::cmp::Reverse(h));
+        ok
+    }
+
     /// The name's place: a candidate that read an identifier from more than
     /// half the sampled records and from at least `min`. Among several, the
     /// one that read [`MONEY_ITEM_NAME`] off the money record wins, else the
@@ -2526,6 +2545,35 @@ pub fn probe_item_layout<R: Fn(usize, usize) -> Option<Vec<u8>>>(
         (None, _) => Err(format!("no key offset: {}", evidence())),
         (_, None) => Err(format!("no name place: {}", evidence())),
     }
+}
+
+/// Where a parsed record keeps its name, for a table with no known name to
+/// check against (`characterinfo`): the candidate in `0..NAME_PROBE_END`
+/// that reads an identifier ([`is_identifier`]) from the most of the first
+/// [`ITEM_NAME_SAMPLE`] records of `objs`, from more than half of them and
+/// from at least `min`. A tie goes to the lowest offset (`**` before `*`),
+/// the order [`NameVote::verdict`] uses, and the tied places come back beside
+/// it so the caller can say so. `Err` carries the evidence for the log.
+pub fn probe_record_name<R: Fn(usize, usize) -> Option<Vec<u8>>>(
+    objs: &[usize],
+    min: usize,
+    read: &R,
+) -> Result<(NameAt, Vec<NameAt>), String> {
+    let mut names = ItemNameVote::default();
+    for &obj in objs.iter().take(ITEM_NAME_SAMPLE) {
+        names.observe(obj, read);
+    }
+    let ranked = names.ranked(min);
+    let Some(&(first, votes)) = ranked.first() else {
+        let best = names.best().map(|(at, h)| format!("{} {h}", at.describe())).unwrap_or_else(|| "-".into());
+        return Err(format!(
+            "no place reads an identifier from more than half of {} sampled records (best {best}, need {})",
+            names.sampled(),
+            min.max(1)
+        ));
+    };
+    let tied = ranked.iter().skip(1).filter(|&&(_, h)| h == votes).map(|&(at, _)| at).collect();
+    Ok((first, tied))
 }
 
 /// Item offset candidates, and `(min, max)` offset pair candidates.
@@ -4493,6 +4541,25 @@ mod tests {
         let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, true), true);
         let got = probe_item_layout(&objs, &known_items(), &|a, n| mem.read(a, n));
         assert_eq!(got, Ok(ItemLayout { key: 8, name: NameAt { offset: 0, derefs: 2 } }));
+    }
+
+    #[test]
+    fn a_record_name_is_probed_without_a_known_name() {
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, false), false);
+        let read = |a, n| mem.read(a, n);
+        let at = NameAt { offset: 0, derefs: 2 };
+        assert_eq!(probe_record_name(&objs, 8, &read), Ok((at, Vec::new())));
+        // Two places reading a name from every record: the lower one wins,
+        // and the other is reported as tied.
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, false), true);
+        let read = |a, n| mem.read(a, n);
+        let got = probe_record_name(&objs, 8, &read);
+        assert_eq!(got, Ok((at, vec![NameAt { offset: 0x18, derefs: 1 }])));
+        // Too few records, or none readable: an error, never a panic.
+        let few = objs.get(..5).unwrap_or(&[]);
+        assert!(probe_record_name(few, 8, &read).is_err());
+        assert!(probe_record_name(&objs, 8, &|_, _| None).is_err());
+        assert!(probe_record_name(&[], 8, &read).is_err());
     }
 
     #[test]

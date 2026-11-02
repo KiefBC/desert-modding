@@ -19,3 +19,7 @@ __pycache__/
 
 # A third-party trainer once dropped into the root; never commit it again.
 /TRINITY/
+analysis/paz-plain
+analysis/pazdump-index.tsv
+analysis/pazdump-failed.tsv
+analysis/strings

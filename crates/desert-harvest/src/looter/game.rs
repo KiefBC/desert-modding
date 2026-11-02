@@ -240,8 +240,13 @@ fn catch_diagnostic_line(
     let names = actors::component_names(m, a);
     // The species row, printed beside the class byte because the class byte
     // is not a species (`actors::STATUS_SPECIES_OFF`).
+    // With the species record's name beside it once `crate::species` has
+    // latched where the name is, and `(fish)` when the fish set holds it.
     let chr = match actors::status_off(&names).and_then(|off| actors::species_at(a, off)) {
-        Some(r) => r.to_string(),
+        Some(r) => match crate::species::name(r) {
+            Some(n) => format!("{r} species={n}{}", if crate::species::is_fish(r) { " (fish)" } else { "" }),
+            None => r.to_string(),
+        },
         None => "?".to_string(),
     };
     // The dead-drop component's state, for dead animals only. This is the one

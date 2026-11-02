@@ -100,6 +100,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "desert-pazdump"
+version = "0.1.0"
+dependencies = [
+ "desert-core",
+ "windows-sys",
+]
+
+[[package]]
 name = "desert-tooling"
 version = "0.10.0"
 dependencies = [

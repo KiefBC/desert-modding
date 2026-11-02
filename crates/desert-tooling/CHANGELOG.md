@@ -191,6 +191,14 @@ is taken away; nothing you had set is lost.
 
 ### Fixed
 
+- **The Rice Fish is a fish, told apart by its species name** (untested in game). It reads the
+  insects' class `0x80` on type 06, so it was taken under `GatherBugs` and multiplied by `Bugs`.
+  The plugin now reads the `characterinfo` species table's names once loaded and treats a class-`0x80`
+  type-06 creature whose species name contains `fish` as a fish, under `GatherFish` and `Fish`;
+  nothing else changes class. Names, not rows, because rows move between game builds. The log
+  shows `[species] record name at ...`, `[species] fish set: N rows (...)` and `[species] row N =
+  <name>` for the species seen so far; the F11 survey prints `species=<name>` beside `chr=`, and
+  the `Debug=1` catch line `fish-species=0/1`.
 - **A live land animal of fish class `0x23` is no longer taken for a fish.** The class byte is
   not a species: on 25477059 a type-06 fish (item 29805, species row 4000) and a type-03 land
   animal (species row 3458) both read `0x23`, and a class-`0x23` carcass paid Animal_Bone, Meat_II
@@ -222,8 +230,6 @@ is taken away; nothing you had set is lost.
 
 ### Known
 
-- **The Rice Fish is caught as a bug.** It reads the insect class `0x80` on type 06, the same pair
-  as the insects, so `GatherBugs` and `Bugs` take and multiply it, not `GatherFish` and `Fish`.
 - **A fish class is still not a species.** The type-06 class-`0x44` carcass of 25246367 above
   means the type may not separate a fish from a bird on that class the way it does for `0x23`.
 

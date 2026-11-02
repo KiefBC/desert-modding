@@ -85,7 +85,9 @@ mod off {
     pub const ACTOR_SUB: usize = 0x68;
     pub const SUB_STATUS: usize = 0x20;
     pub const STATUS_CLASS: usize = 0x5A;
-    /// u16 `characterinfo` row: the species. Logged with `Debug=1` only.
+    /// u16 `characterinfo` row: the species. Read for the `Debug=1` line and
+    /// for a class-0x80 catch on a fish type, which `crate::species` may say
+    /// is a fish (the Rice Fish).
     pub const STATUS_SPECIES: usize = 0x30;
 }
 
@@ -232,8 +234,15 @@ fn debug_line(actor: usize, ty: Option<u8>) {
     }
     let ty = ty.map_or_else(|| "?".to_string(), |t| format!("{t:02X}"));
     let class = class_byte(actor).map_or_else(|| "?".to_string(), |c| format!("{c:02X}"));
-    let chr = species_row(actor).map_or_else(|| "?".to_string(), |r| r.to_string());
-    crate::log!("[catch] debug: actor=0x{actor:X} type={ty} class={class} chr={chr}");
+    let row = species_row(actor);
+    let chr = row.map_or_else(|| "?".to_string(), |r| r.to_string());
+    // One atomic bit, never the name: this is a game thread. `?` until the
+    // species set is built; the name is in the `[species] row N` lines.
+    let fish = match row {
+        Some(r) if crate::species::built() => if crate::species::is_fish(r) { "1" } else { "0" },
+        _ => "?",
+    };
+    crate::log!("[catch] debug: actor=0x{actor:X} type={ty} class={class} chr={chr} fish-species={fish}");
 }
 
 /// The count the game should use for this creature, or 1 for vanilla.
@@ -285,8 +294,14 @@ fn count_for(actor: usize) -> u32 {
     };
 
     // The type goes in too: 0x23 is a fish on type 6 and a deer on type 3
-    // (`creature::FISH_TYPES`), and only the first is multiplied.
-    let Some(kind) = creature::catch_class(ty, class) else {
+    // (`creature::FISH_TYPES`), and only the first is multiplied. So does the
+    // species, for the one pair it can change (a bug class on a fish type, the
+    // Rice Fish): one more pointer walk and one atomic bit, never a name. Until
+    // the plugin thread has built the set every bit is clear and this is
+    // exactly `catch_class`.
+    let fish_species = creature::species_can_override(ty, class)
+        && species_row(actor).is_some_and(crate::species::is_fish);
+    let Some(kind) = creature::catch_class_with_species(ty, class, fish_species) else {
         bump(&UNKNOWN_CLASS);
         if first_unknown(class) && may_log() {
             crate::log!(

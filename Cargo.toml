@@ -30,6 +30,7 @@ members = [
     "crates/desert-overlay",
     "crates/desert-dispatch",
     "crates/desert-tooling",
+    "crates/desert-pazdump",
 ]
 
 # crates/tools/ is its own workspace, not a member of this one. Everything here is

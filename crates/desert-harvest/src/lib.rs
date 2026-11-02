@@ -29,6 +29,9 @@ pub mod config;
 pub mod gatherer;
 pub mod looter;
 pub mod migrate;
+/// Which `characterinfo` rows are fish, by name; read by both halves.
+#[cfg(windows)]
+pub mod species;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
