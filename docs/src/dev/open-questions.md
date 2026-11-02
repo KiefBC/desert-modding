@@ -24,6 +24,12 @@ When built, it is its own key (`TradeGoods`, record-keyed, default `1`, ini text
 
 **Settles it:** one launch, no code change. Pick up a Ceramic prop with `LogReceived=1`, watch for a `[catch] class=XX not a known bug/fish class` line at the same moment, and note the survey's `Kind` for it. `Kind::Item` folds the group into the instance lever; a catch line means a class byte in `crates/desert-core/src/creature.rs` covers it. Also check whether it yields `1000619`, the stall pot's item.
 
+## Hunting scales the copper from cleaning fish
+
+**OPEN, unmeasured.** The fish carcass dropsets (`DropSet_*_Animal_Fish_*`) carry Copper x20..150, so `Hunting` (which scales whatever the game rolled for a corpse) multiplies that copper too, on top of whatever `Money` does to coins. Whether the two stack (a fish cleaned at `Hunting=10` paying the money lever's rate again), or the grant is a different path from the placed coin props `Money` edits, has not been checked. Found in the item catalogue (`analysis/ITEMS.md`).
+
+**Settles it:** clean a fish with `LogReceived=1` at `Hunting=1`, then at `Hunting=10`, and compare the bag's copper; repeat with `Money` raised to see whether it moves.
+
 ## The second yield route
 
 **OPEN.** `FUN_141775790` runs two yield loops back to back: the output blocks the gatherer scales (`rec+0x278`/`+0x280` on 25477059) and a drop-set list (`rec+0x268`/`+0x270`, amounts in `dropsetinfo entry+0x20`/`+0x28`) it never touches. Among the 573 records with an output list, none also carries a drop-set list (CONFIRMED, 573/573). The ~13,300 records with no output list are unmeasured, and a gimmick that pays through `rec+0x268` alone would be hooked, remembered and scaled by nothing, silently. `docs/reference-internals.md` section 19.6.1 carries the same split: hook coverage is proven complete, multiplier coverage is not.

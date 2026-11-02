@@ -9,6 +9,41 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.12.0] - 2026-11-02
+
+Game build 26361232, the same build as 0.11.0. Which creatures count as a bag catch is now read
+off the game's own species records instead of guessed from a class byte and a name, which fixes
+raccoons and ducks, and a new `Critters` family covers the small animals that were never
+multiplied. Not yet verified in game.
+
+### Added
+
+- **`Critters` (default 1, 1..100) and `GatherCritters` (default 1) in `[Harvest]`.** Critters are
+  the small animals the game puts in the bag when caught by hand: the five small lizards
+  (Chameleon, Frilled-Neck, Goanna, Heloderma, Iguana), ten small birds, four rats, frogs, toads,
+  salamanders, axolotls, the Mole, Muskrat, Opossum and the Baby Hedgehog. The giant riding
+  iguanas are not critters. `Critters` multiplies them with the same patch as `Bugs` and `Fish`.
+  `GatherCritters=1` means F9 auto-catch now goes for them too; set it to 0 to leave them alone.
+- **A `[species] table:` log line** with the counts per class (`N bug, N fish, N critter, N not
+  catchable, N unknown`), and `not hand-catchable species N` on the `[catch] stat:` line. With
+  `Debug=1` the catch debug line shows `species=`.
+
+### Fixed
+
+- **Raccoons and ducks are never a catch.** Raccoons carry the insect class byte, so F9 could walk
+  up to one as if it were a bug. Ducks and raccoons are caught, carried, killed and skinned; they
+  never go into the bag, so neither auto-catch nor `Bugs`/`Fish`/`Critters` touches them.
+- **Lobster and Sea Slater count as fish.** Their records are named `Animal_Insect_*` but the game
+  files them with the fish, so `Fish` multiplies them and `GatherFish` catches them, not `Bugs`.
+
+### Changed
+
+- **Species decide first, class bytes only when the species is unknown.** The 1007 creature
+  records are classified by the game's own data (a bag catch has the `Insect_Catch` interaction
+  and a convert item; its tribe group says bug, fish or critter). The old class-byte lists remain
+  as the fallback. Squirrels and chipmunks are left out: they use another interaction and have not
+  been seen caught.
+
 ## [0.11.0] - 2026-11-02
 
 Game build 26361232, the same build as 0.10.1. The gathering families are now read off the game's

@@ -60,7 +60,7 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use desert_core::creature::{self, CATCH_BYTES, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN};
+use desert_core::creature::{self, SpeciesClass, CATCH_BYTES, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN};
 use desert_core::pattern::{Found, Pattern};
 use desert_core::safe;
 use desert_core::trampoline;
@@ -85,9 +85,8 @@ mod off {
     pub const ACTOR_SUB: usize = 0x68;
     pub const SUB_STATUS: usize = 0x20;
     pub const STATUS_CLASS: usize = 0x5A;
-    /// u16 `characterinfo` row: the species. Read for the `Debug=1` line and
-    /// for a class-0x80 catch on a fish type, which `crate::species` may say
-    /// is a fish (the Rice Fish).
+    /// u16 `characterinfo` row: the species. `crate::species` says how that
+    /// species is caught, which decides the multiplier whenever it is known.
     pub const STATUS_SPECIES: usize = 0x30;
 }
 
@@ -107,6 +106,9 @@ static TYPE_UNREADABLE: AtomicU64 = AtomicU64::new(0);
 static NOT_CATCHABLE: AtomicU64 = AtomicU64::new(0);
 static CLASS_UNREADABLE: AtomicU64 = AtomicU64::new(0);
 static UNKNOWN_CLASS: AtomicU64 = AtomicU64::new(0);
+/// The species table says this creature is not caught by hand (a duck, a
+/// raccoon): vanilla whatever its class byte says.
+static NOT_HAND_CATCHABLE: AtomicU64 = AtomicU64::new(0);
 static MULTIPLIED: AtomicU64 = AtomicU64::new(0);
 /// Known class, but `Enabled=0`, a 1x multiplier or `DryRun=1`.
 static LEFT_AT_1X: AtomicU64 = AtomicU64::new(0);
@@ -122,10 +124,11 @@ pub fn stat_line() -> Option<String> {
     (grants > 0).then(|| {
         format!(
             "grants seen {grants}, type unreadable {}, not a catchable type {}, class unreadable {}, \
-             unknown class {}, multiplied {}, left at 1x {}",
+             not hand-catchable species {}, unknown class {}, multiplied {}, left at 1x {}",
             r(&TYPE_UNREADABLE),
             r(&NOT_CATCHABLE),
             r(&CLASS_UNREADABLE),
+            r(&NOT_HAND_CATCHABLE),
             r(&UNKNOWN_CLASS),
             r(&MULTIPLIED),
             r(&LEFT_AT_1X)
@@ -236,13 +239,13 @@ fn debug_line(actor: usize, ty: Option<u8>) {
     let class = class_byte(actor).map_or_else(|| "?".to_string(), |c| format!("{c:02X}"));
     let row = species_row(actor);
     let chr = row.map_or_else(|| "?".to_string(), |r| r.to_string());
-    // One atomic bit, never the name: this is a game thread. `?` until the
-    // species set is built; the name is in the `[species] row N` lines.
-    let fish = match row {
-        Some(r) if crate::species::built() => if crate::species::is_fish(r) { "1" } else { "0" },
+    // One atomic byte, never the name: this is a game thread. `?` until the
+    // species store is built; the name is in the `[species] row N` lines.
+    let species = match row {
+        Some(r) if crate::species::built() => crate::species::class_name(crate::species::class(r)),
         _ => "?",
     };
-    crate::log!("[catch] debug: actor=0x{actor:X} type={ty} class={class} chr={chr} fish-species={fish}");
+    crate::log!("[catch] debug: actor=0x{actor:X} type={ty} class={class} chr={chr} species={species}");
 }
 
 /// The count the game should use for this creature, or 1 for vanilla.
@@ -278,11 +281,18 @@ fn count_for(actor: usize) -> u32 {
         // silent (the four non-event callers must not fill the log), and the
         // three extra `safe` reads sit on a path the game takes on inventory
         // grants, not per frame.
+        // A species the table calls a bag catch is reported the same way:
+        // the critters are new, and nobody has yet read which types they
+        // arrive on.
         if let Some(class) = class_byte(actor) {
-            if creature::is_catch_class(class) && first_odd_pair(ty, class) && may_log() {
+            let species = species_row(actor).and_then(crate::species::class);
+            let caught = creature::is_catch_class(class)
+                || creature::catch_class_by_species(ty, class, species).is_some();
+            if caught && first_odd_pair(ty, class) && may_log() {
                 crate::log!(
-                    "[catch] type={ty:02X} class={class:02X} is a known class on a \
-                     non-catchable type; vanilla (logged once)"
+                    "[catch] type={ty:02X} class={class:02X} species={} is a known catch on a \
+                     non-catchable type; vanilla (logged once)",
+                    crate::species::class_name(species)
                 );
             }
         }
@@ -293,15 +303,20 @@ fn count_for(actor: usize) -> u32 {
         return 1;
     };
 
-    // The type goes in too: 0x23 is a fish on type 6 and a deer on type 3
-    // (`creature::FISH_TYPES`), and only the first is multiplied. So does the
-    // species, for the one pair it can change (a bug class on a fish type, the
-    // Rice Fish): one more pointer walk and one atomic bit, never a name. Until
-    // the plugin thread has built the set every bit is clear and this is
-    // exactly `catch_class`.
-    let fish_species = creature::species_can_override(ty, class)
-        && species_row(actor).is_some_and(crate::species::is_fish);
-    let Some(kind) = creature::catch_class_with_species(ty, class, fish_species) else {
+    // The species decides when it is known: one more pointer walk and one
+    // atomic byte, never a name. A duck or a raccoon (`NotHandCatchable`) is
+    // vanilla whatever its class byte says - the raccoon reads the insects'
+    // 0x80 - and a Bug, Fish or Critter species is that class. An unknown
+    // species, or every species until the plugin thread has read the table,
+    // falls back to the class bytes with the type beside them: 0x23 is a fish
+    // on type 6 and a deer on type 3 (`creature::FISH_TYPES`), and only the
+    // first is multiplied.
+    let species = species_row(actor).and_then(crate::species::class);
+    if species == Some(SpeciesClass::NotHandCatchable) {
+        bump(&NOT_HAND_CATCHABLE);
+        return 1;
+    }
+    let Some(kind) = creature::catch_class_by_species(ty, class, species) else {
         bump(&UNKNOWN_CLASS);
         if first_unknown(class) && may_log() {
             crate::log!(

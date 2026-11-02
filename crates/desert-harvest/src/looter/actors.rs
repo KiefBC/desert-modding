@@ -19,7 +19,7 @@
 //! (the `ClientStatusActorComponent` is found by RTTI name, not by a fixed
 //! slot) and what it does with the answer.
 
-use desert_core::creature::{self, CatchClass};
+use desert_core::creature::{self, CatchClass, SpeciesClass};
 
 use crate::module::MainModule;
 use crate::safe;
@@ -940,9 +940,10 @@ pub fn category_at(actor: usize, off: usize) -> Option<u8> {
 /// byte is not a species: two fish giving different items both read class 0x23
 /// (`docs/reference-internals.md` section 15.5), so only this row can tell
 /// whether two actors sharing a class are the same creature. Nothing decides
-/// on the row number itself; [`catch_class`] asks `crate::species` whether the
-/// row's `characterinfo` record is named a fish, which is how the Rice Fish
-/// (class 0x80, the insects' class) is told from the insects.
+/// on the row number itself; [`catch_class`] asks `crate::species` how the
+/// row's `characterinfo` record (by name) is caught, which is how the Rice
+/// Fish and the raccoon (both class 0x80, the insects' class) are told from
+/// the insects.
 pub const STATUS_SPECIES_OFF: usize = 0x30;
 
 /// [`STATUS_SPECIES_OFF`] once the component's slot is known.
@@ -950,6 +951,15 @@ pub fn species_at(actor: usize, off: usize) -> Option<u16> {
     let sub = safe::read_ptr(actor + 0x68)?;
     let comp = safe::read_ptr(sub + off)?;
     safe::read(comp + STATUS_SPECIES_OFF)
+}
+
+/// How the actor's species is caught, from its species row through
+/// `crate::species` (one RTTI walk). `None` for an unreadable actor, a row
+/// the species table does not name, or before the table has been read.
+pub fn species_class(m: &MainModule, actor: usize) -> Option<SpeciesClass> {
+    let names = component_names(m, actor);
+    let off = status_off(&names)?;
+    species_at(actor, off).and_then(crate::species::class)
 }
 
 /// [`status_bytes`] once the component's slot is known.
@@ -987,24 +997,29 @@ impl Catchable {
     /// `desert_core::creature`, and its `FISH_TYPES` for why the type is
     /// asked (0x23 is a fish on type 6 and a deer on type 3).
     ///
-    /// `fish_species` is `crate::species::is_fish` for the actor's species
-    /// row: it turns a class-0x80 catch on a fish type into a fish (the Rice
-    /// Fish) and can change nothing else
-    /// (`creature::catch_class_with_species`).
-    fn of(ty: u8, cat: u8, fish_species: bool) -> Self {
-        match creature::catch_class_with_species(ty, cat, fish_species) {
+    /// `species` is `crate::species::class` for the actor's species row. A
+    /// known species decides on its own (`creature::catch_class_by_species`):
+    /// a Bug, Fish or Critter species is `Known` whatever the class byte, and
+    /// a `NotHandCatchable` one (a duck, a raccoon) is `None` - not a catch
+    /// candidate at all, so it is never `Kind::Catchable` and never reported
+    /// as an unknown class either. An unknown species is the class bytes.
+    fn of(ty: u8, cat: u8, species: Option<SpeciesClass>) -> Option<Self> {
+        if species == Some(SpeciesClass::NotHandCatchable) {
+            return None;
+        }
+        Some(match creature::catch_class_by_species(ty, cat, species) {
             Some(c) => Catchable::Known(c),
             None => Catchable::Unknown(cat),
-        }
+        })
     }
 }
 
 /// Classify a catchable creature by its [`interaction_category`] byte.
 ///
 /// `None` means the actor is not a catch candidate at all: its type byte is
-/// not one of `creature::CATCHABLE_TYPES`, its `ClientStatusActorComponent`
-/// kind byte (`STATUS_KIND_OFF`) is not 0, or the category byte is not readable. That
-/// trio is what
+/// not one of `creature::CATCHABLE_TYPES`, the category byte is not
+/// readable, or its species record says it is not caught by hand
+/// (`SpeciesClass::NotHandCatchable`: ducks, raccoons). That is what
 /// [`Kind::Catchable`] means, so the survey still lists every actor this
 /// returns `Some` for, whichever class comes back.
 ///
@@ -1042,14 +1057,13 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
     // shop goods and decoration (`is_owned_or_special`); on a creature it
     // says nothing a catch depends on. A dead creature is still kept out, by
     // `classify`'s dead-flag arm, which runs before this.
-    // One RTTI walk for both bytes: the class, and the species row when the
-    // species can change the answer (`creature::species_can_override`).
+    // One RTTI walk for both reads: the class byte, and the species row,
+    // whose class decides whenever the species table knows it.
     let names = component_names(m, actor);
     let off = status_off(&names)?;
     let cat = category_at(actor, off)?;
-    let fish_species = creature::species_can_override(ty, cat)
-        && species_at(actor, off).is_some_and(crate::species::is_fish);
-    Some(Catchable::of(ty, cat, fish_species))
+    let species = species_at(actor, off).and_then(crate::species::class);
+    Catchable::of(ty, cat, species)
 }
 
 /// Is this actor a carcass the player could skin - a dead animal?
@@ -1535,14 +1549,13 @@ mod tests {
         // unidentified species the same surveys turned up, plus the ends.
         for cat in [0x00, 0x20, 0x2C, 0xFF] {
             for ty in [3u8, 6] {
-                assert_eq!(Catchable::of(ty, cat, false), Catchable::Unknown(cat), "type {ty} 0x{cat:02X}");
-                assert_eq!(Catchable::of(ty, cat, true), Catchable::Unknown(cat), "type {ty} 0x{cat:02X}");
+                assert_eq!(Catchable::of(ty, cat, None), Some(Catchable::Unknown(cat)), "type {ty} 0x{cat:02X}");
             }
         }
         // A fish class on the deer's type is not a fish, and that holds for
         // 0x44 (a fish on type 6 since 26361232) as for 0x23.
-        assert_eq!(Catchable::of(3, 0x23, true), Catchable::Unknown(0x23));
-        assert_eq!(Catchable::of(3, 0x44, true), Catchable::Unknown(0x44));
+        assert_eq!(Catchable::of(3, 0x23, None), Some(Catchable::Unknown(0x23)));
+        assert_eq!(Catchable::of(3, 0x44, None), Some(Catchable::Unknown(0x44)));
     }
 
     /// The candidate set is the one thing `game::nearest_gather` and
@@ -1608,15 +1621,23 @@ mod tests {
 
     #[test]
     fn the_recorded_categories_carry_the_core_class_through() {
-        assert_eq!(Catchable::of(6, 0x80, false), Catchable::Known(CatchClass::Bug));
-        assert_eq!(Catchable::of(3, 0x80, false), Catchable::Known(CatchClass::Bug));
-        assert_eq!(Catchable::of(6, 0x23, false), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(6, 0x65, false), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(6, 0x83, false), Catchable::Known(CatchClass::Fish));
-        // The Rice Fish: the insects' class on type 6, a fish by its species
-        // name. The Firefly Colony (0x80 on type 3) stays a bug.
-        assert_eq!(Catchable::of(6, 0x80, true), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(3, 0x80, true), Catchable::Known(CatchClass::Bug));
+        let known = |c| Some(Catchable::Known(c));
+        assert_eq!(Catchable::of(6, 0x80, None), known(CatchClass::Bug));
+        assert_eq!(Catchable::of(3, 0x80, None), known(CatchClass::Bug));
+        assert_eq!(Catchable::of(6, 0x23, None), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x65, None), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x83, None), known(CatchClass::Fish));
+        // The Rice Fish: the insects' class on type 6, a fish by its species.
+        assert_eq!(Catchable::of(6, 0x80, Some(SpeciesClass::Fish)), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(3, 0x80, Some(SpeciesClass::Bug)), known(CatchClass::Bug));
+        // A critter only ever comes from its species.
+        assert_eq!(Catchable::of(6, 0x20, Some(SpeciesClass::Critter)), known(CatchClass::Critter));
+        // The raccoon (row 6684 on 26361232) reads the insects' 0x80 and is
+        // carried and skinned: not a catch candidate at all, on either type.
+        for ty in [6u8, 3] {
+            assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::NotHandCatchable)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x23, Some(SpeciesClass::NotHandCatchable)), None, "type {ty}");
+        }
     }
 
     /// [`eid_map`] used to also reject any map whose `capacity` exceeded

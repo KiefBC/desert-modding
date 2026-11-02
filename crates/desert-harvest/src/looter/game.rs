@@ -3,7 +3,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use desert_core::creature::{self, CatchClass};
+use desert_core::creature::{self, CatchClass, SpeciesClass};
 
 use crate::looter::actors::{self, Catchable, Vec3};
 use crate::looter::config::Config;
@@ -241,10 +241,10 @@ fn catch_diagnostic_line(
     // The species row, printed beside the class byte because the class byte
     // is not a species (`actors::STATUS_SPECIES_OFF`).
     // With the species record's name beside it once `crate::species` has
-    // latched where the name is, and `(fish)` when the fish set holds it.
+    // latched where the name is, and the class the species table gives it.
     let chr = match actors::status_off(&names).and_then(|off| actors::species_at(a, off)) {
         Some(r) => match crate::species::name(r) {
-            Some(n) => format!("{r} species={n}{}", if crate::species::is_fish(r) { " (fish)" } else { "" }),
+            Some(n) => format!("{r} species={n} ({})", crate::species::class_name(crate::species::class(r))),
             None => r.to_string(),
         },
         None => "?".to_string(),
@@ -1027,7 +1027,16 @@ fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind,
         return;
     }
     let Some(cat) = actors::interaction_category(m, a) else { return };
-    if !creature::is_catch_class(cat) {
+    // The species decides when it is known: a raccoon on the insects' 0x80
+    // is passed over on purpose and says nothing, and a critter, which no
+    // class byte names, is reported like a bug.
+    let species = actors::species_class(m, a);
+    let known = match species {
+        Some(SpeciesClass::NotHandCatchable) => false,
+        Some(_) => true,
+        None => creature::is_catch_class(cat),
+    };
+    if !known {
         return;
     }
     {
@@ -1039,7 +1048,8 @@ fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind,
     }
     let st = actors::status_bytes(m, a);
     crate::log!(
-        "[gather] known-class creature passed over: eid={eid:08X} type={ty:02X} cat={cat:02X} at {d:.1} m kind={kind:?} status kind={} flag={} catch_class={:?}",
+        "[gather] known-class creature passed over: eid={eid:08X} type={ty:02X} cat={cat:02X} species={} at {d:.1} m kind={kind:?} status kind={} flag={} catch_class={:?}",
+        crate::species::class_name(species),
         st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.kind)),
         st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.flag)),
         actors::catch_class(m, a)
@@ -1070,7 +1080,8 @@ static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
 /// (interaction object present and the gimmick record is a
 /// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
 /// true. Ground items (`GatherItems`) and catchable creatures (`GatherBugs`
-/// for insects, `GatherFish` for fish) are candidates too; a creature comes
+/// for insects, `GatherFish` for fish, `GatherCritters` for the small animals
+/// the species table files as bag catches) are candidates too; a creature comes
 /// back with `mode: Catch`, which is a different game event entirely (see
 /// `payload::catch_payload`). So are animal carcasses when `GatherCarcass=1`,
 /// with `mode: Skin` and a third event again (`payload::skin_payload`).
@@ -1144,7 +1155,7 @@ pub fn nearest_gather(
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
     // Nodes passed over only because their family is switched off. Creatures
-    // skipped by `GatherBugs=0` or `GatherFish=0` are counted here too: to the
+    // skipped by `GatherBugs=0`, `GatherFish=0` or `GatherCritters=0` are counted here too: to the
     // player it is the same kind of "you switched that off", and the summary
     // reads the same. A creature of an unknown class is *not* counted, because
     // nothing the player can set would have taken it.
@@ -1167,8 +1178,13 @@ pub fn nearest_gather(
                     family_off_seen += 1;
                     continue;
                 }
+                Some(Catchable::Known(CatchClass::Critter)) if !cfg.gather_critters => {
+                    family_off_seen += 1;
+                    continue;
+                }
                 Some(Catchable::Known(CatchClass::Bug)) => ("bug", "Bug"),
                 Some(Catchable::Known(CatchClass::Fish)) => ("fish", "Fish"),
+                Some(Catchable::Known(CatchClass::Critter)) => ("critter", "Critter"),
                 Some(Catchable::Unknown(c)) => {
                     if first_sighting_of(c) {
                         crate::log!(
@@ -1319,7 +1335,7 @@ pub fn nearest_gather(
     let why = if unarmed_seen > 0 && !unarmed {
         format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)")
     } else if family_off_seen > 0 {
-        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)")
+        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish/GatherCritters switches)")
     } else if refused_seen > 0 {
         format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)")
     } else {

@@ -22,6 +22,7 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `GatherUnarmed` | 1 | 0/1 | Harvest | also target nodes the game has not armed with interaction data |
 | `GatherBugs` | 1 | 0/1 | Harvest | catch insects within `GatherRange` |
 | `GatherFish` | 1 | 0/1 | Harvest | catch fish within `GatherRange` by hand |
+| `GatherCritters` | 1 | 0/1 | Harvest | catch critters (small lizards, small birds, rats, frogs, toads) within `GatherRange`; never ducks or raccoons |
 | `GatherCarcass` | 0 | 0/1 | Harvest | loot animal carcasses without the skinning animation |
 | `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass gives, however it is looted |
 | `ScanRange` | 40 | 1..200 | Harvest | survey radius in game metres |
@@ -36,6 +37,7 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `Money` | 1 | 1..100 | Harvest | the placed coin and silver bar props only |
 | `Bugs` | 1 | 1..100 | Harvest | insects caught by hand (a code patch on the catch count) |
 | `Fish` | 1 | 1..100 | Harvest | fish caught by hand (the same patch) |
+| `Critters` | 1 | 1..100 | Harvest | critters caught by hand (the same patch); ducks and raccoons are never multiplied |
 | `KeyToggle` | F10 | key name | Settings | toggle automatic gathering |
 | `KeyScan` | F11 | key name | Settings | write the survey to the log |
 | `KeyGather` | F9 | key name | Settings | gather the nearest node once |

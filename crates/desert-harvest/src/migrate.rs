@@ -415,12 +415,16 @@ mod tests {
         let (cfg, w) = config::parse(&out);
         assert!(w.is_empty(), "{w:?}");
         assert_eq!(cfg, config::Config::default());
-        // Every key of both old sections is under [Harvest], once.
+        // Every key of both old sections is under [Harvest], once. Keys added
+        // after 0.9.0 were never in that file, and the migration does not
+        // invent them: they read as their defaults, which `cfg` above proves.
+        const ADDED_SINCE_0_9_0: &[&str] = &["GatherCritters", "Critters"];
         for field in config::schema().fields {
             let n = ini::lines_in_section(&out, "Harvest")
                 .filter(|l| matches!(l, Line::Pair(k, _) if k.eq_ignore_ascii_case(&field.key)))
                 .count();
-            assert_eq!(n, 1, "{}", field.key);
+            let want = usize::from(!ADDED_SINCE_0_9_0.contains(&field.key.as_str()));
+            assert_eq!(n, want, "{}", field.key);
         }
     }
 

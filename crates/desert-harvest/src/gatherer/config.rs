@@ -112,6 +112,10 @@ pub struct Config {
     /// Count multiplier for fish caught by hand
     /// (`desert_core::creature::CatchClass::Fish`). Same patch as `bugs`.
     pub fish: u32,
+    /// Count multiplier for the small animals caught by hand into the bag
+    /// (`desert_core::creature::CatchClass::Critter`: lizards, small birds,
+    /// rats, frogs, ...). Same patch as `bugs`.
+    pub critters: u32,
 }
 
 impl Default for Config {
@@ -128,6 +132,7 @@ impl Default for Config {
             money: 1,
             bugs: 1,
             fish: 1,
+            critters: 1,
         }
     }
 }
@@ -153,13 +158,14 @@ impl Config {
         match class {
             CatchClass::Bug => self.bugs,
             CatchClass::Fish => self.fish,
+            CatchClass::Critter => self.critters,
         }
     }
 
     /// True if no gather family is multiplied, i.e. the record-loader hook
     /// would never write. `Money` counts: its records are ordinary gimmick
     /// records with ordinary output blocks, so raising it gives the hook work
-    /// to do exactly as raising `Ore` does. Says nothing about `Bugs`/`Fish`,
+    /// to do exactly as raising `Ore` does. Says nothing about `Bugs`/`Fish`/`Critters`,
     /// which are not families and never touch a record.
     pub fn all_vanilla(&self) -> bool {
         self.foraging <= 1
@@ -197,6 +203,7 @@ pub struct LiveConfig {
     money: AtomicU32,
     bugs: AtomicU32,
     fish: AtomicU32,
+    critters: AtomicU32,
 }
 
 impl LiveConfig {
@@ -215,6 +222,7 @@ impl LiveConfig {
             money: AtomicU32::new(1),
             bugs: AtomicU32::new(1),
             fish: AtomicU32::new(1),
+            critters: AtomicU32::new(1),
         }
     }
 
@@ -233,6 +241,7 @@ impl LiveConfig {
         self.money.store(cfg.money, Ordering::Relaxed);
         self.bugs.store(cfg.bugs, Ordering::Relaxed);
         self.fish.store(cfg.fish, Ordering::Relaxed);
+        self.critters.store(cfg.critters, Ordering::Relaxed);
     }
 
     /// Snapshot the live values as a plain `Config`, e.g. for a log line.
@@ -249,6 +258,7 @@ impl LiveConfig {
             money: self.money.load(Ordering::Relaxed),
             bugs: self.bugs.load(Ordering::Relaxed),
             fish: self.fish.load(Ordering::Relaxed),
+            critters: self.critters.load(Ordering::Relaxed),
         }
     }
 
@@ -295,6 +305,7 @@ impl LiveConfig {
         match class {
             CatchClass::Bug => self.bugs.load(Ordering::Relaxed),
             CatchClass::Fish => self.fish.load(Ordering::Relaxed),
+            CatchClass::Critter => self.critters.load(Ordering::Relaxed),
         }
     }
 }
@@ -335,8 +346,8 @@ fn mult(key: &str, help: &str) -> Field {
 /// lands.
 pub(crate) fn notice() -> String {
     "The yield multipliers are applied to the gather records the game has already loaded, so a \
-     change to one takes effect on the next gather. Bugs and Fish are read as the creature is \
-     caught, so they take effect on the next catch."
+     change to one takes effect on the next gather. Bugs, Fish and Critters are read as the \
+     creature is caught, so they take effect on the next catch."
         .to_string()
 }
 
@@ -402,6 +413,12 @@ pub(crate) fn fields() -> Vec<Field> {
             "Insects caught by hand. One code patch on the catch count, not a table edit.",
         ),
         mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
+        mult(
+            "Critters",
+            "Small animals caught by hand into the bag: lizards, small birds, rats, frogs, toads, \
+             salamanders... Same patch as Bugs. Animals you carry and skin (ducks, raccoons) are \
+             never multiplied.",
+        ),
         // Beside DryRun on the shared Debug tab (the field before it on
         // that tab), which is where it belongs: it does nothing unless that
         // box is ticked too, and the help says so.
@@ -429,7 +446,7 @@ impl Config {
         match lower {
             "dryrun" => self.dry_run = ini::parse_bool(v),
             "dumptable" => self.dump_table = ini::parse_bool(v),
-            "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" => {
+            "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" | "critters" => {
                 let slot: &mut u32 = match lower {
                     "foraging" => &mut self.foraging,
                     "logging" => &mut self.logging,
@@ -437,6 +454,7 @@ impl Config {
                     "money" => &mut self.money,
                     "bugs" => &mut self.bugs,
                     "fish" => &mut self.fish,
+                    "critters" => &mut self.critters,
                     _ => &mut self.ore,
                 };
                 match v.parse::<u32>() {
@@ -456,7 +474,7 @@ impl Config {
     /// already says them, and they are one key each.
     pub fn summary(&self) -> String {
         format!(
-            "DryRun={} DumpTable={} Foraging={} Logging={} Mining={} Ore={} Money={} Bugs={} Fish={}",
+            "DryRun={} DumpTable={} Foraging={} Logging={} Mining={} Ore={} Money={} Bugs={} Fish={} Critters={}",
             self.dry_run as u8,
             self.dump_table as u8,
             self.foraging,
@@ -465,7 +483,8 @@ impl Config {
             self.ore,
             self.money,
             self.bugs,
-            self.fish
+            self.fish,
+            self.critters
         )
     }
 }
@@ -489,7 +508,7 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(c.multiplier(f), 1);
         }
-        for k in [CatchClass::Bug, CatchClass::Fish] {
+        for k in [CatchClass::Bug, CatchClass::Fish, CatchClass::Critter] {
             assert_eq!(c.catch_multiplier(k), 1);
         }
     }
@@ -505,7 +524,7 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(live.multiplier(f), 1);
         }
-        for k in [CatchClass::Bug, CatchClass::Fish] {
+        for k in [CatchClass::Bug, CatchClass::Fish, CatchClass::Critter] {
             assert_eq!(live.catch_multiplier(k), 1);
         }
     }
@@ -515,7 +534,7 @@ mod tests {
         let live = LiveConfig::new();
         let (cfg, w) = crate::config::parse(
             "[Harvest]\nEnabled=0\nDryRun=1\nDebug=1\nDumpTable=1\nForaging=10\nLogging=2\n\
-             Mining=5\nOre=100\nMoney=7\nBugs=4\nFish=9\n",
+             Mining=5\nOre=100\nMoney=7\nBugs=4\nFish=9\nCritters=6\n",
         );
         let cfg = cfg.gatherer;
         assert!(w.is_empty(), "{w:?}");
@@ -532,6 +551,7 @@ mod tests {
         assert_eq!(live.multiplier(Family::Money), 7);
         assert_eq!(live.catch_multiplier(CatchClass::Bug), 4);
         assert_eq!(live.catch_multiplier(CatchClass::Fish), 9);
+        assert_eq!(live.catch_multiplier(CatchClass::Critter), 6);
     }
 
     #[test]

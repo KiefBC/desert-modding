@@ -108,6 +108,12 @@ pub struct Config {
     /// byte (`actors::catch_class`), so it gets its own switch rather than
     /// riding on that one.
     pub gather_fish: bool,
+    /// Catch the small animals that go into the bag (lizards, small birds,
+    /// rats, frogs, ...) within `GatherRange`. The same game event as
+    /// `gather_bugs`; a creature is a critter only when its species record
+    /// says so (`desert_core::species_table`, `actors::catch_class`), never
+    /// by class byte, so ducks and raccoons are never one.
+    pub gather_critters: bool,
     /// Loot animal carcasses within `GatherRange`, and the third switch that
     /// starts **off**. Skinning is a third game event again
     /// (`TrocTrProcessLootingDeadDropOnceTimer`, a 7-byte payload carrying
@@ -177,6 +183,7 @@ impl Default for Config {
             gather_money: false,
             gather_bugs: true,
             gather_fish: true,
+            gather_critters: true,
             gather_carcass: false,
             hunting: 1,
             bag_tab: Some(1),
@@ -401,6 +408,14 @@ pub(crate) fn fields() -> Vec<Field> {
             "1 = catch fish within GatherRange by hand, the same event as insects; the steal check still applies.",
         )),
         beside(f(
+            "GatherCritters",
+            "Catch critters",
+            Kind::Bool { default: d.gather_critters },
+            "1 = catch the small animals that go into the bag (lizards, small birds, rats, frogs, \
+             toads, salamanders...) within GatherRange, the same event as insects. Animals you \
+             carry and skin, like ducks and raccoons, are never caught.",
+        )),
+        beside(f(
             "GatherCarcass",
             "Skin carcasses",
             Kind::Bool { default: d.gather_carcass },
@@ -590,6 +605,7 @@ impl Config {
             "gathermoney" => self.gather_money = ini::parse_bool(v),
             "gatherbugs" => self.gather_bugs = ini::parse_bool(v),
             "gatherfish" => self.gather_fish = ini::parse_bool(v),
+            "gathercritters" => self.gather_critters = ini::parse_bool(v),
             "gathercarcass" => self.gather_carcass = ini::parse_bool(v),
             "hunting" => match v.parse::<u32>() {
                 Ok(n) if (HUNTING_RANGE.0..=HUNTING_RANGE.1).contains(&n) => self.hunting = n,
@@ -645,10 +661,10 @@ impl Config {
     pub fn summary(&self) -> String {
         let cfg = self;
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCarcass={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_carcass as u8, cfg.hunting,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.hunting,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

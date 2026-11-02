@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.11.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.12.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -177,13 +177,20 @@ from the menu: Insert is `KeyMenu` under `[Overlay]`, the other four are
   the loot arrives without the skinning animation. A carcass you have already
   emptied is left alone. `Hunting` multiplies what a carcass gives, 1..100, and
   ships at 1 - it works whether the plugin skins the animal or you do.
-- **Catches insects and fish** within the same range, using the game's own
+- **Catches insects, fish and critters** within the same range, using the game's own
   "catch" event rather than a pickup. Fish within reach at the water's edge go
   the same way, with the very same event as an insect. The steal check applies
-  to both, so a creature the game counts as someone else's is left alone.
-  `GatherBugs=0` and `GatherFish=0` turn them off separately. The Rice Fish is
-  the exception: the game gives it the insect class, so it is caught under
-  `GatherBugs` and multiplied by `Bugs`, not `Fish`.
+  to all of them, so a creature the game counts as someone else's is left alone.
+  `GatherBugs=0`, `GatherFish=0` and `GatherCritters=0` turn them off separately.
+  A **critter** is a small animal the game puts in the bag when you catch it by
+  hand: the five small lizards (Chameleon, Frilled-Neck, Goanna, Heloderma,
+  Iguana), ten small birds, four rats, frogs, toads, salamanders, axolotls, the
+  Mole, Muskrat, Opossum and the Baby Hedgehog. The giant riding iguanas are not
+  critters. Which of the three a creature is comes from the game's own species
+  records, so the Rice Fish, Lobster and Sea Slater are fish whatever their
+  record names say. **Ducks and raccoons are never caught**: you carry, kill and
+  skin them, they never go into the bag, so neither auto-catch nor any
+  multiplier touches them.
 - **Leaves alone what it does not recognise.** Insects and fish are told apart
   from birds in flight and other wildlife by a class byte on the creature
   itself, and only the classes that have actually been caught by hand are ever
@@ -259,7 +266,7 @@ bag from 11919 to 14384 copper, two grants inside the multiplied 1000..1500.
 HUD. The base coin is worth a few copper, so even at 100x one coin is a
 handful of silver, never a thousand.
 
-Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
+Three more multipliers, **Bugs**, **Fish** and **Critters**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
 one is worth: the game grants exactly one, from a constant in its own code. So
 that pair works differently from the four families (it is a small patch on that
@@ -375,6 +382,7 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is the `Money` multiplier below. Untested in game, so off by default |
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
+| `GatherCritters` | 1 | 0 = do not catch critters: small lizards, small birds, rats, frogs, toads, salamanders (same event as insects). Ducks and raccoons are never caught, whatever this is |
 | `GatherCarcass` | 0 | 1 = also loot animal carcasses within `GatherRange`, without the skinning animation. A carcass already skinned gives nothing, and the classes known to be people are refused. 0 by default: opt in |
 | `Hunting` | 1 | 1..100, how much a looted carcass gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
@@ -392,6 +400,7 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
 | `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
 | `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
+| `Critters` | 1 | multiplier for critters caught by hand (small lizards, small birds, rats, frogs, toads, salamanders), 1..100. Same patch as `Bugs`. Ducks and raccoons are never multiplied |
 
 For the multipliers, `1` means vanilla: that family's records are read and left
 untouched. A value outside 1..100, or one that is not a number, is refused with
@@ -652,11 +661,11 @@ already sitting in the block scaled again. A record re-applied five times at
 five different multipliers ends up exactly where a single load at the last
 multiplier would have left it.
 
-`Bugs` and `Fish` need none of that machinery: the multiplier is read at the
+`Bugs`, `Fish` and `Critters` need none of that machinery: the multiplier is read at the
 moment the creature is caught, so a change there takes effect on the **next
 catch** with nothing to re-apply. Each multiplied catch logs one line,
-`[harvest] [catch] fish class=23 -> x3`; a creature whose class the plugin has
-never seen caught is left vanilla and reported once per class per session.
+`[harvest] [catch] fish class=23 -> x3`; a creature the game's species records do
+not list and whose class the plugin has never seen caught is left vanilla and reported once per class per session.
 `Enabled=0` and `DryRun=1` both mean "grant one, as the game would".
 
 ## Files in the game folder
@@ -720,12 +729,12 @@ will fail to resolve, log why, and leave that part of itself idle. It never
 guesses: a refusal is a subsystem that does nothing, and a wrong patch would be
 a crash.
 
-`Bugs` and `Fish` are the fragile part, and deliberately so. There is no record
+`Bugs`, `Fish` and `Critters` are the fragile part, and deliberately so. There is no record
 to edit for a caught creature, so that multiplier is a patch on the game's code:
 the plugin scans for the 21-byte instruction sequence that hands the catch
 handler its count, and refuses to patch unless the thirteen bytes it is about to
 overwrite are exactly the two instructions it expects. A game update that
-rewrites that function disables **only** those two keys, with a `[catch]` line
+rewrites that function disables **only** those three keys, with a `[catch]` line
 saying which check failed: every other multiplier is untouched by it, and the
 game is untouched by us.
 

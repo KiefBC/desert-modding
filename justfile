@@ -219,6 +219,13 @@ clean:
 # appmanifest (CD_APPMANIFEST, or `--build ID`). Flags pass through, and
 # `[positional-arguments]` keeps a path with spaces in it one argument.
 
+# Regenerate crates/desert-core/src/species_table.rs (every creature species by
+# how it is caught) from the game's characterinfo, interactioninfo and tribeinfo.
+# `--tables DIR` reads extracted copies instead of the archives.
+[positional-arguments]
+gen-species *args: tools
+    {{tools_bin}}/gen-species "$@"
+
 # Regenerate desert-gatherer-dmm/ from the game's gimmickinfo and collect.rs. `--dry-run` writes nothing.
 [positional-arguments]
 dmm-pack *args: tools

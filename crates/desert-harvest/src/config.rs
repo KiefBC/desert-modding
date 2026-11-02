@@ -51,7 +51,7 @@ impl Config {
     }
 }
 
-/// `Enabled=1 Debug=0 ... DryRun=0 DumpTable=0 Foraging=1 ... Fish=1`: the
+/// `Enabled=1 Debug=0 ... DryRun=0 DumpTable=0 Foraging=1 ... Critters=1`: the
 /// `[ini]` line the harvest thread logs at startup and on every reload, the
 /// auto-loot half's keys first and then the yield half's.
 pub fn ini_summary(cfg: &Config) -> String {
@@ -149,9 +149,9 @@ pub(crate) fn on(tab: Tab, mut field: Field) -> Field {
 /// three tabs come out as:
 ///
 /// - Harvest: `Enabled`, `AutoGather`, the "Gather families:" row, ground
-///   items / gear / unarmed, bugs / fish / carcass, `Hunting`, `ScanRange`,
+///   items / gear / unarmed, bugs / fish / critters / carcass, `Hunting`, `ScanRange`,
 ///   `GatherRange`, `GatherInterval`, `NodeCooldown`, `StackLimit`, then
-///   "Yield multipliers:" `Foraging` .. `Fish`.
+///   "Yield multipliers:" `Foraging` .. `Critters`.
 /// - Settings: the four hotkeys.
 /// - Debug: `Debug` | `LogReceived`, `SurveyLines`, `BagTab`,
 ///   `DryRun` | `DumpTable`.
@@ -417,6 +417,7 @@ Scale=1.5
                 "|GatherUnarmed",
                 "GatherBugs",
                 "|GatherFish",
+                "|GatherCritters",
                 "|GatherCarcass",
                 "Hunting",
                 "ScanRange",
@@ -431,6 +432,7 @@ Scale=1.5
                 "Money",
                 "Bugs",
                 "Fish",
+                "Critters",
             ])
         );
         assert_eq!(tab(&s, Tab::Settings), expect(&["KeyToggle", "KeyScan", "KeyGather", "KeyRecord"]));
@@ -440,11 +442,11 @@ Scale=1.5
         );
 
         // The headings: the families row, and one list of yield multipliers
-        // that Bugs and Fish continue rather than start.
+        // that Bugs, Fish and Critters continue rather than start.
         let heading = |key: &str| s.field(key).and_then(|f| f.heading.clone());
         assert_eq!(heading("GatherForaging").as_deref(), Some("Gather families:"));
         assert_eq!(heading("Foraging").as_deref(), Some("Yield multipliers:"));
-        for key in ["Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Debug", "DryRun", "DumpTable"] {
+        for key in ["Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Debug", "DryRun", "DumpTable"] {
             assert_eq!(heading(key), None, "{key}");
         }
 
@@ -495,7 +497,7 @@ Scale=1.5
             }
             assert_eq!(field.tab, Tab::Section, "{} belongs on the Harvest tab", field.key);
         }
-        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish"] {
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters"] {
             assert_eq!(at(key), Some(Tab::Section), "{key}");
         }
     }
@@ -509,7 +511,7 @@ Scale=1.5
         for key in ["Enabled=", "Debug=", "DryRun=", "DumpTable="] {
             assert_eq!(line.matches(&format!(" {key}")).count() + usize::from(line.starts_with(key)), 1, "{key} in {line}");
         }
-        assert!(line.ends_with("Bugs=1 Fish=1"), "{line}");
+        assert!(line.ends_with("Bugs=1 Fish=1 Critters=1"), "{line}");
     }
 
     /// Prints this section as it is seeded into `DesertTooling.ini`.
@@ -656,6 +658,31 @@ Scale=1.5
             let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=1\n"));
             assert!(w.is_empty(), "{w:?}");
             assert!(!c.gather_bugs && c.gather_fish);
+        }
+
+        /// The same, for `GatherCritters`: the small animals the species table
+        /// files as bag catches outside the insect and fish groups. A sibling
+        /// of `GatherBugs` and `GatherFish`, held to the same shape, and
+        /// independent of both.
+        #[test]
+        fn gather_critters_defaults_on_and_parses_like_gather_bugs() {
+            assert!(Config::default().gather_critters);
+            let (c, w) = parse(&sectioned("GatherCritters=0\n"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(!c.gather_critters);
+            let (c, w) = parse(&sectioned("GatherCritters=on\n"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(c.gather_critters);
+            assert!(schema().field("GatherCritters").is_some(), "the menu must offer GatherCritters");
+            for p in &schema().presets {
+                assert!(!p.set.iter().any(|(k, _)| k == "GatherCritters"), "{}", p.label);
+            }
+            let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=0\nGatherCritters=1\n"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(!c.gather_bugs && !c.gather_fish && c.gather_critters);
+            let (c, w) = parse(&sectioned("GatherCritters=0\n"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(c.gather_bugs && c.gather_fish && !c.gather_critters);
         }
 
         /// `GatherMoney` is a family switch like the four above - it has an
@@ -943,7 +970,7 @@ Scale=1.5
         fn parses_every_key() {
             let (c, w) = parse(
                 "; comment\n[Harvest]\nEnabled=1\nDryRun=yes\nDebug=on\nDumpTable=true\n\
-                 Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\n",
+                 Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\nCritters=5\n",
             );
             assert!(c.enabled);
             assert!(c.dry_run);
@@ -956,6 +983,7 @@ Scale=1.5
             assert_eq!(c.multiplier(Family::Money), 4);
             assert_eq!(c.catch_multiplier(CatchClass::Bug), 3);
             assert_eq!(c.catch_multiplier(CatchClass::Fish), 7);
+            assert_eq!(c.catch_multiplier(CatchClass::Critter), 5);
             assert!(!c.all_vanilla());
             assert!(w.is_empty(), "{w:?}");
         }
@@ -965,19 +993,19 @@ Scale=1.5
             let d = Config::default();
             // Same case-insensitivity, same range, same "keep the default and
             // warn" on a bad value as Foraging..Ore.
-            let (c, w) = parse("[Harvest]\nBUGS=2\nfIsH=100\n");
+            let (c, w) = parse("[Harvest]\nBUGS=2\nfIsH=100\ncRiTtErS=3\n");
             assert!(w.is_empty(), "{w:?}");
-            assert_eq!((c.bugs, c.fish), (2, MULT_MAX));
+            assert_eq!((c.bugs, c.fish, c.critters), (2, MULT_MAX, 3));
 
-            let (c, w) = parse("[Harvest]\nBugs=0\nFish=101\n");
-            assert_eq!(w.len(), 2, "{w:?}");
-            assert_eq!((c.bugs, c.fish), (d.bugs, d.fish));
+            let (c, w) = parse("[Harvest]\nBugs=0\nFish=101\nCritters=0\n");
+            assert_eq!(w.len(), 3, "{w:?}");
+            assert_eq!((c.bugs, c.fish, c.critters), (d.bugs, d.fish, d.critters));
 
             // They are not gather families, so they never make `all_vanilla`
             // false: the record-loader hook has nothing to do for them.
-            let (c, w) = parse("[Harvest]\nBugs=10\nFish=10\n");
+            let (c, w) = parse("[Harvest]\nBugs=10\nFish=10\nCritters=10\n");
             assert!(w.is_empty(), "{w:?}");
-            assert!(c.all_vanilla(), "Bugs/Fish never touch a gimmick record");
+            assert!(c.all_vanilla(), "Bugs/Fish/Critters never touch a gimmick record");
         }
 
         /// The water well is a `Foraging` record, so the `Foraging` key is what
@@ -1043,7 +1071,7 @@ Scale=1.5
         #[test]
         fn schema_ranges_are_the_ones_parse_enforces() {
             let s = schema();
-            for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish"] {
+            for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters"] {
                 match s.field(key).map(|f| f.kind.clone()) {
                     Some(Kind::Int { min, max, default, slider, .. }) => {
                         assert_eq!(min, i64::from(MULT_MIN), "{key}");

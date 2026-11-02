@@ -762,6 +762,14 @@ The wider corpus can also move a name outright; any id whose name
 differs from the one the default doc gives it carries
 `name_in_default_doc` saying so.
 
+### `gen-species`
+Regenerates `crates/desert-core/src/species_table.rs` (`just gen-species`) from
+`characterinfo`, `interactioninfo` and `tribeinfo` in the archives (`--tables
+DIR` for extracted copies). A record with the `Insect_Catch` interaction and a
+non-zero `convertItemInfo` is a bag catch, classed Bug, Fish or Critter by its
+tribe group; every other `Animal_*` record is NotHandCatchable. It rewrites the
+whole file, so diff it after a game update.
+
 ### `gen-collect-names`
 Regenerates `crates/desert-core/src/collect.rs` from the game's own tables:
 `gimmickinfo`, `iteminfo`, `interactioninfo` and `knowledgeinfo`, read out of
