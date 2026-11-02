@@ -2043,6 +2043,491 @@ pub fn choose_parsed(found: &[ParsedLayout]) -> Result<ParsedLayout, String> {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Reading a parsed record under a layout, and picking the layout and the name
+// offset from the records the manager holds (the looter's side of the
+// 26361232 move: it has no remembered samples, only keys and names)
+// ---------------------------------------------------------------------------
+
+/// One output block of a parsed record, as [`parsed_outputs`] reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedOutput {
+    /// Item id, from the block (`block_item`).
+    pub item: u32,
+    /// `u64` minimum, already multiplied if the load-time hook patched it.
+    pub min: u64,
+    /// `u64` maximum, likewise.
+    pub max: u64,
+}
+
+/// Every output block of the parsed record object at `obj` under `l`, in list
+/// order: the list header inline at `obj` (`head: None`) or behind the
+/// pointer at `obj + head`, then `count` entries of `entry` bytes from the
+/// list pointer, each holding its block pointer at `+0`.
+///
+/// The item id is the block's own (`block_item`, the low dword of the `u64`
+/// at `+0x68` on both known builds). The entry's key field (`entry_item`) is
+/// zero on every gather record on both builds and is cross-checked only when
+/// it is not: a nonzero value that disagrees with the block refuses the
+/// record. Any other surprise (an empty or oversized list, a pointer that is
+/// not [`plausible`](crate::manager::plausible), a zero item, `min == 0`,
+/// `min > max`, `max > MAX_QTY`) returns `None` for the whole record rather
+/// than a half-right list. `read(addr, len)` is a guarded read, all or
+/// nothing.
+pub fn parsed_outputs<R: Fn(usize, usize) -> Option<Vec<u8>>>(
+    obj: usize,
+    l: &ParsedLayout,
+    read: &R,
+) -> Option<Vec<ParsedOutput>> {
+    let ptr_at = |addr: usize| -> Option<usize> {
+        usize_at(&read(addr, 8)?, 0).filter(|&p| crate::manager::plausible(p))
+    };
+    if l.entry < 8 {
+        return None;
+    }
+    let base = match l.head {
+        None => obj,
+        Some(h) => ptr_at(obj.checked_add(h)?)?,
+    };
+    let data = ptr_at(base.checked_add(l.list)?)?;
+    let count = u32_at(&read(base.checked_add(l.count)?, 4)?, 0)?;
+    if count == 0 || count > MAX_COUNT {
+        return None;
+    }
+    let n = count as usize;
+    let entries = read(data, n.checked_mul(l.entry)?)?;
+    let span = (l.block_item + 4).max(l.block_min + 8).max(l.block_max + 8);
+    let mut out = Vec::with_capacity(n);
+    for e in entries.chunks_exact(l.entry) {
+        let block = usize_at(e, 0).filter(|&p| crate::manager::plausible(p))?;
+        let b = read(block, span)?;
+        let item = u32_at(&b, l.block_item).filter(|&i| i != 0)?;
+        if let Some(o) = l.entry_item {
+            let echoed = u32_at(e, o)?;
+            if echoed != 0 && echoed != item {
+                return None;
+            }
+        }
+        let (min, max) = (u64_at(&b, l.block_min)?, u64_at(&b, l.block_max)?);
+        if min == 0 || min > max || max > MAX_QTY {
+            return None;
+        }
+        out.push(ParsedOutput { item, min, max });
+    }
+    Some(out)
+}
+
+/// A tally over parsed record objects of which [`ParsedLayout::KNOWN`]
+/// layout reads them: a record votes for a layout when the `u32` at its
+/// `key` is a known gather key (the caller's `is_known_key`, in the plugin
+/// `collect::family_by_key`) **and** its output list reads cleanly
+/// ([`parsed_outputs`]). Under the wrong layout the key offset holds a
+/// pointer's low half or a neighbouring field, which is not one of 279 gather
+/// keys, so a wrong layout collects no votes at all in practice.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LayoutVote {
+    hits: [usize; ParsedLayout::KNOWN.len()],
+}
+
+impl LayoutVote {
+    /// Count `obj` toward every known layout that reads it.
+    pub fn observe<R: Fn(usize, usize) -> Option<Vec<u8>>>(
+        &mut self,
+        obj: usize,
+        is_known_key: impl Fn(u32) -> bool,
+        read: &R,
+    ) {
+        for (l, h) in ParsedLayout::KNOWN.iter().zip(self.hits.iter_mut()) {
+            let key = obj.checked_add(l.key).and_then(|a| read(a, 4)).and_then(|b| u32_at(&b, 0));
+            if key.is_some_and(&is_known_key) && parsed_outputs(obj, l, read).is_some() {
+                *h += 1;
+            }
+        }
+    }
+
+    /// Votes per layout, in [`ParsedLayout::KNOWN`] order.
+    pub fn hits(&self) -> &[usize] {
+        &self.hits
+    }
+
+    /// The most votes any one layout has.
+    pub fn best(&self) -> usize {
+        self.hits.iter().copied().max().unwrap_or(0)
+    }
+
+    /// The layout with the most votes, when it has at least `min` and no
+    /// other layout has as many. A tie is refused rather than guessed.
+    pub fn verdict(&self, min: usize) -> Option<ParsedLayout> {
+        let best = self.best();
+        if best < min.max(1) || self.hits.iter().filter(|&&h| h == best).count() != 1 {
+            return None;
+        }
+        let i = self.hits.iter().position(|&h| h == best)?;
+        ParsedLayout::KNOWN.get(i).copied()
+    }
+}
+
+/// Where a parsed record object keeps its name: a C string reached from the
+/// pointer at `obj + offset` through `derefs` pointers (`2` is
+/// `**(obj+offset)`, the shape through 25477059 at `+0x10`; `1` is
+/// `*(obj+offset)`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NameAt {
+    pub offset: usize,
+    pub derefs: u8,
+}
+
+impl NameAt {
+    /// `**(rec+0x10)`, build 25116796 through 25477059.
+    pub const OLD: Self = Self { offset: 0x10, derefs: 2 };
+
+    /// `**(rec+0x10)` / `*(rec+0x10)`, the way the log names it.
+    pub fn describe(&self) -> String {
+        format!("{}(rec+0x{:x})", "*".repeat(self.derefs as usize), self.offset)
+    }
+}
+
+/// Name offsets the probe tries: `0..NAME_PROBE_END`, 8-aligned.
+pub const NAME_PROBE_END: usize = 0x60;
+const NAME_SLOTS: usize = NAME_PROBE_END / 8;
+/// The longest record name read, terminator included.
+const NAME_MAX: usize = 64;
+/// Indirections tried per offset, in order of preference.
+const NAME_DEREFS: [u8; 2] = [2, 1];
+
+/// The name at `at` in the parsed record object `obj`: a NUL-terminated run of
+/// at least three printable ASCII bytes inside the first [`NAME_MAX`]. `None`
+/// for anything else.
+pub fn read_name_at<R: Fn(usize, usize) -> Option<Vec<u8>>>(obj: usize, at: NameAt, read: &R) -> Option<String> {
+    let mut p = obj.checked_add(at.offset)?;
+    for _ in 0..at.derefs {
+        p = usize_at(&read(p, 8)?, 0).filter(|&q| crate::manager::plausible(q))?;
+    }
+    let b = read_window(read, p, NAME_MAX)?;
+    let end = b.iter().position(|&c| c == 0)?;
+    let s = b.get(..end)?;
+    if s.len() < 3 || !s.iter().all(|c| (0x20..0x7F).contains(c)) {
+        return None;
+    }
+    String::from_utf8(s.to_vec()).ok()
+}
+
+/// A tally over parsed record objects of which [`NameAt`] holds their known
+/// name: for each object whose name is known (in the plugin, the
+/// `collect` row for the key the latched layout reads), every candidate in
+/// `0..NAME_PROBE_END` under both indirections that reads that exact name,
+/// case-insensitively, gets a vote.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct NameVote {
+    hits: [[usize; NAME_DEREFS.len()]; NAME_SLOTS],
+}
+
+impl NameVote {
+    /// Count `obj`, whose name should be `expected`.
+    pub fn observe<R: Fn(usize, usize) -> Option<Vec<u8>>>(&mut self, obj: usize, expected: &str, read: &R) {
+        for (slot, row) in self.hits.iter_mut().enumerate() {
+            for (&derefs, h) in NAME_DEREFS.iter().zip(row.iter_mut()) {
+                let at = NameAt { offset: slot * 8, derefs };
+                if read_name_at(obj, at, read).is_some_and(|s| s.eq_ignore_ascii_case(expected)) {
+                    *h += 1;
+                }
+            }
+        }
+    }
+
+    /// The most votes any one candidate has.
+    pub fn best(&self) -> usize {
+        self.hits.iter().flatten().copied().max().unwrap_or(0)
+    }
+
+    /// The first candidate, by offset and then by indirection (`**` before
+    /// `*`), with at least `min` votes.
+    pub fn verdict(&self, min: usize) -> Option<NameAt> {
+        self.hits.iter().enumerate().find_map(|(slot, row)| {
+            NAME_DEREFS
+                .iter()
+                .zip(row.iter())
+                .find(|(_, h)| **h >= min.max(1))
+                .map(|(&derefs, _)| NameAt { offset: slot * 8, derefs })
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The parsed *item* record layout (`iteminfo`): where the key and the name
+// sit, picked from the records the manager holds
+// ---------------------------------------------------------------------------
+//
+// Through 25477059 an item record was `u32 key @0` and its name
+// `**(rec+0x08)`. On 26361232 the looter read heap-pointer halves as keys
+// there and no name at all, which is the shape of the gimmick record's move
+// (key `+0x08` -> `+0x10`, name `**(rec+0x10)` -> `**(rec+0x08)`). Nothing in
+// the item table says which offset holds what, so the probe does not assume
+// the analogy: the key is the offset where several item ids the gimmick
+// records pay out are found, unique across the table, and the name is the
+// place most records read a plausible identifier from.
+
+/// Where a parsed item record keeps its key and its name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ItemLayout {
+    /// Offset of the `u32` item key.
+    pub key: usize,
+    /// Where the name is.
+    pub name: NameAt,
+}
+
+impl ItemLayout {
+    /// `u32 key @0`, name `**(rec+0x08)`: build 25116796 through 25477059.
+    pub const OLD: Self = Self { key: 0, name: NameAt { offset: 0x08, derefs: 2 } };
+
+    /// `key +0x8, name **(rec+0x0)`, the way the log names it.
+    pub fn describe(&self) -> String {
+        format!("key +0x{:x}, name {}", self.key, self.name.describe())
+    }
+
+    /// The key's four bytes do not overlap the name's pointer cell: a key
+    /// offset that reads half of the name pointer is not a key.
+    pub fn consistent(&self) -> bool {
+        let (k, n) = (self.key, self.name.offset);
+        k.saturating_add(4) <= n || n.saturating_add(8) <= k
+    }
+}
+
+/// Key offsets the item probe tries: `0..ITEM_KEY_PROBE_END`, 4-aligned.
+pub const ITEM_KEY_PROBE_END: usize = 0x20;
+const ITEM_KEY_SLOTS: usize = ITEM_KEY_PROBE_END / 4;
+/// Item key 1, which the bag names `Money_Copper`.
+pub const MONEY_ITEM_KEY: u32 = 1;
+/// The name item key [`MONEY_ITEM_KEY`] has, compared case-insensitively.
+pub const MONEY_ITEM_NAME: &str = "Money_Copper";
+
+/// How one key offset fared over the walked item records.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ItemKeyScore {
+    /// Distinct known item ids found as a key at this offset.
+    pub known: usize,
+    /// No two records read the same value here.
+    pub unique: bool,
+}
+
+/// The `u32` at every candidate key offset of every item record walked, kept
+/// in walk order so the record behind a key can be found again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ItemKeyVote {
+    objs: Vec<usize>,
+    keys: [Vec<u32>; ITEM_KEY_SLOTS],
+}
+
+impl ItemKeyVote {
+    /// Read `obj`'s first [`ITEM_KEY_PROBE_END`] bytes. An unreadable record
+    /// is skipped and not counted.
+    pub fn observe<R: Fn(usize, usize) -> Option<Vec<u8>>>(&mut self, obj: usize, read: &R) {
+        let Some(b) = read(obj, ITEM_KEY_PROBE_END) else { return };
+        let vals: Option<Vec<u32>> = (0..ITEM_KEY_SLOTS).map(|i| u32_at(&b, i * 4)).collect();
+        let Some(vals) = vals else { return };
+        self.objs.push(obj);
+        for (v, k) in self.keys.iter_mut().zip(vals) {
+            v.push(k);
+        }
+    }
+
+    /// Records read.
+    pub fn records(&self) -> usize {
+        self.objs.len()
+    }
+
+    /// Per candidate offset, in offset order.
+    pub fn scores(&self, known: &std::collections::HashSet<u32>) -> [ItemKeyScore; ITEM_KEY_SLOTS] {
+        let mut out = [ItemKeyScore::default(); ITEM_KEY_SLOTS];
+        for (s, v) in out.iter_mut().zip(&self.keys) {
+            let mut sorted = v.clone();
+            sorted.sort_unstable();
+            let before = sorted.len();
+            sorted.dedup();
+            s.unique = sorted.len() == before;
+            s.known = sorted.iter().filter(|k| known.contains(k)).count();
+        }
+        out
+    }
+
+    /// The key offset: unique over at least `min_records` records and holding
+    /// at least `min_known` of the `known` ids, the most of any such offset.
+    /// A tie is refused rather than guessed.
+    pub fn verdict(&self, known: &std::collections::HashSet<u32>, min_records: usize, min_known: usize) -> Option<usize> {
+        if self.records() < min_records.max(1) {
+            return None;
+        }
+        let scores = self.scores(known);
+        let ok = |s: &ItemKeyScore| s.unique && s.known >= min_known.max(1);
+        let best = scores.iter().filter(|s| ok(s)).map(|s| s.known).max()?;
+        let mut at = scores.iter().enumerate().filter(|(_, s)| ok(s) && s.known == best);
+        let (i, _) = at.next()?;
+        at.next().is_none().then_some(i * 4)
+    }
+
+    /// The record whose `u32` at `key_off` is `key`, if one was walked.
+    pub fn record_with_key(&self, key_off: usize, key: u32) -> Option<usize> {
+        if !key_off.is_multiple_of(4) {
+            return None;
+        }
+        let v = self.keys.get(key_off / 4)?;
+        let i = v.iter().position(|&k| k == key)?;
+        self.objs.get(i).copied()
+    }
+}
+
+/// A plausible record identifier: at least three bytes, every one ASCII
+/// alphanumeric or `_` (`Money_Copper`, `item_basic_onehand`).
+pub fn is_identifier(s: &str) -> bool {
+    s.len() >= 3 && s.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+}
+
+/// A tally over item records of which [`NameAt`] reads a plausible
+/// identifier ([`is_identifier`]), plus which candidates read
+/// [`MONEY_ITEM_NAME`] off the money record when that one is walked.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ItemNameVote {
+    sampled: usize,
+    hits: [[usize; NAME_DEREFS.len()]; NAME_SLOTS],
+    money: [[bool; NAME_DEREFS.len()]; NAME_SLOTS],
+}
+
+impl ItemNameVote {
+    /// Count `obj` toward every candidate that reads an identifier from it.
+    pub fn observe<R: Fn(usize, usize) -> Option<Vec<u8>>>(&mut self, obj: usize, read: &R) {
+        self.sampled += 1;
+        for (slot, row) in self.hits.iter_mut().enumerate() {
+            for (&derefs, h) in NAME_DEREFS.iter().zip(row.iter_mut()) {
+                let at = NameAt { offset: slot * 8, derefs };
+                if read_name_at(obj, at, read).is_some_and(|s| is_identifier(&s)) {
+                    *h += 1;
+                }
+            }
+        }
+    }
+
+    /// Mark every candidate that reads [`MONEY_ITEM_NAME`] off `obj`, the
+    /// record whose key is [`MONEY_ITEM_KEY`].
+    pub fn observe_money<R: Fn(usize, usize) -> Option<Vec<u8>>>(&mut self, obj: usize, read: &R) {
+        for (slot, row) in self.money.iter_mut().enumerate() {
+            for (&derefs, m) in NAME_DEREFS.iter().zip(row.iter_mut()) {
+                let at = NameAt { offset: slot * 8, derefs };
+                if read_name_at(obj, at, read).is_some_and(|s| s.eq_ignore_ascii_case(MONEY_ITEM_NAME)) {
+                    *m = true;
+                }
+            }
+        }
+    }
+
+    /// Records sampled.
+    pub fn sampled(&self) -> usize {
+        self.sampled
+    }
+
+    /// The best candidate and its votes, for the log.
+    pub fn best(&self) -> Option<(NameAt, usize)> {
+        self.candidates().max_by_key(|&(at, h)| (h, std::cmp::Reverse(at.offset)))
+    }
+
+    fn candidates(&self) -> impl Iterator<Item = (NameAt, usize)> + '_ {
+        self.hits.iter().enumerate().flat_map(|(slot, row)| {
+            NAME_DEREFS.iter().zip(row.iter()).map(move |(&derefs, &h)| (NameAt { offset: slot * 8, derefs }, h))
+        })
+    }
+
+    fn is_money(&self, at: NameAt) -> bool {
+        self.money
+            .get(at.offset / 8)
+            .and_then(|row| NAME_DEREFS.iter().position(|&d| d == at.derefs).and_then(|i| row.get(i)))
+            .copied()
+            .unwrap_or(false)
+    }
+
+    /// The name's place: a candidate that read an identifier from more than
+    /// half the sampled records and from at least `min`. Among several, the
+    /// one that read [`MONEY_ITEM_NAME`] off the money record wins, else the
+    /// one with the most votes; a tie that the money record does not settle
+    /// is refused.
+    pub fn verdict(&self, min: usize) -> Option<NameAt> {
+        let ok: Vec<(NameAt, usize)> =
+            self.candidates().filter(|&(_, h)| h >= min.max(1) && h * 2 > self.sampled).collect();
+        let money: Vec<&(NameAt, usize)> = ok.iter().filter(|(at, _)| self.is_money(*at)).collect();
+        if let [only] = money.as_slice() {
+            return Some(only.0);
+        }
+        let pool: Vec<(NameAt, usize)> =
+            if money.is_empty() { ok } else { money.into_iter().copied().collect() };
+        let best = pool.iter().map(|&(_, h)| h).max()?;
+        let mut top = pool.iter().filter(|&&(_, h)| h == best);
+        let first = top.next()?;
+        top.next().is_none().then_some(first.0)
+    }
+}
+
+/// Records whose names are sampled for [`ItemNameVote`] by [`probe_item_layout`].
+pub const ITEM_NAME_SAMPLE: usize = 256;
+/// Item records a probe must read before it decides anything.
+pub const ITEM_MIN_RECORDS: usize = 32;
+/// Known item ids that must be found as keys at the chosen offset.
+pub const ITEM_MIN_KNOWN: usize = 3;
+/// Records that must read an identifier at the chosen name place.
+pub const ITEM_MIN_NAMED: usize = 8;
+
+/// Pick the item record layout from the loaded item record objects `objs`
+/// and the item ids `known` to be real (in the plugin, the gimmick records'
+/// output items): the key offset by [`ItemKeyVote::verdict`], the name place
+/// by [`ItemNameVote::verdict`] over the first [`ITEM_NAME_SAMPLE`] records,
+/// cross-checked against the money record's name when the key finds it, and
+/// the two must not overlap ([`ItemLayout::consistent`]). `Err` carries the
+/// evidence for the log line that says nothing was chosen.
+pub fn probe_item_layout<R: Fn(usize, usize) -> Option<Vec<u8>>>(
+    objs: &[usize],
+    known: &std::collections::HashSet<u32>,
+    read: &R,
+) -> Result<ItemLayout, String> {
+    let mut keys = ItemKeyVote::default();
+    let mut names = ItemNameVote::default();
+    for (i, &obj) in objs.iter().enumerate() {
+        keys.observe(obj, read);
+        if i < ITEM_NAME_SAMPLE {
+            names.observe(obj, read);
+        }
+    }
+    let key = keys.verdict(known, ITEM_MIN_RECORDS, ITEM_MIN_KNOWN);
+    if let Some(money) = key.and_then(|k| keys.record_with_key(k, MONEY_ITEM_KEY)) {
+        names.observe_money(money, read);
+    }
+    let name = names.verdict(ITEM_MIN_NAMED);
+    let evidence = || {
+        let scores: Vec<String> = keys
+            .scores(known)
+            .iter()
+            .enumerate()
+            .map(|(i, s)| format!("+0x{:x}:{}{}", i * 4, s.known, if s.unique { "" } else { "(dup)" }))
+            .collect();
+        let best = names.best().map(|(at, h)| format!("{} {h}", at.describe())).unwrap_or_else(|| "-".into());
+        format!(
+            "{} records read, {} known ids; known ids found per key offset [{}]; best name {best} of {} sampled",
+            keys.records(),
+            known.len(),
+            scores.join(" "),
+            names.sampled()
+        )
+    };
+    match (key, name) {
+        (Some(key), Some(name)) => {
+            let l = ItemLayout { key, name };
+            if l.consistent() {
+                Ok(l)
+            } else {
+                Err(format!("key +0x{key:x} overlaps the name pointer {}: {}", name.describe(), evidence()))
+            }
+        }
+        (None, _) => Err(format!("no key offset: {}", evidence())),
+        (_, None) => Err(format!("no name place: {}", evidence())),
+    }
+}
+
 /// Item offset candidates, and `(min, max)` offset pair candidates.
 type BlockCandidates = (Vec<usize>, Vec<(usize, usize)>);
 
@@ -3714,5 +4199,312 @@ mod tests {
         assert_eq!(probe_parsed_layout(&samples, |a, n| mem.read(a, n)), Ok(ParsedLayout::NEW));
         // The old layout reads a heap pointer where the key was: not it.
         assert_ne!(u32_at(mem.read(obj, 0x10).as_deref().unwrap_or_default(), 0x08), Some(1_001_482));
+        // The looter's reader takes the same bytes to the same three blocks,
+        // and only the new layout reads them at all.
+        let read = |a, n| mem.read(a, n);
+        let got = parsed_outputs(obj, &ParsedLayout::NEW, &read).unwrap();
+        assert_eq!(
+            got.iter().map(|o| (o.item, o.min, o.max)).collect::<Vec<_>>(),
+            vec![(1_000_689, 1, 1), (1_000_555, 1, 1), (1_000_610, 1, 1)]
+        );
+        assert!(parsed_outputs(obj, &ParsedLayout::OLD, &read).is_none());
+        let mut vote = LayoutVote::default();
+        vote.observe(obj, |k| k == 1_001_482, &read);
+        assert_eq!(vote.hits(), &[0, 1]);
+    }
+
+    /// Give every synthetic record object a name at `at`: a string region,
+    /// and for `**` a pointer cell between, written into fresh memory.
+    fn name_records(mem: &mut Mem, samples: &[ParsedSample], names: &[&str], at: NameAt) {
+        for (i, (s, name)) in samples.iter().zip(names).enumerate() {
+            let str_at = 0x7000_0000 + i * 0x1000;
+            let cell_at = str_at + 0x800;
+            let mut text = name.as_bytes().to_vec();
+            text.push(0);
+            text.resize(NAME_MAX, 0x41);
+            mem.0.push((str_at, text));
+            let first = if at.derefs == 2 {
+                mem.0.push((cell_at, (str_at as u64).to_le_bytes().to_vec()));
+                cell_at
+            } else {
+                str_at
+            };
+            let obj = mem.0.iter_mut().find(|(a, _)| *a == s.obj).unwrap();
+            obj.1[at.offset..at.offset + 8].copy_from_slice(&(first as u64).to_le_bytes());
+        }
+    }
+
+    const SAMPLE_NAMES: [&str; 4] = ["gimmick_well_0001_parts01", "Begonia_01", "mine_rock_09", "Wheat_01"];
+
+    fn known_sample_key(k: u32) -> bool {
+        sample_records().iter().any(|(key, _, _)| *key == k)
+    }
+
+    #[test]
+    fn parsed_outputs_reads_both_known_layouts() {
+        for l in ParsedLayout::KNOWN {
+            let (mem, samples) = synth(&l, &sample_records());
+            for s in &samples {
+                let got = parsed_outputs(s.obj, &l, &|a, n| mem.read(a, n)).unwrap();
+                // `synth` writes min/max times the load factor; compare items
+                // and that each is a whole multiple of vanilla.
+                assert_eq!(got.len(), s.blocks.len());
+                for (o, &(item, mn, mx)) in got.iter().zip(&s.blocks) {
+                    assert_eq!(o.item, item);
+                    assert!(vanilla_factor(o.min, o.max, mn, mx).is_some());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn parsed_outputs_refuses_a_bad_record_whole() {
+        let l = ParsedLayout::NEW;
+        let (mut mem, samples) = synth(&l, &sample_records());
+        let read = |m: &Mem, a: usize| parsed_outputs(a, &l, &|x, n| m.read(x, n));
+        // The wrong layout reads nothing.
+        assert!(parsed_outputs(samples[1].obj, &ParsedLayout::OLD, &|a, n| mem.read(a, n)).is_none());
+        // min > max in one block of three: the whole record goes.
+        let obj = samples[1].obj;
+        let list = obj + 0x1_0000;
+        let b1 = list + 0x1000 + 0x200;
+        let blk = mem.0.iter_mut().find(|(a, _)| *a == b1).unwrap();
+        blk.1[l.block_min..l.block_min + 8].copy_from_slice(&9u64.to_le_bytes());
+        assert!(read(&mem, obj).is_none());
+        // A nonzero entry item that disagrees with its block is refused; one
+        // that agrees is accepted (the zero every real record carries is
+        // covered above).
+        let obj = samples[0].obj;
+        let list = obj + 0x1_0000;
+        let entries = mem.0.iter_mut().find(|(a, _)| *a == list).unwrap();
+        entries.1[8..12].copy_from_slice(&22008u32.to_le_bytes());
+        assert_eq!(read(&mem, obj).map(|v| v.len()), Some(1));
+        let entries = mem.0.iter_mut().find(|(a, _)| *a == list).unwrap();
+        entries.1[8..12].copy_from_slice(&1u32.to_le_bytes());
+        assert!(read(&mem, obj).is_none());
+        // Unreadable memory is `None`, never a panic, and so is a zero stride.
+        assert!(parsed_outputs(obj, &l, &|_, _| None).is_none());
+        assert!(parsed_outputs(obj, &ParsedLayout { entry: 0, ..l }, &|a, n| mem.read(a, n)).is_none());
+    }
+
+    #[test]
+    fn layout_vote_picks_the_layout_the_records_were_laid_out_in() {
+        for l in ParsedLayout::KNOWN {
+            let (mem, samples) = synth(&l, &sample_records());
+            let mut vote = LayoutVote::default();
+            for s in &samples {
+                vote.observe(s.obj, known_sample_key, &|a, n| mem.read(a, n));
+            }
+            assert_eq!(vote.best(), samples.len());
+            assert_eq!(vote.verdict(3), Some(l), "{vote:?}");
+            // Not enough agreeing records yet: no verdict, so nothing latches.
+            assert_eq!(vote.verdict(5), None);
+        }
+        // Keys that are not gather keys vote for nothing.
+        let (mem, samples) = synth(&ParsedLayout::NEW, &sample_records());
+        let mut vote = LayoutVote::default();
+        for s in &samples {
+            vote.observe(s.obj, |_| false, &|a, n| mem.read(a, n));
+        }
+        assert_eq!(vote.hits(), &[0, 0]);
+        assert_eq!(vote.verdict(1), None);
+        // A tie is refused.
+        let tie = LayoutVote { hits: [4, 4] };
+        assert_eq!(tie.verdict(3), None);
+    }
+
+    #[test]
+    fn the_name_probe_finds_the_old_offset_under_the_old_layout() {
+        let (mut mem, samples) = synth(&ParsedLayout::OLD, &sample_records());
+        name_records(&mut mem, &samples, &SAMPLE_NAMES, NameAt::OLD);
+        let mut vote = NameVote::default();
+        for (s, name) in samples.iter().zip(SAMPLE_NAMES) {
+            // The table's case need not match the collect row's.
+            vote.observe(s.obj, &name.to_ascii_uppercase(), &|a, n| mem.read(a, n));
+        }
+        assert_eq!(vote.verdict(3), Some(NameAt::OLD));
+        assert_eq!(NameAt::OLD.describe(), "**(rec+0x10)");
+        assert_eq!(
+            read_name_at(samples[0].obj, NameAt::OLD, &|a, n| mem.read(a, n)).as_deref(),
+            Some("gimmick_well_0001_parts01")
+        );
+    }
+
+    #[test]
+    fn the_name_probe_finds_a_moved_name_under_the_new_layout() {
+        // The key is at +0x10 now, so the old name slot holds the key and
+        // reads nothing; the name sits behind +0x08 in this synthetic object.
+        let (mut mem, samples) = synth(&ParsedLayout::NEW, &sample_records());
+        let at = NameAt { offset: 0x08, derefs: 2 };
+        name_records(&mut mem, &samples, &SAMPLE_NAMES, at);
+        let read = |a, n| mem.read(a, n);
+        assert!(read_name_at(samples[0].obj, NameAt::OLD, &read).is_none());
+        let mut vote = NameVote::default();
+        for (s, name) in samples.iter().zip(SAMPLE_NAMES) {
+            vote.observe(s.obj, name, &read);
+        }
+        assert_eq!(vote.verdict(3), Some(at));
+        assert_eq!(vote.best(), 4);
+        // Two records are not enough to latch on.
+        let mut two = NameVote::default();
+        for (s, name) in samples.iter().zip(SAMPLE_NAMES).take(2) {
+            two.observe(s.obj, name, &read);
+        }
+        assert_eq!(two.verdict(3), None);
+        // A single indirection is found too, and a wrong name finds nothing.
+        let (mut mem, samples) = synth(&ParsedLayout::NEW, &sample_records());
+        let at = NameAt { offset: 0x30, derefs: 1 };
+        name_records(&mut mem, &samples, &SAMPLE_NAMES, at);
+        let mut vote = NameVote::default();
+        let mut wrong = NameVote::default();
+        for (s, name) in samples.iter().zip(SAMPLE_NAMES) {
+            vote.observe(s.obj, name, &|a, n| mem.read(a, n));
+            wrong.observe(s.obj, "item_basic_onehand", &|a, n| mem.read(a, n));
+        }
+        assert_eq!(vote.verdict(3), Some(at));
+        assert_eq!(wrong.verdict(1), None);
+    }
+
+    /// The two item record shapes the probe must tell apart: `Old` is `u32
+    /// key @0, **(rec+0x08)` (through 25477059), `Swapped` is
+    /// `**(rec+0x00), u32 key @8` (what 26361232 looks like by analogy with
+    /// the gimmick move). Every record also has a unique heap pointer at
+    /// `+0x10` and a constant at `+0x18`, the kind of neighbours a real
+    /// record has; with `category` the constant slot instead points straight
+    /// at a second identifier, so two name places qualify.
+    #[derive(Clone, Copy, PartialEq)]
+    enum ItemShape {
+        Old,
+        Swapped,
+    }
+
+    fn synth_items(shape: ItemShape, keys: &[u32], category: bool) -> (Mem, Vec<usize>) {
+        let mut mem = Mem(Vec::new());
+        let mut objs = Vec::new();
+        let cat_at = 0x5000_0000usize;
+        let mut cat = b"Category_Material\0".to_vec();
+        cat.resize(NAME_MAX, 0);
+        mem.0.push((cat_at, cat));
+        for (i, &key) in keys.iter().enumerate() {
+            let obj = 0x1000_0000 + i * 0x100;
+            let str_at = 0x2000_0000 + i * 0x100;
+            let cell = 0x3000_0000 + i * 0x100;
+            let name = if key == MONEY_ITEM_KEY { "Money_Copper".to_string() } else { format!("item_basic_{i:04}") };
+            let mut text = name.into_bytes();
+            text.push(0);
+            text.resize(NAME_MAX, 0);
+            mem.0.push((str_at, text));
+            mem.0.push((cell, (str_at as u64).to_le_bytes().to_vec()));
+            let mut b = vec![0u8; 0x40];
+            let (key_at, name_at) = match shape {
+                ItemShape::Old => (0, 8),
+                ItemShape::Swapped => (8, 0),
+            };
+            b[key_at..key_at + 4].copy_from_slice(&key.to_le_bytes());
+            b[name_at..name_at + 8].copy_from_slice(&(cell as u64).to_le_bytes());
+            b[0x10..0x18].copy_from_slice(&((0x4000_0000 + i * 0x10) as u64).to_le_bytes());
+            let tail = if category { cat_at as u64 } else { 7 };
+            b[0x18..0x20].copy_from_slice(&tail.to_le_bytes());
+            mem.0.push((obj, b));
+            objs.push(obj);
+        }
+        (mem, objs)
+    }
+
+    const KNOWN_ITEMS: [u32; 5] = [22008, 1_000_689, 757_006, 710_001, 720_004];
+
+    fn item_keys(n: usize, money: bool) -> Vec<u32> {
+        let mut keys: Vec<u32> = KNOWN_ITEMS.to_vec();
+        if money {
+            keys.push(MONEY_ITEM_KEY);
+        }
+        keys.extend((0..n as u32).map(|i| 3_000_000 + i));
+        keys
+    }
+
+    fn known_items() -> std::collections::HashSet<u32> {
+        // One id the table does not hold, as in game: not every output item
+        // has to be loaded for the vote to work.
+        KNOWN_ITEMS.iter().copied().chain([999_999_999]).collect()
+    }
+
+    #[test]
+    fn the_item_probe_reads_the_old_shape() {
+        let (mem, objs) = synth_items(ItemShape::Old, &item_keys(40, true), false);
+        let got = probe_item_layout(&objs, &known_items(), &|a, n| mem.read(a, n));
+        assert_eq!(got, Ok(ItemLayout::OLD));
+        assert_eq!(ItemLayout::OLD.describe(), "key +0x0, name **(rec+0x8)");
+    }
+
+    #[test]
+    fn the_item_probe_reads_the_swapped_shape() {
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, false), false);
+        let read = |a, n| mem.read(a, n);
+        let want = ItemLayout { key: 8, name: NameAt { offset: 0, derefs: 2 } };
+        assert_eq!(probe_item_layout(&objs, &known_items(), &read), Ok(want));
+        // The old reading gets a pointer's low half for a key and no name.
+        assert!(read_name_at(objs[0], ItemLayout::OLD.name, &read).is_none());
+        let mut keys = ItemKeyVote::default();
+        for &o in &objs {
+            keys.observe(o, &read);
+        }
+        let scores = keys.scores(&known_items());
+        assert_eq!(scores[0], ItemKeyScore { known: 0, unique: true });
+        assert_eq!(scores[2], ItemKeyScore { known: 5, unique: true });
+        assert!(!scores[1].unique);
+        assert_eq!(keys.record_with_key(8, 22008), Some(objs[0]));
+        assert_eq!(keys.record_with_key(6, 22008), None);
+    }
+
+    #[test]
+    fn the_item_probe_does_not_latch_on_too_little() {
+        let known = known_items();
+        // Too few records walked.
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(10, false), false);
+        let err = probe_item_layout(&objs, &known, &|a, n| mem.read(a, n)).unwrap_err();
+        assert!(err.starts_with("no key offset"), "{err}");
+        // Enough records, but not one known id among their keys.
+        let keys: Vec<u32> = (0..60).map(|i| 4_000_000 + i).collect();
+        let (mem, objs) = synth_items(ItemShape::Old, &keys, false);
+        let err = probe_item_layout(&objs, &known, &|a, n| mem.read(a, n)).unwrap_err();
+        assert!(err.contains("+0x0:0 "), "{err}");
+        // Nothing readable at all: an error, never a panic.
+        assert!(probe_item_layout(&objs, &known, &|_, _| None).is_err());
+        assert!(probe_item_layout(&[], &known, &|_, _| None).is_err());
+    }
+
+    #[test]
+    fn a_duplicated_key_offset_is_not_a_key() {
+        let mut keys = item_keys(40, false);
+        keys.push(22008);
+        let (mem, objs) = synth_items(ItemShape::Old, &keys, false);
+        let err = probe_item_layout(&objs, &known_items(), &|a, n| mem.read(a, n)).unwrap_err();
+        assert!(err.contains("+0x0:5(dup)"), "{err}");
+    }
+
+    #[test]
+    fn the_money_record_settles_two_name_places() {
+        // With a second identifier behind `*(rec+0x18)` in every record, two
+        // places read a name from all of them: a tie, refused ...
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, false), true);
+        let err = probe_item_layout(&objs, &known_items(), &|a, n| mem.read(a, n)).unwrap_err();
+        assert!(err.starts_with("no name place"), "{err}");
+        // ... until the money record is loaded and names one of them.
+        let (mem, objs) = synth_items(ItemShape::Swapped, &item_keys(40, true), true);
+        let got = probe_item_layout(&objs, &known_items(), &|a, n| mem.read(a, n));
+        assert_eq!(got, Ok(ItemLayout { key: 8, name: NameAt { offset: 0, derefs: 2 } }));
+    }
+
+    #[test]
+    fn an_item_key_may_not_overlap_its_name_pointer() {
+        let n = |offset| NameAt { offset, derefs: 2 };
+        assert!(ItemLayout::OLD.consistent());
+        assert!(ItemLayout { key: 8, name: n(0) }.consistent());
+        assert!(!ItemLayout { key: 8, name: n(8) }.consistent());
+        assert!(!ItemLayout { key: 0xC, name: n(8) }.consistent());
+        assert!(ItemLayout { key: 4, name: n(8) }.consistent());
+        assert!(ItemLayout { key: 0x10, name: n(8) }.consistent());
+        assert!(is_identifier("Money_Copper") && is_identifier("abc"));
+        assert!(!is_identifier("ab") && !is_identifier("UI/Icon/x") && !is_identifier("a b c"));
     }
 }

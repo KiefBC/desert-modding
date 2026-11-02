@@ -343,7 +343,15 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                                 format!("[{}] {name} key={key} x{} tab={tab}", sl.slot, sl.count)
                             })
                             .collect();
-                        crate::log!("[survey] bag: {} stacks; {}", slots.len(), shown.join("; "));
+                        // `tab=` is read at the pre-26361232 offset
+                        // (`tables::ITEM_TAB_OFF`), which nothing validates
+                        // on the current build; the line says so.
+                        crate::log!(
+                            "[survey] bag: {} stacks (tab= unverified, +0x{:X}); {}",
+                            slots.len(),
+                            crate::looter::tables::ITEM_TAB_OFF,
+                            shown.join("; ")
+                        );
                         if debug {
                             dump_item_records(m, &tabs, &slots);
                         }
@@ -995,6 +1003,44 @@ static UNKNOWN_CATCH_CATEGORIES: [AtomicU64; 4] =
 /// Claim the right to log category `c`: true exactly once per value per
 /// session. `c >> 6` is 0..=3 for any `u8`, so the `get` never misses; it is
 /// a `get` rather than an index because indexing is denied in shipped code.
+/// Eids already reported by [`note_passed_catchable`], and the cap on them.
+static PASSED_CATCHABLE: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+const PASSED_CATCHABLE_CAP: usize = 40;
+
+/// A creature in range whose category byte is a known bug or fish class but
+/// which `classify` did not make a candidate: say so, once per eid, with what
+/// decided it. 26361232 showed bugs the player walked up to and caught by
+/// hand while auto-gather, on and in range, never aimed at them; a line
+/// written after the catch is useless (the actor has left the map by then),
+/// so this is written while the creature is still being passed over. The
+/// suspects it separates: `catch_class`'s status-kind test (a startled or
+/// fleeing bug may not read 0), the attached-to-player test that answers
+/// `Equipment`, and a dead flag. Plugin thread only.
+fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind, d: f32) {
+    let Some(ty) = creature::type_byte(a) else { return };
+    if !creature::CATCHABLE_TYPES.contains(&ty) {
+        return;
+    }
+    let Some(cat) = actors::interaction_category(m, a) else { return };
+    if !creature::is_catch_class(cat) {
+        return;
+    }
+    {
+        let mut seen = PASSED_CATCHABLE.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.len() >= PASSED_CATCHABLE_CAP || seen.contains(&eid) {
+            return;
+        }
+        seen.push(eid);
+    }
+    let st = actors::status_bytes(m, a);
+    crate::log!(
+        "[gather] known-class creature passed over: eid={eid:08X} type={ty:02X} cat={cat:02X} at {d:.1} m kind={kind:?} status kind={} flag={} catch_class={:?}",
+        st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.kind)),
+        st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.flag)),
+        actors::catch_class(m, a)
+    );
+}
+
 fn first_sighting_of(c: u8) -> bool {
     let bit = 1u64 << (c & 63);
     match UNKNOWN_CATCH_CATEGORIES.get(usize::from(c >> 6)) {
@@ -1032,8 +1078,15 @@ pub fn nearest_gather(
     sc: &Scene,
     cfg: &Config,
     skip: &dyn Fn(u32) -> bool,
-) -> Result<GatherTarget, String> {
+) -> Result<GatherTarget, NoTarget> {
     let range = cfg.gather_range;
+    // Nodes and ground items passed over because their gimmick record would
+    // not read: no record index, no key or name through the latched layout,
+    // or (for an interactable that is not a candidate) no name at all. On a
+    // build whose parsed layout moved under the looter this is every node in
+    // range, and it is what the "nothing to gather" line has to say, or the
+    // failure is silent.
+    let mut unreadable = 0usize;
     let unarmed = cfg.gather_unarmed;
     // (dist, eid, actor, pos, kind) for every gather-record node in range.
     let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
@@ -1047,10 +1100,21 @@ pub fn nearest_gather(
             continue;
         }
         let kind = actors::classify(m, a, sc.player);
+        if !kind.is_gather_candidate(cfg.gather_carcass) {
+            note_passed_catchable(m, a, eid, kind, d);
+        }
         // One shared definition of the candidate set, `actors::Kind`'s own,
         // so this and `autogather::Gatherer::review` cannot come to disagree
         // about what the gatherer aims at - see `Kind::is_gather_candidate`.
         if !kind.is_gather_candidate(cfg.gather_carcass) {
+            // An interactable gimmick whose record names nothing: a gather
+            // node `classify` could not give a family because the record did
+            // not read, which is the shape of a moved layout.
+            if kind == actors::Kind::Interactable
+                && actors::node_identity(m, a).is_none_or(|id| id.key.is_none() || id.name.is_none())
+            {
+                unreadable += 1;
+            }
             // A carcass in reach with the switch off is the one non-candidate
             // worth a word, and it gets exactly one per session.
             if kind == actors::Kind::Carcass && !CARCASS_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed) {
@@ -1192,9 +1256,16 @@ pub fn nearest_gather(
         if skip(eid) {
             continue;
         }
-        let Some(id) = actors::node_identity(m, a) else { continue };
+        let Some(id) = actors::node_identity(m, a) else {
+            unreadable += 1;
+            continue;
+        };
         let name = id.name.clone().unwrap_or_else(|| format!("rec{}", id.index));
         let (family, mode) = if kind == actors::Kind::Item {
+            if id.name.is_none() {
+                unreadable += 1;
+                continue;
+            }
             if !cfg.gather_items || !actors::is_basic_item_record(&name) {
                 continue;
             }
@@ -1203,7 +1274,12 @@ pub fn nearest_gather(
             }
             ("Item".to_string(), crate::looter::payload::PickupMode::Item)
         } else {
-            let Some(f) = id.family else { continue };
+            let Some(f) = id.family else {
+                if id.key.is_none() || id.name.is_none() {
+                    unreadable += 1;
+                }
+                continue;
+            };
             // The water well's bucket is refused by record key, before its
             // family is even consulted: a forged pickup there leaves the well
             // permanently empty (`config::WELL_BUCKET_RECORD_KEY`). Counted so
@@ -1235,16 +1311,37 @@ pub fn nearest_gather(
             route: sc.route,
         });
     }
-    if unarmed_seen > 0 && !unarmed {
-        return Err(format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)"));
+    let why = if unarmed_seen > 0 && !unarmed {
+        format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)")
+    } else if family_off_seen > 0 {
+        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)")
+    } else if refused_seen > 0 {
+        format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)")
+    } else {
+        format!("no Gather node within {range:.1} m")
+    };
+    Err(NoTarget { why, unreadable })
+}
+
+/// Why [`nearest_gather`] found nothing: the line to log, and how many nodes
+/// or ground items in range were passed over because their gimmick record
+/// would not read. A nonzero `unreadable` is a fault rather than an empty
+/// field, and `autogather::Gatherer::tick` says so even with nothing on
+/// cooldown.
+#[derive(Debug, Clone)]
+pub struct NoTarget {
+    pub why: String,
+    pub unreadable: usize,
+}
+
+impl std::fmt::Display for NoTarget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.why)?;
+        if self.unreadable > 0 {
+            write!(f, " ({} with an unreadable gimmick record)", self.unreadable)?;
+        }
+        Ok(())
     }
-    if family_off_seen > 0 {
-        return Err(format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)"));
-    }
-    if refused_seen > 0 {
-        return Err(format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)"));
-    }
-    Err(format!("no Gather node within {range:.1} m"))
 }
 
 /// Debug: raw item records for a few bag stacks and a few equipment-tab

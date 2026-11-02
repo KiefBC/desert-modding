@@ -78,6 +78,31 @@ to what you set is a PATCH, and a PATCH before the untagged MINOR it follows fol
   prints where it looked (the path from a record to its item, and hex windows of the record, an
   entry and a block), which is how the 26361232 layout was read. The multiplier applied at launch
   was never affected.
+- **Auto-loot finds gather nodes and ground items again on 26361232.** The looter read the
+  parsed gimmick records through the old layout too, so every node got a wrong key and no name:
+  no node had a family, every gather node and ground item was passed over, and auto mode said
+  nothing. It now picks the layout the same way the yield half does, from the two it knows,
+  checked against the loaded records' gather keys and output lists (three must agree), and finds
+  where the record keeps its name by matching the names it knows. Both are logged once:
+  `[yield] parsed layout: key +0x10, list +0x128 -> +0x0, ...` and `[yield] record name at
+  **(rec+0x..)`; if either cannot be found, one `[yield] WARN ...` line says so (without a name,
+  ground items cannot be classified). And the silent case is not silent any more: when nodes in
+  range are skipped because their record would not read, the "nothing to gather" line says how
+  many (`(N with an unreadable gimmick record)`), and auto mode prints it every 30 s even with
+  nothing on cooldown. Nothing changes in the ini.
+- **Item records are read through a probed layout too, and `[recv]` says why it is silent.** On
+  26361232 the bag survey printed every stack as `? key=313907456`: the looter read `iteminfo`
+  records at their old offsets (`u32` key at `+0`, name `**(rec+0x08)`). It now picks the key
+  offset where several item ids the loaded gather records pay out are found, unique over the
+  table, and the name place most records read an identifier from (the money record,
+  `Money_Copper`, settles a tie), and logs `[item] record layout: key +0x.., name **(rec+0x..)`
+  once, or one `[item] WARN ...` and the old reading. That is what the full-bag check, the bag
+  survey's names and the `[skin]` lines' names read through. The survey's `tab=` is still read at
+  the old `+0x428` and says it is unverified. `LogReceived=1` produced no `[recv]` line on
+  26361232; the 60 s summary now carries `[recv] stat: enqueue calls N, handle events seen N
+  (descriptor resolved), parsed N, rejected size N / unreadable N / zeros N / kind N / range N`
+  (once even at zero with `LogReceived=1`), and the first 8 rejected payloads are logged raw as
+  `[recv] debug: rejected (<reason>) size=.. bytes: ..`. Nothing changes in the ini.
 - Re-derived: `alloc_event`, `enqueue`, `own_check_site`, `loot_grant` and `category fn`, so the
   log still says `[sig] 9 found, 0 missing`. The `enqueue` and `loot_grant` hooks now steal 15
   bytes (were 14 and 13), the first safe boundary on the new code.

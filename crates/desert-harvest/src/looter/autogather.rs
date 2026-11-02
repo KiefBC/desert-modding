@@ -416,12 +416,22 @@ impl Gatherer {
                     self.last_send = Some(Instant::now());
                 }
             }
-            Err(_) => {
-                // Nothing eligible: keep the cadence but stay quiet.
+            Err(e) => {
+                // Nothing eligible: keep the cadence but stay quiet - unless
+                // something in range was skipped because its gimmick record
+                // would not read, which is a fault (a moved record layout)
+                // and not an empty field, so it is said with nothing on
+                // cooldown too.
                 self.last_send = Some(Instant::now());
-                if self.last_idle_log.is_none_or(|t| t.elapsed() > IDLE_LOG_EVERY) && !self.done.is_empty() {
+                if self.last_idle_log.is_none_or(|t| t.elapsed() > IDLE_LOG_EVERY)
+                    && (!self.done.is_empty() || e.unreadable > 0)
+                {
                     self.last_idle_log = Some(Instant::now());
-                    crate::log!("[gather] auto: nothing eligible in {:.1} m ({} on cooldown)", self.cfg.gather_range, self.done.len());
+                    if e.unreadable > 0 {
+                        crate::log!("[gather] auto: {e} ({} on cooldown)", self.done.len());
+                    } else {
+                        crate::log!("[gather] auto: nothing eligible in {:.1} m ({} on cooldown)", self.cfg.gather_range, self.done.len());
+                    }
                 }
             }
         }

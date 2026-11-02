@@ -196,6 +196,7 @@ pub fn start() {
     let mut last_summary_at = std::time::Instant::now();
     let mut last_counts = gatherer::hook::Counters::default();
     let mut last_catch: Option<String> = None;
+    let mut last_recv: Option<[u64; 7]> = None;
     loop {
         // Once a second, and above the `Enabled` gate on purpose: the yield
         // half's work here has to keep running under `Enabled=0` - that is
@@ -265,6 +266,7 @@ pub fn start() {
                 last_summary_at = std::time::Instant::now();
                 gatherer::entry::log_counters(&mut last_counts);
                 gatherer::catch::log_counters(&mut last_catch);
+                events::log_recv_counters(&mut last_recv);
             }
         }
         // Polled even while disabled, so a press made with Enabled=0 is

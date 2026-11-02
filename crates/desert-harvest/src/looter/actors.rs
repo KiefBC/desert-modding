@@ -1003,9 +1003,16 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
     if !creature::CATCHABLE_TYPES.contains(&ty) {
         return None;
     }
-    if !status_bytes(m, actor).is_some_and(|s| s.kind == 0) {
-        return None;
-    }
+    // No status-kind test. `status+0x2C8 == 0` was part of the first-cut
+    // catch rule (section 15.3), which the class gate below superseded
+    // (section 15.5), and it cost real catches on 26361232: on 2026-11-02 23
+    // live type-06 `cat=80` bugs in reach read `0x3C` or `0xD3` there, in two
+    // groups, and were passed over while the player caught them by hand with
+    // E and the catch hook multiplied every one (`[gather] known-class
+    // creature passed over: ... status kind=3C`). The byte marks quest items,
+    // shop goods and decoration (`is_owned_or_special`); on a creature it
+    // says nothing a catch depends on. A dead creature is still kept out, by
+    // `classify`'s dead-flag arm, which runs before this.
     let cat = interaction_category(m, actor)?;
     Some(Catchable::of(ty, cat))
 }

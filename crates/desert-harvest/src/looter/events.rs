@@ -28,7 +28,7 @@ pub use crate::looter::payload::{
     CATCH_DESCRIPTOR, CATCH_ID_EXPECTED, CATCH_PAYLOAD_SIZE, PICKUP_DESCRIPTOR, PICKUP_ID_EXPECTED,
     PICKUP_PAYLOAD_SIZE, SKIN_DESCRIPTOR, SKIN_ID_EXPECTED, SKIN_PAYLOAD_SIZE,
 };
-use crate::looter::payload::{catch_payload, hex, pickup_payload, skin_payload, PickupMode};
+use crate::looter::payload::{catch_payload, decode_received, hex, pickup_payload, skin_payload, PickupMode, RecvReject};
 use crate::looter::recorder::record_action;
 /// Re-exported so `events::RECORD_CAP` keeps resolving; the constant itself
 /// moved to [`crate::looter::recorder`] when the cap policy did.
@@ -391,7 +391,8 @@ pub fn set_skin_descriptor(d: Descriptor) {
 // ---------------------------------------------------------------------------
 // Yield learning. After a pickup the game queues
 // `TrocTrHandleGameEventOnceTimer` (115 bytes) whose payload, for an item
-// received, has zeros at 11..19, the item key (u32) at 19, a 2 at 23 and the
+// received, has a 0 tag byte at 11 (zeros through 18 up to 25477059; bytes
+// 12..19 are non-zero on 26361232), the item key (u32) at 19, a 2 at 23 and the
 // count (u32) at 27 (observed live: copper chunk 720004 x1, vein x10). We
 // pair it with the node sent in the previous two seconds and remember
 // record -> item key, so the stacking rule can be applied before a send.
@@ -431,6 +432,92 @@ static LOG_RECEIVED: AtomicBool = AtomicBool::new(false);
 static RECV_LOGGED: AtomicU32 = AtomicU32::new(0);
 /// Ceiling on `[recv]` lines per session; the log is append-only.
 const RECV_LOG_CAP: u32 = 500;
+
+// What `watch_received` saw, for the `[recv] stat:` line. On 26361232 a
+// session of gathers produced no `[recv]` line at all, and these say whether
+// that is the event not reaching the enqueue hook (`seen 0`; `enqueue calls`
+// says the hook itself fires) or its payload failing a check (which one, and
+// the first few payloads raw). Atomics only: this runs on game threads.
+static ENQUEUE_CALLS: AtomicU64 = AtomicU64::new(0);
+static RECV_SEEN: AtomicU64 = AtomicU64::new(0);
+static RECV_PARSED: AtomicU64 = AtomicU64::new(0);
+static RECV_REJ_SIZE: AtomicU64 = AtomicU64::new(0);
+static RECV_REJ_UNREADABLE: AtomicU64 = AtomicU64::new(0);
+static RECV_REJ_ZEROS: AtomicU64 = AtomicU64::new(0);
+static RECV_REJ_KIND: AtomicU64 = AtomicU64::new(0);
+static RECV_REJ_RANGE: AtomicU64 = AtomicU64::new(0);
+/// `[recv] debug: rejected` lines so far, under `LogReceived=1`.
+static RECV_DEBUG_LOGGED: AtomicU32 = AtomicU32::new(0);
+/// Ceiling on those lines per session.
+const RECV_DEBUG_CAP: u32 = 8;
+/// Payload bytes a debug line shows (and the most `watch_received` reads):
+/// the whole 115-byte `HandleGameEvent` payload.
+const RECV_DUMP: usize = 128;
+/// `HandleGameEvent`s still to dump after the latest pickup this plugin sent.
+/// The first session of these diagnostics spent all of [`RECV_DEBUG_CAP`] on
+/// background events (142 a minute, none of them a grant) before the first
+/// gather, so the dump that matters is the one right after a send: the grant
+/// arrives a few ms after the forged event.
+static RECV_AFTER_SEND: AtomicU32 = AtomicU32::new(0);
+/// Events dumped per send.
+const RECV_AFTER_SEND_EACH: u32 = 4;
+/// `[recv] debug: after send` lines so far, and their ceiling per session.
+static RECV_AFTER_SEND_LOGGED: AtomicU32 = AtomicU32::new(0);
+const RECV_AFTER_SEND_CAP: u32 = 80;
+
+/// Arm the post-send dump; called on every successful send. Only until the
+/// first grant decodes: from then on the decoder is known to fit this build
+/// and the `[recv] item` lines say everything the dump would.
+fn arm_recv_dump() {
+    if LOG_RECEIVED.load(Ordering::Acquire) && RECV_PARSED.load(Ordering::Relaxed) == 0 {
+        RECV_AFTER_SEND.store(RECV_AFTER_SEND_EACH, Ordering::Relaxed);
+    }
+}
+
+fn rejected(why: RecvReject) -> &'static AtomicU64 {
+    match why {
+        RecvReject::Size => &RECV_REJ_SIZE,
+        RecvReject::Unreadable => &RECV_REJ_UNREADABLE,
+        RecvReject::Zeros => &RECV_REJ_ZEROS,
+        RecvReject::Kind => &RECV_REJ_KIND,
+        RecvReject::Range => &RECV_REJ_RANGE,
+    }
+}
+
+/// `[seen, parsed, size, unreadable, zeros, kind, range]`: what decides
+/// whether the stat line moved. `enqueue calls` moves every frame and is
+/// printed beside these, not compared.
+fn recv_counts() -> [u64; 7] {
+    let r = |a: &AtomicU64| a.load(Ordering::Relaxed);
+    [
+        r(&RECV_SEEN),
+        r(&RECV_PARSED),
+        r(&RECV_REJ_SIZE),
+        r(&RECV_REJ_UNREADABLE),
+        r(&RECV_REJ_ZEROS),
+        r(&RECV_REJ_KIND),
+        r(&RECV_REJ_RANGE),
+    ]
+}
+
+/// Log the `[recv] stat:` line when its counters moved since `last`, and
+/// with `LogReceived=1` once even when nothing was seen at all, since "no
+/// HandleGameEvent reached the enqueue hook" is itself the answer. Called by
+/// the harvest thread on the gatherer's summary cadence (60 s).
+pub fn log_recv_counters(last: &mut Option<[u64; 7]>) {
+    let now = recv_counts();
+    let [seen, parsed, size, unreadable, zeros, kind, range] = now;
+    let due = if seen > 0 { *last != Some(now) } else { last.is_none() && LOG_RECEIVED.load(Ordering::Acquire) };
+    if !due {
+        return;
+    }
+    *last = Some(now);
+    crate::log!(
+        "[recv] stat: enqueue calls {}, handle events seen {seen} (descriptor {}), parsed {parsed}, rejected size {size} / unreadable {unreadable} / tag {zeros} / kind {kind} / range {range}",
+        ENQUEUE_CALLS.load(Ordering::Relaxed),
+        if HANDLE_DESC.get().is_some() { "resolved" } else { "NOT resolved" }
+    );
+}
 
 pub fn set_log_received(on: bool) {
     LOG_RECEIVED.store(on, Ordering::Release);
@@ -562,28 +649,56 @@ fn note_received(item: u32, count: u32) {
     }
 }
 
+/// Read one `HandleGameEvent` as an item grant ([`decode_received`]),
+/// counting every one seen and every rejection by reason. Runs on game
+/// threads inside the enqueue hook: atomics only, no lock held across the
+/// `crate::log!` calls.
 fn watch_received(desc: usize, ev: usize) {
     if HANDLE_DESC.get().copied() != Some(desc) {
         return;
     }
+    RECV_SEEN.fetch_add(1, Ordering::Relaxed);
     let size: u16 = safe::read(ev + 0x68).unwrap_or(0);
-    if size < 40 {
-        return;
+    // Read up to `RECV_DUMP` of the bytes the event says it has, even when
+    // the size check below fails: a rejected payload is dumped raw.
+    let want = usize::from(size).min(RECV_DUMP);
+    let mut buf = [0u8; RECV_DUMP];
+    let read_ok = want > 0
+        && match (safe::read_ptr(ev + 0x70), buf.get_mut(..want)) {
+            (Some(at), Some(dst)) => safe::read_into(at, dst),
+            _ => false,
+        };
+    let bytes = if read_ok { buf.get(..want).unwrap_or(&[]) } else { &[] };
+    let take = |n: u32| n.checked_sub(1);
+    if RECV_AFTER_SEND.fetch_update(Ordering::Relaxed, Ordering::Relaxed, take).is_ok() {
+        let bump = |n: u32| (n < RECV_AFTER_SEND_CAP).then_some(n + 1);
+        if RECV_AFTER_SEND_LOGGED.fetch_update(Ordering::Relaxed, Ordering::Relaxed, bump).is_ok() {
+            let shown = if bytes.is_empty() { "(none read)".to_string() } else { hex(bytes) };
+            crate::log!("[recv] debug: after send, size={size} bytes: {shown}");
+        }
     }
-    let Some(buf) = safe::read_ptr(ev + 0x70) else { return };
-    let mut p = [0u8; 40];
-    if !safe::read_into(buf, &mut p) {
-        return;
-    }
-    if p[11..19].iter().any(|&b| b != 0) {
-        return;
-    }
-    let item = u32::from_le_bytes([p[19], p[20], p[21], p[22]]);
-    let kind = u32::from_le_bytes([p[23], p[24], p[25], p[26]]);
-    let count = u32::from_le_bytes([p[27], p[28], p[29], p[30]]);
-    if kind != 2 || item == 0 || count == 0 || count > 10_000 {
-        return;
-    }
+    let decoded = if usize::from(size) < crate::looter::payload::RECV_MIN_SIZE {
+        Err(RecvReject::Size)
+    } else if !read_ok {
+        Err(RecvReject::Unreadable)
+    } else {
+        decode_received(bytes)
+    };
+    let (item, count) = match decoded {
+        Ok(v) => v,
+        Err(why) => {
+            rejected(why).fetch_add(1, Ordering::Relaxed);
+            if LOG_RECEIVED.load(Ordering::Acquire) {
+                let bump = |n: u32| (n < RECV_DEBUG_CAP).then_some(n + 1);
+                if RECV_DEBUG_LOGGED.fetch_update(Ordering::Relaxed, Ordering::Relaxed, bump).is_ok() {
+                    let shown = if bytes.is_empty() { "(none read)".to_string() } else { hex(bytes) };
+                    crate::log!("[recv] debug: rejected ({}) size={size} bytes: {shown}", why.label());
+                }
+            }
+            return;
+        }
+    };
+    RECV_PARSED.fetch_add(1, Ordering::Relaxed);
     if LOG_RECEIVED.load(Ordering::Acquire) {
         let bump = |n: u32| (n < RECV_LOG_CAP).then_some(n + 1);
         if RECV_LOGGED.fetch_update(Ordering::Relaxed, Ordering::Relaxed, bump).is_ok() {
@@ -702,6 +817,7 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
         match unsafe { send_pickup(&r) } {
             Ok(ev) => {
                 SENT.fetch_add(1, Ordering::Relaxed);
+                arm_recv_dump();
                 if r.mode == PickupMode::Gather {
                     *LAST_SENT.lock().unwrap_or_else(|e| e.into_inner()) = Some((r.record, std::time::Instant::now()));
                 }
@@ -1127,6 +1243,7 @@ pub fn toggle_recording() -> bool {
 /// own four arguments. `ev` and `desc` are treated as untrusted addresses and
 /// read through `safe` only; nothing is written to game memory here.
 pub unsafe extern "system" fn on_enqueue(_queue: usize, ev: usize, desc: usize, flag: usize) {
+    ENQUEUE_CALLS.fetch_add(1, Ordering::Relaxed);
     watch_received(desc, ev);
     if !RECORDING.load(Ordering::Acquire) {
         return;

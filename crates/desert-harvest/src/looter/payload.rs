@@ -118,6 +118,82 @@ pub fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02X}")).collect::<Vec<_>>().join(" ")
 }
 
+/// The item-received event the yield learning and `[recv]` read
+/// (`TrocTrHandleGameEventOnceTimer`, 115 bytes on every build seen): for an
+/// item received, zeros at `11..19`, the item key `u32 @19`, a `2` at `23`
+/// and the count `u32 @27` (observed live on 25116796: copper chunk 720004
+/// x1, vein x10). Not re-observed on 26361232, which is what the
+/// [`RecvReject`] counters are for.
+pub const RECV_MIN_SIZE: usize = 40;
+/// `kind` of an item grant.
+pub const RECV_KIND_ITEM: u32 = 2;
+/// The largest count believed.
+pub const RECV_MAX_COUNT: u32 = 10_000;
+
+/// Why a `HandleGameEvent` payload was not read as an item grant, one per
+/// check in [`decode_received`]'s order, plus the two the caller makes
+/// before it (the event's size, and whether the payload buffer read).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecvReject {
+    /// The event's size is under [`RECV_MIN_SIZE`].
+    Size,
+    /// The payload pointer or its bytes would not read.
+    Unreadable,
+    /// A nonzero tag byte at `11`. Background `HandleGameEvent`s carry
+    /// `0x1A`, `0x1C` or `0x40` there; an item grant carries `0`. Through
+    /// 25477059 bytes `12..19` were zero as well, and the check covered them;
+    /// on 26361232 they hold a constant non-zero value on every grant
+    /// (`F4 BE 39 01 00 00 00` in the 2026-11-02 capture), so only the tag
+    /// is checked.
+    Zeros,
+    /// `u32 @23` is not [`RECV_KIND_ITEM`].
+    Kind,
+    /// Item 0, count 0 or a count over [`RECV_MAX_COUNT`].
+    Range,
+}
+
+impl RecvReject {
+    /// Every reason, in the `[recv] stat:` line's order.
+    pub const ALL: [Self; 5] = [Self::Size, Self::Unreadable, Self::Zeros, Self::Kind, Self::Range];
+
+    /// The word the log uses.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Size => "size",
+            Self::Unreadable => "unreadable",
+            Self::Zeros => "tag",
+            Self::Kind => "kind",
+            Self::Range => "range",
+        }
+    }
+}
+
+/// `(item key, count)` out of a `HandleGameEvent` payload's first bytes, or
+/// the first check it fails. Fewer than [`RECV_MIN_SIZE`] bytes is
+/// [`RecvReject::Size`].
+pub fn decode_received(p: &[u8]) -> Result<(u32, u32), RecvReject> {
+    if p.len() < RECV_MIN_SIZE {
+        return Err(RecvReject::Size);
+    }
+    let u32_at = |o: usize| -> Result<u32, RecvReject> {
+        p.get(o..o + 4)
+            .and_then(|b| b.try_into().ok())
+            .map(u32::from_le_bytes)
+            .ok_or(RecvReject::Size)
+    };
+    if p.get(11).is_none_or(|&tag| tag != 0) {
+        return Err(RecvReject::Zeros);
+    }
+    let (item, kind, count) = (u32_at(19)?, u32_at(23)?, u32_at(27)?);
+    if kind != RECV_KIND_ITEM {
+        return Err(RecvReject::Kind);
+    }
+    if item == 0 || count == 0 || count > RECV_MAX_COUNT {
+        return Err(RecvReject::Range);
+    }
+    Ok((item, count))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -184,6 +260,46 @@ mod tests {
     /// for the 13-byte payload must produce nothing at all, because a 13-byte
     /// dead-drop event carrying a mode byte and a tail word the handler never
     /// reads would be a wrong event pointed at a live actor.
+    /// The item-received payload as observed, and one payload per reason.
+    #[test]
+    fn received_payloads_decode_or_say_why_not() {
+        let mut p = [0u8; 115];
+        p[19..23].copy_from_slice(&720_004u32.to_le_bytes());
+        p[23..27].copy_from_slice(&RECV_KIND_ITEM.to_le_bytes());
+        p[27..31].copy_from_slice(&10u32.to_le_bytes());
+        assert_eq!(decode_received(&p), Ok((720_004, 10)));
+        assert_eq!(decode_received(&p[..40]), Ok((720_004, 10)));
+        assert_eq!(decode_received(&p[..39]), Err(RecvReject::Size));
+        assert_eq!(decode_received(&[]), Err(RecvReject::Size));
+        let mut z = p;
+        z[11] = 0x1C;
+        assert_eq!(decode_received(&z), Err(RecvReject::Zeros));
+        let mut k = p;
+        k[23] = 3;
+        assert_eq!(decode_received(&k), Err(RecvReject::Kind));
+        let mut r = p;
+        r[27..31].copy_from_slice(&(RECV_MAX_COUNT + 1).to_le_bytes());
+        assert_eq!(decode_received(&r), Err(RecvReject::Range));
+        r[27..31].copy_from_slice(&0u32.to_le_bytes());
+        assert_eq!(decode_received(&r), Err(RecvReject::Range));
+        let labels: Vec<&str> = RecvReject::ALL.iter().map(|r| r.label()).collect();
+        assert_eq!(labels, ["size", "unreadable", "tag", "kind", "range"]);
+    }
+
+    /// A peony gather's grant on 26361232 (2026-11-02, the first 40 bytes of
+    /// a `[recv] debug: after send` line): item 757006 (`0x0B8D0E`), kind 2,
+    /// count 3, with bytes `12..19` non-zero where older builds had zeros.
+    #[test]
+    fn a_26361232_grant_decodes() {
+        let hex = "09 08 FF F0 8C 8F 45 01 00 00 00 00 F4 BE 39 01 00 00 00 0E 8D 0B 00 02 00 00 00 03 00 00 00 00 00 00 00 03 03 0D 00 00";
+        let p: Vec<u8> = hex.split(' ').map(|b| u8::from_str_radix(b, 16).unwrap()).collect();
+        assert_eq!(decode_received(&p), Ok((757_006, 3)));
+        // A background event with tag 0x1C from the same capture.
+        let bg = "09 08 FF F0 8C 8F 45 01 00 00 00 1C 06 44 40 01 00 00 00 8A 57 0F 00 A4 43 0F 00 89 74 6C 86 01 00 00 00 D0 2D AB 3F BA";
+        let q: Vec<u8> = bg.split(' ').map(|b| u8::from_str_radix(b, 16).unwrap()).collect();
+        assert_eq!(decode_received(&q), Err(RecvReject::Zeros));
+    }
+
     #[test]
     fn pickup_payload_refuses_skin() {
         assert_eq!(pickup_payload(SKIN_ID_EXPECTED, 0xB030_21AF, PickupMode::Skin), None);
