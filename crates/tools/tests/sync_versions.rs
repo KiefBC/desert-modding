@@ -18,6 +18,9 @@ const CRATES: [(&str, &str); 5] = [
     ("desert-core", "0.7.0"),
 ];
 
+/// The game build the fixture's README and status card both name.
+const BUILD: &str = desert_tools::paths::CALIBRATED_BUILD;
+
 /// The smallest tree `sync-versions` will run against: the two markers
 /// `paths::repo_root` looks for, one manifest per crate, the docs it rewrites
 /// and the DMM pack.
@@ -54,7 +57,17 @@ fn fixture(root: &Path) {
     );
     write(
         "crates/desert-tooling/README.md",
-        "# Desert Tooling\n\n**Version 0.6.0**, for the game.\n",
+        &format!("# Desert Tooling\n\n**Version 0.6.0**, for the game, Steam build **{BUILD}**.\n"),
+    );
+    // The live status card: its build is checked against the README line above
+    // and paths::CALIBRATED_BUILD.
+    write(
+        "mod-status.toml",
+        &format!(
+            "[source]\nkind = \"steam\"\napp_id = 3321460\n\n\
+             [[mod]]\nkey = \"desert-tooling\"\nlabel = \"Desert Tooling\"\n\
+             build = \"{BUILD}\"\ndate = \"2026-11-01\"\n"
+        ),
     );
     write(
         "crates/desert-tooling/CHANGELOG.md",
@@ -244,4 +257,26 @@ fn a_manifest_with_no_package_version_is_named() {
     assert_eq!(out.status.code(), Some(1));
     assert!(stderr(&out).contains("sync-versions: no package version in"));
     assert!(stderr(&out).contains("crates/desert-core/Cargo.toml"));
+}
+
+#[test]
+fn a_status_card_on_another_build_fails_in_both_modes() {
+    // A re-target that moves the README and the code but forgets the card:
+    // checked, never written, so `--check` and the rewrite both exit 1.
+    let dir = tempfile::tempdir().unwrap();
+    fixture(dir.path());
+    let card = dir.path().join("mod-status.toml");
+    let before = std::fs::read_to_string(&card).unwrap();
+    std::fs::write(&card, before.replace(BUILD, "1")).unwrap();
+
+    for args in [&["--check"][..], &[][..]] {
+        let out = run(dir.path(), args);
+        assert_eq!(out.status.code(), Some(1), "{args:?}: {}", stderr(&out));
+        assert!(
+            stderr(&out).contains("the `desert-tooling` card says build 1"),
+            "{}",
+            stderr(&out)
+        );
+    }
+    assert_eq!(std::fs::read_to_string(&card).unwrap(), before.replace(BUILD, "1"));
 }
