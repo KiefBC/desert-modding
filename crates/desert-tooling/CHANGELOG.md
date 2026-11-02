@@ -9,6 +9,43 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.10.1] - 2026-11-02
+
+Game build 26361232, the same build as 0.10.0. Fixes for the auto-loot half of Desert Harvest,
+which 26361232 had broken without a word, all verified in game on 2026-11-02. Nothing changes in
+the ini.
+
+### Fixed
+
+- **Auto-loot finds gather nodes and ground items again.** 26361232 moved where a loaded
+  gimmickinfo record keeps its key, name and output list, and the looter still read the old
+  places: every node got a wrong key and no name, so every gather node and ground item was passed
+  over and auto mode said nothing (F9 answered `no Gather node within 6.0 m`). The looter now picks
+  the layout from the loaded records, as the yield half already did, and finds the name by matching
+  the names it knows. Both are logged once: `[yield] parsed layout: key +0x10, list +0x128 -> ...`
+  and `[yield] record name at **(rec+0x8)`. When nodes in range are skipped because their record
+  will not read, the auto line now says how many instead of staying quiet.
+- **Item names and the full-bag check work again.** Item records moved the same way: the bag
+  survey printed every stack as `? key=<number>`, and the full-bag check, which decides whether a
+  pickup can stack onto what you carry, could never find a stack. The layout is now found from the
+  item ids the gather records pay out and logged once, `[item] record layout: key +0x8, name
+  **(rec+0x0)`.
+- **`LogReceived=1` prints `[recv] item <key> x<count>` again, and yields are learned again.** The
+  game's item-received event gained a non-zero field on 26361232, so every one was rejected. Only
+  the event's tag byte is checked now. A `[recv] stat: ...` line in the 60 s summary counts what
+  was seen, parsed and rejected.
+- **Auto-gather catches every insect in reach, not only some.** It also required a status byte to
+  read 0, a leftover of the first catch rule; on 26361232 live insects read `0x3C` or `0xD3` there,
+  so most were passed over while the same insects caught by hand were multiplied. The bug and fish
+  classes decide alone now; dead creatures stay out through the dead flag, as before.
+- **The Rice Fish is a fish.** It carries the insects' class `0x80`, so it was taken under
+  `GatherBugs` and multiplied by `Bugs`. The plugin now reads the species names from the
+  `characterinfo` table once it has loaded and treats a class-`0x80` creature named
+  `Animal_...Fish...` (not `Animal_Insect_...`) as a fish, under `GatherFish` and `Fish`. Names, not
+  row numbers, because rows move between game builds. Logged as `[species] record name at ...`,
+  `[species] fish set: N rows (...)` and `[species] row N = <name>`; the F11 survey prints each
+  creature's species name.
+
 ## [0.10.0] - 2026-11-01
 
 Game build 26361232. Re-targeted on 26345091 and re-pinned to the 26356046 and then the 26361232
@@ -78,31 +115,6 @@ to what you set is a PATCH, and a PATCH before the untagged MINOR it follows fol
   prints where it looked (the path from a record to its item, and hex windows of the record, an
   entry and a block), which is how the 26361232 layout was read. The multiplier applied at launch
   was never affected.
-- **Auto-loot finds gather nodes and ground items again on 26361232.** The looter read the
-  parsed gimmick records through the old layout too, so every node got a wrong key and no name:
-  no node had a family, every gather node and ground item was passed over, and auto mode said
-  nothing. It now picks the layout the same way the yield half does, from the two it knows,
-  checked against the loaded records' gather keys and output lists (three must agree), and finds
-  where the record keeps its name by matching the names it knows. Both are logged once:
-  `[yield] parsed layout: key +0x10, list +0x128 -> +0x0, ...` and `[yield] record name at
-  **(rec+0x..)`; if either cannot be found, one `[yield] WARN ...` line says so (without a name,
-  ground items cannot be classified). And the silent case is not silent any more: when nodes in
-  range are skipped because their record would not read, the "nothing to gather" line says how
-  many (`(N with an unreadable gimmick record)`), and auto mode prints it every 30 s even with
-  nothing on cooldown. Nothing changes in the ini.
-- **Item records are read through a probed layout too, and `[recv]` says why it is silent.** On
-  26361232 the bag survey printed every stack as `? key=313907456`: the looter read `iteminfo`
-  records at their old offsets (`u32` key at `+0`, name `**(rec+0x08)`). It now picks the key
-  offset where several item ids the loaded gather records pay out are found, unique over the
-  table, and the name place most records read an identifier from (the money record,
-  `Money_Copper`, settles a tie), and logs `[item] record layout: key +0x.., name **(rec+0x..)`
-  once, or one `[item] WARN ...` and the old reading. That is what the full-bag check, the bag
-  survey's names and the `[skin]` lines' names read through. The survey's `tab=` is still read at
-  the old `+0x428` and says it is unverified. `LogReceived=1` produced no `[recv]` line on
-  26361232; the 60 s summary now carries `[recv] stat: enqueue calls N, handle events seen N
-  (descriptor resolved), parsed N, rejected size N / unreadable N / zeros N / kind N / range N`
-  (once even at zero with `LogReceived=1`), and the first 8 rejected payloads are logged raw as
-  `[recv] debug: rejected (<reason>) size=.. bytes: ..`. Nothing changes in the ini.
 - Re-derived: `alloc_event`, `enqueue`, `own_check_site`, `loot_grant` and `category fn`, so the
   log still says `[sig] 9 found, 0 missing`. The `enqueue` and `loot_grant` hooks now steal 15
   bytes (were 14 and 13), the first safe boundary on the new code.
@@ -191,14 +203,6 @@ is taken away; nothing you had set is lost.
 
 ### Fixed
 
-- **The Rice Fish is a fish, told apart by its species name** (untested in game). It reads the
-  insects' class `0x80` on type 06, so it was taken under `GatherBugs` and multiplied by `Bugs`.
-  The plugin now reads the `characterinfo` species table's names once loaded and treats a class-`0x80`
-  type-06 creature whose species name contains `fish` as a fish, under `GatherFish` and `Fish`;
-  nothing else changes class. Names, not rows, because rows move between game builds. The log
-  shows `[species] record name at ...`, `[species] fish set: N rows (...)` and `[species] row N =
-  <name>` for the species seen so far; the F11 survey prints `species=<name>` beside `chr=`, and
-  the `Debug=1` catch line `fish-species=0/1`.
 - **A live land animal of fish class `0x23` is no longer taken for a fish.** The class byte is
   not a species: on 25477059 a type-06 fish (item 29805, species row 4000) and a type-03 land
   animal (species row 3458) both read `0x23`, and a class-`0x23` carcass paid Animal_Bone, Meat_II
@@ -230,6 +234,8 @@ is taken away; nothing you had set is lost.
 
 ### Known
 
+- **The Rice Fish is caught as a bug.** It reads the insect class `0x80` on type 06, the same pair
+  as the insects, so `GatherBugs` and `Bugs` take and multiply it, not `GatherFish` and `Fish`.
 - **A fish class is still not a species.** The type-06 class-`0x44` carcass of 25246367 above
   means the type may not separate a fish from a bird on that class the way it does for `0x23`.
 
