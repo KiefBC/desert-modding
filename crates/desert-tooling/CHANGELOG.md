@@ -11,6 +11,19 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
 ## [0.16.0] - 2026-11-03
 
+**Since 0.11.0, the last tagged release, this also carries 0.12.0, 0.13.0, 0.14.0 and 0.15.0**,
+which were never released on their own; their full entries are below and in the CHANGELOG inside
+the zip:
+
+- **0.12.0**: catches are classified by species from the game's own records, so raccoons and ducks
+  are never multiplied, and a new `Critters` multiplier covers small animals caught by hand.
+- **0.13.0**: F9 searches the bodies of dead people (`GatherBodies`, `GatherFriendlyBodies`), and
+  dead bandits are no longer mistaken for animal carcasses.
+- **0.14.0**: the hostile/friendly split for bodies follows the game's ally groups, so named NPCs
+  are never searched as hostile bodies.
+- **0.15.0**: `Pouches` and `Breakables` multiply what opened pouches and boxes, and smashed
+  barrels, crates, pots and sacks, pay.
+
 Game build 26361232. **Seen working in game 2026-11-03**: at `LootLogMinTier=0` a Zebra
 Swallowtail and a Peony got their lines; at 1 a Peony (tier 0) was hidden; copper (item type 32)
 showed with `LootLogMoney=1` and was hidden with 0. `LootLogQuest` has **not been seen in game
