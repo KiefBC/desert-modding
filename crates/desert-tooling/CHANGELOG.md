@@ -14,7 +14,9 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 Game build 26361232, the same build as 0.11.0. Which creatures count as a bag catch is now read
 off the game's own species records instead of guessed from a class byte and a name, which fixes
 raccoons and ducks, and a new `Critters` family covers the small animals that were never
-multiplied. Not yet verified in game.
+multiplied. Verified in game on 2026-11-03: bugs, fish (the Rice Fish as a fish), critters (birds, a
+chameleon, a Heloderma lizard, moles, a baby hedgehog) all multiplied and auto-caught; raccoons
+and ducks left alone. Lobster and Sea Slater were not caught that session.
 
 ### Added
 
