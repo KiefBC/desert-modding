@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.14.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.15.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -474,6 +474,8 @@ turning you away.
 | `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
 | `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243, the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
 | `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |
+| `Pouches` | `1` | multiply what an item pays when you open it, 1..100: the silver pouches, Box of Fortune, seed packs, recipe and gear boxes (88 drop-table rows no other source pays from). Not `[Harvest] Money`, which is the coin piles in the world; the two do not stack. The first pouch of a kind opened in a session may pay vanilla while the game loads its row |
+| `Breakables` | `1` | multiply the loot of barrels, crates, pots and sacks you smash, 1..100 (15 drop-table rows no other source pays from, so a chest sharing a barrel's table stays vanilla). The first of a kind smashed in a session may pay vanilla |
 | `LogRecords` | `1` | `1` = one line per mission in the log |
 | `MaxLines` | `4000` | ceiling on the lines one pass writes, 0..20000. The summaries are never capped, and hitting it never stops a change being made |
 | `DryRun` | `0` | `1` = log every change that would be made and write nothing |
@@ -484,7 +486,11 @@ turning you away.
 
 A change takes effect within about a second. Only the 219 reward rows dispatch
 missions actually name are touched, never the game's wider drop table, so this
-does not become a loot multiplier for chests and carcasses. No game code is
+does not become a loot multiplier for chests and carcasses. `Pouches` and
+`Breakables` are the two exceptions, by design and by a fixed list: the rows
+`just gen-dropsets` picked out of the game's tables because nothing but a pouch
+or a breakable pays from them, each checked against that list (key, entry count
+and vanilla amounts) before a byte of it is written. No game code is
 patched and no hook is installed: the plugin edits five fields of the tables the
 game has already read (four settings, five fields: `Rewards` writes both ends of
 a min/max pair), on its own thread, and remembers what each one said first so it

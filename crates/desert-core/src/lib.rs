@@ -23,6 +23,7 @@ pub const LOG_TAG: &str = "core";
 pub mod collect;
 pub mod container_table;
 pub mod creature;
+pub mod dropset_table;
 pub mod gimmick;
 pub mod ini;
 pub mod log;

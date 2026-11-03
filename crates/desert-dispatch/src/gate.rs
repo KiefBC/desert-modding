@@ -52,19 +52,27 @@
 
 use crate::config::Levers;
 
+/// What a gate's lever set has to answer: whether it asks for nothing at all,
+/// which is what makes a pass a revert. [`Levers`] for the mission and reward
+/// passes, `config::DropLevers` for the dropset-row pass, so moving one
+/// section's levers does not re-run the other passes.
+pub trait LeverSet: Copy + PartialEq {
+    fn is_vanilla(&self) -> bool;
+}
+
 /// What a finished pass is remembered by.
 ///
 /// All three fields are the key. `loaded` is this subsystem's own record count,
 /// `levers` its own section of the ini, and `dry` the one setting that decides
 /// whether a pass means anything at all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Memo {
+pub struct Memo<L = Levers> {
     /// Records (or reward rows) the game had parsed when the pass ran.
     pub loaded: usize,
     /// `DryRun` as it was for that pass.
     pub dry: bool,
     /// The levers that pass ran with.
-    pub levers: Levers,
+    pub levers: L,
 }
 
 /// What a pass did, as far as the gate is concerned.
@@ -89,13 +97,19 @@ impl Outcome {
 
 /// The memo for one apply pass - one for the missions, one for the reward rows,
 /// because those load on completely different schedules.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct Gate {
-    memo: Option<Memo>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Gate<L = Levers> {
+    memo: Option<Memo<L>>,
     dirty: bool,
 }
 
-impl Gate {
+impl<L: LeverSet> Default for Gate<L> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<L: LeverSet> Gate<L> {
     /// A gate that has never seen a pass.
     pub const fn new() -> Self {
         Gate { memo: None, dirty: false }
@@ -103,7 +117,7 @@ impl Gate {
 
     /// True when a pass is owed: nothing has been memoised, or something in the
     /// key has moved since it was.
-    pub fn owed(&self, loaded: usize, dry: bool, lev: &Levers) -> bool {
+    pub fn owed(&self, loaded: usize, dry: bool, lev: &L) -> bool {
         self.memo != Some(Memo { loaded, dry, levers: *lev })
     }
 
@@ -113,7 +127,7 @@ impl Gate {
     /// leaving the old one in place: a stale memo would match again the moment
     /// the levers happened to come back to what it holds, and early-return over
     /// a table that pass had only half written.
-    pub fn record(&mut self, loaded: usize, dry: bool, lev: Levers, outcome: Outcome) {
+    pub fn record(&mut self, loaded: usize, dry: bool, lev: L, outcome: Outcome) {
         self.memo =
             if outcome.clean { Some(Memo { loaded, dry, levers: lev }) } else { None };
         if dry {
@@ -140,7 +154,7 @@ impl Gate {
 
     /// What the last clean pass was memoised as, for tests and for a caller
     /// that wants to log it.
-    pub fn memo(&self) -> Option<Memo> {
+    pub fn memo(&self) -> Option<Memo<L>> {
         self.memo
     }
 }

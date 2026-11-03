@@ -7,9 +7,10 @@
 //! archives (`desert_tools::paz`, `paths::game_dir`) or a directory of
 //! extracted copies (`--tables`, what `just extract-tables` writes into
 //! `analysis/tables/`). Each gimmick record is walked from its key through its
-//! tag list (`walk`, a port of the first part of `analysis/gimmick_tail.py`'s
-//! `walk()`), and each interaction's `checkLootableField` read off its head
-//! (`gimmick_tail.py` `interaction_flags()`).
+//! tag list (`desert_tools::gimmick_walk::gimmick`, a port of the first part
+//! of `analysis/gimmick_tail.py`'s `walk()`), and each interaction's
+//! `checkLootableField` read off its head (`gimmick_tail.py`
+//! `interaction_flags()`).
 //!
 //! All or nothing: every `interactioninfo` record must pass its head check,
 //! every `gimmickinfo` record must walk to its tags with the checks `walk`
@@ -37,8 +38,6 @@
 
 #[path = "gen-containers/render.rs"]
 mod render;
-#[path = "gen-containers/walk.rs"]
-mod walk;
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -47,6 +46,7 @@ use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
 use clap::Parser;
+use desert_tools::gimmick_walk as walk;
 use desert_tools::paths;
 use desert_tools::paz::Archive;
 use desert_tools::staticinfo::{self, Table};

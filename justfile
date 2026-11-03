@@ -234,6 +234,16 @@ gen-species *args: tools
 gen-containers *args: tools
     {{tools_bin}}/gen-containers "$@"
 
+# Regenerate crates/desert-core/src/dropset_table.rs (the dropsetinfo rows the
+# [Dispatch] Pouches and Breakables levers multiply, with every row another
+# source also pays from refused) from the game's dropsetinfo, gimmickinfo,
+# interactioninfo, breakableobjectinfo, itemuseinfo, iteminfo, multichangeinfo,
+# missioninfo and factionnode. `--tables DIR` reads extracted copies instead of
+# the archives.
+[positional-arguments]
+gen-dropsets *args: tools
+    {{tools_bin}}/gen-dropsets "$@"
+
 # Regenerate desert-gatherer-dmm/ from the game's gimmickinfo and collect.rs. `--dry-run` writes nothing.
 [positional-arguments]
 dmm-pack *args: tools

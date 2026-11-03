@@ -13,6 +13,11 @@
 //! | `dropset entry + 0x20` | `i64` | `Rewards` - the amount minimum |
 //! | `dropset entry + 0x28` | `i64` | `Rewards` - the amount maximum |
 //!
+//! `Pouches` and `Breakables` ([`dropset_levers`]) write the same two
+//! `dropset entry` fields as `Rewards`, through the same [`apply_entry`] and so
+//! the same `Ctx::put` call sites, on the rows of `desert_core::dropset_table`
+//! instead of the missions' rows - and only on item (kind 0) entries.
+//!
 //! Every one of them is a field of a **parsed static-info record**. Those
 //! records are re-parsed from disk on every launch and are **never serialised**
 //! (`docs/reference-internals.md` section 20.18), so removing the plugin
@@ -107,13 +112,14 @@
 
 use std::collections::BTreeSet;
 
-use crate::config::Levers;
+use crate::config::{DropLevers, Levers};
 use crate::gate::Outcome;
 use crate::node::parsed::dropset;
 use crate::node::{self, parsed};
 use crate::remember::{self, Mission, Reward};
 use crate::{manager, safe};
 use crate::scan::{dropset_manager, Budget};
+use desert_core::dropset_table::{self, RowGroup};
 
 /// What a pass is doing, for the tag at the front of its log lines.
 ///
@@ -803,8 +809,11 @@ fn weights_agree(obj: usize, entries: &[(usize, node::DropsetEntry)]) -> bool {
 
 /// The vanilla amounts for one entry, remembering this reading if it is the
 /// first sight of it. Same first-sight rule as [`mission_vanilla`].
-fn reward_vanilla(now: Reward, c: &mut RewardCounts) -> Option<Reward> {
-    if let Some(v) = remember::rewards().get(now.row, now.index) {
+///
+/// `table` is [`remember::rewards`] for the dispatch rows and
+/// [`remember::drops`] for the dropset levers' rows.
+fn reward_vanilla(table: &remember::Rewards, now: Reward, c: &mut RewardCounts) -> Option<Reward> {
+    if let Some(v) = table.get(now.row, now.index) {
         return Some(v);
     }
     if !node::vanilla_reward_in_band(now) {
@@ -812,7 +821,7 @@ fn reward_vanilla(now: Reward, c: &mut RewardCounts) -> Option<Reward> {
         c.skip_range += 1;
         return None;
     }
-    match remember::rewards().remember(now) {
+    match table.remember(now) {
         Some(v) => Some(v),
         None => {
             c.skipped += 1;
@@ -822,8 +831,17 @@ fn reward_vanilla(now: Reward, c: &mut RewardCounts) -> Option<Reward> {
     }
 }
 
-/// Apply the `Rewards` lever to one entry of one row.
-fn apply_entry(row: u16, at: usize, e: &node::DropsetEntry, ctx: &mut Ctx, c: &mut RewardCounts) {
+/// Apply the `Rewards` lever to one entry of one row (or a dropset lever's
+/// factor, which [`dropset_levers`] hands in as `ctx.lev.rewards`), keeping
+/// the vanilla in `table`.
+fn apply_entry(
+    table: &remember::Rewards,
+    row: u16,
+    at: usize,
+    e: &node::DropsetEntry,
+    ctx: &mut Ctx,
+    c: &mut RewardCounts,
+) {
     // Not an item drop: 34 of 725 vanilla entries, exactly the ones paying `0`
     // and exactly the ones whose `+0x38` is too wide for an item row. Scaling
     // zero is harmless; reading them as items is not.
@@ -843,7 +861,7 @@ fn apply_entry(row: u16, at: usize, e: &node::DropsetEntry, ctx: &mut Ctx, c: &m
         amount_max: e.amount_max,
         item_row: e.item_row,
     };
-    let Some(van) = reward_vanilla(now, c) else { return };
+    let Some(van) = reward_vanilla(table, now, c) else { return };
 
     // What the lever asks for, decided by [`node::plan_entry`] over plain
     // values. The item-row check, the `kind == 13` skip and the `derived_amount`
@@ -1001,7 +1019,295 @@ pub fn rewards(
                 c.skip_shared += 1;
                 continue;
             }
-            apply_entry(row, *at, e, &mut ctx, &mut c);
+            apply_entry(remember::rewards(), row, *at, e, &mut ctx, &mut c);
+        }
+    }
+    c
+}
+
+// ---------------------------------------------------------------------------
+// The dropset levers: `Pouches` and `Breakables`
+// ---------------------------------------------------------------------------
+
+/// What one dropset-lever pass did. Row counters here, entry counters in
+/// [`Self::e`], which is a [`RewardCounts`] because every entry goes through
+/// the reward write path's own [`apply_entry`] and counts the same way.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct DropCounts {
+    /// Rows of each group in `desert_core::dropset_table`.
+    pub pouch_rows: usize,
+    pub breakable_rows: usize,
+    /// Of those, rows read, identified and walked.
+    pub pouch_walked: usize,
+    pub breakable_walked: usize,
+    /// Rows the game has not parsed yet. Normal: rows load when something
+    /// first pays from them.
+    pub rows_null: usize,
+    /// A guarded read of the manager, a row or its entries failed.
+    pub skip_read: usize,
+    /// The row's record index is past the end of the table.
+    pub skip_row_index: usize,
+    /// The row declared an entry count no row the write path accepts has.
+    pub skip_shape: usize,
+    /// The row's entry weights did not sum to its `+0x38`.
+    pub skip_weights: usize,
+    /// The parsed key at `+0x08` is not the table's key for that index.
+    pub refused_key: usize,
+    /// The parsed entry count is not the table's.
+    pub refused_entries: usize,
+    /// The vanilla item amounts do not add up to the table's sum, or could
+    /// not be remembered.
+    pub refused_amounts: usize,
+    /// Rows a dispatch mission also names. The generator refuses every row a
+    /// dispatch operation pays from, so this is a second lock that should
+    /// never turn.
+    pub shared_dispatch: usize,
+    /// Per-entry counters, as the reward pass keeps them.
+    pub e: RewardCounts,
+}
+
+impl DropCounts {
+    /// What [`crate::gate`] needs: only a refused write is transient.
+    pub fn outcome(&self) -> Outcome {
+        Outcome { clean: self.e.skip_write == 0, wrote: self.e.fields }
+    }
+
+    /// The one line a pass logs:
+    /// `dropset levers: pouches N rows, breakables N rows, written N (...)`.
+    pub fn summary(&self, lev: &DropLevers, dry: bool) -> String {
+        let t = if dry {
+            "[dry]"
+        } else if lev.is_vanilla() {
+            "[revert]"
+        } else {
+            "[apply]"
+        };
+        let what = if lev.is_vanilla() { "back to vanilla".to_string() } else { lev.summary() };
+        let written = if dry {
+            format!("written 0 ({} amounts would be written)", self.e.fields)
+        } else {
+            format!("written {}", self.e.fields)
+        };
+        format!(
+            "dropset levers: pouches {} rows, breakables {} rows, {written} ({t} {what}; {} + {} rows \
+             in the table, {} not loaded yet; {} entries changed, {} unchanged, {} not items)",
+            self.pouch_walked,
+            self.breakable_walked,
+            self.pouch_rows,
+            self.breakable_rows,
+            self.rows_null,
+            self.e.changed,
+            self.e.unchanged,
+            self.e.not_item_drops,
+        )
+    }
+
+    /// The reasons anything was refused or skipped, or `None` when nothing
+    /// was. Rows not loaded yet are not a reason.
+    pub fn warning(&self) -> Option<String> {
+        let mut why: Vec<String> = Vec::new();
+        for (n, name) in [
+            (self.refused_key, "key at +0x08 is not the table's"),
+            (self.refused_entries, "entry count is not the table's"),
+            (self.refused_amounts, "vanilla item amounts are not the table's"),
+            (self.shared_dispatch, "row is also a dispatch reward row"),
+            (self.skip_row_index, "record index past the table"),
+            (self.skip_read, "unreadable"),
+            (self.skip_shape, "impossible entry count"),
+            (self.skip_weights, "weight sum mismatch"),
+            (self.e.skip_range, "vanilla amount out of band"),
+            (self.e.skip_no_room, "remember table full"),
+            (self.e.skip_item, "item row mismatch"),
+            (self.e.skip_foreign, "amount is not ours to write"),
+            (self.e.skip_write, "write refused"),
+            (self.e.skip_shared, "entry shared with another row"),
+            (self.e.skip_shape, "entry index too wide"),
+        ] {
+            if n > 0 {
+                why.push(format!("{name} {n}"));
+            }
+        }
+        if why.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "dropset levers left rows or entries alone ({}); the table was generated on build {} and \
+             a row that does not match it is never written - after a game update, rerun \
+             `just gen-dropsets`",
+            why.join(", "),
+            dropset_table::BUILD
+        ))
+    }
+}
+
+/// The `Pouches` and `Breakables` levers over the rows of
+/// `desert_core::dropset_table`, through the reward write path.
+///
+/// **The row set is the generated table and nothing else**, the same rule the
+/// `Rewards` pass keeps for its mission rows: `dropsetinfo` is the game-wide
+/// drop table, and `gen-dropsets` has already refused every row another
+/// source pays from. What this pass adds is the check that the parsed row at
+/// a table row's record index *is* that row before a byte is written:
+///
+/// 1. the row is not one a dispatch mission names (`dispatch_rows`, every row
+///    the mission walk has seen): a second lock behind the generator's;
+/// 2. its key at [`dropset::REC_KEY`] is the table's;
+/// 3. its declared entry count is the table's, and the entry weights still
+///    sum to `+0x38` (the reward pass's own check);
+/// 4. `sum(min + max)` over its item entries, **as remembered on first
+///    sight**, is the table's: the amount and kind offsets hold.
+///
+/// Then each item (kind 0) entry goes through [`apply_entry`] with the
+/// group's factor as the `Rewards` of a [`Levers`], so the plan, the
+/// `derived_amount` guard, the write order and the `Ctx::put` funnel are the
+/// reward pass's own - this adds no write site. An entry object a dispatch
+/// row also holds, or one already written this pass, is skipped.
+pub fn dropset_levers(
+    slot: usize,
+    dispatch_rows: &[u16],
+    lev: &DropLevers,
+    dry: bool,
+    debug: bool,
+    budget: &mut Budget,
+) -> DropCounts {
+    let mut c = DropCounts::default();
+    for r in dropset_table::ROWS {
+        match r.group {
+            RowGroup::Pouch => c.pouch_rows += 1,
+            RowGroup::Breakable => c.breakable_rows += 1,
+        }
+    }
+    let Some((count, records)) = dropset_manager(slot) else {
+        c.skip_read = dropset_table::ROWS.len();
+        return c;
+    };
+    // The entry objects of every loaded dispatch row: an object one of those
+    // rows holds is never written here, whatever row it is reached through.
+    let dispatch: BTreeSet<u16> = dispatch_rows.iter().copied().collect();
+    let mut taken: BTreeSet<usize> = BTreeSet::new();
+    for &row in dispatch_rows.iter().take(node::MAX_DROP_ROWS) {
+        let idx = usize::from(row);
+        if idx >= count {
+            continue;
+        }
+        if let manager::Slot::Loaded(obj) = manager::slot(records, idx) {
+            if let Ok(entries) = read_row(obj) {
+                taken.extend(entries.iter().map(|(at, _)| *at));
+            }
+        }
+    }
+    let mut written: BTreeSet<usize> = BTreeSet::new();
+    let table = remember::drops();
+
+    for row in dropset_table::ROWS {
+        if dispatch.contains(&row.index) {
+            c.shared_dispatch += 1;
+            continue;
+        }
+        let idx = usize::from(row.index);
+        if idx >= count {
+            c.skip_row_index += 1;
+            continue;
+        }
+        let obj = match manager::slot(records, idx) {
+            manager::Slot::Loaded(p) => p,
+            manager::Slot::Empty => {
+                c.rows_null += 1;
+                continue;
+            }
+            manager::Slot::Unreadable => {
+                c.skip_read += 1;
+                continue;
+            }
+        };
+        let Some(key) = safe::read::<u32>(obj + dropset::REC_KEY) else {
+            c.skip_read += 1;
+            continue;
+        };
+        // The key first, before a single entry is read or remembered.
+        if key != row.key {
+            c.refused_key += 1;
+            continue;
+        }
+        let entries = match read_row(obj) {
+            Ok(e) => e,
+            Err(RowError::Unreadable) => {
+                c.skip_read += 1;
+                continue;
+            }
+            Err(RowError::Shape) => {
+                c.skip_shape += 1;
+                continue;
+            }
+        };
+        // The count before anything is remembered, too.
+        if entries.len() != usize::from(row.entries) {
+            c.refused_entries += 1;
+            continue;
+        }
+        if !weights_agree(obj, &entries) {
+            c.skip_weights += 1;
+            continue;
+        }
+        let mut sum: i64 = 0;
+        let mut known = true;
+        for (_, e) in entries.iter().filter(|(_, e)| e.kind == dropset::ENTRY_KIND_ITEM) {
+            let Ok(index) = u16::try_from(e.index) else {
+                known = false;
+                break;
+            };
+            let now = Reward {
+                row: row.index,
+                index,
+                amount_min: e.amount_min,
+                amount_max: e.amount_max,
+                item_row: e.item_row,
+            };
+            match reward_vanilla(table, now, &mut c.e) {
+                Some(v) => sum = sum.saturating_add(v.amount_min).saturating_add(v.amount_max),
+                None => {
+                    known = false;
+                    break;
+                }
+            }
+        }
+        if !known {
+            c.refused_amounts += 1;
+            continue;
+        }
+        match node::check_drop_row(row, key, entries.len(), sum) {
+            Ok(()) => {}
+            Err(node::DropRowRefusal::Key) => {
+                c.refused_key += 1;
+                continue;
+            }
+            Err(node::DropRowRefusal::Entries) => {
+                c.refused_entries += 1;
+                continue;
+            }
+            Err(node::DropRowRefusal::Amounts) => {
+                c.refused_amounts += 1;
+                continue;
+            }
+        }
+        match row.group {
+            RowGroup::Pouch => c.pouch_walked += 1,
+            RowGroup::Breakable => c.breakable_walked += 1,
+        }
+        let group_lev = lev.as_levers(row.group);
+        let mut ctx = Ctx { lev: &group_lev, dry, debug, budget: &mut *budget };
+        for (at, e) in &entries {
+            c.e.visited += 1;
+            if e.kind != dropset::ENTRY_KIND_ITEM {
+                c.e.not_item_drops += 1;
+                continue;
+            }
+            if taken.contains(at) || !written.insert(*at) {
+                c.e.skipped += 1;
+                c.e.skip_shared += 1;
+                continue;
+            }
+            apply_entry(table, row.index, *at, e, &mut ctx, &mut c.e);
         }
     }
     c
@@ -1239,4 +1545,41 @@ mod tests {
         assert!(w.contains("entry shared by another row 1"), "{w}");
     }
 
+
+    /// The dropset-lever line starts with the words the README tells a tester
+    /// to grep for, and a dry pass never claims a write.
+    #[test]
+    fn the_dropset_line_names_both_groups_and_what_was_written() {
+        let c = DropCounts {
+            pouch_rows: 88,
+            breakable_rows: 15,
+            pouch_walked: 5,
+            breakable_walked: 2,
+            rows_null: 96,
+            e: RewardCounts { changed: 20, fields: 40, ..RewardCounts::default() },
+            ..DropCounts::default()
+        };
+        let lev = DropLevers { pouches: 3, breakables: 2 };
+        let line = c.summary(&lev, false);
+        assert!(line.starts_with("dropset levers: pouches 5 rows, breakables 2 rows, written 40 ("), "{line}");
+        assert!(line.contains("[apply] Pouches=3 Breakables=2"), "{line}");
+        assert!(line.contains("96 not loaded yet"), "{line}");
+        let dry = c.summary(&lev, true);
+        assert!(dry.contains("written 0 (40 amounts would be written)"), "{dry}");
+        assert!(c.summary(&DropLevers::VANILLA, false).contains("[revert] back to vanilla"));
+        assert_eq!(c.warning(), None, "rows not loaded yet are not a warning");
+    }
+
+    #[test]
+    fn a_refused_dropset_row_is_named_in_the_warning() {
+        let c = DropCounts { refused_key: 2, shared_dispatch: 1, ..DropCounts::default() };
+        let w = c.warning().unwrap_or_default();
+        assert!(w.contains("key at +0x08 is not the table's 2"), "{w}");
+        assert!(w.contains("row is also a dispatch reward row 1"), "{w}");
+        assert!(w.contains("just gen-dropsets"), "{w}");
+        // A refused write is the one transient failure.
+        let c = DropCounts { e: RewardCounts { skip_write: 1, fields: 3, ..RewardCounts::default() }, ..DropCounts::default() };
+        assert!(!c.outcome().clean);
+        assert_eq!(c.outcome().wrote, 3);
+    }
 }

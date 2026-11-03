@@ -9,6 +9,43 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.15.0] - 2026-11-03
+
+Game build 26361232. **`Pouches` seen working in game 2026-11-03**: at `Pouches=10` a Light Copper
+Pouch paid 200 copper (vanilla 10..30), a Paltry Copper Pouch 21 (vanilla 1..10) and a Modest Silver
+Pouch 1394 (vanilla 100..500); back at 1 the log said `[revert] back to vanilla` and a Modest Silver
+Pouch paid 207. All 103 rows passed the key check at `+0x08`, with no refusal. That a pouch paid
+1394, not a flat 1000, also shows that pouches pay through the roller (min..max). **`Breakables`
+has not been tried in game.** Two new `[Dispatch]` keys, so a MINOR;
+`desert-dispatch` 0.4.0 and `desert-core` 0.12.0 with it.
+
+### Added
+
+- **`[Dispatch] Pouches`** (1..100, default 1): multiplies what an item pays when it is opened,
+  both ends of every item amount. 88 `dropsetinfo` rows: the silver pouches (Modest, Full,
+  Overflowing and Wayfarer's, `DropSet_Money_Copper_100_500`/`_10000`/`_20000`/`_100000`), the
+  copper pouches (Paltry, Light, Modest and Full, `DropSet_Money_Copper_1_10`/`_10_30`/`_50_70`/`_70_90`),
+  the Box of Fortune (`DropSet_Pinball_Bag`), seed packs, chest items,
+  recipe and gear boxes - every `itemuseinfo` RandomBox row an item names. Separate from
+  `[Harvest] Money`, which multiplies the coin piles placed in the world; the two never touch the
+  same number and do not stack.
+- **`[Dispatch] Breakables`** (1..100, default 1): multiplies the loot of barrels, crates, pots and
+  sacks smashed open. 15 rows, the `dropSetInfoList` of the 172 gimmick records the container
+  catalogue calls "Breakable container" (`DropSet_BoxBarrel_01`, `_02`, `DropSet_Pot_01`, ...).
+- **`just gen-dropsets`** writes those rows to `crates/desert-core/src/dropset_table.rs` from the
+  game's archives, every record of nine tables walked to its last byte, and refuses any row another
+  source also pays from: 40 refused on 26361232 - `DropSet_BoxBarrel_03`/`_04` (shared with
+  chests), `DropSet_Cloth`/`_Leather` (ground items), the three ammunition packages (crafting) -
+  and 33 more with no item entry to multiply (knowledge, mounts, pets). Nothing the levers touch is
+  a dispatch, quest, crafting, chest or character loot row.
+- Only item entries (kind 0) are multiplied. Before a row is written the plugin checks the parsed
+  row at its record index against the table: the key at `+0x08`, the entry count, the weight sum,
+  and `min + max` over its item entries as first seen. A row that fails any of them is logged and
+  left vanilla. The log line is `[dispatch] dropset levers: pouches N rows, breakables N rows,
+  written N (...)`; a refusal adds an `[apply] WARN dropset levers left rows or entries alone (...)`.
+- A row is read the first time the game loads it, so the first pouch of a kind opened (or barrel
+  of a kind smashed) in a session may still pay vanilla.
+
 ## [0.14.0] - 2026-11-03
 
 Game build 26361232, the same build as 0.13.0. **0.13.0's split between hostile and friendly bodies

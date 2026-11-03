@@ -52,6 +52,12 @@ pub const SPEED_MAX: u32 = 100;
 pub const REWARDS_MIN: u32 = 1;
 pub const REWARDS_MAX: u32 = 100;
 
+/// Bounds on `Pouches` and `Breakables`: the `Rewards` band, for the same
+/// reasons, and because [`derived_amount`] recognises a whole multiple of a
+/// vanilla amount only up to [`REWARDS_MAX`].
+pub const DROPS_MIN: u32 = REWARDS_MIN;
+pub const DROPS_MAX: u32 = REWARDS_MAX;
+
 /// The shortest a mission may be made: **one tenth of an hour, six in-game
 /// minutes** (about half a real minute).
 ///
@@ -155,6 +161,19 @@ pub struct Config {
     /// applied to, which is upstream of it. `Rewards=50` really is fifty
     /// times.
     pub rewards: u32,
+    /// Amount multiplier for the **pouch** rows of
+    /// `desert_core::dropset_table`: what an item pays when it is opened (the
+    /// coin pouches, seed packs, recipe and gear boxes). Both halves of every
+    /// item entry's amount pair. `1` = vanilla.
+    ///
+    /// Not `[Harvest] Money`: that one multiplies the coin piles placed in the
+    /// world (gimmick records), these are dropset rows an item names, so the
+    /// two never touch the same number and do not stack.
+    pub pouches: u32,
+    /// Amount multiplier for the **breakable** rows of
+    /// `desert_core::dropset_table`: what a barrel, crate, pot or sack pays
+    /// when it is smashed. `1` = vanilla.
+    pub breakables: u32,
     /// 1 = clear the hard skill gate on the 147 missions that carry one, by
     /// writing [`SKILL_NONE`] - **never `0`**, which is a real `Skill` index
     /// and would make the mission permanently unstartable
@@ -183,6 +202,8 @@ impl Default for Config {
             // nothing about dispatch until the player asks for it.
             speed: 1,
             rewards: 1,
+            pouches: 1,
+            breakables: 1,
             no_skill_requirement: false,
             any_operator_count: false,
             dry_run: false,
@@ -209,6 +230,65 @@ impl Config {
             clear_skill: self.no_skill_requirement,
             any_operators: self.any_operator_count,
         }
+    }
+
+    /// The `Pouches` / `Breakables` levers, with `Enabled=0` collapsed to
+    /// vanilla exactly as [`Self::levers`] does.
+    pub fn drop_levers(&self) -> DropLevers {
+        if !self.enabled {
+            return DropLevers::VANILLA;
+        }
+        DropLevers { pouches: self.pouches, breakables: self.breakables }
+    }
+}
+
+/// The two dropset-row levers, kept apart from [`Levers`] on purpose: their
+/// pass has its own memo ([`crate::gate::Gate`] over this type), so moving
+/// `Pouches` does not re-run the mission and reward passes, and moving `Speed`
+/// does not re-run this one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DropLevers {
+    pub pouches: u32,
+    pub breakables: u32,
+}
+
+impl DropLevers {
+    pub const VANILLA: DropLevers = DropLevers { pouches: 1, breakables: 1 };
+
+    pub fn is_vanilla(&self) -> bool {
+        *self == DropLevers::VANILLA
+    }
+
+    /// The factor for one group of rows.
+    pub fn factor(&self, group: desert_core::dropset_table::RowGroup) -> u32 {
+        match group {
+            desert_core::dropset_table::RowGroup::Pouch => self.pouches,
+            desert_core::dropset_table::RowGroup::Breakable => self.breakables,
+        }
+    }
+
+    /// The [`Levers`] whose `Rewards` is `group`'s factor, so the reward write
+    /// path's plan ([`crate::node::plan_entry`]) and its guards serve these rows
+    /// unchanged.
+    pub fn as_levers(&self, group: desert_core::dropset_table::RowGroup) -> Levers {
+        Levers { rewards: self.factor(group), ..Levers::VANILLA }
+    }
+
+    /// `Pouches=3 Breakables=1`, for the pass's summary line.
+    pub fn summary(&self) -> String {
+        format!("Pouches={} Breakables={}", self.pouches, self.breakables)
+    }
+}
+
+impl crate::gate::LeverSet for Levers {
+    fn is_vanilla(&self) -> bool {
+        Levers::is_vanilla(self)
+    }
+}
+
+impl crate::gate::LeverSet for DropLevers {
+    fn is_vanilla(&self) -> bool {
+        DropLevers::is_vanilla(self)
     }
 }
 
@@ -399,6 +479,8 @@ pub struct LiveConfig {
     dump_buffs: AtomicBool,
     speed: AtomicU32,
     rewards: AtomicU32,
+    pouches: AtomicU32,
+    breakables: AtomicU32,
     no_skill_requirement: AtomicBool,
     any_operator_count: AtomicBool,
     dry_run: AtomicBool,
@@ -418,6 +500,8 @@ impl LiveConfig {
             dump_buffs: AtomicBool::new(false),
             speed: AtomicU32::new(1),
             rewards: AtomicU32::new(1),
+            pouches: AtomicU32::new(1),
+            breakables: AtomicU32::new(1),
             no_skill_requirement: AtomicBool::new(false),
             any_operator_count: AtomicBool::new(false),
             dry_run: AtomicBool::new(false),
@@ -436,6 +520,8 @@ impl LiveConfig {
         self.dump_buffs.store(cfg.dump_buffs, Ordering::Relaxed);
         self.speed.store(cfg.speed, Ordering::Relaxed);
         self.rewards.store(cfg.rewards, Ordering::Relaxed);
+        self.pouches.store(cfg.pouches, Ordering::Relaxed);
+        self.breakables.store(cfg.breakables, Ordering::Relaxed);
         self.no_skill_requirement.store(cfg.no_skill_requirement, Ordering::Relaxed);
         self.any_operator_count.store(cfg.any_operator_count, Ordering::Relaxed);
         self.dry_run.store(cfg.dry_run, Ordering::Relaxed);
@@ -453,6 +539,8 @@ impl LiveConfig {
             dump_buffs: self.dump_buffs.load(Ordering::Relaxed),
             speed: self.speed.load(Ordering::Relaxed),
             rewards: self.rewards.load(Ordering::Relaxed),
+            pouches: self.pouches.load(Ordering::Relaxed),
+            breakables: self.breakables.load(Ordering::Relaxed),
             no_skill_requirement: self.no_skill_requirement.load(Ordering::Relaxed),
             any_operator_count: self.any_operator_count.load(Ordering::Relaxed),
             dry_run: self.dry_run.load(Ordering::Relaxed),
@@ -462,6 +550,12 @@ impl LiveConfig {
     /// The levers a pass should run with right now. See [`Config::levers`].
     pub fn levers(&self) -> Levers {
         self.load().levers()
+    }
+
+    /// The dropset-row levers a pass should run with right now. See
+    /// [`Config::drop_levers`].
+    pub fn drop_levers(&self) -> DropLevers {
+        self.load().drop_levers()
     }
 
     /// `true` = log every change and write nothing.
@@ -593,6 +687,35 @@ pub fn schema() -> Section {
                     "Multiply how much of each item a mission pays. 1 = vanilla. Only the reward rows dispatch missions name are touched, never the game's wider drop table. The game reads the amounts at the moment items land, so this reaches rewards already waiting to be paid - and, the other way round, banks nothing: set it back to 1 and anything still waiting pays vanilla.",
                 )
             },
+            Field {
+                heading: Some("Loot:".to_string()),
+                ..f(
+                    "Pouches",
+                    "Pouch and box multiplier",
+                    Kind::Int {
+                        default: i64::from(d.pouches),
+                        min: i64::from(DROPS_MIN),
+                        max: i64::from(DROPS_MAX),
+                        step: 1,
+                        slider: true,
+                        format: Some("%dx".to_string()),
+                    },
+                    "Multiply what an item pays when you open it: the silver pouches, seed packs, recipe and gear boxes. 1 = vanilla. Only rows nothing else in the game pays from are touched. This is not [Harvest] Money, which multiplies the coin piles lying in the world; the two never touch the same number and do not stack. A pouch's row is read the first time the game loads it, so the very first one you open in a session may still pay vanilla.",
+                )
+            },
+            f(
+                "Breakables",
+                "Breakable loot multiplier",
+                Kind::Int {
+                    default: i64::from(d.breakables),
+                    min: i64::from(DROPS_MIN),
+                    max: i64::from(DROPS_MAX),
+                    step: 1,
+                    slider: true,
+                    format: Some("%dx".to_string()),
+                },
+                "Multiply the loot that falls out of barrels, crates, pots and sacks when you smash them. 1 = vanilla. Only rows nothing else in the game pays from are touched, so a chest that shares a barrel's loot table keeps it vanilla. The first barrel of a kind smashed in a session may still pay vanilla, while the game loads its row.",
+            ),
             // Everything below goes on the menu's shared Debug tab, three rows
             // deep: what to log, then the cap on it, then the three switches
             // that only make sense while something is being chased. The
@@ -741,6 +864,20 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                     cfg.rewards
                 )),
             },
+            "pouches" => match v.parse::<u32>() {
+                Ok(n) if (DROPS_MIN..=DROPS_MAX).contains(&n) => cfg.pouches = n,
+                _ => warnings.push(format!(
+                    "{k}: bad value {v:?} ({DROPS_MIN}..{DROPS_MAX}), keeping {}",
+                    cfg.pouches
+                )),
+            },
+            "breakables" => match v.parse::<u32>() {
+                Ok(n) if (DROPS_MIN..=DROPS_MAX).contains(&n) => cfg.breakables = n,
+                _ => warnings.push(format!(
+                    "{k}: bad value {v:?} ({DROPS_MIN}..{DROPS_MAX}), keeping {}",
+                    cfg.breakables
+                )),
+            },
             _ => warnings.push(format!("unknown key {k:?}")),
         }
     }
@@ -787,7 +924,7 @@ mod tests {
         let (c, w) = parse(
             "; comment\n[Dispatch]\nEnabled=0\nLogRecords=no\nMaxLines=1234\nDebug=on\n\
              DumpRaw=1\nDumpRewards=0\nSpeed=4\nRewards=3\nNoSkillRequirement=1\n\
-             AnyOperatorCount=yes\nDryRun=1\nDumpBuffs=1\n",
+             AnyOperatorCount=yes\nDryRun=1\nDumpBuffs=1\nPouches=5\nBreakables=7\n",
         );
         assert!(!c.enabled);
         assert!(!c.log_records);
@@ -801,7 +938,33 @@ mod tests {
         assert!(c.any_operator_count);
         assert!(c.dry_run);
         assert!(c.dump_buffs);
+        assert_eq!(c.pouches, 5);
+        assert_eq!(c.breakables, 7);
         assert!(w.is_empty(), "{w:?}");
+    }
+
+    /// `Enabled=0` collapses the two dropset levers too, and each group gets
+    /// its own factor as the `Rewards` of the reward write path's plan.
+    #[test]
+    fn drop_levers_follow_the_master_switch_and_their_group() {
+        use desert_core::dropset_table::RowGroup;
+        let (c, w) = parse("[Dispatch]\nPouches=3\nBreakables=4\n");
+        assert!(w.is_empty(), "{w:?}");
+        let d = c.drop_levers();
+        assert_eq!(d, DropLevers { pouches: 3, breakables: 4 });
+        assert_eq!(d.factor(RowGroup::Pouch), 3);
+        assert_eq!(d.factor(RowGroup::Breakable), 4);
+        assert_eq!(d.as_levers(RowGroup::Pouch), Levers { rewards: 3, ..Levers::VANILLA });
+        assert_eq!(d.summary(), "Pouches=3 Breakables=4");
+        // The mission and reward levers are not moved by these.
+        assert!(c.levers().is_vanilla());
+        let (c, _) = parse("[Dispatch]\nEnabled=0\nPouches=3\nBreakables=4\n");
+        assert_eq!(c.drop_levers(), DropLevers::VANILLA);
+        assert!(c.drop_levers().is_vanilla());
+        // Out of band: kept at the default, with a warning each.
+        let (c, w) = parse("[Dispatch]\nPouches=0\nBreakables=101\n");
+        assert_eq!((c.pouches, c.breakables), (1, 1));
+        assert_eq!(w.len(), 2, "{w:?}");
     }
 
     /// `Enabled=0` is not a separate revert path: it is the levers reading
@@ -1137,6 +1300,8 @@ mod tests {
             dump_buffs: true,
             speed: 6,
             rewards: 9,
+            pouches: 4,
+            breakables: 5,
             no_skill_requirement: true,
             any_operator_count: true,
             dry_run: true,
@@ -1144,6 +1309,7 @@ mod tests {
         live.publish(&cfg);
         assert_eq!(live.load(), cfg);
         assert_eq!(live.levers(), cfg.levers());
+        assert_eq!(live.drop_levers(), DropLevers { pouches: 4, breakables: 5 });
         assert!(live.dry_run());
         // And the master switch reaches the levers through the mirror too.
         live.publish(&Config { enabled: false, ..cfg });
@@ -1258,6 +1424,8 @@ mod tests {
         for (key, min, max, default) in [
             ("Speed", SPEED_MIN, SPEED_MAX, Config::default().speed),
             ("Rewards", REWARDS_MIN, REWARDS_MAX, Config::default().rewards),
+            ("Pouches", DROPS_MIN, DROPS_MAX, Config::default().pouches),
+            ("Breakables", DROPS_MIN, DROPS_MAX, Config::default().breakables),
         ] {
             match s.field(key).map(|f| f.kind.clone()) {
                 Some(Kind::Int { min: lo, max: hi, default: d, slider, .. }) => {
@@ -1285,7 +1453,7 @@ mod tests {
         for key in ["LogRecords", "MaxLines", "DryRun", "Debug", "DumpRaw", "DumpRewards", "DumpBuffs"] {
             assert_eq!(field(key).tab, Tab::Debug, "{key}");
         }
-        for key in ["Speed", "NoSkillRequirement", "AnyOperatorCount", "Rewards", "Enabled"] {
+        for key in ["Speed", "NoSkillRequirement", "AnyOperatorCount", "Rewards", "Pouches", "Breakables", "Enabled"] {
             assert_eq!(field(key).tab, Tab::Section, "{key}");
         }
         assert!(s.fields.iter().any(|f| f.tab == Tab::Section), "Dispatch must keep a tab");
