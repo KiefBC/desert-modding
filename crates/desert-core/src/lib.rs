@@ -21,15 +21,20 @@
 pub const LOG_TAG: &str = "core";
 
 pub mod collect;
+pub mod container_table;
 pub mod creature;
+pub mod drop_levers;
+pub mod dropset_table;
 pub mod gimmick;
 pub mod ini;
 pub mod log;
 pub mod manager;
 pub mod pattern;
 pub mod pe;
+pub mod quest_items;
 pub mod rtti;
 pub mod schema;
+pub mod species_table;
 pub mod telemetry;
 pub mod trampoline;
 

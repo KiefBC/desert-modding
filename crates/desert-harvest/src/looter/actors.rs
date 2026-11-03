@@ -19,7 +19,8 @@
 //! (the `ClientStatusActorComponent` is found by RTTI name, not by a fixed
 //! slot) and what it does with the answer.
 
-use desert_core::creature::{self, CatchClass};
+use desert_core::container_table::ContainerClass;
+use desert_core::creature::{self, CatchClass, SpeciesClass};
 
 use crate::module::MainModule;
 use crate::safe;
@@ -502,6 +503,22 @@ pub enum Kind {
     /// [`Kind::Character`] so that `review` retires it and no corpse can ever
     /// reach `catch_class`. See [`carcass_has_drops`].
     CarcassEmpty,
+    /// A dead hostile person or monster with loot left: the species table
+    /// files its `characterinfo` record as `SpeciesClass::Body` (not
+    /// `Animal_*`, has `Dead_Loot`, in `CharacterGroup_Ally_Enemy`, or in no
+    /// ally group with `isEnableFriendly` 0: bandits, criminals, monsters). Searched with the same dead-drop event as a carcass, and
+    /// targeted only when `[Harvest] GatherBodies=1`, off by default. See
+    /// [`corpse_kind`].
+    Body,
+    /// [`Kind::Body`] for a person who was not an enemy
+    /// (`SpeciesClass::FriendlyBody`: `Ally_NPC`, `Ally_Guard` or
+    /// `Ally_Mercenary`, or no ally group with `isEnableFriendly` 1: citizens,
+    /// traders, named uniques, mercenaries). Targeted only when both
+    /// `GatherBodies=1` and `GatherFriendlyBodies=1`.
+    FriendlyBody,
+    /// A dead body of either kind with nothing left on it. Never a candidate,
+    /// retired by `review` exactly like [`Kind::CarcassEmpty`].
+    BodyEmpty,
     /// Gimmick with the +0xE0 interaction object whose record is a known
     /// gather record (Foraging/Logging/Mining/Ore/Money).
     Gather,
@@ -553,12 +570,15 @@ impl Kind {
     /// An exhaustive `match` forces a new variant to get an *arm*; only this
     /// forces it to get an assertion, and an arm nobody asserted on is how a
     /// wrong default ships without anyone noticing.
-    pub const ALL: [Kind; 12] = [
+    pub const ALL: [Kind; 15] = [
         Kind::Player,
         Kind::Character,
         Kind::Catchable,
         Kind::Carcass,
         Kind::CarcassEmpty,
+        Kind::Body,
+        Kind::FriendlyBody,
+        Kind::BodyEmpty,
         Kind::Gather,
         Kind::Interactable,
         Kind::Item,
@@ -572,14 +592,17 @@ impl Kind {
     /// `game::nearest_gather` picks targets with it and `autogather::review` asks
     /// whether a target it already sent at is still one, and the two drifting
     /// apart is how a target gets sent at and then never retired.
-    pub fn is_gather_candidate(self, skin_carcasses: bool) -> bool {
+    pub fn is_gather_candidate(self, corpses: CorpseSwitches) -> bool {
         match self {
             Kind::Gather | Kind::Unarmed | Kind::Item | Kind::Catchable => true,
-            Kind::Carcass => skin_carcasses,
-            // An emptied carcass is never a target. Firing at one grants
-            // nothing, and counting the refusal is what used to switch
+            Kind::Carcass => corpses.carcass,
+            Kind::Body => corpses.bodies,
+            // "Also": a friendly body needs both switches.
+            Kind::FriendlyBody => corpses.bodies && corpses.friendly_bodies,
+            // An emptied carcass or body is never a target. Firing at one
+            // grants nothing, and counting the refusal is what used to switch
             // auto-gather off after three corpses.
-            Kind::CarcassEmpty => false,
+            Kind::CarcassEmpty | Kind::BodyEmpty => false,
             Kind::Player
             | Kind::Character
             | Kind::Interactable
@@ -588,6 +611,145 @@ impl Kind {
             | Kind::Other => false,
         }
     }
+}
+
+/// The three corpse switches [`Kind::is_gather_candidate`] takes:
+/// `[Harvest] GatherCarcass`, `GatherBodies` and `GatherFriendlyBodies`.
+/// Plain values rather than the ini's `Config`, because this module knows
+/// nothing about the ini and should not start to; `game::corpse_switches`
+/// builds one from the live config.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CorpseSwitches {
+    pub carcass: bool,
+    pub bodies: bool,
+    pub friendly_bodies: bool,
+}
+
+/// What a dead actor is, before asking whether anything is left on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corpse {
+    /// An animal: skinned as a carcass.
+    Animal,
+    /// A hostile person or monster (`SpeciesClass::Body`).
+    Body,
+    /// A person who was not an enemy (`SpeciesClass::FriendlyBody`).
+    FriendlyBody,
+}
+
+/// The actor types a body is accepted on: every type `events::creature_preflight`
+/// knows how to check (3, and the 4/5/6 branch whose owner record it also
+/// proves readable). The bodies seen in game on 26361232 (bandits, the
+/// Wandering Freesword) all read type 3.
+pub const BODY_TYPES: [u8; 4] = [3, 4, 5, 6];
+
+/// Decide what a dead actor is, from its type byte, its species class and its
+/// interaction category byte. Pure, so the rule is tested without the game.
+///
+/// - A **body species** decides on its own: `Body` / `FriendlyBody` on any of
+///   [`BODY_TYPES`].
+/// - A **protected species** (`SpeciesClass::Protected`: the player's own
+///   characters and their doubles) is `None` on every type: never searched,
+///   and never skinned as an animal either. This is what keeps bandits on class 0x5A, which
+///   `creature::NPC_CLASSES` does not list, from being skinned as animals.
+/// - An **animal species** (Bug, Fish, Critter, NotHandCatchable) is an
+///   animal on a catchable type, whatever its class byte: the species table
+///   decides, not the class blacklist.
+/// - An **unknown species** (the table not read yet, or a name it does not
+///   hold) is the old rule exactly: a catchable type and a class byte not on
+///   `creature::NPC_CLASSES`.
+///
+/// `None` means "not a corpse this module acts on": `classify` falls through
+/// to `catch_class` as it always has.
+pub fn corpse_kind(ty: u8, species: Option<SpeciesClass>, category: Option<u8>) -> Option<Corpse> {
+    match species {
+        Some(SpeciesClass::Body) => BODY_TYPES.contains(&ty).then_some(Corpse::Body),
+        Some(SpeciesClass::FriendlyBody) => BODY_TYPES.contains(&ty).then_some(Corpse::FriendlyBody),
+        Some(SpeciesClass::Protected) => None,
+        Some(SpeciesClass::Bug | SpeciesClass::Fish | SpeciesClass::Critter | SpeciesClass::NotHandCatchable) => {
+            creature::CATCHABLE_TYPES.contains(&ty).then_some(Corpse::Animal)
+        }
+        None => (creature::CATCHABLE_TYPES.contains(&ty) && !category.is_some_and(creature::is_npc_class))
+            .then_some(Corpse::Animal),
+    }
+}
+
+/// Set once a dead [`SpeciesClass::Protected`] actor has been logged.
+static PROTECTED_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Log, once per session, that a dead protected actor was seen and left
+/// alone. `classify` runs on the plugin thread only, so logging here is
+/// allowed.
+fn note_dead_protected(actor: usize, ty: u8, row: Option<u16>) {
+    if !PROTECTED_SEEN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let row = row.map_or_else(|| "?".to_string(), |r| r.to_string());
+        crate::log!(
+            "[corpse] dead protected actor 0x{actor:X} (type {ty}, species row {row}): a playable \
+             character or companion, never searched (logged once per session)"
+        );
+    }
+}
+
+/// `*(*(actor+0x68)+0x118)`: the owner record a body's or carcass's owner id
+/// hangs off.
+pub const OWNER_RECORD_OFF: usize = 0x118;
+/// `owner record + 0x20`: the `u64` owner id, all ones when unowned.
+pub const OWNER_ID_OFF: usize = 0x20;
+/// The owner id of a corpse nobody owns: `-1` as a `u64`.
+pub const NO_OWNER: u64 = u64::MAX;
+
+/// What [`corpse_owner`] read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Owner {
+    /// The game's own reading is `-1`: free to loot.
+    Unowned,
+    /// Owned, or carrying a quest trigger: the game refuses its own loot
+    /// interaction here.
+    Id(u64),
+    /// A read failed: refused, because the plugin cannot tell.
+    Unreadable,
+}
+
+/// The game's own corpse-loot gate, as a pure function of what was read:
+/// `rec` is the `u64` at `sub+0x118` (`None` when the read failed), `id` the
+/// `u64` at `rec+0x20` (`None` when that read failed or was not made).
+///
+/// On 26361232 the catch/carcass function holding the catch-count site
+/// (`0x2DD61E0`) reads, at `+0x2DD65B7`:
+///
+/// ```text
+/// rcx = [r15+0x68]; rbx = [rcx+0x118]
+/// test rbx,rbx; jne -> rbx = [rbx+0x20]      ; owner id
+///               else  rbx = -1                ; no record: unowned
+/// cmp byte [[rcx+0x20]+0x293], 0; je -> alive branch
+/// cmp rbx, -1; je -> loot                    ; else error, nothing granted
+/// ```
+///
+/// so a **null** record is unowned to the game, and so it is here; only a
+/// failed read is refused. The same gate was read statically on 25116796 /
+/// 25246367 (`FUN_142a73c20` / `FUN_142a75360`, `docs/reference-internals.md`
+/// section 17.3, `docs/findings/2026-09-15-skinning.md` section 3) with the
+/// dead flag at `+0x273`.
+pub fn owner_verdict(rec: Option<u64>, id: Option<u64>) -> Owner {
+    match (rec, id) {
+        (None, _) => Owner::Unreadable,
+        (Some(0), _) => Owner::Unowned,
+        (Some(_), None) => Owner::Unreadable,
+        (Some(_), Some(NO_OWNER)) => Owner::Unowned,
+        (Some(_), Some(x)) => Owner::Id(x),
+    }
+}
+
+/// Read a corpse's owner id the way the game's own loot gate does
+/// ([`owner_verdict`]). Three `safe` reads, no RTTI: cheap enough for the
+/// game-thread re-check in `events::send_pickup`.
+pub fn corpse_owner(actor: usize) -> Owner {
+    let Some(sub) = safe::read_ptr(actor + 0x68) else { return Owner::Unreadable };
+    let rec: Option<u64> = safe::read(sub + OWNER_RECORD_OFF);
+    let id = match rec {
+        Some(r) if r != 0 => usize::try_from(r).ok().and_then(|r| safe::read::<u64>(r.checked_add(OWNER_ID_OFF)?)),
+        _ => None,
+    };
+    owner_verdict(rec, id)
 }
 
 /// Does the actor's sub-object reference the player actor (first 0x200 bytes)?
@@ -665,15 +827,33 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
         // shown on a carcass (0x44 is a live type-6 fish class since
         // 26361232), so a whitelist would refuse all of them. Dead status is
         // tested before any class, so a catch class never decides a carcass.
-        if creature::is_catchable_type(actor)
-            && status_off(&comps)
-                .and_then(|off| status_bytes_at(actor, off))
-                .is_some_and(|st| st.flag == DEAD_FLAG)
-            && !status_off(&comps)
-                .and_then(|off| category_at(actor, off))
-                .is_some_and(creature::is_npc_class)
-        {
-            return if carcass_has_drops(actor) { Kind::Carcass } else { Kind::CarcassEmpty };
+        //
+        // Since the species table holds the bodies too, the species decides
+        // first ([`corpse_kind`]): a body species is a `Body`/`FriendlyBody`
+        // whatever its class byte (bandits on class 0x5A used to pass the
+        // blacklist and classify `Carcass`), an animal species is a carcass
+        // whatever its class byte, and only an unknown species is left to the
+        // blacklist.
+        let off = status_off(&comps);
+        let dead = off.and_then(|o| status_bytes_at(actor, o)).is_some_and(|st| st.flag == DEAD_FLAG);
+        if dead {
+            if let Some(ty) = creature::type_byte(actor) {
+                let species = off.and_then(|o| species_at(actor, o)).and_then(crate::species::class);
+                let category = off.and_then(|o| category_at(actor, o));
+                if species == Some(SpeciesClass::Protected) {
+                    note_dead_protected(actor, ty, off.and_then(|o| species_at(actor, o)));
+                }
+                if let Some(corpse) = corpse_kind(ty, species, category) {
+                    let full = carcass_has_drops(actor);
+                    return match (corpse, full) {
+                        (Corpse::Animal, true) => Kind::Carcass,
+                        (Corpse::Animal, false) => Kind::CarcassEmpty,
+                        (Corpse::Body, true) => Kind::Body,
+                        (Corpse::FriendlyBody, true) => Kind::FriendlyBody,
+                        (Corpse::Body | Corpse::FriendlyBody, false) => Kind::BodyEmpty,
+                    };
+                }
+            }
         }
         return if catch_class(m, actor).is_some() { Kind::Catchable } else { Kind::Character };
     }
@@ -686,6 +866,10 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     if refers_to_player(actor, player) {
         return Kind::Equipment;
     }
+    // The take-able containers (`desert_core::container_table`) are not
+    // special here: in game they are broken apart to loot, never taken, so
+    // they classify by their objects like any other gimmick (armed: an
+    // `Interactable`, never a candidate). Only the F11 survey names them.
     if has_inter {
         match node_identity(m, actor).and_then(|n| n.family) {
             Some(_) => Kind::Gather,
@@ -700,6 +884,13 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
             _ => Kind::Inert,
         }
     }
+}
+
+/// The take-able container class of a gimmick record key, `None` for every
+/// other record (`desert_core::container_table`). Read by the F11 survey's
+/// `container=` label only: nothing targets these records.
+pub fn container_class(key: u32) -> Option<ContainerClass> {
+    desert_core::container_table::container_class(key)
 }
 
 /// Gimmick records that stand for a physical item lying on the ground.
@@ -940,9 +1131,10 @@ pub fn category_at(actor: usize, off: usize) -> Option<u8> {
 /// byte is not a species: two fish giving different items both read class 0x23
 /// (`docs/reference-internals.md` section 15.5), so only this row can tell
 /// whether two actors sharing a class are the same creature. Nothing decides
-/// on the row number itself; [`catch_class`] asks `crate::species` whether the
-/// row's `characterinfo` record is named a fish, which is how the Rice Fish
-/// (class 0x80, the insects' class) is told from the insects.
+/// on the row number itself; [`catch_class`] asks `crate::species` how the
+/// row's `characterinfo` record (by name) is caught, which is how the Rice
+/// Fish and the raccoon (both class 0x80, the insects' class) are told from
+/// the insects.
 pub const STATUS_SPECIES_OFF: usize = 0x30;
 
 /// [`STATUS_SPECIES_OFF`] once the component's slot is known.
@@ -950,6 +1142,15 @@ pub fn species_at(actor: usize, off: usize) -> Option<u16> {
     let sub = safe::read_ptr(actor + 0x68)?;
     let comp = safe::read_ptr(sub + off)?;
     safe::read(comp + STATUS_SPECIES_OFF)
+}
+
+/// How the actor's species is caught, from its species row through
+/// `crate::species` (one RTTI walk). `None` for an unreadable actor, a row
+/// the species table does not name, or before the table has been read.
+pub fn species_class(m: &MainModule, actor: usize) -> Option<SpeciesClass> {
+    let names = component_names(m, actor);
+    let off = status_off(&names)?;
+    species_at(actor, off).and_then(crate::species::class)
 }
 
 /// [`status_bytes`] once the component's slot is known.
@@ -987,24 +1188,31 @@ impl Catchable {
     /// `desert_core::creature`, and its `FISH_TYPES` for why the type is
     /// asked (0x23 is a fish on type 6 and a deer on type 3).
     ///
-    /// `fish_species` is `crate::species::is_fish` for the actor's species
-    /// row: it turns a class-0x80 catch on a fish type into a fish (the Rice
-    /// Fish) and can change nothing else
-    /// (`creature::catch_class_with_species`).
-    fn of(ty: u8, cat: u8, fish_species: bool) -> Self {
-        match creature::catch_class_with_species(ty, cat, fish_species) {
+    /// `species` is `crate::species::class` for the actor's species row. A
+    /// known species decides on its own (`creature::catch_class_by_species`):
+    /// a Bug, Fish or Critter species is `Known` whatever the class byte, and
+    /// a `NotHandCatchable` one (a duck, a raccoon) is `None` - not a catch
+    /// candidate at all, so it is never `Kind::Catchable` and never reported
+    /// as an unknown class either. An unknown species is the class bytes.
+    fn of(ty: u8, cat: u8, species: Option<SpeciesClass>) -> Option<Self> {
+        // A person or monster (`Body`, `FriendlyBody`) is no more a catch
+        // than a duck is.
+        if creature::is_never_a_catch(species) {
+            return None;
+        }
+        Some(match creature::catch_class_by_species(ty, cat, species) {
             Some(c) => Catchable::Known(c),
             None => Catchable::Unknown(cat),
-        }
+        })
     }
 }
 
 /// Classify a catchable creature by its [`interaction_category`] byte.
 ///
 /// `None` means the actor is not a catch candidate at all: its type byte is
-/// not one of `creature::CATCHABLE_TYPES`, its `ClientStatusActorComponent`
-/// kind byte (`STATUS_KIND_OFF`) is not 0, or the category byte is not readable. That
-/// trio is what
+/// not one of `creature::CATCHABLE_TYPES`, the category byte is not
+/// readable, or its species record says it is not caught by hand
+/// (`SpeciesClass::NotHandCatchable`: ducks, raccoons). That is what
 /// [`Kind::Catchable`] means, so the survey still lists every actor this
 /// returns `Some` for, whichever class comes back.
 ///
@@ -1042,14 +1250,13 @@ pub fn catch_class(m: &MainModule, actor: usize) -> Option<Catchable> {
     // shop goods and decoration (`is_owned_or_special`); on a creature it
     // says nothing a catch depends on. A dead creature is still kept out, by
     // `classify`'s dead-flag arm, which runs before this.
-    // One RTTI walk for both bytes: the class, and the species row when the
-    // species can change the answer (`creature::species_can_override`).
+    // One RTTI walk for both reads: the class byte, and the species row,
+    // whose class decides whenever the species table knows it.
     let names = component_names(m, actor);
     let off = status_off(&names)?;
     let cat = category_at(actor, off)?;
-    let fish_species = creature::species_can_override(ty, cat)
-        && species_at(actor, off).is_some_and(crate::species::is_fish);
-    Some(Catchable::of(ty, cat, fish_species))
+    let species = species_at(actor, off).and_then(crate::species::class);
+    Catchable::of(ty, cat, species)
 }
 
 /// Is this actor a carcass the player could skin - a dead animal?
@@ -1103,9 +1310,15 @@ pub fn is_skinnable_carcass(m: &MainModule, actor: usize) -> bool {
 /// component list already and reads the flag through [`status_bytes_at`] to
 /// avoid a second RTTI pass.
 pub fn is_dead_animal(m: &MainModule, actor: usize) -> bool {
-    creature::is_catchable_type(actor)
-        && status_bytes(m, actor).is_some_and(|st| st.flag == DEAD_FLAG)
-        && !interaction_category(m, actor).is_some_and(creature::is_npc_class)
+    let comps = component_names(m, actor);
+    let Some(off) = status_off(&comps) else { return false };
+    let Some(ty) = creature::type_byte(actor) else { return false };
+    status_bytes_at(actor, off).is_some_and(|st| st.flag == DEAD_FLAG)
+        && corpse_kind(
+            ty,
+            species_at(actor, off).and_then(crate::species::class),
+            category_at(actor, off),
+        ) == Some(Corpse::Animal)
 }
 
 /// The dead-drop component, `*(*(actor+0x68)+0xC8)`. Non-null is the game's
@@ -1535,14 +1748,13 @@ mod tests {
         // unidentified species the same surveys turned up, plus the ends.
         for cat in [0x00, 0x20, 0x2C, 0xFF] {
             for ty in [3u8, 6] {
-                assert_eq!(Catchable::of(ty, cat, false), Catchable::Unknown(cat), "type {ty} 0x{cat:02X}");
-                assert_eq!(Catchable::of(ty, cat, true), Catchable::Unknown(cat), "type {ty} 0x{cat:02X}");
+                assert_eq!(Catchable::of(ty, cat, None), Some(Catchable::Unknown(cat)), "type {ty} 0x{cat:02X}");
             }
         }
         // A fish class on the deer's type is not a fish, and that holds for
         // 0x44 (a fish on type 6 since 26361232) as for 0x23.
-        assert_eq!(Catchable::of(3, 0x23, true), Catchable::Unknown(0x23));
-        assert_eq!(Catchable::of(3, 0x44, true), Catchable::Unknown(0x44));
+        assert_eq!(Catchable::of(3, 0x23, None), Some(Catchable::Unknown(0x23)));
+        assert_eq!(Catchable::of(3, 0x44, None), Some(Catchable::Unknown(0x44)));
     }
 
     /// The candidate set is the one thing `game::nearest_gather` and
@@ -1553,11 +1765,12 @@ mod tests {
     /// enum changes answer when that switch moves.
     #[test]
     fn a_carcass_is_a_candidate_only_while_gathercarcass_is_on() {
-        assert!(Kind::Carcass.is_gather_candidate(true));
-        assert!(!Kind::Carcass.is_gather_candidate(false));
+        assert!(Kind::Carcass.is_gather_candidate(sw(true, false, false)));
+        assert!(!Kind::Carcass.is_gather_candidate(sw(false, true, true)));
         for k in [Kind::Gather, Kind::Unarmed, Kind::Item, Kind::Catchable] {
-            assert!(k.is_gather_candidate(false), "{k:?} is a candidate regardless of the switch");
-            assert!(k.is_gather_candidate(true), "{k:?} is a candidate regardless of the switch");
+            for s in every_switch() {
+                assert!(k.is_gather_candidate(s), "{k:?} is a candidate regardless of the switches");
+            }
         }
         // Scenery, the player, live characters, his own equipment and the
         // interactables are never aimed at, and turning skinning on must not
@@ -1574,10 +1787,150 @@ mod tests {
             Kind::Interactable,
             Kind::Other,
             Kind::CarcassEmpty,
+            Kind::BodyEmpty,
         ] {
-            assert!(!k.is_gather_candidate(true), "{k:?} must never be a candidate");
-            assert!(!k.is_gather_candidate(false), "{k:?} must never be a candidate");
+            for s in every_switch() {
+                assert!(!k.is_gather_candidate(s), "{k:?} must never be a candidate");
+            }
         }
+    }
+
+    fn sw(carcass: bool, bodies: bool, friendly_bodies: bool) -> CorpseSwitches {
+        CorpseSwitches { carcass, bodies, friendly_bodies }
+    }
+
+    fn every_switch() -> Vec<CorpseSwitches> {
+        let mut v = Vec::new();
+        for c in [false, true] {
+            for b in [false, true] {
+                for f in [false, true] {
+                    v.push(sw(c, b, f));
+                }
+            }
+        }
+        v
+    }
+
+    /// A hostile body needs `GatherBodies`, a friendly one needs that and
+    /// `GatherFriendlyBodies` ("also"), and neither follows `GatherCarcass`.
+    #[test]
+    fn bodies_follow_their_own_switches() {
+        for s in every_switch() {
+            assert_eq!(Kind::Body.is_gather_candidate(s), s.bodies, "{s:?}");
+            assert_eq!(Kind::FriendlyBody.is_gather_candidate(s), s.bodies && s.friendly_bodies, "{s:?}");
+            assert_eq!(Kind::Carcass.is_gather_candidate(s), s.carcass, "{s:?}");
+        }
+    }
+
+    /// The take-able containers are found by gimmick key; ground items,
+    /// chests and furniture doors are not containers.
+    #[test]
+    fn containers_are_found_by_key() {
+        assert_eq!(container_class(1005717), Some(ContainerClass::ItemContainer)); // donation box
+        assert_eq!(container_class(1004116), Some(ContainerClass::ItemContainer)); // breakable sack 06
+        assert_eq!(container_class(1004949), Some(ContainerClass::FurnitureDrop)); // cabinet drop
+        assert_eq!(container_class(1000425), None); // treasurebox_small_01, a chest
+        assert_eq!(container_class(1006143), None); // a cabinet door
+        assert_eq!(container_class(1000022), None); // a ground item
+    }
+
+    /// No container can become a `GatherItems` target: that path takes only
+    /// `item_basic*` records, and no row of the generated table is named like
+    /// one (the names are the row comments). In game these are broken apart,
+    /// never taken.
+    #[test]
+    fn no_container_is_a_ground_item_target() {
+        let src = include_str!("../../../desert-core/src/container_table.rs");
+        let names: Vec<&str> = src
+            .lines()
+            .filter(|l| l.contains(", ContainerClass::") && l.trim_start().starts_with('('))
+            .filter_map(|l| l.split_once("// ").map(|(_, n)| n.trim()))
+            .collect();
+        assert_eq!(names.len(), desert_core::container_table::CONTAINERS.len());
+        for name in names {
+            assert!(!is_ground_item_record(name) && !is_basic_item_record(name), "{name}");
+        }
+    }
+
+    /// The species decides what a corpse is once the table is read; the
+    /// class blacklist only answers for an unknown species.
+    #[test]
+    fn the_species_decides_what_a_corpse_is() {
+        // The 0x5A bandit: unknown species passes the blacklist (the bug the
+        // table fixes); a Body species is a body.
+        assert_eq!(corpse_kind(3, None, Some(0x5A)), Some(Corpse::Animal));
+        assert_eq!(corpse_kind(3, Some(SpeciesClass::Body), Some(0x5A)), Some(Corpse::Body));
+        // 0x66 / 0x71 bodies: refused by the blacklist when unknown, bodies
+        // by species - the Freesword (class 0x66) is a friendly one.
+        for cat in [0x66u8, 0x71, 0x21, 0x33] {
+            assert_eq!(corpse_kind(3, None, Some(cat)), None, "0x{cat:02X}");
+            assert_eq!(corpse_kind(3, Some(SpeciesClass::Body), Some(cat)), Some(Corpse::Body));
+            assert_eq!(corpse_kind(3, Some(SpeciesClass::FriendlyBody), Some(cat)), Some(Corpse::FriendlyBody));
+        }
+        // Every body type, and nothing outside them.
+        for ty in BODY_TYPES {
+            assert_eq!(corpse_kind(ty, Some(SpeciesClass::Body), None), Some(Corpse::Body), "type {ty}");
+        }
+        for ty in [0u8, 1, 2, 7, 8] {
+            assert_eq!(corpse_kind(ty, Some(SpeciesClass::Body), None), None, "type {ty}");
+            assert_eq!(corpse_kind(ty, Some(SpeciesClass::FriendlyBody), None), None, "type {ty}");
+        }
+        // A protected species is never a corpse this module acts on, on any
+        // type and class: not a body, and not an animal either.
+        for ty in 0u8..=255 {
+            for cat in [None, Some(0x5Au8), Some(0x66), Some(0xD9), Some(0x80)] {
+                assert_eq!(corpse_kind(ty, Some(SpeciesClass::Protected), cat), None, "type {ty} {cat:?}");
+            }
+        }
+        // An animal species is a carcass whatever its class byte, even one on
+        // the NPC list, and only on a catchable type.
+        for sp in [SpeciesClass::Bug, SpeciesClass::Fish, SpeciesClass::Critter, SpeciesClass::NotHandCatchable] {
+            assert_eq!(corpse_kind(6, Some(sp), Some(0x66)), Some(Corpse::Animal), "{sp:?}");
+            assert_eq!(corpse_kind(3, Some(sp), None), Some(Corpse::Animal), "{sp:?}");
+            assert_eq!(corpse_kind(4, Some(sp), Some(0xD9)), None, "{sp:?}");
+        }
+        // Unknown species: the old rule, an unreadable class included.
+        assert_eq!(corpse_kind(6, None, Some(0xD9)), Some(Corpse::Animal));
+        assert_eq!(corpse_kind(6, None, None), Some(Corpse::Animal));
+        assert_eq!(corpse_kind(4, None, Some(0xD9)), None);
+    }
+
+    /// The owner gate reads as the game's does: a null record and an id of
+    /// -1 are unowned, any other id is owned, and a failed read refuses.
+    #[test]
+    fn the_owner_gate_matches_the_game() {
+        assert_eq!(owner_verdict(None, None), Owner::Unreadable);
+        assert_eq!(owner_verdict(None, Some(NO_OWNER)), Owner::Unreadable);
+        assert_eq!(owner_verdict(Some(0), None), Owner::Unowned);
+        assert_eq!(owner_verdict(Some(0x1_0000), None), Owner::Unreadable);
+        assert_eq!(owner_verdict(Some(0x1_0000), Some(NO_OWNER)), Owner::Unowned);
+        assert_eq!(owner_verdict(Some(0x1_0000), Some(0)), Owner::Id(0));
+        assert_eq!(owner_verdict(Some(0x1_0000), Some(0xB000_0123)), Owner::Id(0xB000_0123));
+    }
+
+    /// [`corpse_owner`] against a real (own-process) actor -> sub -> record
+    /// chain, since `safe::read` reads this process.
+    #[test]
+    fn corpse_owner_walks_the_chain() {
+        let make = |id: u64| -> ([u8; 0x40], [u8; 0x200], [u8; 0x80]) {
+            let mut rec = [0u8; 0x40];
+            rec[OWNER_ID_OFF..OWNER_ID_OFF + 8].copy_from_slice(&id.to_le_bytes());
+            (rec, [0u8; 0x200], [0u8; 0x80])
+        };
+        for (id, want) in [(NO_OWNER, Owner::Unowned), (7u64, Owner::Id(7))] {
+            let (rec, mut sub, mut actor) = make(id);
+            sub[OWNER_RECORD_OFF..OWNER_RECORD_OFF + 8].copy_from_slice(&(rec.as_ptr() as usize).to_le_bytes());
+            actor[0x68..0x70].copy_from_slice(&(sub.as_ptr() as usize).to_le_bytes());
+            assert_eq!(corpse_owner(actor.as_ptr() as usize), want);
+        }
+        // A null owner record is unowned, as in the game.
+        let sub = [0u8; 0x200];
+        let mut actor = [0u8; 0x80];
+        actor[0x68..0x70].copy_from_slice(&(sub.as_ptr() as usize).to_le_bytes());
+        assert_eq!(corpse_owner(actor.as_ptr() as usize), Owner::Unowned);
+        // No sub-object at all: unreadable.
+        let actor = [0u8; 0x80];
+        assert_eq!(corpse_owner(actor.as_ptr() as usize), Owner::Unreadable);
     }
 
     /// Every `Kind` has to appear in the test above, or a variant added later
@@ -1593,6 +1946,9 @@ mod tests {
             Kind::Catchable,
             Kind::Carcass,
             Kind::CarcassEmpty,
+            Kind::Body,
+            Kind::FriendlyBody,
+            Kind::BodyEmpty,
             Kind::Inert,
             Kind::Player,
             Kind::Character,
@@ -1608,15 +1964,28 @@ mod tests {
 
     #[test]
     fn the_recorded_categories_carry_the_core_class_through() {
-        assert_eq!(Catchable::of(6, 0x80, false), Catchable::Known(CatchClass::Bug));
-        assert_eq!(Catchable::of(3, 0x80, false), Catchable::Known(CatchClass::Bug));
-        assert_eq!(Catchable::of(6, 0x23, false), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(6, 0x65, false), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(6, 0x83, false), Catchable::Known(CatchClass::Fish));
-        // The Rice Fish: the insects' class on type 6, a fish by its species
-        // name. The Firefly Colony (0x80 on type 3) stays a bug.
-        assert_eq!(Catchable::of(6, 0x80, true), Catchable::Known(CatchClass::Fish));
-        assert_eq!(Catchable::of(3, 0x80, true), Catchable::Known(CatchClass::Bug));
+        let known = |c| Some(Catchable::Known(c));
+        assert_eq!(Catchable::of(6, 0x80, None), known(CatchClass::Bug));
+        assert_eq!(Catchable::of(3, 0x80, None), known(CatchClass::Bug));
+        assert_eq!(Catchable::of(6, 0x23, None), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x65, None), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(6, 0x83, None), known(CatchClass::Fish));
+        // The Rice Fish: the insects' class on type 6, a fish by its species.
+        assert_eq!(Catchable::of(6, 0x80, Some(SpeciesClass::Fish)), known(CatchClass::Fish));
+        assert_eq!(Catchable::of(3, 0x80, Some(SpeciesClass::Bug)), known(CatchClass::Bug));
+        // A critter only ever comes from its species.
+        assert_eq!(Catchable::of(6, 0x20, Some(SpeciesClass::Critter)), known(CatchClass::Critter));
+        // The raccoon (row 6684 on 26361232) reads the insects' 0x80 and is
+        // carried and skinned: not a catch candidate at all, on either type.
+        for ty in [6u8, 3] {
+            assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::NotHandCatchable)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x23, Some(SpeciesClass::NotHandCatchable)), None, "type {ty}");
+            // A living bandit or citizen is never a catch candidate either.
+            assert_eq!(Catchable::of(ty, 0x66, Some(SpeciesClass::Body)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::FriendlyBody)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::Protected)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x23, Some(SpeciesClass::Protected)), None, "type {ty}");
+        }
     }
 
     /// [`eid_map`] used to also reject any map whose `capacity` exceeded

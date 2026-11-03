@@ -46,6 +46,31 @@ pub fn character_slot_addr() -> Option<usize> {
     CHARACTER_SLOT_ADDR.get().copied()
 }
 
+/// The `iteminfo` manager slot as an absolute address, once [`resolve_slots`]
+/// found it. `crate::looter::itemlog` reads item records through it from the
+/// HUD's item-log handler.
+pub fn item_slot_addr() -> Option<usize> {
+    ITEM_SLOT_ADDR.get().copied()
+}
+
+/// The item record's key through the latched [`ItemLayout`], or `None` while
+/// no layout has latched. Unlike [`item_record_key`] it never starts a probe,
+/// which walks the whole table: this is for callers on a game thread that
+/// only want the key for a debug line.
+pub fn item_record_key_latched(rec: usize) -> Option<u32> {
+    let l = ITEM_LAYOUT.get()?;
+    safe::read(rec.checked_add(l.key)?)
+}
+
+/// Has the item record layout latched? While it has not, this gives the
+/// probe its (rate-limited) chance, which is why it is for the plugin thread
+/// only: `crate::looter::itemlog::tick` calls it before building the quest
+/// map, so that map is never built through a guessed key offset.
+pub fn item_layout_latched() -> bool {
+    let _ = item_layout();
+    ITEM_LAYOUT.get().is_some()
+}
+
 fn item_slot() -> Option<usize> {
     ITEM_INFO_SLOT.get().copied()
 }

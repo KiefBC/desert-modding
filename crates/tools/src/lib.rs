@@ -7,6 +7,7 @@
 pub mod collect_rows;
 pub mod disasm;
 pub mod funcs;
+pub mod gimmick_walk;
 pub mod outputs;
 pub mod paths;
 pub mod pattern;

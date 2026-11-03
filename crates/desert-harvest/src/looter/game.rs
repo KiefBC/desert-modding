@@ -38,6 +38,25 @@ pub const LOOT_GRANT_SIG: &str = "loot_grant";
 /// `+0x2B84650` on 25477059 and `+0x2AB6F20` on 25246367.
 pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9";
 
+/// The name [`SIGNATURES`] gives the HUD item-log line builder, so
+/// [`crate::looter::itemlog`] and the table cannot come to spell it differently.
+pub const ITEM_LOG_SIG: &str = "item_log";
+
+/// The HUD side item log's line builder, `(this, const Grant*, u16 source,
+/// ...)`, RVA `0x116A5B0` on 26361232, reached only through a `jmp` thunk in
+/// the UI notification manager's handler table. Found in game 2026-11-03: the
+/// only `ItemLogData` builder that fired on pickups. Named separately because
+/// `crate::looter::itemlog` holds its stolen bytes to being a literal prefix
+/// of it.
+///
+/// It runs on into the body because the prologue alone is shared: the four
+/// argument moves (`movzx edi,r9w; movzx r15d,r8w; mov r13,rdx; mov
+/// r12,rcx`), the stack-flag early-out (`cmp byte [rsp+..],0; jne`) and the
+/// `source` switch's first two cases (`sub r9d,7; je`, `sub r9d,0x11; je`),
+/// which are what make it this function. The frame size, the flag's stack
+/// offset and the branch displacements are wildcarded.
+pub const ITEM_LOG_PATTERN: &str = "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84";
+
 /// The `enqueue` signature, named separately because `crate::looter::entry`
 /// holds its stolen bytes to being a literal prefix of it. Function start,
 /// RVA `0x29A8370` on 26345091 (`0x29A86A0` on 26356046, `0x29A8650` on 26361232): the `call` at `desc_mask+queue_site`+0x98
@@ -100,6 +119,9 @@ pub const SIGNATURES: &[(&str, &str)] = &[
     ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9"),
     // 0x2E1F010; 0x2E1F340 on 26356046, 0x2E1F2F0 on 26361232.
     (LOOT_GRANT_SIG, LOOT_GRANT_PATTERN),
+    // 0x116A5B0 on 26361232: the item-log line builder, gated by
+    // `crate::looter::itemlog`.
+    (ITEM_LOG_SIG, ITEM_LOG_PATTERN),
 ];
 
 pub const ACTOR_MANAGER_RTTI: &str = ".?AVClientActorManager@pa@@";
@@ -125,7 +147,7 @@ pub fn resolve(m: &MainModule) -> Anchors {
     // The signatures above are built in and all parse; a typo in one is a
     // skipped anchor, never a panic in the game process.
     let parsed: Vec<Option<Pattern>> = SIGNATURES.iter().map(|(_, t)| Pattern::parse(t)).collect();
-    // One walk of the image for all nine, not one each: eight passes
+    // One walk of the image for all ten, not one each: eight passes
     // measured 1.49 s in game, some 80% of this subsystem's startup, and the
     // inline hooks installed right after it can only go in while the game is
     // still loading.
@@ -209,10 +231,13 @@ fn survey_rank(k: actors::Kind) -> u8 {
         // the end of the `SurveyLines` budget, which is the failure this
         // whole ordering exists to prevent.
         actors::Kind::Carcass => 4,
+        // A body with loot left is a loot target exactly like a carcass, and
+        // for the same reason it prints ahead of `Catchable`.
+        actors::Kind::Body | actors::Kind::FriendlyBody => 4,
         // Prints, but below the actionable targets: an emptied carcass is
         // still worth seeing in a survey, because it is the difference
         // between "skinning did nothing" and "there was nothing to skin".
-        actors::Kind::CarcassEmpty => 5,
+        actors::Kind::CarcassEmpty | actors::Kind::BodyEmpty => 5,
         actors::Kind::Catchable => 6,
         actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 7,
         actors::Kind::Inert => 8,
@@ -241,10 +266,10 @@ fn catch_diagnostic_line(
     // The species row, printed beside the class byte because the class byte
     // is not a species (`actors::STATUS_SPECIES_OFF`).
     // With the species record's name beside it once `crate::species` has
-    // latched where the name is, and `(fish)` when the fish set holds it.
+    // latched where the name is, and the class the species table gives it.
     let chr = match actors::status_off(&names).and_then(|off| actors::species_at(a, off)) {
         Some(r) => match crate::species::name(r) {
-            Some(n) => format!("{r} species={n}{}", if crate::species::is_fish(r) { " (fish)" } else { "" }),
+            Some(n) => format!("{r} species={n} ({})", crate::species::class_name(crate::species::class(r))),
             None => r.to_string(),
         },
         None => "?".to_string(),
@@ -262,14 +287,24 @@ fn catch_diagnostic_line(
     // the gap between it and `set_rows` is exactly the bug that switched
     // auto-gather off - class 0x82 reads `1/0/4(0)` once emptied.
     let dd = match kind {
-        actors::Kind::Carcass | actors::Kind::CarcassEmpty => {
-            match actors::dead_drop_state(a) {
+        actors::Kind::Carcass
+        | actors::Kind::CarcassEmpty
+        | actors::Kind::Body
+        | actors::Kind::FriendlyBody
+        | actors::Kind::BodyEmpty => {
+            let mut t = match actors::dead_drop_state(a) {
                 Some(s) => format!(
                     " dd={}/{}/{}({})",
                     s.rolled, s.item_rows, s.set_rows, s.grantable_set_rows
                 ),
                 None => " dd=none".to_string(),
+            };
+            // A body also prints the owner gate's reading, which is what
+            // decides whether `GatherBodies` will search it.
+            if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody | actors::Kind::BodyEmpty) {
+                t.push_str(&format!(" owner={}", owner_text(actors::corpse_owner(a))));
             }
+            t
         }
         _ => String::new(),
     };
@@ -281,6 +316,16 @@ fn catch_diagnostic_line(
         "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} chr={chr} status={st}{dd} comps=[{}]",
         pos.x, pos.y, pos.z, class_of(m, a), comps.join(" ")
     );
+}
+
+/// The owner gate's reading for a log line: `-1` unowned, the id in hex, or
+/// `?` when it would not read.
+fn owner_text(o: actors::Owner) -> String {
+    match o {
+        actors::Owner::Unowned => "-1".to_string(),
+        actors::Owner::Id(id) => format!("{id:X}"),
+        actors::Owner::Unreadable => "?".to_string(),
+    }
 }
 
 /// `creature::type_byte` as two hex digits, or `?` when it is not readable.
@@ -427,8 +472,14 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     Some(s) => format!(" status={:02X}/{:02X}{}", s.kind, s.flag, if actors::is_owned_or_special(s) { " OWNED" } else { "" }),
                     None => " status=?".to_string(),
                 };
+                let container = id
+                    .as_ref()
+                    .and_then(|n| n.key)
+                    .and_then(actors::container_class)
+                    .map(|c| format!(" container={}", c.name()))
+                    .unwrap_or_default();
                 crate::log!(
-                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{st}",
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{container}{st}",
                     pos.x, pos.y, pos.z
                 );
             }
@@ -444,12 +495,18 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     ),
                     None => ("-".into(), "-".into(), "-".into()),
                 };
+                let container = id
+                    .as_ref()
+                    .and_then(|n| n.key)
+                    .and_then(actors::container_class)
+                    .map(|c| format!(" container={}", c.name()))
+                    .unwrap_or_default();
                 let comps: Vec<String> = actors::component_names(m, *a)
                     .into_iter()
                     .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
                     .collect();
                 crate::log!(
-                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} gimmick={} comps=[{}]",
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name}{container} gimmick={} comps=[{}]",
                     pos.x, pos.y, pos.z, actors::interaction_words(m, *a), comps.join(" ")
                 );
                 if debug {
@@ -463,7 +520,12 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
             // - `cat=` is the class byte that decides it. `Catchable` is
             // named here rather than left to `_` precisely because it is the
             // line that says whether the rule picked the right actor.
-            actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Carcass | actors::Kind::Other => {
+            actors::Kind::Character
+            | actors::Kind::Catchable
+            | actors::Kind::Carcass
+            | actors::Kind::Body
+            | actors::Kind::FriendlyBody
+            | actors::Kind::Other => {
                 catch_diagnostic_line(m, *a, *d, *eid, pos, kind);
             }
             _ => {
@@ -947,6 +1009,10 @@ pub struct GatherTarget {
     pub mode: crate::looter::payload::PickupMode,
     /// Carries the game's interaction object (`Gather`) rather than `Unarmed`.
     pub armed: bool,
+    /// A dead person or monster (`Kind::Body`/`FriendlyBody`) rather than
+    /// an animal carcass: the send re-checks the owner gate, and the `[skin]`
+    /// line says "body".
+    pub body: bool,
     pub player_eid: u32,
     pub route: u32,
 }
@@ -1027,7 +1093,16 @@ fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind,
         return;
     }
     let Some(cat) = actors::interaction_category(m, a) else { return };
-    if !creature::is_catch_class(cat) {
+    // The species decides when it is known: a raccoon on the insects' 0x80
+    // is passed over on purpose and says nothing, and a critter, which no
+    // class byte names, is reported like a bug.
+    let species = actors::species_class(m, a);
+    let known = match species {
+        s if creature::is_never_a_catch(s) => false,
+        Some(_) => true,
+        None => creature::is_catch_class(cat),
+    };
+    if !known {
         return;
     }
     {
@@ -1039,7 +1114,8 @@ fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind,
     }
     let st = actors::status_bytes(m, a);
     crate::log!(
-        "[gather] known-class creature passed over: eid={eid:08X} type={ty:02X} cat={cat:02X} at {d:.1} m kind={kind:?} status kind={} flag={} catch_class={:?}",
+        "[gather] known-class creature passed over: eid={eid:08X} type={ty:02X} cat={cat:02X} species={} at {d:.1} m kind={kind:?} status kind={} flag={} catch_class={:?}",
+        crate::species::class_name(species),
         st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.kind)),
         st.map_or_else(|| "?".to_string(), |s| format!("{:02X}", s.flag)),
         actors::catch_class(m, a)
@@ -1065,15 +1141,53 @@ fn first_sighting_of(c: u8) -> bool {
 /// `UNKNOWN_CATCH_CATEGORIES` makes, and it needs no table behind it because
 /// there is nothing to say per carcass: the switch is the whole reason.
 static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+/// [`CARCASS_PASSED_WITH_SWITCH_OFF`] for a body passed over only because
+/// `GatherBodies=0`.
+static BODY_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+/// The same, for a friendly body passed over only because
+/// `GatherFriendlyBodies=0` while `GatherBodies=1`.
+static FRIENDLY_BODY_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+
+/// Bodies refused by the owner gate (`actors::corpse_owner`), each logged
+/// once. Capped like `PASSED_CATCHABLE`: past the cap a refusal is still a
+/// refusal, it just is not logged again.
+static BODY_OWNED_LOGGED: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+const BODY_OWNED_LOGGED_CAP: usize = 200;
+
+/// Log a body the owner gate refused, once per eid.
+fn note_owned_body(eid: u32, owner: actors::Owner) {
+    {
+        let mut seen = BODY_OWNED_LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.len() >= BODY_OWNED_LOGGED_CAP || seen.contains(&eid) {
+            return;
+        }
+        seen.push(eid);
+    }
+    crate::log!("[gather] body eid={eid:08X} has an owner/trigger (id={}); skipped", owner_text(owner));
+}
+
+/// The corpse switches out of the live config, for
+/// `actors::Kind::is_gather_candidate`: here and in `autogather::review`, the
+/// two places that must agree.
+pub fn corpse_switches(cfg: &Config) -> actors::CorpseSwitches {
+    actors::CorpseSwitches {
+        carcass: cfg.gather_carcass,
+        bodies: cfg.gather_bodies,
+        friendly_bodies: cfg.gather_friendly_bodies,
+    }
+}
 
 /// Nearest node within `GatherRange` metres that classifies as `Gather`
 /// (interaction object present and the gimmick record is a
 /// Foraging/Logging/Mining/Ore record), skipping eids for which `skip` is
 /// true. Ground items (`GatherItems`) and catchable creatures (`GatherBugs`
-/// for insects, `GatherFish` for fish) are candidates too; a creature comes
+/// for insects, `GatherFish` for fish, `GatherCritters` for the small animals
+/// the species table files as bag catches) are candidates too; a creature comes
 /// back with `mode: Catch`, which is a different game event entirely (see
 /// `payload::catch_payload`). So are animal carcasses when `GatherCarcass=1`,
-/// with `mode: Skin` and a third event again (`payload::skin_payload`).
+/// with `mode: Skin` and a third event again (`payload::skin_payload`), and
+/// dead people and monsters when `GatherBodies=1` (friendly ones only with
+/// `GatherFriendlyBodies=1` too), the same event, after the owner gate.
 /// `cfg` is the live config, so what counts as a candidate follows the ini
 /// without this having to be told twice - `actors::Kind::is_gather_candidate`
 /// is where that set is defined, once, for here and for
@@ -1093,6 +1207,14 @@ pub fn nearest_gather(
     // failure is silent.
     let mut unreadable = 0usize;
     let unarmed = cfg.gather_unarmed;
+    let corpses = corpse_switches(cfg);
+    // Nodes passed over only because their family is switched off. Creatures
+    // skipped by `GatherBugs=0`, `GatherFish=0` or `GatherCritters=0` are counted here too: to the
+    // player it is the same kind of "you switched that off", and the summary
+    // reads the same. A creature of an unknown class is *not* counted, because
+    // nothing the player can set would have taken it. Bodies passed over by
+    // `GatherBodies=0` or `GatherFriendlyBodies=0` count too.
+    let mut family_off_seen = 0usize;
     // (dist, eid, actor, pos, kind) for every gather-record node in range.
     let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
     for &(eid, a) in &sc.entries {
@@ -1105,13 +1227,13 @@ pub fn nearest_gather(
             continue;
         }
         let kind = actors::classify(m, a, sc.player);
-        if !kind.is_gather_candidate(cfg.gather_carcass) {
+        if !kind.is_gather_candidate(corpses) {
             note_passed_catchable(m, a, eid, kind, d);
         }
         // One shared definition of the candidate set, `actors::Kind`'s own,
         // so this and `autogather::Gatherer::review` cannot come to disagree
         // about what the gatherer aims at - see `Kind::is_gather_candidate`.
-        if !kind.is_gather_candidate(cfg.gather_carcass) {
+        if !kind.is_gather_candidate(corpses) {
             // An interactable gimmick whose record names nothing: a gather
             // node `classify` could not give a family because the record did
             // not read, which is the shape of a moved layout.
@@ -1126,6 +1248,24 @@ pub fn nearest_gather(
                 crate::log!(
                     "[gather] a skinnable carcass is {d:.0} m away and GatherCarcass=0, so it is not a target; set [Harvest] GatherCarcass=1 to skin carcasses (said once per session)"
                 );
+            }
+            // The same once-per-session word for a body, and a separate one
+            // for a friendly body passed over only by its own switch.
+            if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody) {
+                family_off_seen += 1;
+                if !cfg.gather_bodies {
+                    if !BODY_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed) {
+                        crate::log!(
+                            "[gather] a body with loot is {d:.0} m away and GatherBodies=0, so it is not a target; set [Harvest] GatherBodies=1 to search bodies (said once per session)"
+                        );
+                    }
+                } else if kind == actors::Kind::FriendlyBody
+                    && !FRIENDLY_BODY_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed)
+                {
+                    crate::log!(
+                        "[gather] a friendly body (citizen, trader, mercenary) with loot is {d:.0} m away and GatherFriendlyBodies=0, so it is not a target; set [Harvest] GatherFriendlyBodies=1 to search those too (said once per session)"
+                    );
+                }
             }
             continue;
         }
@@ -1143,12 +1283,6 @@ pub fn nearest_gather(
     }
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
-    // Nodes passed over only because their family is switched off. Creatures
-    // skipped by `GatherBugs=0` or `GatherFish=0` are counted here too: to the
-    // player it is the same kind of "you switched that off", and the summary
-    // reads the same. A creature of an unknown class is *not* counted, because
-    // nothing the player can set would have taken it.
-    let mut family_off_seen = 0usize;
     let mut refused_seen = 0usize;
     for &(d, eid, a, pos, kind) in &nodes {
         // Catchable creatures carry no gimmick record, so they are decided
@@ -1167,8 +1301,13 @@ pub fn nearest_gather(
                     family_off_seen += 1;
                     continue;
                 }
+                Some(Catchable::Known(CatchClass::Critter)) if !cfg.gather_critters => {
+                    family_off_seen += 1;
+                    continue;
+                }
                 Some(Catchable::Known(CatchClass::Bug)) => ("bug", "Bug"),
                 Some(Catchable::Known(CatchClass::Fish)) => ("fish", "Fish"),
+                Some(Catchable::Known(CatchClass::Critter)) => ("critter", "Critter"),
                 Some(Catchable::Unknown(c)) => {
                     if first_sighting_of(c) {
                         crate::log!(
@@ -1201,6 +1340,7 @@ pub fn nearest_gather(
                 cat: 0,
                 mode: crate::looter::payload::PickupMode::Catch,
                 armed: true,
+                body: false,
                 player_eid: sc.player_eid,
                 route: sc.route,
             });
@@ -1244,6 +1384,48 @@ pub fn nearest_gather(
                 // word means "not an `Unarmed` twin" here, and nothing
                 // downstream reads it except the log's UNARMED note.
                 armed: true,
+                body: false,
+                player_eid: sc.player_eid,
+                route: sc.route,
+            });
+        }
+        // A body: the carcass branch above, plus the owner gate. The game's
+        // own corpse-loot interaction refuses a corpse whose owner id is not
+        // -1 (`actors::owner_verdict`, read on 26361232), which is what keeps
+        // a body with a quest trigger out of reach; the forged event skips
+        // that interaction, so the gate is asked here instead, and refuses an
+        // unreadable id too. `events::send_pickup` asks it again on the game
+        // thread. Carcasses are not held to it: that path is verified in game
+        // and stays as it was.
+        if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody) {
+            if skip(eid) {
+                continue;
+            }
+            let owner = actors::corpse_owner(a);
+            if owner != actors::Owner::Unowned {
+                note_owned_body(eid, owner);
+                continue;
+            }
+            let friendly = kind == actors::Kind::FriendlyBody;
+            return Ok(GatherTarget {
+                eid,
+                // No gimmick record, as for a carcass: a body's drops are its
+                // `characterinfo` record's reward dropsets.
+                record: 0xFFFF,
+                actor: a,
+                player_actor: sc.player,
+                dist: d,
+                name: format!(
+                    "{} cat={} type={}",
+                    if friendly { "friendly body" } else { "body" },
+                    category_text(m, a),
+                    type_text(a)
+                ),
+                cat: actors::interaction_category(m, a).unwrap_or(0),
+                family: if friendly { "FriendlyBody" } else { "Body" }.to_string(),
+                mode: crate::looter::payload::PickupMode::Skin,
+                armed: true,
+                body: true,
                 player_eid: sc.player_eid,
                 route: sc.route,
             });
@@ -1312,6 +1494,7 @@ pub fn nearest_gather(
             cat: 0,
             mode,
             armed: kind == actors::Kind::Gather,
+            body: false,
             player_eid: sc.player_eid,
             route: sc.route,
         });
@@ -1319,7 +1502,7 @@ pub fn nearest_gather(
     let why = if unarmed_seen > 0 && !unarmed {
         format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)")
     } else if family_off_seen > 0 {
-        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish switches)")
+        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish/GatherCritters/GatherBodies/GatherFriendlyBodies switches)")
     } else if refused_seen > 0 {
         format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)")
     } else {
@@ -1390,7 +1573,7 @@ mod tests {
     /// Every signature parses, and the table carries each name once.
     #[test]
     fn every_signature_parses_and_is_named_once() {
-        assert_eq!(SIGNATURES.len(), 9);
+        assert_eq!(SIGNATURES.len(), 10);
         for (name, text) in SIGNATURES {
             assert!(Pattern::parse(text).is_some(), "{name}");
             assert_eq!(SIGNATURES.iter().filter(|(n, _)| n == name).count(), 1, "{name}");

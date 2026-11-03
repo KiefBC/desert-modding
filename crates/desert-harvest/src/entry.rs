@@ -7,7 +7,7 @@
 //! with nothing waiting in front of them, because the game reads the
 //! gimmickinfo table while it is still loading and the record loader's
 //! prologue can only be patched before any thread runs it. Auto-loot's
-//! signature scan and its three hooks come next, and its 20-second boot grace
+//! signature scan and its four hooks come next, and its 20-second boot grace
 //! is a deadline inside the loop, not a wait in front of anything.
 
 use crate::config::{self, Config};
@@ -19,7 +19,7 @@ use crate::looter::entry::{
     beep, install_enqueue_hook, install_sweep_hook, load_yields, publish_position, resolve_descriptor,
     resolve_event_api, save_yields, tid_now,
 };
-use crate::looter::{events, game, hunting};
+use crate::looter::{events, game, hunting, itemlog, logfilter};
 use crate::module::MainModule;
 
 /// How often this thread stats `DesertTooling.ini` for a modified time
@@ -90,6 +90,22 @@ fn log_yield_intent(cfg: &Config) {
     }
 }
 
+/// Hand `Pouches`, `Breakables` and `DryRun` to `desert-dispatch`, which owns
+/// the write path for those drop-table rows (`desert_core::drop_levers`).
+/// Called at startup and on a reload that moved one of them; `Enabled=0`
+/// arrives there as 1/1 (`gatherer::config::Config::drop_levers`).
+fn publish_drop_levers(cfg: &gatherer::config::Config) {
+    let l = cfg.drop_levers();
+    let generation = desert_core::drop_levers::publish(l);
+    crate::log!(
+        "[ini] Pouches={} Breakables={} DryRun={} handed to dispatch (#{generation}); it writes \
+         them only while [Dispatch] Enabled=1",
+        l.pouches,
+        l.breakables,
+        l.dry_run as u8
+    );
+}
+
 /// Run Desert Harvest for the life of the process. `desert-tooling` calls this
 /// on a thread of its own, straight after `log::init`, the ini seeding and the
 /// migration, and it never returns except when the main module cannot be
@@ -125,8 +141,10 @@ pub fn start() {
 
     // The yield hook reads this; publish before it can possibly fire.
     gatherer::config::LIVE.publish(&cfg.gatherer);
+    publish_drop_levers(&cfg.gatherer);
     events::set_log_received(cfg.enabled() && cfg.looter.log_received);
     hunting::set_multiplier(if cfg.enabled() { cfg.looter.hunting } else { 1 });
+    logfilter::LIVE.publish(&cfg.looter);
 
     // Once for both halves; `events::set_module` still wants its own copy below.
     let Some(module) = MainModule::locate() else {
@@ -151,7 +169,7 @@ pub fn start() {
         crate::log!("[hook] no yield hook installed; the multipliers are off and the game's yields are untouched");
     }
 
-    // Auto-loot: the signature walk, then its three hooks, installed right
+    // Auto-loot: the signature walk, then its four hooks, installed right
     // away for the same reason as the two above.
     let t0 = std::time::Instant::now();
     let anchors = game::resolve(&module);
@@ -167,6 +185,10 @@ pub fn start() {
     // The Hunting multiplier's hook, installed regardless of what the key is
     // set to: the callback reads the live value on every grant.
     hunting::install(&module, &anchors);
+    // The item-log filter's gate, the same way: in regardless of
+    // `LootLogMinTier`, which the callback reads live; 0 is the vanilla log.
+    // Its quest map is built later, by `itemlog::tick` in the loop below.
+    itemlog::install(&module, &anchors);
     let api_ok = resolve_event_api(&module, &anchors);
     if let Some(m2) = MainModule::locate() {
         events::set_module(m2);
@@ -184,7 +206,8 @@ pub fn start() {
     let boot_grace = std::time::Duration::from_secs(20);
     let mut census_done = false;
     let mut next_world_try = std::time::Instant::now() + boot_grace;
-    // The species walk reads heap records too, so it waits out the same grace.
+    // The species walk and the item-log quest map read heap records too, so
+    // they wait out the same grace.
     let species_from = std::time::Instant::now() + boot_grace;
     let mut k_toggle = Hotkey::new(cfg.looter.key_toggle);
     let mut k_scan = Hotkey::new(cfg.looter.key_scan);
@@ -199,6 +222,7 @@ pub fn start() {
     let mut last_counts = gatherer::hook::Counters::default();
     let mut last_catch: Option<String> = None;
     let mut last_recv: Option<[u64; 7]> = None;
+    let mut last_itemlog: Option<String> = None;
     loop {
         // Once a second, and above the `Enabled` gate on purpose: the yield
         // half's work here has to keep running under `Enabled=0` - that is
@@ -231,6 +255,7 @@ pub fn start() {
                             let (o, n) = (&old.looter, &cfg.looter);
                             events::set_log_received(n.enabled && n.log_received);
                             hunting::set_multiplier(if n.enabled { n.hunting } else { 1 });
+                            logfilter::LIVE.publish(n);
                             auto.apply(n);
                             // Rebuilt only when the binding actually moved: a
                             // new poller starts with "not held", which would
@@ -258,8 +283,16 @@ pub fn start() {
                         }
                         // Only when a yield key moved: an auto-loot slider
                         // must never cost a re-apply pass over game memory.
-                        if old.gatherer != cfg.gatherer {
+                        // `Pouches` / `Breakables` are not read by any
+                        // hook here, so moving only them is a publish to
+                        // dispatch and no re-apply pass.
+                        if old.gatherer.without_drop_levers() != cfg.gatherer.without_drop_levers() {
                             gatherer::entry::apply_reload(&cfg.gatherer);
+                        } else if old.gatherer != cfg.gatherer {
+                            gatherer::config::LIVE.publish(&cfg.gatherer);
+                        }
+                        if old.gatherer.drop_levers() != cfg.gatherer.drop_levers() {
+                            publish_drop_levers(&cfg.gatherer);
                         }
                     }
                 }
@@ -268,12 +301,18 @@ pub fn start() {
             // hook, which runs whatever `Enabled` says. Rate-limited inside.
             if std::time::Instant::now() >= species_from {
                 crate::species::tick();
+                // The item-log filter's quest map, by record index, from
+                // `desert_core::quest_items`: built here, once the item
+                // layout latches (this call also drives that probe), so the
+                // hook only ever loads a bit. Rate-limited inside.
+                itemlog::tick();
             }
             if last_summary_at.elapsed() >= summary_every {
                 last_summary_at = std::time::Instant::now();
                 gatherer::entry::log_counters(&mut last_counts);
                 gatherer::catch::log_counters(&mut last_catch);
                 events::log_recv_counters(&mut last_recv);
+                itemlog::log_counters(&mut last_itemlog);
             }
         }
         // Polled even while disabled, so a press made with Enabled=0 is

@@ -37,6 +37,8 @@
 //! `gimmick::LOADER_PROLOGUE` is: they are what a game update breaks first,
 //! and `crates/desert-core/tests/gimmick_real.rs` checks them against the real exe.
 
+pub use crate::species_table::SpeciesClass;
+
 // ---------------------------------------------------------------------------
 // The catch-count patch site (build 26345091; section 17.4 has 25246367's)
 // ---------------------------------------------------------------------------
@@ -78,13 +80,18 @@ pub const CATCH_BYTES: [u8; CATCH_STOLEN] = [
     0x48, 0x8D, 0x95, 0xD0, 0x01, 0x00, 0x00, // lea rdx,[rbp+0x1d0] - replayed
 ];
 
-/// A creature the player can catch by hand, as told by its interaction
-/// category byte and, for a fish, its type byte. There is deliberately no
-/// `Unknown` variant: see [`catch_class`].
+/// A creature the player can catch by hand, as told by its species record
+/// ([`catch_class_by_species`]) or, failing that, its interaction category
+/// byte and, for a fish, its type byte. There is deliberately no `Unknown`
+/// variant: see [`catch_class`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CatchClass {
     Bug,
     Fish,
+    /// A bag catch outside the insect and fish tribe groups: lizards, small
+    /// birds, rats, frogs. Only a species record ever says this; no class
+    /// byte maps to it.
+    Critter,
 }
 
 impl CatchClass {
@@ -93,11 +100,19 @@ impl CatchClass {
         match self {
             CatchClass::Bug => "bug",
             CatchClass::Fish => "fish",
+            CatchClass::Critter => "critter",
         }
     }
 }
 
 /// Interaction category bytes seen on insects caught by hand.
+///
+/// **The fallback since the species table**: [`catch_class_by_species`]
+/// decides by the species record whenever the species is known, and these
+/// class-byte lists (this one, [`FISH_CLASSES`], [`FISH_TYPES`] and
+/// [`NPC_CLASSES`]) answer only for a species the table does not know, or
+/// before the plugin has read it. The history below is why they say what they
+/// say.
 ///
 /// Six catches in the first verified field session (build 25116796,
 /// 2026-09-08) all read 0x80, across four item ids (1001254, 1000680,
@@ -108,14 +123,23 @@ impl CatchClass {
 /// the insects: its species row sits among theirs (bugs on 26361232 read chr
 /// 3887, 3888, 3895, 3902 and 3916). [`catch_class`] alone therefore answers
 /// [`CatchClass::Bug`] for it, which filed it under `GatherBugs` and `Bugs`.
-/// What does tell it apart is its **species record's name** in
-/// `characterinfo`, so [`catch_class_with_species`] lets a species the
-/// plugin has named a fish ([`is_fish_species_name`]) turn this one class on
-/// [`FISH_TYPES`] into [`CatchClass::Fish`]. Rows are not used as the key
-/// because they shift between game builds (3935 -> 3966); names do not.
+/// What does tell it apart is its **species record**: `Animal_RiceFish` is
+/// in the fish tribe group, so [`catch_class_by_species`] files it as a fish
+/// from the species table (`crate::species_table`), and
+/// [`catch_class_with_species`] keeps the old one-pair override for a caller
+/// that only has a fish flag. Rows are not used as the key because they shift
+/// between game builds (3935 -> 3966); names do not.
+///
+/// 0x80 is not only insects: row 6684 on 26361232, a class-0x80 species, is
+/// `Animal_Raccoon_Wild_30042`, which is carried and skinned, never bagged.
+/// The class byte alone would walk the auto-catch up to it; its species
+/// record says `NotHandCatchable`.
 pub const BUG_CLASSES: &[u8] = &[0x80];
 
 /// Interaction category bytes seen on fish caught by hand.
+///
+/// The fallback for an unknown species since the species table; see
+/// [`BUG_CLASSES`].
 ///
 /// Fish are taken with the **same** event as insects
 /// (`TrocTrPushCharacterToInventoryOnceTimer`, 8-byte payload). Four manual
@@ -166,6 +190,9 @@ pub const FISH_CLASSES: &[u8] = &[0x23, 0x44, 0x65, 0x83];
 
 /// The [`type_byte`] values on which a [`FISH_CLASSES`] byte means a fish.
 ///
+/// The fallback for an unknown species since the species table; see
+/// [`BUG_CLASSES`].
+///
 /// The class byte is not a species, and 0x23 proves it. On build 25477059
 /// (2026-09-24, `docs/reference-internals.md` section 15.8) one session read
 /// both halves, and an earlier one that day skinned the carcass:
@@ -193,6 +220,10 @@ pub const FISH_CLASSES: &[u8] = &[0x23, 0x44, 0x65, 0x83];
 pub const FISH_TYPES: &[u8] = &[6];
 
 /// Interaction category bytes seen on **NPCs** - people, not animals.
+///
+/// Kept beside the catch lists, which are the fallback for an unknown
+/// species since the species table ([`BUG_CLASSES`]); the carcass gate still
+/// reads this one directly.
 ///
 /// Recorded by the surveys behind [`CATCHABLE_TYPES`]: 0x21, 0x33, 0x66 and
 /// 0x71, every one of them on the type byte 3 that also carries the Firefly
@@ -248,9 +279,8 @@ pub fn species_can_override(ty: u8, category: u8) -> bool {
     BUG_CLASSES.contains(&category) && FISH_TYPES.contains(&ty)
 }
 
-/// [`catch_class`], corrected by the species: `fish_species` says the
-/// creature's `characterinfo` record is named a fish
-/// ([`is_fish_species_name`]).
+/// [`catch_class`], corrected by a fish flag: `fish_species` says the
+/// creature's species is a fish.
 ///
 /// Only one answer can change: a bug class on a fish type becomes
 /// [`CatchClass::Fish`] when the species is a fish (the Rice Fish, see
@@ -258,7 +288,8 @@ pub fn species_can_override(ty: u8, category: u8) -> bool {
 /// know into a catch - `None` stays `None` whatever the species - and it never
 /// touches a fish class, a bug on a non-fish type (the Firefly Colony on type
 /// 3), or anything with `fish_species == false`, which is exactly
-/// [`catch_class`].
+/// [`catch_class`]. [`catch_class_by_species`] is what the plugin calls; this
+/// is its fallback's shape, kept for a caller that has only the flag.
 pub fn catch_class_with_species(ty: u8, category: u8, fish_species: bool) -> Option<CatchClass> {
     if fish_species && species_can_override(ty, category) {
         return Some(CatchClass::Fish);
@@ -266,36 +297,61 @@ pub fn catch_class_with_species(ty: u8, category: u8, fish_species: bool) -> Opt
     catch_class(ty, category)
 }
 
-/// The text that marks a `characterinfo` species name as a fish, matched
-/// case-insensitively anywhere in the name, on a name that also starts with
-/// [`ANIMAL_NAME_PREFIX`].
+/// Classify a creature by its species record first, its bytes second.
 ///
-/// Read off the table on 26361232 (2026-11-02): the Rice Fish is
-/// `Animal_RiceFish` (row 3966), a hand-caught fish `Animal_Small_Beyaz_Fish_Wild_1`
-/// (4031); the insects are `Animal_Insect_*` (GrassHopper, Centipede,
-/// Dragonfly, GnatWide, Common_Buckeye). Without the prefix the bare `fish`
-/// rule marked 66 rows, most of them people and props
-/// (`NHM_Citizen_Fisherman_*`, `NHM_Fisherman_ToolFishingRod_*`). Not every
-/// fish says `fish` (`Animal_Normal_Tench_Wild_1`, row 4036), but those carry
-/// a fish class already; the rule only ever matters for a class-0x80 catch on
-/// a fish type ([`catch_class_with_species`]).
-pub const FISH_NAME_MARKERS: &[&str] = &["fish"];
+/// `species` is the creature's [`SpeciesClass`] from the generated species
+/// table (`crate::species_table::species_class` on its `characterinfo` record
+/// name). A known species decides on its own, whatever the class byte says:
+///
+/// - [`SpeciesClass::NotHandCatchable`] is `None` - ducks and raccoons are
+///   carried, killed and skinned, never caught, and the raccoon reads the
+///   insects' class 0x80 (row 6684 on 26361232);
+/// - [`SpeciesClass::Bug`], [`SpeciesClass::Fish`] and
+///   [`SpeciesClass::Critter`] are that class - the record lists the
+///   `Insect_Catch` interaction and names the item it turns into, which is
+///   what a bag catch is. That files `Animal_Insect_Lobster` and the Rice Fish
+///   as fish, which no class byte could;
+/// - [`SpeciesClass::Body`] and [`SpeciesClass::FriendlyBody`] are `None` -
+///   a person or monster whose corpse is searched (`Dead_Loot`) is never a
+///   catch;
+/// - [`SpeciesClass::Protected`] is `None` - the player's own characters and
+///   their doubles are never caught, searched or skinned.
+///
+/// `None` - a species the table does not know, or a table the plugin has not
+/// read yet - is exactly the old answer: [`catch_class`], the class-byte
+/// lists, with no fish flag (the one creature the flag was for, the Rice
+/// Fish, is in the table).
+///
+/// The callers' [`CATCHABLE_TYPES`] gate stays in front of this either way.
+pub fn catch_class_by_species(ty: u8, category: u8, species: Option<SpeciesClass>) -> Option<CatchClass> {
+    match species {
+        Some(SpeciesClass::Bug) => Some(CatchClass::Bug),
+        Some(SpeciesClass::Fish) => Some(CatchClass::Fish),
+        Some(SpeciesClass::Critter) => Some(CatchClass::Critter),
+        Some(
+            SpeciesClass::NotHandCatchable
+            | SpeciesClass::Body
+            | SpeciesClass::FriendlyBody
+            | SpeciesClass::Protected,
+        ) => None,
+        None => catch_class_with_species(ty, category, false),
+    }
+}
 
-/// Every creature species name read so far starts with this.
-pub const ANIMAL_NAME_PREFIX: &str = "animal_";
-
-/// A name carrying this is the game's own word for an insect, whatever else
-/// it says: `Animal_Insect_StarFish` (row 3969 on 26361232) matched the fish
-/// rule until this was added.
-pub const INSECT_NAME_MARKER: &str = "_insect_";
-
-/// Does this `characterinfo` species name mark a fish? Case-insensitive
-/// substring match against [`FISH_NAME_MARKERS`].
-pub fn is_fish_species_name(name: &str) -> bool {
-    let lower = name.to_ascii_lowercase();
-    lower.starts_with(ANIMAL_NAME_PREFIX)
-        && !lower.contains(INSECT_NAME_MARKER)
-        && FISH_NAME_MARKERS.iter().any(|m| lower.contains(m))
+/// A known species that is never a hand catch, whatever its class byte:
+/// [`SpeciesClass::NotHandCatchable`] (ducks, raccoons), both body classes
+/// (people and monsters, searched when dead, never bagged alive) and
+/// [`SpeciesClass::Protected`] (the player's own characters).
+pub fn is_never_a_catch(species: Option<SpeciesClass>) -> bool {
+    matches!(
+        species,
+        Some(
+            SpeciesClass::NotHandCatchable
+                | SpeciesClass::Body
+                | SpeciesClass::FriendlyBody
+                | SpeciesClass::Protected
+        )
+    )
 }
 
 /// The species row is a `u16` (`ClientStatusActorComponent+0x30`), so a
@@ -337,6 +393,80 @@ impl SpeciesBits {
 }
 
 impl Default for SpeciesBits {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// One [`SpeciesClass`] per `characterinfo` row, lock-free: the plugin
+/// thread stores each row's class once it has read the row's name, a
+/// game-thread hook loads it. One byte per row, 0 for "not known" (not read
+/// yet, or a name the species table does not hold). 64 KiB,
+/// const-constructible, so it lives in a `static`.
+pub struct SpeciesClasses {
+    rows: [core::sync::atomic::AtomicU8; SPECIES_ROWS],
+}
+
+impl SpeciesClasses {
+    pub const fn new() -> Self {
+        Self { rows: [const { core::sync::atomic::AtomicU8::new(0) }; SPECIES_ROWS] }
+    }
+
+    fn encode(class: SpeciesClass) -> u8 {
+        match class {
+            SpeciesClass::Bug => 1,
+            SpeciesClass::Fish => 2,
+            SpeciesClass::Critter => 3,
+            SpeciesClass::NotHandCatchable => 4,
+            SpeciesClass::Body => 5,
+            SpeciesClass::FriendlyBody => 6,
+            SpeciesClass::Protected => 7,
+        }
+    }
+
+    fn decode(code: u8) -> Option<SpeciesClass> {
+        match code {
+            1 => Some(SpeciesClass::Bug),
+            2 => Some(SpeciesClass::Fish),
+            3 => Some(SpeciesClass::Critter),
+            4 => Some(SpeciesClass::NotHandCatchable),
+            5 => Some(SpeciesClass::Body),
+            6 => Some(SpeciesClass::FriendlyBody),
+            7 => Some(SpeciesClass::Protected),
+            _ => None,
+        }
+    }
+
+    /// Store `row`'s class; true when that changed what the row held.
+    pub fn set(&self, row: u16, class: SpeciesClass) -> bool {
+        let Some(slot) = self.rows.get(usize::from(row)) else { return false };
+        let code = Self::encode(class);
+        slot.swap(code, core::sync::atomic::Ordering::Relaxed) != code
+    }
+
+    /// `row`'s class, or `None` when it is not known. One atomic load; safe
+    /// on any thread.
+    pub fn get(&self, row: u16) -> Option<SpeciesClass> {
+        self.rows
+            .get(usize::from(row))
+            .and_then(|slot| Self::decode(slot.load(core::sync::atomic::Ordering::Relaxed)))
+    }
+
+    /// How many rows hold each class: `[bug, fish, critter, not catchable,
+    /// body, friendly body, protected]`.
+    pub fn counts(&self) -> [usize; 7] {
+        let mut out = [0usize; 7];
+        for slot in &self.rows {
+            let code = slot.load(core::sync::atomic::Ordering::Relaxed);
+            if let Some(n) = usize::from(code).checked_sub(1).and_then(|i| out.get_mut(i)) {
+                *n += 1;
+            }
+        }
+        out
+    }
+}
+
+impl Default for SpeciesClasses {
     fn default() -> Self {
         Self::new()
     }
@@ -540,28 +670,109 @@ mod tests {
         }
     }
 
+    /// The species decides whenever it is known, and the class byte is
+    /// only the fallback. Names and classes are the real 26361232 ones.
     #[test]
-    fn the_fish_name_rule() {
-        // Real names, 26361232.
-        for n in ["Animal_RiceFish", "Animal_Small_Beyaz_Fish_Wild_1", "ANIMAL_CATFISH"] {
-            assert!(is_fish_species_name(n), "{n}");
+    fn a_known_species_decides_on_its_own() {
+        use crate::species_table::species_class;
+        let by = |ty, cat, name: &str| catch_class_by_species(ty, cat, species_class(name));
+        // Row 6684: the raccoon reads the insects' class 0x80, on either
+        // catchable type. It is carried and skinned, never caught.
+        for ty in [6u8, 3] {
+            assert_eq!(catch_class(ty, 0x80), Some(CatchClass::Bug), "the bytes alone would catch it");
+            assert_eq!(by(ty, 0x80, "Animal_Raccoon_Wild_30042"), None, "type {ty}");
         }
-        for n in [
-            "",
-            "Animal_Insect_GrassHopper",
-            "Animal_Insect_Dragonfly",
-            "Animal_Raccoon_Wild_30042",
-            "NHM_Citizen_Fisherman_3451",
-            "NHM_Fisherman_ToolFishingRod_7038",
-            "Fish_RiceFish",
-            "Animal_Fis",
-            "Animal_Insect_StarFish",
-        ] {
-            assert!(!is_fish_species_name(n), "{n}");
+        assert_eq!(by(6, 0x80, "Animal_Duck_Wild_30020"), None);
+        assert_eq!(by(6, 0x23, "Animal_Duck_Wild_30020"), None);
+        // A critter whatever its class byte: no class byte maps to Critter.
+        for cat in [0x00u8, 0x20, 0x80] {
+            assert_eq!(by(6, cat, "Animal_Iguana_Wild_30069"), Some(CatchClass::Critter), "0x{cat:02X}");
+            assert_eq!(by(6, cat, "Animal_Sparrow_Wild_30071"), Some(CatchClass::Critter), "0x{cat:02X}");
+        }
+        // Fish-group species the old name marker could not see, and the Rice
+        // Fish on the insects' class.
+        assert_eq!(by(6, 0x80, "Animal_Insect_Lobster"), Some(CatchClass::Fish));
+        assert_eq!(by(6, 0x80, "Animal_Insect_Sea_Slater"), Some(CatchClass::Fish));
+        assert_eq!(by(6, 0x80, "Animal_RiceFish"), Some(CatchClass::Fish));
+        assert_eq!(by(6, 0x80, "Animal_Insect_GrassHopper"), Some(CatchClass::Bug));
+        assert_eq!(by(3, 0x23, "Animal_Insect_GrassHopper"), Some(CatchClass::Bug));
+        // A body is never a catch, whatever its bytes say: a dead bandit on
+        // the insects' class, or on the fish class of a fish type.
+        for (ty, cat) in [(6u8, 0x80u8), (3, 0x80), (6, 0x23), (3, 0x5A)] {
+            assert_eq!(by(ty, cat, "NHM_Bleed_Bandits_OneHandAxe_54140"), None, "type {ty} 0x{cat:02X}");
+            assert_eq!(by(ty, cat, "NHM_Citizen_3053"), None, "type {ty} 0x{cat:02X}");
+            assert_eq!(by(ty, cat, "NHM_Wandering_Mercenary_OneHandMusket_03"), None, "type {ty} 0x{cat:02X}");
         }
     }
 
-    /// The Rice Fish: class 0x80 on type 6, named a fish, is a fish.
+    /// An unknown species (`None`) is exactly the class-byte answer, for
+    /// every type and class.
+    #[test]
+    fn an_unknown_species_falls_back_to_the_class_bytes() {
+        assert_eq!(crate::species_table::species_class("Animal_Not_In_The_Table_1"), None);
+        for ty in 0u8..=255 {
+            for cat in 0u8..=255 {
+                assert_eq!(catch_class_by_species(ty, cat, None), catch_class(ty, cat), "type {ty} 0x{cat:02X}");
+            }
+        }
+        assert_eq!(catch_class_by_species(6, 0x80, None), Some(CatchClass::Bug));
+        assert_eq!(catch_class_by_species(6, 0x23, None), Some(CatchClass::Fish));
+        assert_eq!(catch_class_by_species(3, 0x23, None), None);
+        assert_eq!(catch_class_by_species(6, 0x20, None), None);
+    }
+
+    #[test]
+    fn never_a_catch_is_the_four_non_catch_classes() {
+        assert!(!is_never_a_catch(None));
+        assert!(!is_never_a_catch(Some(SpeciesClass::Bug)));
+        assert!(!is_never_a_catch(Some(SpeciesClass::Fish)));
+        assert!(!is_never_a_catch(Some(SpeciesClass::Critter)));
+        assert!(is_never_a_catch(Some(SpeciesClass::NotHandCatchable)));
+        assert!(is_never_a_catch(Some(SpeciesClass::Body)));
+        assert!(is_never_a_catch(Some(SpeciesClass::FriendlyBody)));
+        assert!(is_never_a_catch(Some(SpeciesClass::Protected)));
+    }
+
+    /// The player's own characters are never a catch, whatever their bytes.
+    #[test]
+    fn a_protected_species_is_never_a_catch() {
+        use crate::species_table::species_class;
+        for name in ["Kliff", "Damian", "Oongka", "Nairah"] {
+            assert_eq!(species_class(name), Some(SpeciesClass::Protected), "{name}");
+            for (ty, cat) in [(6u8, 0x80u8), (3, 0x80), (6, 0x23), (3, 0x5A)] {
+                assert_eq!(catch_class_by_species(ty, cat, species_class(name)), None, "{name} {ty} 0x{cat:02X}");
+            }
+        }
+    }
+
+    #[test]
+    fn species_classes_store_and_count_every_row() {
+        let s = SpeciesClasses::new();
+        assert_eq!(s.counts(), [0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(s.get(0), None);
+        assert!(s.set(0, SpeciesClass::Bug));
+        assert!(!s.set(0, SpeciesClass::Bug), "the same class again is no change");
+        assert!(s.set(3966, SpeciesClass::Fish));
+        assert!(s.set(6684, SpeciesClass::NotHandCatchable));
+        assert!(s.set(u16::MAX, SpeciesClass::Critter));
+        assert!(s.set(7, SpeciesClass::Body));
+        assert_eq!(s.get(7), Some(SpeciesClass::Body));
+        assert!(s.set(8, SpeciesClass::FriendlyBody));
+        assert_eq!(s.get(8), Some(SpeciesClass::FriendlyBody));
+        assert!(s.set(9, SpeciesClass::Protected));
+        assert_eq!(s.get(9), Some(SpeciesClass::Protected));
+        assert_eq!(s.get(0), Some(SpeciesClass::Bug));
+        assert_eq!(s.get(3966), Some(SpeciesClass::Fish));
+        assert_eq!(s.get(6684), Some(SpeciesClass::NotHandCatchable));
+        assert_eq!(s.get(u16::MAX), Some(SpeciesClass::Critter));
+        assert_eq!(s.get(1), None);
+        assert_eq!(s.counts(), [1, 1, 1, 1, 1, 1, 1]);
+        assert!(s.set(0, SpeciesClass::Fish), "a changed class is a change");
+        assert_eq!(s.counts(), [0, 2, 1, 1, 1, 1, 1]);
+    }
+
+    /// The Rice Fish on the flag-only path: class 0x80 on type 6, flagged a
+    /// fish, is a fish.
     #[test]
     fn a_fish_species_turns_a_type_6_bug_into_a_fish() {
         assert_eq!(catch_class_with_species(6, 0x80, true), Some(CatchClass::Fish));
@@ -621,5 +832,6 @@ mod tests {
     fn names_are_the_log_vocabulary() {
         assert_eq!(CatchClass::Bug.name(), "bug");
         assert_eq!(CatchClass::Fish.name(), "fish");
+        assert_eq!(CatchClass::Critter.name(), "critter");
     }
 }

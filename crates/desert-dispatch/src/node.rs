@@ -344,6 +344,17 @@ pub mod parsed {
     /// be built on one until something varies. See the module header for the
     /// three corrections the capture forced.
     pub mod dropset {
+        /// `u32` `dropsetinfo` key, at `record+0x08`, after the `stringKey`
+        /// pointer at `+0x00` and before `isBlocked` at `+0x0C`: the record
+        /// head every static-info class has on 26361232
+        /// (`analysis/field-offsets-26361232.md`, "`+0x08 u32 key`, `+0x0C u8
+        /// isBlocked`", with `isBlocked` read off this deserialiser at
+        /// `0x17010B7`). **STATIC, not read in game**: the dropset levers
+        /// (`crate::apply::dropset_levers`) compare it with the key
+        /// `desert_core::dropset_table` names for the row's record index and
+        /// write nothing to a row where the two disagree, so a moved key is a
+        /// counted refusal, never a write into the wrong row.
+        pub const REC_KEY: usize = 0x08;
         /// `i32` draw count, at `record+0x20`: how many entries one roll pays.
         ///
         /// **CONFIRMED by code 2026-09-15**, not by the capture. The dropset
@@ -477,6 +488,12 @@ pub mod parsed {
         /// mis-parsed. Excluding them, the remaining 691 entries are clean -
         /// every amount at least 1, every item row inside `u16`.
         pub const ENTRY_KIND_NOT_AN_ITEM: u8 = 13;
+        /// The [`ENTRY_KIND`] of an item entry, `0` (FINDINGS 2.7: the
+        /// deserialiser reads an `iteminfo` key for kind 0 alone). The
+        /// `Pouches` and `Breakables` levers multiply these and nothing else:
+        /// their rows also carry knowledge (4), character (1..3) and other
+        /// kinds, whose "amount" is not a quantity of anything.
+        pub const ENTRY_KIND_ITEM: u8 = 0;
 
         /// How many bytes of a dropset record head the raw dump prints. Wide
         /// enough to cover every named offset above with room after the last
@@ -1030,6 +1047,47 @@ pub fn plan_entry(van: Reward, cur: &DropsetEntry, lev: &Levers) -> RewardPlan {
         return RewardPlan::Refused;
     }
     RewardPlan::Write { want_min, want_max }
+}
+
+/// Why a `desert_core::dropset_table` row is not written to, for the
+/// dropset levers' warning line. Each one says the parsed row is not the row
+/// the table names, which is the reading a game update gives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropRowRefusal {
+    /// The `u32` at [`parsed::dropset::REC_KEY`] is not the table's key.
+    Key,
+    /// The declared entry count is not the table's.
+    Entries,
+    /// The vanilla `min + max` of the item entries does not add up to the
+    /// table's sum, so the amount or kind offsets do not hold.
+    Amounts,
+}
+
+/// Is the parsed row at a table row's record index the row the table names?
+/// `key` is the parsed [`parsed::dropset::REC_KEY`], `declared` its entry
+/// count, `vanilla_amounts` `sum(min + max)` over its kind-0 entries **as
+/// remembered on first sight** (so the check reads the same after a write).
+///
+/// Three independent identities, any one of which a shifted offset breaks:
+/// the key the archive files at that index, the entry count it declares, and
+/// what its item entries pay. All three are the archive's own values, written
+/// into the table by `gen-dropsets`.
+pub fn check_drop_row(
+    row: &desert_core::dropset_table::DropsetRow,
+    key: u32,
+    declared: usize,
+    vanilla_amounts: i64,
+) -> Result<(), DropRowRefusal> {
+    if key != row.key {
+        return Err(DropRowRefusal::Key);
+    }
+    if declared != usize::from(row.entries) {
+        return Err(DropRowRefusal::Entries);
+    }
+    if vanilla_amounts != row.item_amounts {
+        return Err(DropRowRefusal::Amounts);
+    }
+    Ok(())
 }
 
 /// One entry of an operation's condition list.
@@ -4048,5 +4106,33 @@ mod tests {
         // The other pass has its own line, and a new reason is said again.
         assert!(g.refusal_line(true, &why).is_some());
         assert!(g.refusal_line(false, "another reason").is_some());
+    }
+
+    /// The three identities a dropset-lever row is checked against, each one
+    /// refusing on its own, and in the order the pass reads them.
+    #[test]
+    fn a_drop_row_is_written_only_when_all_three_identities_hold() {
+        use desert_core::dropset_table::{lookup, DropsetRow};
+        let row: DropsetRow = match lookup(400005) {
+            Some(r) => *r,
+            None => panic!("400005 is a pouch row"),
+        };
+        let (k, n, a) = (row.key, usize::from(row.entries), row.item_amounts);
+        assert_eq!(check_drop_row(&row, k, n, a), Ok(()));
+        assert_eq!(check_drop_row(&row, k + 1, n, a), Err(DropRowRefusal::Key));
+        assert_eq!(check_drop_row(&row, k, n + 1, a), Err(DropRowRefusal::Entries));
+        assert_eq!(check_drop_row(&row, k, n, a * 2), Err(DropRowRefusal::Amounts));
+        // The key is read first: a wrong row fails on it whatever else it says.
+        assert_eq!(check_drop_row(&row, 0, 0, 0), Err(DropRowRefusal::Key));
+    }
+
+    /// The dropset levers multiply item entries only, and an item entry is
+    /// never the not-an-item kind the `Rewards` pass skips.
+    #[test]
+    fn the_item_kind_is_not_the_skipped_kind() {
+        assert_ne!(parsed::dropset::ENTRY_KIND_ITEM, parsed::dropset::ENTRY_KIND_NOT_AN_ITEM);
+        // The key sits before `isBlocked` (`+0x0C`) and the entry list (`+0x20`).
+        const { assert!(parsed::dropset::REC_KEY + 4 <= 0x0C) };
+        const { assert!(parsed::dropset::REC_KEY < parsed::dropset::ROW_ENTRIES) };
     }
 }

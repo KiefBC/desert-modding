@@ -30,6 +30,10 @@ pub const SURVEY_LINES_RANGE: (u32, u32) = (16, 2_000);
 /// floor is 1 rather than 0 for the same reason it is there - a 0 would zero
 /// out a carcass rather than leave it alone.
 pub const HUNTING_RANGE: (u32, u32) = (1, 100);
+/// `LootLogMinTier`'s range: `0` is the vanilla item log, `1..=5` a minimum
+/// `ItemInfo` tier, `6` above every tier (no line but money and quest items,
+/// if those are on).
+pub const LOOT_LOG_TIER_RANGE: (u32, u32) = (0, 6);
 
 /// The furthest `GatherRange` may reach. The parser accepts anything above 0
 /// up to this; the menu's slider starts at [`GATHER_RANGE_MENU_MIN`] because a
@@ -108,6 +112,12 @@ pub struct Config {
     /// byte (`actors::catch_class`), so it gets its own switch rather than
     /// riding on that one.
     pub gather_fish: bool,
+    /// Catch the small animals that go into the bag (lizards, small birds,
+    /// rats, frogs, ...) within `GatherRange`. The same game event as
+    /// `gather_bugs`; a creature is a critter only when its species record
+    /// says so (`desert_core::species_table`, `actors::catch_class`), never
+    /// by class byte, so ducks and raccoons are never one.
+    pub gather_critters: bool,
     /// Loot animal carcasses within `GatherRange`, and the third switch that
     /// starts **off**. Skinning is a third game event again
     /// (`TrocTrProcessLootingDeadDropOnceTimer`, a 7-byte payload carrying
@@ -120,6 +130,16 @@ pub struct Config {
     /// has never been tried in game, and a MINOR may not change behaviour the
     /// player did not ask for.
     pub gather_carcass: bool,
+    /// Search dead hostile people and monsters within `GatherRange` (the
+    /// species table's `Body` class: bandits, criminals, monsters, bosses)
+    /// with the same dead-drop event `gather_carcass` sends. Off by default.
+    /// A body whose owner id is set (a quest trigger, or owned by someone) is
+    /// skipped, the same gate the game's own loot interaction applies.
+    pub gather_bodies: bool,
+    /// Also search the bodies of people who were not enemies (the species
+    /// table's `FriendlyBody` class: citizens, traders, mercenaries; the
+    /// white-marker bodies). Needs `gather_bodies` too. Off by default.
+    pub gather_friendly_bodies: bool,
     /// Yield multiplier for looted carcasses, `1..=100`, `1` = vanilla.
     ///
     /// The one lever in this section that changes an *amount* rather than what
@@ -140,6 +160,19 @@ pub struct Config {
     /// Default 1 for the `GatherMoney` reason: this changes how much the player
     /// gets rather than saving them trips, which is theirs to decide.
     pub hunting: u32,
+    /// The HUD side item log's minimum item tier, `0..=6`; `0` = every line
+    /// (vanilla), `6` = none. `crate::looter::itemlog` hooks the handler that
+    /// builds each "Item xN" line and drops the ones below this; see
+    /// `crate::looter::logfilter` for the policy. Nothing else is touched:
+    /// the item still lands in the bag and quests still see it.
+    pub loot_log_min_tier: u8,
+    /// With a minimum tier set, still show currency (`itemType` 32: coins,
+    /// camp funds) whatever its tier. Default on.
+    pub loot_log_money: bool,
+    /// With a minimum tier set, still show quest and key items (the
+    /// inventory groups `desert_core::quest_items` lists: key items, quest
+    /// keepsakes and rewards, keys) whatever their tier. Default on.
+    pub loot_log_quest: bool,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -177,8 +210,14 @@ impl Default for Config {
             gather_money: false,
             gather_bugs: true,
             gather_fish: true,
+            gather_critters: true,
             gather_carcass: false,
+            gather_bodies: false,
+            gather_friendly_bodies: false,
             hunting: 1,
+            loot_log_min_tier: 0,
+            loot_log_money: true,
+            loot_log_quest: true,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -334,7 +373,7 @@ pub(crate) fn fields() -> Vec<Field> {
             "1 = automatic gathering is on from the start (the toggle key flips it).",
         ),
         under(
-            "Gather families:",
+            "Gather nodes:",
             f(
                 "GatherForaging",
                 "Foraging",
@@ -370,11 +409,20 @@ pub(crate) fn fields() -> Vec<Field> {
              Untested in game: the pickup is forged the same way as at an ore chunk. This is the \
              auto-loot switch; the amount is the Money multiplier below.",
         )),
-        f(
-            "GatherItems",
-            "Ground items",
-            Kind::Bool { default: d.gather_items },
-            "1 = also pick up basic items lying on the ground (ore chunks and other item_basic_* drops).",
+        beside(f(
+            "GatherUnarmed",
+            "Unarmed nodes",
+            Kind::Bool { default: d.gather_unarmed },
+            "1 = also target the nodes the game has not armed with interaction data, which is what lets auto mode mine a whole vein.",
+        )),
+        under(
+            "Loose items:",
+            f(
+                "GatherItems",
+                "Ground items",
+                Kind::Bool { default: d.gather_items },
+                "1 = also pick up basic items lying on the ground (ore chunks and other item_basic_* drops).",
+            ),
         ),
         beside(f(
             "GatherGear",
@@ -382,31 +430,54 @@ pub(crate) fn fields() -> Vec<Field> {
             Kind::Bool { default: d.gather_gear },
             "1 = dropped weapons and armour (item_basic_equip_*) are picked up too. Each one costs a bag slot.",
         )),
-        beside(f(
-            "GatherUnarmed",
-            "Unarmed nodes",
-            Kind::Bool { default: d.gather_unarmed },
-            "1 = also target the nodes the game has not armed with interaction data, which is what lets auto mode mine a whole vein.",
-        )),
-        f(
-            "GatherBugs",
-            "Catch insects",
-            Kind::Bool { default: d.gather_bugs },
-            "1 = catch insects within GatherRange; the game's steal check still applies.",
+        under(
+            "Creatures:",
+            f(
+                "GatherBugs",
+                "Insects",
+                Kind::Bool { default: d.gather_bugs },
+                "1 = catch insects within GatherRange; the game's steal check still applies.",
+            ),
         ),
         beside(f(
             "GatherFish",
-            "Catch fish",
+            "Fish",
             Kind::Bool { default: d.gather_fish },
             "1 = catch fish within GatherRange by hand, the same event as insects; the steal check still applies.",
         )),
         beside(f(
-            "GatherCarcass",
-            "Skin carcasses",
-            Kind::Bool { default: d.gather_carcass },
-            "0 by default. 1 = loot animal carcasses within GatherRange, without the skinning \
-             animation. A third game event again, granting the same loot the animation would; \
-             a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
+            "GatherCritters",
+            "Critters",
+            Kind::Bool { default: d.gather_critters },
+            "1 = catch the small animals that go into the bag (lizards, small birds, rats, frogs, \
+             toads, salamanders...) within GatherRange, the same event as insects. Animals you \
+             carry and skin, like ducks and raccoons, are never caught.",
+        )),
+        under(
+            "Bodies:",
+            f(
+                "GatherCarcass",
+                "Animal carcasses",
+                Kind::Bool { default: d.gather_carcass },
+                "0 by default. 1 = loot animal carcasses within GatherRange, without the skinning \
+                 animation. A third game event again, granting the same loot the animation would; \
+                 a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
+            ),
+        ),
+        beside(f(
+            "GatherBodies",
+            "Enemies",
+            Kind::Bool { default: d.gather_bodies },
+            "0 by default. 1 = search dead people and monsters for loot (bandits, soldiers, \
+             bosses) within GatherRange with the gather key, the same event as skinning. Bodies \
+             with a quest trigger are skipped.",
+        )),
+        beside(f(
+            "GatherFriendlyBodies",
+            "Friendly",
+            Kind::Bool { default: d.gather_friendly_bodies },
+            "0 by default. 1 = also search the bodies of people who were not enemies (citizens, \
+             traders, mercenaries: the white-marker bodies). Needs GatherBodies=1. Off by default.",
         )),
         f(
             "Hunting",
@@ -426,6 +497,39 @@ pub(crate) fn fields() -> Vec<Field> {
              table is edited and no other kind of loot in the game is touched. Like the \
              Money multiplier, it ships at 1 on purpose - it changes how much you get rather \
              than saving you trips.",
+        ),
+        under(
+            "Item log:",
+            f(
+                "LootLogMinTier",
+                "Minimum tier",
+                Kind::Int {
+                    default: i64::from(d.loot_log_min_tier),
+                    min: i64::from(LOOT_LOG_TIER_RANGE.0),
+                    max: i64::from(LOOT_LOG_TIER_RANGE.1),
+                    step: 1,
+                    slider: true,
+                    format: None,
+                },
+                "Which pickups get an \"Item xN\" line in the item log at the side of the screen. \
+                 0 = every line, as the game does. 1..5 = only items of at least that tier. \
+                 6 = no lines at all (except money and quest items, below). Only the line is hidden: the item \
+                 still goes into your bag and quests still count it. Takes effect at once.",
+            ),
+        ),
+        f(
+            "LootLogMoney",
+            "Always show money",
+            Kind::Bool { default: d.loot_log_money },
+            "1 = coins and camp funds always get their line, whatever the minimum tier says.",
+        ),
+        f(
+            "LootLogQuest",
+            "Always show quest items",
+            Kind::Bool { default: d.loot_log_quest },
+            "1 = quest and key items (key items, documents and contracts, memory fragments, \
+             quest keepsakes and rewards, keys) always get their line, whatever the minimum \
+             tier says.",
         ),
         f(
             "ScanRange",
@@ -590,7 +694,10 @@ impl Config {
             "gathermoney" => self.gather_money = ini::parse_bool(v),
             "gatherbugs" => self.gather_bugs = ini::parse_bool(v),
             "gatherfish" => self.gather_fish = ini::parse_bool(v),
+            "gathercritters" => self.gather_critters = ini::parse_bool(v),
             "gathercarcass" => self.gather_carcass = ini::parse_bool(v),
+            "gatherbodies" => self.gather_bodies = ini::parse_bool(v),
+            "gatherfriendlybodies" => self.gather_friendly_bodies = ini::parse_bool(v),
             "hunting" => match v.parse::<u32>() {
                 Ok(n) if (HUNTING_RANGE.0..=HUNTING_RANGE.1).contains(&n) => self.hunting = n,
                 _ => warnings.push(format!(
@@ -598,6 +705,17 @@ impl Config {
                     HUNTING_RANGE.0, HUNTING_RANGE.1, self.hunting
                 )),
             },
+            "lootlogmintier" => match v.parse::<u8>() {
+                Ok(n) if (LOOT_LOG_TIER_RANGE.0..=LOOT_LOG_TIER_RANGE.1).contains(&u32::from(n)) => {
+                    self.loot_log_min_tier = n
+                }
+                _ => warnings.push(format!(
+                    "LootLogMinTier: bad value {v:?} ({}..{}), keeping {}",
+                    LOOT_LOG_TIER_RANGE.0, LOOT_LOG_TIER_RANGE.1, self.loot_log_min_tier
+                )),
+            },
+            "lootlogmoney" => self.loot_log_money = ini::parse_bool(v),
+            "lootlogquest" => self.loot_log_quest = ini::parse_bool(v),
             "surveylines" => match v.parse::<u32>() {
                 Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => self.survey_lines = n,
                 _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", self.survey_lines)),
@@ -645,10 +763,10 @@ impl Config {
     pub fn summary(&self) -> String {
         let cfg = self;
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCarcass={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} GatherBodies={} GatherFriendlyBodies={} Hunting={} LootLogMinTier={} LootLogMoney={} LootLogQuest={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_carcass as u8, cfg.hunting,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.gather_bodies as u8, cfg.gather_friendly_bodies as u8, cfg.hunting, cfg.loot_log_min_tier, cfg.loot_log_money as u8, cfg.loot_log_quest as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

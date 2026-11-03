@@ -23,6 +23,9 @@
 //! prologue: Desert Gatherer's catch-count hook patches a `mov r8d,1` in the
 //! middle of a function and lets its callback decide the value
 //! ([`count_hook_stub`], `docs/reference-internals.md` section 17).
+//! The same entry point takes a [`gate_hook_stub`], a prologue hook whose
+//! callback may veto the original function: the looter's item-log filter
+//! returns straight to the caller for a line it hides.
 
 use std::sync::Mutex;
 
@@ -41,7 +44,14 @@ pub type Callback = unsafe extern "system" fn(usize, usize, usize, usize);
 /// the game will use in `r8d` out.
 pub type CountCallback = unsafe extern "system" fn(usize) -> u32;
 
-pub use crate::trampoline::{count_hook_stub, patch_bytes, stub_bytes, MAX_STOLEN, MIN_STOLEN};
+/// Callback shape for a [`gate_hook_stub`] stub: the hooked function's first
+/// four integer arguments in, `0` to skip the original function, anything
+/// else to run it.
+pub type GateCallback = unsafe extern "system" fn(usize, usize, usize, usize) -> u8;
+
+pub use crate::trampoline::{
+    count_hook_stub, gate_hook_stub, patch_bytes, stub_bytes, GATE_PREFIX, MAX_STOLEN, MIN_STOLEN,
+};
 
 const STUB_SIZE: usize = 0xA0;
 const PAGE: usize = 0x1000;

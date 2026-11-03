@@ -71,7 +71,7 @@ use std::collections::BTreeSet;
 
 use crate::apply;
 use crate::census;
-use crate::config::{self, Config, Levers};
+use crate::config::{self, Config, DropLevers, Levers};
 use crate::gate::Gate;
 use crate::module::MainModule;
 use crate::node::parsed::dropset;
@@ -776,7 +776,8 @@ fn finish_walk(sum: Summary, budget: &Budget, cfg: &Config) -> Summary {
 fn ini_summary(cfg: &Config) -> String {
     format!(
         "Enabled={} LogRecords={} MaxLines={} Debug={} DumpRaw={} DumpRewards={} \
-         DumpBuffs={} Speed={} Rewards={} NoSkillRequirement={} AnyOperatorCount={} DryRun={}",
+         DumpBuffs={} Speed={} Rewards={} NoSkillRequirement={} \
+         AnyOperatorCount={} DryRun={}",
         cfg.enabled as u8,
         cfg.log_records as u8,
         cfg.max_lines,
@@ -1086,6 +1087,9 @@ struct Watch {
     /// Whether this launch's vanilla censuses have confirmed the layout: until
     /// they have, every write pass runs dry (`node::WriteGate`).
     layout: node::WriteGate,
+    /// The memo for the `Pouches` / `Breakables` pass, keyed on its own
+    /// levers so neither of the passes above re-runs when they move.
+    drops_gate: Gate<DropLevers>,
 }
 
 impl Watch {
@@ -1106,6 +1110,7 @@ impl Watch {
             gate: Gate::new(),
             rows_gate: Gate::new(),
             layout: node::WriteGate::new(),
+            drops_gate: Gate::new(),
         }
     }
 
@@ -1424,6 +1429,67 @@ impl Watch {
         }
         self.rows_gate.record(live, dry, lev, counts.outcome());
     }
+
+    /// One poll of the `Pouches` / `Breakables` rows
+    /// (`desert_core::dropset_table`).
+    ///
+    /// No settle wait and no census gate, unlike the two passes above, and both
+    /// on purpose. These rows load one at a time when the game first pays from
+    /// one - opening a pouch, smashing a barrel - so "settled" could be a whole
+    /// session away; and each row is identified on its own before it is
+    /// written (`apply::dropset_levers`: key, entry count, weights and its
+    /// vanilla item amounts against the generated table), which is a stronger
+    /// check on these rows than the dispatch census is.
+    ///
+    /// The levers and the `DryRun` that governs them are `[Harvest]`'s, read
+    /// out of `desert_core::drop_levers` (`config::drop_levers_from`): nothing
+    /// published yet is vanilla and dry, and this section's `Enabled=0` is
+    /// still the revert. `[Dispatch] DryRun` does not reach this pass.
+    ///
+    /// The memo's key is a fingerprint of which of the rows are loaded and
+    /// where, so a newly loaded row, or one the game re-parsed at a new
+    /// address, owes a pass; nothing else does.
+    fn drops_tick(&mut self, slot: usize, cfg: &Config) {
+        let (lev, dry) = config::LIVE.drop_levers();
+        if lev.is_vanilla() && !self.drops_gate.dirty() {
+            return;
+        }
+        let fingerprint = drop_rows_fingerprint(slot);
+        if !self.drops_gate.owed(fingerprint, dry, &lev) {
+            return;
+        }
+        let named: Vec<u16> = self.named.iter().copied().collect();
+        let mut budget = Budget::new(cfg.max_lines);
+        let counts = apply::dropset_levers(slot, &named, &lev, dry, cfg.debug, &mut budget);
+        crate::log!("{}", counts.summary(&lev, dry));
+        if let Some(why) = counts.warning() {
+            crate::log!("[apply] WARN {why}");
+        }
+        if budget.capped {
+            crate::log!(
+                "[cap] per-change lines stopped at MaxLines={} ({} written this pass); every \
+                 change was still made and the summary above covers all of them",
+                cfg.max_lines,
+                budget.used
+            );
+        }
+        self.drops_gate.record(fingerprint, dry, lev, counts.outcome());
+    }
+}
+
+/// Which `desert_core::dropset_table` rows the game has parsed, and at which
+/// addresses, folded into one number: the dropset-lever pass's memo key. One
+/// pointer read per row (103 on 26361232), as cheap as [`count_rows_loaded`].
+fn drop_rows_fingerprint(slot: usize) -> usize {
+    let Some((count, records)) = dropset_manager(slot) else {
+        return 0;
+    };
+    desert_core::dropset_table::ROWS
+        .iter()
+        .map(|r| usize::from(r.index))
+        .filter(|&idx| idx < count)
+        .filter_map(|idx| manager::record(records, idx))
+        .fold(0usize, |acc, p| acc.rotate_left(7) ^ p)
 }
 
 /// Watch the object array as the game fills it, apply the levers to what turns
@@ -1473,10 +1539,27 @@ fn watch(
     let mut live = cfg;
     let mut last_ini_mtime = ini_mtime(ini_path);
     let mut last_watch = std::time::Instant::now();
+    // What `[Harvest]` last published for `Pouches` / `Breakables`, by
+    // generation: a new one is a change like an edit of this section, so the
+    // pass it owes does not wait out a watch interval.
+    let mut drop_generation = 0u32;
     loop {
         std::thread::sleep(std::time::Duration::from_millis(RELOAD_POLL_MS));
 
         let mut changed = false;
+        if let Some(snap) = desert_core::drop_levers::load() {
+            if snap.generation != drop_generation {
+                drop_generation = snap.generation;
+                let l = snap.levers;
+                crate::log!(
+                    "[ini] from [Harvest]: Pouches={} Breakables={} DryRun={}",
+                    l.pouches,
+                    l.breakables,
+                    l.dry_run as u8
+                );
+                changed = true;
+            }
+        }
         let mtime = ini_mtime(ini_path);
         // `None` is a change like any other. The condition here used to be
         // `mtime.is_some() && mtime != last`, and a **deleted** ini stats as
@@ -1544,6 +1627,7 @@ fn watch(
         w.missions_tick(mgr, &live);
         if let Some(slot) = dropset_slot {
             w.rewards_tick(slot, &live);
+            w.drops_tick(slot, &live);
         }
         // Last in the tick, and read-only: the census cannot affect what the
         // passes above read, and a pass of it is the most expensive thing on

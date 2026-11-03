@@ -1,15 +1,24 @@
-//! The species set: which `characterinfo` rows are fish, by name.
+//! The species store: how each `characterinfo` row is caught, by name.
 //!
-//! The Rice Fish carries the insect class byte 0x80 on type 6, so the class
-//! bytes alone file it under `GatherBugs` and multiply it with `Bugs`
-//! (`desert_core::creature::BUG_CLASSES`). Its species row is the one thing
-//! that tells it apart, but rows shift between game builds (3935 on 25477059,
-//! 3966 on 26361232), so the row is never the key: the species record's
-//! **name** is. This module reads every loaded `characterinfo` record's name
-//! once, on the plugin thread, and sets one bit per row whose name marks it as
-//! a fish (`creature::is_fish_species_name`). Both halves then ask one atomic
-//! bit through [`is_fish`]: the looter's catch classifier and the catch-count
-//! hook, which runs on a game thread and may do nothing more than that.
+//! The class bytes do not say what a creature is. The Rice Fish carries the
+//! insect class byte 0x80 on type 6, and so does the raccoon (row 6684 on
+//! 26361232), which is carried and skinned, never bagged
+//! (`desert_core::creature::BUG_CLASSES`). The species record does say: the
+//! generated table `desert_core::species_table` files every `Animal_*`
+//! record as a `Bug`, `Fish` or `Critter` bag catch or as `NotHandCatchable`,
+//! and every other record with the `Dead_Loot` interaction by its spawn ally
+//! group: a `Body` (`Ally_Enemy`: bandits, criminals, monsters), a
+//! `FriendlyBody` (`Ally_NPC`, `Ally_Guard`, `Ally_Mercenary`: citizens,
+//! traders, named uniques, mercenaries), or `Protected` (`Ally_Player` and
+//! the playable characters: never touched); a record in no ally group falls
+//! back to its `isEnableFriendly` flag.
+//! Rows shift between game builds (3935 on 25477059, 3966 on 26361232), so
+//! the row is never the key: the record's **name** is. This module reads
+//! every loaded `characterinfo` record's name once, on the plugin thread,
+//! looks it up in that table and stores one byte per row. Both halves then
+//! ask one atomic byte through [`class`]: the looter's catch classifier and
+//! the catch-count hook, which runs on a game thread and may do nothing more
+//! than that.
 //!
 //! The record's name place is not assumed - the parsed layouts of
 //! `gimmickinfo` and `iteminfo` both moved on 26361232 - and there is no known
@@ -26,15 +35,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use desert_core::creature::{self, SpeciesBits, SPECIES_ROWS};
+use desert_core::creature::{SpeciesBits, SpeciesClass, SpeciesClasses, SPECIES_ROWS};
+use desert_core::species_table::species_class;
 use desert_core::gimmick::{self, NameAt, NAME_PROBE_END};
 use desert_core::manager::{self, Slot};
 
 use crate::looter::tables::{character_slot_addr, read_bytes};
 
-/// Rows whose name is a fish. Set by the plugin thread, read by anyone.
-static FISH: SpeciesBits = SpeciesBits::new();
-/// Rows whose name has been read and judged; the walk skips them.
+/// Each row's class, by its name. Set by the plugin thread, read by anyone.
+static CLASSES: SpeciesClasses = SpeciesClasses::new();
+/// Rows whose name has been read and judged, whether the table knows the
+/// name or not; the walk skips them.
 static EXAMINED: SpeciesBits = SpeciesBits::new();
 /// True once the first walk under a latched name place has finished.
 static BUILT: AtomicBool = AtomicBool::new(false);
@@ -43,10 +54,11 @@ static NAME_AT: OnceLock<NameAt> = OnceLock::new();
 
 /// Species rows seen in the live 26361232 log (2026-11-02): the Rice Fish
 /// (3966, class 0x80), the bugs (3887, 3888, 3895, 3902, 3916), the fish
-/// (4031 class 0x23, 4036 class 0x65) and an unidentified class-0x80 species
-/// (6684). Their names are logged once each, whatever the fish rule says, so
-/// the next log shows what the rule is matching against. Build-specific on
-/// purpose: these are only ever printed, never decided on.
+/// (4031 class 0x23, 4036 class 0x65) and the Raccoon (6684,
+/// `Animal_Raccoon_Wild_30042`, class 0x80, `NotHandCatchable`: the class
+/// byte alone took it for a bug). Their names and classes are logged once
+/// each, so the next log shows what the table is matching against.
+/// Build-specific on purpose: these are only ever printed, never decided on.
 const LOG_ROWS: [u16; 9] = [3966, 3887, 3888, 3895, 3902, 3916, 4031, 4036, 6684];
 
 /// Records that must read an identifier at the chosen name place.
@@ -61,8 +73,6 @@ const WARN_AFTER: u32 = 3;
 const WALK_EVERY: Duration = Duration::from_secs(10);
 /// The manager's record count is held to this, as everywhere else.
 const MAX_RECORDS: u32 = 0x40000;
-/// Fish rows named in one `[species] fish set` line.
-const EXAMPLES: usize = 8;
 
 struct State {
     last_probe: Option<Instant>,
@@ -73,6 +83,8 @@ struct State {
     walked_loaded: usize,
     /// Bit `i` set once `LOG_ROWS[i]` has been logged.
     rows_logged: u16,
+    /// The counts the last `[species] table:` line printed.
+    last_counts: Option<Counts>,
 }
 
 /// Bookkeeping, plugin thread only, taken with `try_lock`.
@@ -83,15 +95,48 @@ static STATE: Mutex<State> = Mutex::new(State {
     warned: false,
     walked_loaded: 0,
     rows_logged: 0,
+    last_counts: None,
 });
 
-/// Is `row` a species the plugin named a fish? One atomic load: safe on the
-/// game thread, inside a hook. `false` until the set is built.
-pub fn is_fish(row: u16) -> bool {
-    FISH.contains(row)
+/// The `[species] table:` line's numbers.
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct Counts {
+    bug: usize,
+    fish: usize,
+    critter: usize,
+    not_catchable: usize,
+    body: usize,
+    friendly_body: usize,
+    protected: usize,
+    /// Rows whose name was read and is not in the species table: people,
+    /// mounts, props without loot, and any species newer than the table.
+    unknown: usize,
 }
 
-/// Has the first walk finished? Before it, [`is_fish`] answers `false` for
+/// How `row`'s species is caught, by its record's name. One atomic load: safe
+/// on the game thread, inside a hook. `None` for a name the species table
+/// does not hold and for every row until the walk has read it, which the
+/// classifiers (`creature::catch_class_by_species`) answer with the class
+/// bytes, exactly as before the table existed.
+pub fn class(row: u16) -> Option<SpeciesClass> {
+    CLASSES.get(row)
+}
+
+/// The word the log lines use for a row's species class.
+pub fn class_name(class: Option<SpeciesClass>) -> &'static str {
+    match class {
+        Some(SpeciesClass::Bug) => "bug",
+        Some(SpeciesClass::Fish) => "fish",
+        Some(SpeciesClass::Critter) => "critter",
+        Some(SpeciesClass::NotHandCatchable) => "not-catchable",
+        Some(SpeciesClass::Body) => "body",
+        Some(SpeciesClass::FriendlyBody) => "friendly-body",
+        Some(SpeciesClass::Protected) => "protected",
+        None => "unknown",
+    }
+}
+
+/// Has the first walk finished? Before it, [`class`] answers `None` for
 /// every row and the classifiers behave exactly as they did without it.
 pub fn built() -> bool {
     BUILT.load(Ordering::Relaxed)
@@ -211,13 +256,13 @@ fn probe(st: &mut State, now: Instant) -> Option<String> {
                 .map(|(row, rec)| format!("; row {row} reads {}", raw_candidates(rec)))
                 .unwrap_or_default();
             Some(format!(
-                "[species] WARN characterinfo record name not found ({why}){raw}; the Rice Fish stays a bug"
+                "[species] WARN characterinfo record name not found ({why}){raw}; catches are classified by their class bytes alone"
             ))
         }
     }
 }
 
-/// Name every loaded row not named yet and set the fish bits. Returns the log
+/// Name every loaded row not named yet and store its class. Returns the log
 /// lines to print.
 fn walk(st: &mut State, at: NameAt, now: Instant) -> Vec<String> {
     let mut lines = Vec::new();
@@ -230,37 +275,30 @@ fn walk(st: &mut State, at: NameAt, now: Instant) -> Vec<String> {
         return lines;
     }
     let first = !built();
-    let mut new_fish: Vec<(u16, String)> = Vec::new();
     for &(row, rec) in &rows {
         if EXAMINED.contains(row) {
             continue;
         }
         let Some(name) = gimmick::read_name_at(rec, at, &read_bytes) else { continue };
         EXAMINED.set(row);
-        if creature::is_fish_species_name(&name) && FISH.set(row) {
-            new_fish.push((row, name));
+        if let Some(c) = species_class(&name) {
+            CLASSES.set(row, c);
         }
     }
     st.walked_loaded = rows.len();
     BUILT.store(true, Ordering::Relaxed);
 
-    if first || !new_fish.is_empty() {
-        let eg: Vec<String> = new_fish.iter().take(EXAMPLES).map(|(r, n)| format!("row {r} {n}")).collect();
-        let eg = if eg.is_empty() { String::new() } else { format!(" (e.g. {})", eg.join(", ")) };
-        lines.push(if first {
-            format!(
-                "[species] fish set: {} rows{eg}; {} of {count} characterinfo records loaded",
-                FISH.count(),
-                rows.len()
-            )
-        } else {
-            format!(
-                "[species] fish set grew to {} rows (+{}){eg}; {} of {count} records loaded",
-                FISH.count(),
-                new_fish.len(),
-                rows.len()
-            )
-        });
+    let [bug, fish, critter, not_catchable, body, friendly_body, protected] = CLASSES.counts();
+    let unknown =
+        EXAMINED.count().saturating_sub(bug + fish + critter + not_catchable + body + friendly_body + protected);
+    let counts = Counts { bug, fish, critter, not_catchable, body, friendly_body, protected, unknown };
+    if st.last_counts != Some(counts) {
+        st.last_counts = Some(counts);
+        lines.push(format!(
+            "[species] table: {bug} bug, {fish} fish, {critter} critter, {not_catchable} not catchable, \
+             {body} body, {friendly_body} friendly body, {protected} protected, {unknown} unknown ({} of {count} characterinfo records loaded)",
+            rows.len()
+        ));
     }
 
     let mut waiting = Vec::new();
@@ -276,8 +314,7 @@ fn walk(st: &mut State, at: NameAt, now: Instant) -> Vec<String> {
         match name {
             Some(n) => {
                 st.rows_logged |= bit;
-                let fish = if FISH.contains(want) { " (fish)" } else { "" };
-                lines.push(format!("[species] row {want} = {n}{fish}"));
+                lines.push(format!("[species] row {want} = {n} ({})", class_name(class(want))));
             }
             None if first => waiting.push(want.to_string()),
             None => {}
@@ -293,7 +330,7 @@ fn walk(st: &mut State, at: NameAt, now: Instant) -> Vec<String> {
 }
 
 /// One step of the species work: probe the name place until it latches, then
-/// build and grow the fish set. Called once a second by the harvest thread
+/// fill and grow the class store. Called once a second by the harvest thread
 /// after the boot grace; everything inside is rate-limited, and it does
 /// nothing without the `characterinfo` slot.
 pub fn tick() {

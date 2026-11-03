@@ -6,9 +6,16 @@
 //! **edits five fields of them** to whatever the `[Dispatch]` section of
 //! `DesertTooling.ini` asks for - shorter missions, bigger rewards, no skill
 //! gate, any number of workers: four settings over five fields, because
-//! `Rewards` writes both halves of a min/max pair. The diagnostic half is
-//! unchanged and is still read-only; the write half is [`apply`], and this
-//! paragraph is the whole of what it may claim.
+//! `Rewards` writes both halves of a min/max pair. Since 0.4.0 two more,
+//! `Pouches` and `Breakables`, write the same min/max pair on a fixed list of
+//! other `dropsetinfo` rows (`desert_core::dropset_table`), through the same
+//! `Rewards` write path and the same `Ctx::put` call sites. Since 0.5.0
+//! (tooling 0.16.0) those two are `[Harvest]` keys: harvest parses them with
+//! its own `DryRun` and publishes them through `desert_core::drop_levers`, and
+//! this crate only reads that mailbox (`config::drop_levers_from`), still
+//! gated on its own `Enabled`. The diagnostic
+//! half is unchanged and is still read-only; the write half is [`apply`], and
+//! this paragraph is the whole of what it may claim.
 //!
 //! **What it still does not do**, and these are structural rather than a
 //! promise:
@@ -27,12 +34,16 @@
 //!   nothing to clean up. What the *game* may bank on its own, out of a field
 //!   this subsystem wrote, is the exception below - a value the game computed,
 //!   not a write of ours.
-//! * **Nothing outside dispatch is touched.** The reward rows come only from
-//!   the two reward-set row indices of an operation entry
+//! * **No drop-table row is touched that is not named.** The `Rewards` rows
+//!   come only from the two reward-set row indices of an operation entry
 //!   (`node::parsed::OP_REWARD_1`/`_2`, `+0xA0`/`+0xA2` on 26345091 and
-//!   26356046, `+0xA8`/`+0xAA` before). `dropsetinfo` is the
-//!   game-wide drop table, and a row set gathered any other way would make this
-//!   a global loot mod by accident.
+//!   26356046, `+0xA8`/`+0xAA` before). The `Pouches` / `Breakables` rows come
+//!   only from `desert_core::dropset_table`, which `just gen-dropsets` builds
+//!   out of the game's archives with every row another source pays from
+//!   refused, and each is identified at runtime against that table before it
+//!   is written (`apply::dropset_levers`). `dropsetinfo` is the game-wide drop
+//!   table, and a row set gathered any other way would make this a global loot
+//!   mod by accident.
 //!
 //! **The one exception is inert on build 25116796, and it is still worth
 //! carrying.** `Rewards` banks nothing: both payout branches re-read the

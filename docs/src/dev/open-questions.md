@@ -24,11 +24,11 @@ When built, it is its own key (`TradeGoods`, record-keyed, default `1`, ini text
 
 **Settles it:** one launch, no code change. Pick up a Ceramic prop with `LogReceived=1`, watch for a `[catch] class=XX not a known bug/fish class` line at the same moment, and note the survey's `Kind` for it. `Kind::Item` folds the group into the instance lever; a catch line means a class byte in `crates/desert-core/src/creature.rs` covers it. Also check whether it yields `1000619`, the stall pot's item.
 
-## The second yield route
+## Hunting scales the copper from cleaning fish
 
-**OPEN.** `FUN_141775790` runs two yield loops back to back: the output blocks the gatherer scales (`rec+0x278`/`+0x280` on 25477059) and a drop-set list (`rec+0x268`/`+0x270`, amounts in `dropsetinfo entry+0x20`/`+0x28`) it never touches. Among the 573 records with an output list, none also carries a drop-set list (CONFIRMED, 573/573). The ~13,300 records with no output list are unmeasured, and a gimmick that pays through `rec+0x268` alone would be hooked, remembered and scaled by nothing, silently. `docs/reference-internals.md` section 19.6.1 carries the same split: hook coverage is proven complete, multiplier coverage is not.
+**OPEN, unmeasured.** The fish carcass dropsets (`DropSet_*_Animal_Fish_*`) carry Copper x20..150, so `Hunting` (which scales whatever the game rolled for a corpse, and for a body searched since 0.13.0) multiplies that copper too, on top of whatever `Money` does to coins. Whether the two stack (a fish cleaned at `Hunting=10` paying the money lever's rate again), or the grant is a different path from the placed coin props `Money` edits, has not been checked. Found in the item catalogue (`analysis/ITEMS.md`).
 
-**Settles it:** a census of `rec+0x268` counts over every record in a table dump. Source: `docs/findings/2026-09-12-water-wells.md` §6 (local).
+**Settles it:** clean a fish with `LogReceived=1` at `Hunting=1`, then at `Hunting=10`, and compare the bag's copper; repeat with `Money` raised to see whether it moves.
 
 ## The 297 unclassified records
 
@@ -37,6 +37,12 @@ When built, it is its own key (`TradeGoods`, record-keyed, default `1`, ini text
 Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/src/gatherer/remember.rs`; 294 used today): overrunning it leaves the excess vanilla with no log line.
 
 **Settles it:** per group, one logged pickup at a multiplier. Census: `docs/findings/2026-09-12-water-wells.md` §7 (local).
+
+## Chests
+
+**OPEN, parked.** The 52 `Chest_Open*` records (`analysis/CONTAINERS.md` §6) have no event the looter can forge. An F7 recording on 26361232 (2026-11-03) of a chest opened by hand queued only `TrocTrHandleGameEventOnceTimer` (the receipt and notification stream, whose 112-byte body carries live heap pointers) and `TrocTrSaveGameDataAutoTimer`. The chest's loot (`Faded_Necklace`, `Small_Silver_Pack`) arrived as receipts right after. No `PickUpItem`, `InteractionReward`, `InteractionDoStep*` or other descriptor appeared, so the open runs inside the interaction step machine without passing `enqueue`. `LootChests` would need that path reverse-engineered: `TrocTrInteractionDoStepReq` lands in a protected thunk, and `TrocTrInteractionDoStepDoInteractionOnceTimer` only completes an interaction the sender is already in.
+
+**Settles it:** a call into the interaction system that opens a chest the player is not standing at, found statically and proven with one recording. Until then, chests stay hand-opened.
 
 ## Digging
 
@@ -58,9 +64,9 @@ Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/sr
 
 ## Money pouches
 
-**OPEN.** The `Money` slider edits the three placed money gimmickinfo records (two coin piles and one silver bar). Coin pouches are inventory items that pay through the item-use path: the September logs show the payout arriving as item `1` with the amount as the count (`[recv] item 1 x120` and `x20` from two pouches opened in the inventory, 2026-09-13), most likely a dropset row. A pouch lever would be its own key that finds the pouch's dropset row and multiplies its min and max, as the dispatch `Rewards` lever already does. What is unknown is the link from the pouch item to its row.
+**BUILT and seen in game (0.15.0, 2026-11-03).** The link is `iteminfo._itemUseInfoList` (`+0x100`) -> an `itemuseinfo` RandomBox record (kind 2) -> its `DropSetKey` -> a `dropsetinfo` row (`analysis/FINDINGS.md` 2.1 and 2.6, local). The silver pouches (Modest, Full, Overflowing, Wayfarer's) pay from `DropSet_Money_Copper_100_500`, `_10000`, `_20000` and `_100000`, the copper pouches (Paltry, Light, Modest, Full) from `_1_10`, `_10_30`, `_50_70` and `_70_90`, and the Box of Fortune from `DropSet_Pinball_Bag`. `Pouches` (a `[Dispatch]` key in 0.15.0, `[Harvest]` since 0.16.0; dispatch still does the writing) multiplies both ends of every item amount on those rows and on every other RandomBox row an item names that no other source shares (88 rows; `just gen-dropsets`), through the `Rewards` write path. It is separate from `[Harvest] Money`, which edits the placed coin piles' own output blocks; the two do not stack.
 
-**Settles it:** find the reference from the pouch's `iteminfo` record to a `dropsetinfo` key, then confirm with one opened pouch at a multiplier. Source: `docs/findings/2026-09-12-water-wells.md` §13.3 (local).
+At `Pouches=10`, Light Copper paid 200 (vanilla 10..30), Paltry Copper 21 (vanilla 1..10) and Modest Silver 1394 (vanilla 100..500). Back at 1, Modest Silver paid 207. That 1394 is not a flat 1000 shows that the live pouch path is the roller (min..max), not the grant-all routine at `min`.
 
 ## Two `Logging` records
 
@@ -79,3 +85,4 @@ Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/sr
 - **Currency multiplier:** resolved 2026-09-13, shipped in 0.5.0 as the `Money` family; `Money=3` on one `coin_0001` logged `[recv] item 1 x30`. Evidence: `docs/findings/2026-09-12-water-wells.md` §13.7 (local).
 - **The water well is a `Foraging` record:** landed in 0.4.1; the 16 inert `Ingredients` rows became `records_not_enabled`. Evidence: `docs/findings/2026-09-12-water-wells.md` §3, §11 and §12 (local).
 - **Multi-step gimmick test:** resolved 2026-09-13, no: a forged pickup at a well emptied it permanently, so the looter refuses the well by record key (`never_forge_pickup`). Evidence: `docs/findings/2026-09-12-water-wells.md` §13.1 (local).
+- **The second yield route:** settled 2026-11-03 from the archive tables (26361232). `dropSetInfoList` (`gimmickinfo +0x120`) is on 327 records and none of them is one of the 316 `collect.rs` rows, so the gatherer's multiplier misses nothing it was meant to cover. The 327 are breakables, containers, chests and the 66 trees on `DropSet_TreeWeapon`; the breakables' rows are `[Dispatch] Breakables` since 0.15.0 (`just gen-dropsets`), unverified in game. Evidence: `analysis/FINDINGS.md` 7.6 (local), `desert_tools::gimmick_walk::full`.

@@ -399,6 +399,7 @@ impl Default for Rewards {
 
 static MISSIONS: Missions = Missions::new();
 static REWARDS: Rewards = Rewards::new();
+static DROPS: Rewards = Rewards::new();
 
 /// The one mission table, written and read by this subsystem's thread.
 pub fn missions() -> &'static Missions {
@@ -408,6 +409,16 @@ pub fn missions() -> &'static Missions {
 /// The one reward-entry table.
 pub fn rewards() -> &'static Rewards {
     &REWARDS
+}
+
+/// The entries of the `Pouches` / `Breakables` rows
+/// (`desert_core::dropset_table`), keyed the same way. A table of their own,
+/// not a share of [`rewards`]: the 708 item entries of build 26361232 beside
+/// dispatch's 725 would crowd one probe table to two thirds full, and a row
+/// one of these levers refused must never leave a remembered vanilla where
+/// the `Rewards` pass could find it.
+pub fn drops() -> &'static Rewards {
+    &DROPS
 }
 
 #[cfg(test)]

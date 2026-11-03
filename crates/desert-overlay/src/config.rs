@@ -776,6 +776,7 @@ mod tests {
         // takes effect now and which waits for the next launch.
         let notice = s.notice.clone().unwrap_or_default();
         assert!(notice.starts_with("Theme changes live."), "{notice}");
+        assert!(notice.len() <= 160, "one or two lines in the menu, not a paragraph: {notice}");
         assert!(notice.contains("read once, at startup"), "{notice}");
         // And the Theme help must not promise a picker that no longer exists.
         let help = s.field("Theme").and_then(|f| f.help.clone()).unwrap_or_default();

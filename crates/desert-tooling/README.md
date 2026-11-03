@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.11.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.16.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -134,8 +134,8 @@ subsystem re-reads its own section of it once a second, so:
 Presets sit at the top of the Harvest tab: `Everything`, `Plants only`, `Wood only`,
 `Rock and ore only`. One click sets the four gather families and ground items
 and leaves everything else alone. Below them come `Enabled` and `AutoGather`,
-what auto-loot takes, `Hunting`, the ranges and pacing, and then the yield
-multipliers, `Foraging` to `Fish`.
+what auto-loot takes, `Hunting`, the item-log filter, the ranges and pacing, the yield
+multipliers `Foraging` to `Critters`, and last `Pouches` and `Breakables`.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
@@ -177,13 +177,32 @@ from the menu: Insert is `KeyMenu` under `[Overlay]`, the other four are
   the loot arrives without the skinning animation. A carcass you have already
   emptied is left alone. `Hunting` multiplies what a carcass gives, 1..100, and
   ships at 1 - it works whether the plugin skins the animal or you do.
-- **Catches insects and fish** within the same range, using the game's own
+- **Searches dead bodies** within the same range when `GatherBodies=1`, off by default, with
+  the same game event as a carcass. `GatherBodies` covers hostile people and monsters (bandit
+  gangs, criminals, monsters, bosses: the bodies with a grey map marker). `GatherFriendlyBodies=1`,
+  which needs `GatherBodies=1`, adds people who were not enemies (citizens, traders, nobles,
+  named unique NPCs, guards, mercenaries: the white-marker bodies). Which a body is comes from the
+  game's own ally groups (enemy, wild, or NPC, guard and mercenary), not from whether a character
+  can be befriended. Your companions and the playable characters are never searched, whatever
+  these two settings say. A body with an owner or quest trigger set on it is never searched (the same test the
+  game makes before its own loot prompt), and a body already emptied is left alone. `Hunting`
+  multiplies what a body gives too. Weapons and armour an enemy drops on the ground are ordinary
+  ground items, picked up under `GatherItems` (and `GatherGear` for armour and jewellery), not by
+  `GatherBodies`.
+- **Catches insects, fish and critters** within the same range, using the game's own
   "catch" event rather than a pickup. Fish within reach at the water's edge go
   the same way, with the very same event as an insect. The steal check applies
-  to both, so a creature the game counts as someone else's is left alone.
-  `GatherBugs=0` and `GatherFish=0` turn them off separately. The Rice Fish is
-  the exception: the game gives it the insect class, so it is caught under
-  `GatherBugs` and multiplied by `Bugs`, not `Fish`.
+  to all of them, so a creature the game counts as someone else's is left alone.
+  `GatherBugs=0`, `GatherFish=0` and `GatherCritters=0` turn them off separately.
+  A **critter** is a small animal the game puts in the bag when you catch it by
+  hand: the five small lizards (Chameleon, Frilled-Neck, Goanna, Heloderma,
+  Iguana), ten small birds, four rats, frogs, toads, salamanders, axolotls, the
+  Mole, Muskrat, Opossum and the Baby Hedgehog. The giant riding iguanas are not
+  critters. Which of the three a creature is comes from the game's own species
+  records, so the Rice Fish, Lobster and Sea Slater are fish whatever their
+  record names say. **Ducks and raccoons are never caught**: you carry, kill and
+  skin them, they never go into the bag, so neither auto-catch nor any
+  multiplier touches them.
 - **Leaves alone what it does not recognise.** Insects and fish are told apart
   from birds in flight and other wildlife by a class byte on the creature
   itself, and only the classes that have actually been caught by hand are ever
@@ -259,7 +278,7 @@ bag from 11919 to 14384 copper, two grants inside the multiplied 1000..1500.
 HUD. The base coin is worth a few copper, so even at 100x one coin is a
 handful of silver, never a thousand.
 
-Two more multipliers, **Bugs** and **Fish**, cover the creatures you catch by
+Three more multipliers, **Bugs**, **Fish** and **Critters**, cover the creatures you catch by
 hand. Those are not gathering nodes and there is no record anywhere saying what
 one is worth: the game grants exactly one, from a constant in its own code. So
 that pair works differently from the four families (it is a small patch on that
@@ -375,8 +394,14 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `GatherMoney` | 0 | 1 = also pick up the coin props lying in the world. Auto-loot only; the amount is the `Money` multiplier below. Untested in game, so off by default |
 | `GatherBugs` | 1 | 0 = do not catch insects (they are a separate game event, not a gather family) |
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
+| `GatherCritters` | 1 | 0 = do not catch critters: small lizards, small birds, rats, frogs, toads, salamanders (same event as insects). Ducks and raccoons are never caught, whatever this is |
 | `GatherCarcass` | 0 | 1 = also loot animal carcasses within `GatherRange`, without the skinning animation. A carcass already skinned gives nothing, and the classes known to be people are refused. 0 by default: opt in |
-| `Hunting` | 1 | 1..100, how much a looted carcass gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
+| `GatherBodies` | 0 | 1 = also search dead hostile people and monsters (bandits, criminals, monsters, bosses: grey map marker) within `GatherRange`, with the carcass event. A body with an owner or quest trigger is skipped. Items dropped on the ground are not part of this: they stay under `GatherItems`/`GatherGear`. 0 by default: opt in |
+| `GatherFriendlyBodies` | 0 | 1 = also search the bodies of people who were not enemies (citizens, traders, nobles, named NPCs, guards, mercenaries: white map marker). Companions and playable characters are never searched. Needs `GatherBodies=1`. 0 by default |
+| `Hunting` | 1 | 1..100, how much a looted carcass or searched body gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
+| `LootLogMinTier` | 0 | 0..6, which pickups get an "Item xN" line in the item log at the side of the screen. 0 = every line, as the game does; 1..5 = only items of at least that tier; 6 = none (except money and quest items, below). Only the line is hidden: the item still goes into the bag and quests still count it. Takes effect at once. A code patch on the game's own line builder, so a game update can break it; the log says so and the item log stays vanilla |
+| `LootLogMoney` | 1 | with `LootLogMinTier` above 0, coins and camp funds still get their line |
+| `LootLogQuest` | 1 | with `LootLogMinTier` above 0, quest and key items still get their line: everything the game files under Key Item in the inventory (books, documents, contracts, posters, bounty notices, memory fragments, abyss artifacts), quest keepsakes and quest rewards, and keys. The list is the game's own inventory groups, read at build time; the log's `[itemlog] quest items:` line says it is in use. Not yet seen in game |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
@@ -392,6 +417,9 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `Money` | 1 | multiplier for the coins lying in the world, 1..100. Nothing else: not enemy drops, quest rewards, pouches, chests or prices |
 | `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
 | `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
+| `Critters` | 1 | multiplier for critters caught by hand (small lizards, small birds, rats, frogs, toads, salamanders), 1..100. Same patch as `Bugs`. Ducks and raccoons are never multiplied |
+| `Pouches` | 1 | multiply what an item pays when you open it, 1..100: the silver pouches, Box of Fortune, seed packs, recipe and gear boxes (88 drop-table rows no other source pays from). Not `Money` above, which is the coin piles in the world; the two do not stack. The first pouch of a kind opened in a session may pay vanilla while the game loads its row. Written by the Dispatch subsystem, so it needs `[Dispatch] Enabled=1`; `[Harvest] DryRun` covers it. A `[Dispatch]` key in 0.15, moved here automatically |
+| `Breakables` | 1 | multiply the loot of barrels, crates, pots and sacks you smash, 1..100 (15 drop-table rows no other source pays from, so a chest sharing a barrel's table stays vanilla). The first of a kind smashed in a session may pay vanilla. Needs `[Dispatch] Enabled=1`, like `Pouches` |
 
 For the multipliers, `1` means vanilla: that family's records are read and left
 untouched. A value outside 1..100, or one that is not a number, is refused with
@@ -407,8 +435,9 @@ it yourself - lower, crank, take - and the multiplier still applies to what
 you take. When the nearest thing is a well the F9 line says it was refused
 rather than pretending nothing was there.
 
-On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the ranges
-and pacing and the seven multipliers are on the Harvest tab; the four keys are on
+On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the item-log filter (under
+"Item log:", `LootLogMinTier`, then "Always show money" and "Always show quest items" on a row
+each), the ranges and pacing and every multiplier are on the Harvest tab; the four keys are on
 Settings; `Debug`, `LogReceived`, `SurveyLines`, `BagTab`, `DryRun` and
 `DumpTable` are on Debug.
 
@@ -461,7 +490,13 @@ turning you away.
 
 A change takes effect within about a second. Only the 219 reward rows dispatch
 missions actually name are touched, never the game's wider drop table, so this
-does not become a loot multiplier for chests and carcasses. No game code is
+does not become a loot multiplier for chests and carcasses. `[Harvest]`'s
+`Pouches` and `Breakables` are the two exceptions, written by this subsystem's
+pass (so they need `Enabled=1` here) but set, and dry-run, from `[Harvest]`,
+by design and by a fixed list: the rows
+`just gen-dropsets` picked out of the game's tables because nothing but a pouch
+or a breakable pays from them, each checked against that list (key, entry count
+and vanilla amounts) before a byte of it is written. No game code is
 patched and no hook is installed: the plugin edits five fields of the tables the
 game has already read (four settings, five fields: `Rewards` writes both ends of
 a min/max pair), on its own thread, and remembers what each one said first so it
@@ -652,11 +687,11 @@ already sitting in the block scaled again. A record re-applied five times at
 five different multipliers ends up exactly where a single load at the last
 multiplier would have left it.
 
-`Bugs` and `Fish` need none of that machinery: the multiplier is read at the
+`Bugs`, `Fish` and `Critters` need none of that machinery: the multiplier is read at the
 moment the creature is caught, so a change there takes effect on the **next
 catch** with nothing to re-apply. Each multiplied catch logs one line,
-`[harvest] [catch] fish class=23 -> x3`; a creature whose class the plugin has
-never seen caught is left vanilla and reported once per class per session.
+`[harvest] [catch] fish class=23 -> x3`; a creature the game's species records do
+not list and whose class the plugin has never seen caught is left vanilla and reported once per class per session.
 `Enabled=0` and `DryRun=1` both mean "grant one, as the game would".
 
 ## Files in the game folder
@@ -704,7 +739,7 @@ x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 
-Nothing here is a hard-coded address. The auto-loot half resolves nine byte
+Nothing here is a hard-coded address. The auto-loot half resolves ten byte
 signatures and finds the actor manager through its RTTI vtable. The yield half
 scans the
 running image for the accessor that names the `gimmickinfo` table and follows it
@@ -720,12 +755,12 @@ will fail to resolve, log why, and leave that part of itself idle. It never
 guesses: a refusal is a subsystem that does nothing, and a wrong patch would be
 a crash.
 
-`Bugs` and `Fish` are the fragile part, and deliberately so. There is no record
+`Bugs`, `Fish` and `Critters` are the fragile part, and deliberately so. There is no record
 to edit for a caught creature, so that multiplier is a patch on the game's code:
 the plugin scans for the 21-byte instruction sequence that hands the catch
 handler its count, and refuses to patch unless the thirteen bytes it is about to
 overwrite are exactly the two instructions it expects. A game update that
-rewrites that function disables **only** those two keys, with a `[catch]` line
+rewrites that function disables **only** those three keys, with a `[catch]` line
 saying which check failed: every other multiplier is untouched by it, and the
 game is untouched by us.
 
@@ -774,9 +809,11 @@ anything else, because the record-loader hook has to go in before the game
 reads the gather table and must not queue behind the auto-loot's signature scan
 or its 20-second boot grace.
 
-`desert-harvest` has two halves. The looter resolves nine byte signatures,
-hooks two functions with inline trampolines (a per-frame job, for a callback on
-a game thread, and the event queue's push, for observation), finds the actor
+`desert-harvest` has two halves. The looter resolves ten byte signatures,
+hooks four functions with inline trampolines (a per-frame job, for a callback on
+a game thread; the event queue's push, for observation; the loot grant, for
+`Hunting`; and the side item log's line builder, which the item-log filter can
+skip for a line it hides), finds the actor
 manager through its RTTI vtable, and builds pickups exactly as the game's own
 event builder builds them, queued from inside the hook.
 

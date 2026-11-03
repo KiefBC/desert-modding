@@ -68,7 +68,7 @@ checksum = "c00d31b1d19317b4777ec879192d3745bd97d05262b4b19cb1dda284b9d22f19"
 
 [[package]]
 name = "desert-core"
-version = "0.8.0"
+version = "0.13.0"
 dependencies = [
  "proptest",
  "windows-sys",
@@ -76,14 +76,14 @@ dependencies = [
 
 [[package]]
 name = "desert-dispatch"
-version = "0.3.0"
+version = "0.5.0"
 dependencies = [
  "desert-core",
 ]
 
 [[package]]
 name = "desert-harvest"
-version = "0.6.1"
+version = "0.10.0"
 dependencies = [
  "desert-core",
  "windows-sys",
@@ -109,7 +109,7 @@ dependencies = [
 
 [[package]]
 name = "desert-tooling"
-version = "0.11.0"
+version = "0.16.0"
 dependencies = [
  "desert-core",
  "desert-dispatch",

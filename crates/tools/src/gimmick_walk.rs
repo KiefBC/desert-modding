@@ -1,0 +1,1060 @@
+//! `gimmickinfo` walked from its key to the record end, the head of
+//! `interactioninfo`, and the drop-entry reader both share: the layouts
+//! `gen-containers` and `gen-dropsets` read.
+//!
+//! A port of `analysis/gimmick_tail.py`'s `walk()` (the record deserialiser
+//! `0x14170A4E0`, read in the same stream order through the same
+//! sub-readers), its `drop_entry()` and its `interaction_flags()`.
+//!
+//! [`gimmick`] stops after `tags`, which is all `gen-containers` needs; three
+//! checks stand in there for the record-end check, on every one of the 14210
+//! records of build 26361232:
+//!
+//! - `gimmickName`, the localised string right after the overrides and the
+//!   property list, carries the table key `(record key << 32) | 0x200`, so a
+//!   single byte misread anywhere in the overrides fails the record;
+//! - every optional-field present byte read on the way is 0 or 1 (the Python
+//!   walk accepts any non-zero byte; this one refuses);
+//! - the byte after `tags`, `triggerVolumeGroupDataList`'s present byte, is 0
+//!   or 1 as well.
+//!
+//! [`full`] carries on from there to the last byte and fails a record whose
+//! walk does not end exactly on it, the check `gimmick_tail.checks()` makes.
+//!
+//! A condition subtype, trigger handler type or drop-entry kind the walk does
+//! not know fails the record instead of being misread, as in the Python.
+
+/// A walk failure, said in words. The Python's `Stop`.
+pub type Stop = String;
+
+/// `gimmickName`'s localised-string column.
+pub const GIMMICK_NAME_COLUMN: u64 = 0x200;
+
+/// Cursor over one record's bytes; every method reads what the named game
+/// reader reads.
+pub struct R<'a> {
+    d: &'a [u8],
+    pub o: usize,
+}
+
+impl<'a> R<'a> {
+    pub fn new(d: &'a [u8], o: usize) -> Self {
+        Self { d, o }
+    }
+
+    pub fn take(&mut self, n: usize) -> Result<&'a [u8], Stop> {
+        let end = self.o.checked_add(n).ok_or("offset overflow")?;
+        let b = self.d.get(self.o..end).ok_or_else(|| format!("read of {n} bytes at {} past the record end", self.o))?;
+        self.o = end;
+        Ok(b)
+    }
+
+    pub fn u8(&mut self) -> Result<u8, Stop> {
+        Ok(self.take(1)?[0])
+    }
+
+    pub fn u16(&mut self) -> Result<u16, Stop> {
+        Ok(u16::from_le_bytes(self.take(2)?.try_into().map_err(|_| "u16")?))
+    }
+
+    pub fn u32(&mut self) -> Result<u32, Stop> {
+        Ok(u32::from_le_bytes(self.take(4)?.try_into().map_err(|_| "u32")?))
+    }
+
+    pub fn u64(&mut self) -> Result<u64, Stop> {
+        Ok(u64::from_le_bytes(self.take(8)?.try_into().map_err(|_| "u64")?))
+    }
+
+    pub fn i64(&mut self) -> Result<i64, Stop> {
+        Ok(i64::from_le_bytes(self.take(8)?.try_into().map_err(|_| "i64")?))
+    }
+
+    /// Whether every byte of the record has been read.
+    pub fn at_end(&self) -> bool {
+        self.o == self.d.len()
+    }
+
+    /// `u32 n` x `u32`: a key list (the Python's `keys()`).
+    pub fn keys(&mut self) -> Result<Vec<u32>, Stop> {
+        let n = self.n()?;
+        (0..n).map(|_| self.u32()).collect()
+    }
+
+    /// `u32 n` x element, skipping each element with `f`.
+    pub fn each(&mut self, mut f: impl FnMut(&mut Self) -> Result<(), Stop>) -> Result<(), Stop> {
+        for _ in 0..self.n()? {
+            f(self)?;
+        }
+        Ok(())
+    }
+
+    /// `u8 present` + `u32 n` x element (the `0x17494..`-style optional list
+    /// readers, the Python's `olst()`).
+    pub fn oeach(&mut self, f: impl FnMut(&mut Self) -> Result<(), Stop>) -> Result<(), Stop> {
+        if self.opt()? {
+            self.each(f)?;
+        }
+        Ok(())
+    }
+
+    pub fn skip(&mut self, n: usize) -> Result<(), Stop> {
+        self.take(n).map(|_| ())
+    }
+
+    /// `0x1601490` (and `0x1601780`, which hashes it): `u32` length, bytes.
+    pub fn s(&mut self) -> Result<&'a [u8], Stop> {
+        let n = self.u32()? as usize;
+        self.take(n)
+    }
+
+    /// `0x149F270`, a localised string: `u8 kind`, `u64 (recordKey << 32 |
+    /// column)`, then a string (the key in decimal). Returns the table key.
+    pub fn ls(&mut self) -> Result<u64, Stop> {
+        self.skip(1)?;
+        let k = self.u64()?;
+        self.s()?;
+        Ok(k)
+    }
+
+    /// The `u8` present byte an optional-pointer reader puts first. Strict:
+    /// anything but 0 or 1 is a misread.
+    pub fn opt(&mut self) -> Result<bool, Stop> {
+        match self.u8()? {
+            0 => Ok(false),
+            1 => Ok(true),
+            b => Err(format!("present byte {b} at {}", self.o - 1)),
+        }
+    }
+
+    /// A list count, held to the Python's plausibility bound.
+    pub fn n(&mut self) -> Result<usize, Stop> {
+        let v = self.u32()?;
+        if v > 100_000 {
+            return Err(format!("implausible count {v}"));
+        }
+        Ok(v as usize)
+    }
+}
+
+/// One field a condition leaf's `+0x80` reader takes.
+#[derive(Clone, Copy)]
+enum F {
+    U8,
+    U16,
+    U32,
+    I64,
+    S,
+    /// `0x141735960`: 16 single bytes.
+    B16,
+}
+
+/// Condition leaf subtype -> (`+0x80` reader's fields, whether `+0x98` is
+/// the shared `0x142412E20` reader). `gimmick_tail.py` `COND`, which names
+/// each subtype's RTTI class and reader address. `0xE2` has a reader of its
+/// own ([`cond_node`]).
+fn cond_fields(st: u16) -> Option<(&'static [F], bool)> {
+    use F::*;
+    Some(match st {
+        0x002 => (&[], false),            // CheckNone
+        0x01F => (&[B16, U8], true),      // CheckActionAttribute
+        0x024 => (&[U32, U32, U8], true), // CheckKnowledge
+        0x037 => (&[U32, U32, U32], true), // CheckEquipType
+        0x066 => (&[U32], true),          // CheckGimmickState
+        0x075 => (&[S], true),            // CheckCatcheeGimmickTag
+        0x082 => (&[U32], false),         // SpecialModeKey
+        0x084 => (&[], true),             // IsInRegion (own reader: a u16 list)
+        0x09E => (&[U32, U8, U8, U8], true), // CheckFriendlyLevel
+        0x0BC => (&[U32, U32, U8], true), // GetGimmickVariable
+        0x0D9 => (&[U8], true),           // IsDockingChild
+        0x0E0 => (&[U8], true),           // IsFullGimmickAttachment
+        0x0ED => (&[U32], true),          // CheckSpawnReason
+        0x104 => (&[], true),             // IsCrimeTarget
+        0x107 => (&[U32], true),          // CheckBuffTag
+        0x10E => (&[U32], false),         // Macro
+        0x14D => (&[U32, U32, U8, U8], true), // DockingChildTagCount
+        0x16B => (&[], true),             // CheckHireMercenary
+        0x027 => (&[U32, I64, U16, U16], true), // CheckHaveItem
+        0x02F => (&[], true),             // CheckBattle
+        0x048 => (&[U32], true),          // CompleteMission
+        0x08F => (&[U8], true),           // CheckTargetToPushInventory
+        0x0B0 => (&[U32, U8], true),      // CheckAttachedGimmickCount
+        0x0E2 => (&[], true),             // CheckGimmickTargetCount (own reader)
+        0x14E => (&[], true),             // HasBagDocking
+        0x159 => (&[U8], true),           // CheckFlip
+        0x15F => (&[U32], true),          // IsGimmickPlacedByHousing
+        0x17A => (&[U8], true),           // CheckTargetDropListToPushInventory
+        0x1A0 => (&[], true),             // IsMiniGamePlayable
+        0x008 => (&[], true),             // IsNightTime
+        0x00C => (&[U32], true),          // CheckCharacterKey
+        0x01B => (&[], true),             // IsFocusActor
+        0x0D4 => (&[U32, U8], true),      // CheckElementalMaterialStateFail
+        _ => return None,
+    })
+}
+
+/// The condition-tree factory `0x142631AF0`: `u8 kind`; 0 and 1 two
+/// children, 2 one, 3 a leaf (`u16 subtype`, the subtype's `+0x80` reader,
+/// then its `+0x98` reader: `u8 present` + string, 8 bytes, three `u8`).
+pub fn cond_node(r: &mut R, depth: usize) -> Result<(), Stop> {
+    if depth > 64 {
+        return Err("condition tree deeper than 64".into());
+    }
+    match r.u8()? {
+        0 | 1 => {
+            cond_node(r, depth + 1)?;
+            cond_node(r, depth + 1)
+        }
+        2 => cond_node(r, depth + 1),
+        3 => {
+            let st = r.u16()?;
+            let (fields, s98) = cond_fields(st).ok_or_else(|| format!("condition subtype 0x{st:X}"))?;
+            if st == 0x84 {
+                // 0x14243A1D0 = 0x14172BD00: a u16 regioninfo list.
+                let n = r.n()?;
+                r.skip(2 * n)?;
+            } else if st == 0xE2 {
+                // 0x14244EA80: 0x14248EA70 (u8 present + 0x1425D8090: u8,
+                // opt_cond, string, string), u8, string, u16.
+                if r.opt()? {
+                    r.u8()?;
+                    opt_cond(r, depth + 1)?;
+                    r.s()?;
+                    r.s()?;
+                }
+                r.u8()?;
+                r.s()?;
+                r.u16()?;
+            } else {
+                for f in fields {
+                    match f {
+                        F::U8 => r.skip(1)?,
+                        F::U16 => r.skip(2)?,
+                        F::U32 => r.skip(4)?,
+                        F::I64 => r.skip(8)?,
+                        F::S => {
+                            r.s()?;
+                        }
+                        F::B16 => r.skip(16)?,
+                    }
+                }
+            }
+            if s98 && r.opt()? {
+                r.s()?;
+                r.skip(8 + 3)?;
+            }
+            Ok(())
+        }
+        k => Err(format!("condition kind {k}")),
+    }
+}
+
+/// `0x14172C060 -> 0x142490850`: `u8 present`, `u8 present`, a condition
+/// tree, then three `u8`.
+pub fn opt_cond(r: &mut R, depth: usize) -> Result<(), Stop> {
+    if !r.opt()? || !r.opt()? {
+        return Ok(());
+    }
+    cond_node(r, depth)?;
+    r.skip(3)
+}
+
+/// `0x141713840`, one interaction override: `u32 interaction`, a localised
+/// string, `u32`, a list of `(string, u32)`, a list of (four strings, 36
+/// bytes), a condition list (`opt_cond, opt_cond`, 11 bytes), a list of 28-byte
+/// elements, a `u32` key list, `u32`, `u32 dropset`, five `u8`. Returns the
+/// interaction key and the dropset key (`interactionDropSetOverrideData`, 0
+/// on every override of build 26361232).
+pub fn interaction_override(r: &mut R) -> Result<(u32, u32), Stop> {
+    let interaction = r.u32()?;
+    r.ls()?;
+    r.u32()?;
+    for _ in 0..r.n()? {
+        r.s()?;
+        r.u32()?;
+    }
+    for _ in 0..r.n()? {
+        for _ in 0..4 {
+            r.s()?;
+        }
+        r.skip(4 + 12 + 8 + 12)?;
+    }
+    for _ in 0..r.n()? {
+        opt_cond(r, 0)?;
+        opt_cond(r, 0)?;
+        r.skip(1 + 4 + 4 + 1 + 1)?;
+    }
+    let n = r.n()?;
+    r.skip(28 * n)?;
+    let n = r.n()?;
+    r.skip(4 * n)?;
+    r.u32()?;
+    let dropset = r.u32()?;
+    r.skip(5)?;
+    Ok((interaction, dropset))
+}
+
+/// What `gen-containers` needs out of a `gimmickinfo` record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Gimmick {
+    /// The interaction key of every present override, in order.
+    pub interactions: Vec<u32>,
+    /// Each present override's `interactionDropSetOverrideData` dropset key,
+    /// in the same order (0 = none).
+    pub override_dropsets: Vec<u32>,
+    pub tags: Vec<String>,
+}
+
+/// The walk from the key through `tags`, leaving the cursor on
+/// `triggerVolumeGroupDataList`'s present byte. See [`gimmick`].
+fn head<'a>(rec: &'a [u8], key: u32) -> Result<(Gimmick, R<'a>), Stop> {
+    let name_len = u32::from_le_bytes(rec.get(0..4).ok_or("no name length")?.try_into().map_err(|_| "name length")?);
+    let mut r = R::new(rec, 4 + name_len as usize);
+    let k = r.u32()?;
+    if k != key {
+        return Err(format!("body key {k} is not the header's {key}"));
+    }
+    r.u8()?; // isBlocked
+    r.s()?; // prefabPath
+    let mut interactions = Vec::new();
+    let mut override_dropsets = Vec::new();
+    if r.opt()? {
+        for _ in 0..r.n()? {
+            if r.opt()? {
+                let (i, d) = interaction_override(&mut r)?;
+                interactions.push(i);
+                override_dropsets.push(d);
+            }
+        }
+    }
+    let n = r.n()?; // propertyList
+    r.skip(4 * n)?;
+    let lk = r.ls()?; // gimmickName
+    if lk != (u64::from(key) << 32) | GIMMICK_NAME_COLUMN {
+        return Err(format!("gimmickName table key {lk:#x} is not ({key} << 32) | {GIMMICK_NAME_COLUMN:#x}"));
+    }
+    r.s()?; // devMemo
+    r.u64()?; // logoutTimeAfterBreak
+    if r.opt()? {
+        r.skip(12 + 2)?; // remoteCatchable
+    }
+    if r.opt()? {
+        for _ in 0..r.n()? {
+            r.s()?;
+            r.s()?; // chartParameters
+        }
+    }
+    let mut tags = Vec::new();
+    if r.opt()? {
+        for _ in 0..r.n()? {
+            let t = r.s()?;
+            tags.push(String::from_utf8(t.to_vec()).map_err(|_| "a tag is not UTF-8")?);
+        }
+    }
+    Ok((Gimmick { interactions, override_dropsets, tags }, r))
+}
+
+/// Walk a `NameFirst` `gimmickinfo` record (`u32 name_len, name, u32 key,
+/// ...`) from its key through `tags`: `u32 key`, `u8 isBlocked`,
+/// `prefabPath`, the interaction overrides (`u8 present`, `u32 n` x (`u8
+/// present` + override)), `propertyList` (`u32` keys), `gimmickName`
+/// (localised, checked), `devMemo`, `u64 logoutTimeAfterBreak`,
+/// `remoteCatchable` (`u8 present` + 14 bytes), `chartParameters` (`u8
+/// present` + `u32 n` x two strings), `tags` (`u8 present` + `u32 n` x
+/// string), then the next present byte is checked.
+pub fn gimmick(rec: &[u8], key: u32) -> Result<Gimmick, Stop> {
+    let (g, mut r) = head(rec, key)?;
+    // triggerVolumeGroupDataList's present byte: not walked, only checked.
+    match r.u8()? {
+        0 | 1 => {}
+        b => return Err(format!("the byte after tags reads {b}, not a present byte")),
+    }
+    Ok(g)
+}
+
+/// What `gen-dropsets` needs out of a `gimmickinfo` record walked to its end.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Full {
+    pub head: Gimmick,
+    /// `dropSetInfoList` (`+0x120`): the dropset keys, in order.
+    pub dropsets: Vec<u32>,
+    /// `dropInfoDataList` (`+0x128`) entries of kind 0 (items).
+    pub drop_items: usize,
+    /// `productData`'s dropset (`+0x200`), when present.
+    pub product_dropset: Option<u32>,
+    /// `breakableObjectInfo` (`+0x2CA`), a `breakableobjectinfo` key.
+    pub breakable: u16,
+}
+
+/// One drop entry (`0x141C4AE40`, FINDINGS 2.7): `i64`, `u8 kind`, three
+/// `u32` condition keys, `u32`, four `i64` (weight, ?, min, max), `u16`, then
+/// the target by kind. Returns the parts `gen-dropsets` reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DropEntry {
+    pub kind: u8,
+    pub weight: i64,
+    pub min: i64,
+    pub max: i64,
+}
+
+/// The kind of a drop entry that pays an item (`entry+0x60 == 0`, FINDINGS
+/// 2.7).
+pub const DROP_KIND_ITEM: u8 = 0;
+
+pub fn drop_entry(r: &mut R) -> Result<DropEntry, Stop> {
+    r.i64()?;
+    let kind = r.u8()?;
+    r.skip(12 + 4)?;
+    let weight = r.i64()?;
+    r.i64()?;
+    let min = r.i64()?;
+    let max = r.i64()?;
+    r.u16()?;
+    match kind {
+        0..=6 | 9 | 12 => r.skip(4)?,
+        // 0x1416F1860: 8 bytes, u32, u32 character, u8, u8, u32 interaction,
+        // 8 bytes, four u8.
+        7 | 8 | 15 => r.skip(8 + 4 + 4 + 2 + 4 + 8 + 4)?,
+        10 => r.skip(8)?,
+        11 => {}
+        13 => r.skip(5)?,
+        14 => match r.u8()? {
+            0 | 3 | 9 => r.skip(4)?,
+            0x12 => {}
+            sub => return Err(format!("drop entry kind 14 sub {sub}")),
+        },
+        16 => r.skip(4 + 4 + 2)?,
+        17 => r.skip(2)?,
+        k => return Err(format!("drop entry kind {k}")),
+    }
+    Ok(DropEntry { kind, weight, min, max })
+}
+
+/// `0x1424AC820`: `u8 present` + [`drop_entry`].
+pub fn opt_drop(r: &mut R) -> Result<Option<DropEntry>, Stop> {
+    if r.opt()? {
+        drop_entry(r).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+/// `0x141601C80`: 12 bytes, 16 bytes, 12 bytes.
+const V40: usize = 40;
+
+/// `TriggerGamePlayEventHandlerData_ForceField` `+0x2A8` = `0x14252C470`.
+fn trig_forcefield(r: &mut R) -> Result<(), Stop> {
+    r.skip(12)?;
+    let sub = r.u8()?;
+    r.skip(4 + 4 + 5)?;
+    r.keys()?;
+    r.skip(20)?;
+    r.skip(match sub {
+        0..=3 => 50,
+        4 => 82,
+        5 => 5,
+        7 => 12,
+        8 => 38,
+        9 => 16,
+        _ => 0,
+    })
+}
+
+/// One `triggerVolumeGroupDataList` element (`0x1425250A0`): string, string
+/// list, shapes, handlers (each `u8 present`, string list, `u8`, `u8
+/// has-handler` + `u8 type` + the type's `+0x2A8` reader, `u64`), four `u8`.
+fn trigger_volume_group(r: &mut R) -> Result<(), Stop> {
+    r.s()?;
+    r.each(|r| r.s().map(|_| ()))?;
+    r.each(|r| {
+        r.u8()?;
+        r.skip(V40)?;
+        r.s()?;
+        r.s()?;
+        r.skip(1 + 12 + 12 + 2)
+    })?;
+    r.each(|r| {
+        if !r.opt()? {
+            return Ok(());
+        }
+        r.each(|r| r.s().map(|_| ()))?;
+        r.u8()?;
+        if r.opt()? {
+            match r.u8()? {
+                0 => r.skip(V40 + 4 * 7 + 1)?, // Gimmick
+                1 | 4 | 6 | 7 => {}            // IgnoreFallingDamage, MoveSync, TriggerRegionInfo, ElementalArea
+                2 => r.skip(8)?,               // ApplyPassiveSkillToTarget
+                3 => trig_forcefield(r)?,      // ForceField
+                5 => {
+                    r.s()?; // DetectTriggerExpansion
+                }
+                8 => r.skip(12)?, // Gravity
+                t => return Err(format!("trigger handler type {t}")),
+            }
+        }
+        r.skip(8)
+    })?;
+    r.skip(4)
+}
+
+/// `0x14CF75900`: string, `u8 kind`, a payload by kind, `u8`.
+fn trig_check(r: &mut R) -> Result<(), Stop> {
+    r.s()?;
+    match r.u8()? {
+        0 | 2 | 3 | 4 | 6 | 7 | 8 => r.skip(4)?,
+        1 | 5 | 9 => r.skip(2)?,
+        _ => {}
+    }
+    r.skip(1)
+}
+
+/// `0x141767EE0` element: `u32`, three `u8`, a list (two string lists, two
+/// strings, 23 bytes), `u8`.
+fn attach_target(r: &mut R) -> Result<(), Stop> {
+    r.skip(4 + 3)?;
+    r.each(|r| {
+        r.each(|r| r.s().map(|_| ()))?;
+        r.each(|r| r.s().map(|_| ()))?;
+        r.s()?;
+        r.s()?;
+        r.skip(1 + 12 + 8 + 2)
+    })?;
+    r.skip(1)
+}
+
+/// `0x1416F46E0`.
+fn summon_gimmick(r: &mut R) -> Result<(), Stop> {
+    r.skip(8 + 24)?;
+    for _ in 0..6 {
+        r.s()?;
+    }
+    r.skip(16 + 4 + 1 + 16 + 4 + 7)?;
+    let n = r.n()?;
+    r.skip(10 * n)
+}
+
+/// `0x1416F3C10`.
+fn summon_character(r: &mut R) -> Result<(), Stop> {
+    let n = r.n()?;
+    r.skip(4 * n)?;
+    opt_cond(r, 0)?;
+    r.skip(4 + 2 + 12 + 4 + 1)?;
+    r.s()?;
+    r.s()?;
+    r.skip(3 + 8 + 16 + 2)?;
+    r.s()?;
+    r.s()?;
+    r.skip(2 + 4 + 16 + 4 + 4 + 1 + 4)?;
+    r.u32()?;
+    r.s()?;
+    r.skip(1 + 2 + 8)?;
+    r.s()?;
+    r.skip(8 + 1 + 4)?;
+    r.s()?;
+    r.skip(5 + 8 + 4 + 4 + 2 + 4 + 4 + 1 + 4 + 2)
+}
+
+/// `0x14B2913A0`.
+fn summon_item(r: &mut R) -> Result<(), Stop> {
+    r.skip(4 + 2 + 24)?;
+    r.s()?;
+    r.skip(16 + 4 + 3)?;
+    r.keys()?;
+    r.skip(4 + 2)
+}
+
+/// `0x1416F13B0`: four `u32`, string, 9 bytes, `u32`, a localised string, 36
+/// bytes.
+fn inspect(r: &mut R) -> Result<(), Stop> {
+    r.skip(16)?;
+    r.s()?;
+    r.skip(9 + 4)?;
+    r.ls()?;
+    r.skip(36)
+}
+
+/// `0x1417094C0`.
+fn summon_random(r: &mut R) -> Result<(), Stop> {
+    r.s()?;
+    r.each(|r| {
+        r.skip(4 + 2 + 4 + 8 + 1)?;
+        r.s()?;
+        r.skip(4)
+    })?;
+    r.skip(8 + 2 + 4 + 4)
+}
+
+/// `0x141709730`.
+fn elemental_area(r: &mut R) -> Result<(), Stop> {
+    r.skip(4 + 1 + 4 + 2 + V40 + 8 + 4 + 5 + 4 + 4 + 1 + 4)
+}
+
+/// `0x1416F25F0`: a condition, 8 bytes.
+fn cond_val(r: &mut R) -> Result<(), Stop> {
+    opt_cond(r, 0)?;
+    r.skip(8)
+}
+
+/// `0x1417703C0`.
+fn minigame(r: &mut R) -> Result<(), Stop> {
+    r.u32()?;
+    if !r.opt()? {
+        return Ok(());
+    }
+    r.u16()?;
+    let n = r.n()?;
+    r.skip(28 * n)?;
+    let n = r.n()?;
+    r.skip(28 * n)?;
+    r.u32()?;
+    if r.opt()? {
+        opt_cond(r, 0)?;
+        r.each(|r| {
+            cond_val(r)?;
+            r.skip(4 + 4 + 2 + 1 + 1 + 4)?;
+            if r.opt()? {
+                r.skip(8)?;
+            }
+            Ok(())
+        })?;
+        let n = r.n()?;
+        r.skip(8 * n)?;
+        r.each(|r| {
+            cond_val(r)?;
+            r.skip(8)
+        })?;
+        r.each(|r| {
+            cond_val(r)?;
+            r.skip(8)
+        })?;
+    }
+    r.u32()?;
+    if r.opt()? {
+        r.skip(28)?;
+    }
+    r.u32()?;
+    let n = r.n()?;
+    r.skip(12 * n)
+}
+
+/// `0x1417054D0`, one faction structure member (also a `factionnode` event
+/// list element's tail).
+pub fn member(r: &mut R) -> Result<(), Stop> {
+    r.skip(1 + 4 * 5 + 1 + 4 + 2 + 4 + 1 + 1 + 4 + 4 + 3 + 8)?;
+    r.keys()?;
+    r.skip(1 + 4 + 8 + 4 + 8)?;
+    r.keys()?;
+    r.u32()?;
+    r.keys()?;
+    r.skip(8)?;
+    r.keys()?;
+    let n = r.n()?;
+    r.skip(2 * n)?;
+    r.skip(12 + 5 + 4 + 1 + 4 + 4)?;
+    r.ls()?;
+    r.u32()?;
+    r.s().map(|_| ())
+}
+
+/// `0x141709CF0`.
+fn faction_structure(r: &mut R) -> Result<(), Stop> {
+    r.ls()?;
+    r.ls()?;
+    r.s()?;
+    r.u32()?;
+    for _ in 0..2 {
+        r.keys()?;
+        r.each(member)?;
+    }
+    r.skip(2)
+}
+
+/// Walk a `gimmickinfo` record from its key to its last byte, in the order
+/// of `0x14170A4E0` (`gimmick_tail.py` `walk()`, FINDINGS 7.6), and fail it
+/// unless the walk ends exactly on the record end.
+pub fn full(rec: &[u8], key: u32) -> Result<Full, Stop> {
+    let (head, mut r) = head(rec, key)?;
+    // +0x80 triggerVolumeGroupDataList: opt, list (u8 present + group).
+    if r.opt()? {
+        r.each(|r| if r.opt()? { trigger_volume_group(r) } else { Ok(()) })?;
+    }
+    r.oeach(trig_check)?; // +0x88
+    // +0x90: opt, list (u8 present, list (40 bytes, u32, u8)).
+    r.oeach(|r| {
+        if r.opt()? {
+            let n = r.n()?;
+            r.skip(n * (V40 + 4 + 1))?;
+        }
+        Ok(())
+    })?;
+    // +0x98 gimmickOnTimeGroupDataList: opt, list (u32, list 16 bytes, u8).
+    r.oeach(|r| {
+        r.u32()?;
+        let n = r.n()?;
+        r.skip(16 * n)?;
+        r.skip(1)
+    })?;
+    r.oeach(|r| r.skip(4))?; // +0xA0 transmutationMaterialGimmickList
+    r.oeach(|r| r.skip(4))?; // +0xA8 transmutationMaterialItemList
+    r.oeach(|r| r.skip(2 + 4))?; // +0xB0 transmutationMaterialItemGroupList
+    // +0xB8 controlMaterialParamValueList: (u8, u8, u32, u8, string, u8, 16).
+    r.oeach(|r| {
+        r.skip(1 + 1 + 4 + 1)?;
+        r.s()?;
+        r.skip(1 + 16)
+    })?;
+    r.oeach(|r| r.skip(4 * 5 + 2))?; // +0xC0 growthDataList
+    // +0xC8 attackImpulseCompleteData: u8, list (u32, u32); not optional.
+    r.u8()?;
+    let n = r.n()?;
+    r.skip(8 * n)?;
+    r.skip(8 + 8)?; // +0xE0, +0xE8 battery capacities
+    // +0xF0 .. +0x118: six optional fixed-size fields.
+    for n in [49, 12, 32, 17, 20, 12] {
+        if r.opt()? {
+            r.skip(n)?;
+        }
+    }
+    // +0x120 dropSetInfoList: opt, list (u32 dropset, u32 hash).
+    let mut dropsets = Vec::new();
+    r.oeach(|r| {
+        dropsets.push(r.u32()?);
+        r.skip(4)
+    })?;
+    // +0x128 dropInfoDataList: opt, list (u8 present + drop entry, u32).
+    let mut drop_items = 0usize;
+    r.oeach(|r| {
+        if let Some(e) = opt_drop(r)? {
+            drop_items += usize::from(e.kind == DROP_KIND_ITEM);
+        }
+        r.skip(4)
+    })?;
+    opt_drop(&mut r)?; // +0x130 buyableDropItem
+    // +0x138 transformSetList: opt, list (u32, list (u32, u32)).
+    r.oeach(|r| {
+        r.u32()?;
+        let n = r.n()?;
+        r.skip(8 * n)
+    })?;
+    r.oeach(attach_target)?; // +0x140
+    r.oeach(|r| r.skip(4))?; // +0x148 targetSealPartGimmickInfoList
+    // +0x150 eventKeyGuideList: (u32, u32, u32, list u32, u32).
+    r.oeach(|r| {
+        r.skip(12)?;
+        r.keys()?;
+        r.skip(4)
+    })?;
+    if r.opt()? {
+        // +0x158 socketFindDataList: two (u8, u32, string).
+        for _ in 0..2 {
+            r.skip(5)?;
+            r.s()?;
+        }
+    }
+    if r.opt()? {
+        // +0x160 gimmickNodeData: string, string, three u32.
+        r.s()?;
+        r.s()?;
+        r.skip(12)?;
+    }
+    r.oeach(|r| {
+        summon_gimmick(r)?;
+        r.skip(4)
+    })?; // +0x168
+    r.oeach(|r| {
+        summon_character(r)?;
+        r.skip(4)
+    })?; // +0x170
+    r.oeach(|r| {
+        summon_item(r)?;
+        r.skip(4)
+    })?; // +0x178
+    r.oeach(summon_random)?; // +0x180
+    r.oeach(inspect)?; // +0x188
+    r.oeach(|r| r.skip(0x104))?; // +0x190 propertyConditionStringListForDebug
+    r.oeach(|r| r.s().map(|_| ()))?; // +0x198 stickToObjectSocketList
+    r.oeach(|r| r.s().map(|_| ()))?; // +0x1A0 pushObjectSocketList
+    if r.opt()? {
+        // +0x1A8 sealData: price list (u32, i64, u32, u32), localised, u32.
+        let n = r.n()?;
+        r.skip(20 * n)?;
+        r.ls()?;
+        r.skip(4)?;
+    }
+    // +0x1B0 dialogDataList: (list (u16, localised), u8).
+    r.oeach(|r| {
+        r.each(|r| {
+            r.skip(2)?;
+            r.ls().map(|_| ())
+        })?;
+        r.skip(1)
+    })?;
+    r.skip(4)?; // +0x1B8 defaultAliasName
+    // +0x1C0 weakPointEffectDataList: (u32, string, 24 bytes).
+    r.oeach(|r| {
+        r.skip(4)?;
+        r.s()?;
+        r.skip(24)
+    })?;
+    r.oeach(elemental_area)?; // +0x1C8
+    r.oeach(elemental_area)?; // +0x1D0
+    // +0x1D8 physicsTriggerDataList: (string, string, u32, u32).
+    r.oeach(|r| {
+        r.s()?;
+        r.s()?;
+        r.skip(8)
+    })?;
+    r.oeach(|r| r.skip(8 + V40))?; // +0x1E0 trafficBoxDataList
+    r.oeach(minigame)?; // +0x1E8
+    // +0x1F0 lookAtDataList: (string, u32 x3, u8, string, 12 bytes).
+    r.oeach(|r| {
+        r.s()?;
+        r.skip(13)?;
+        r.s()?;
+        r.skip(12)
+    })?;
+    if r.opt()? {
+        faction_structure(&mut r)?; // +0x1F8
+    }
+    let mut product_dropset = None;
+    if r.opt()? {
+        // +0x200 productData: list (u32, i64), u32, i64, i64, dropset, u32.
+        let n = r.n()?;
+        r.skip(12 * n)?;
+        r.skip(4 + 8 + 8)?;
+        product_dropset = Some(r.u32()?);
+        r.skip(4)?;
+    }
+    r.oeach(|r| r.s().map(|_| ()))?; // +0x208 housingHideTargetAliasNameListOnFocus
+    if r.opt()? {
+        r.skip(4 * 3 + 2)?; // +0x210 gamePlayObjectShareData
+    }
+    if r.opt()? {
+        // +0x218 craftToolData: u16, list u16, u8.
+        r.skip(2)?;
+        let n = r.n()?;
+        r.skip(2 * n + 1)?;
+    }
+    r.skip(4)?; // +0x220 jammedLogoutEffectName
+    r.oeach(|r| r.skip(8))?; // +0x228 managementStatDataList
+    if r.opt()? {
+        r.s()?; // +0x230 gimmickClockData
+        r.s()?;
+    }
+    // +0x238 gimmickStatusOverrideList: (status, u8 present + 40 bytes, u8).
+    r.oeach(|r| {
+        r.skip(4)?;
+        if r.opt()? {
+            r.skip(40)?;
+        }
+        r.skip(1)
+    })?;
+    // +0x240 .. +0x268: gimmickNameHash, timerRandomInterval (u64),
+    // generateEffectData (u32, u8, u8), six u32.
+    r.skip(4 + 8 + 6 + 4 * 6)?;
+    r.s()?; // +0x26C dropOffsetSocketName
+    r.skip(4 * 11 + 4 * 2 + 4 * 9)?; // +0x270 .. +0x2C4
+    r.skip(4)?; // +0x2C8 gimmickGroupInfo
+    let breakable = r.u16()?; // +0x2CA breakableObjectInfo
+    // +0x2CC .. +0x2E6: six u32, three u16, (u16, u16, u8), two u32.
+    r.skip(4 * 6 + 2 * 3 + 5 + 4 * 2)?;
+    r.skip(2 + 92)?; // +0x2E8 .. +0x345: two u8, the 92-byte run
+    r.skip(8)?; // +0x348 respawnTimeSeconds
+    let n = r.n()?;
+    r.skip(8 * n)?; // +0x350 elementalMaterialInfoList
+    r.oeach(|r| r.skip(8))?; // +0x360 elementalStatusInitialStatList
+    if r.opt()? {
+        // +0x368 customVolumeGroupDataList: three lists of (u8 present +
+        // (u32, string, 40 bytes)).
+        for _ in 0..3 {
+            r.each(|r| {
+                if r.opt()? {
+                    r.skip(4)?;
+                    r.s()?;
+                    r.skip(V40)?;
+                }
+                Ok(())
+            })?;
+        }
+    }
+    if r.opt()? {
+        // +0x370 defaultSpawnReasonData: u32, u64, list (u64, u32).
+        r.skip(12)?;
+        let n = r.n()?;
+        r.skip(12 * n)?;
+    }
+    r.skip(4 * 4 + 5)?; // +0x378 .. +0x38A
+    if !r.at_end() {
+        return Err(format!("the walk ends at {} of a {}-byte record", r.o, rec.len()));
+    }
+    Ok(Full { head, dropsets, drop_items, product_dropset, breakable })
+}
+
+/// `interactioninfo`'s 24 one-byte head fields (`gimmick_tail.py`
+/// `INTER_FLAGS`): `checkLootableField` is the sixth.
+pub const CHECK_LOOTABLE_FIELD: usize = 5;
+pub const INTER_FLAG_BYTES: usize = 24;
+
+/// The head of an `interactioninfo` record.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Interaction {
+    pub name: String,
+    /// `checkLootableField`.
+    pub lootable: bool,
+    /// `rewardDropSetInfo` (0 = none).
+    pub reward_dropset: u32,
+}
+
+/// An `interactioninfo` record's head: `u32 name_len, name, u32 key`, the 24
+/// flag bytes, `u32 rewardDropSetInfo`. `checkLootableField` must be 0 or 1
+/// and the key must repeat the header's.
+pub fn interaction_head(rec: &[u8], key: u32) -> Result<Interaction, Stop> {
+    let mut r = R::new(rec, 0);
+    let name = r.s()?;
+    if !name.iter().all(|c| (0x20..=0x7E).contains(c)) {
+        return Err("the name is not printable ASCII".into());
+    }
+    let name = String::from_utf8_lossy(name).into_owned();
+    if r.u32()? != key {
+        return Err("the body key is not the header's".into());
+    }
+    let flags = r.take(INTER_FLAG_BYTES)?;
+    let reward_dropset = r.u32()?;
+    let lootable = match flags.get(CHECK_LOOTABLE_FIELD) {
+        Some(0) => false,
+        Some(1) => true,
+        Some(b) => return Err(format!("checkLootableField reads {b}, not a bool")),
+        None => return Err("no checkLootableField".into()),
+    };
+    Ok(Interaction { name, lootable, reward_dropset })
+}
+
+/// An `interactioninfo` record's name and `checkLootableField`; see
+/// [`interaction_head`].
+pub fn interaction(rec: &[u8], key: u32) -> Result<(String, bool), Stop> {
+    interaction_head(rec, key).map(|i| (i.name, i.lootable))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn le(v: u32) -> [u8; 4] {
+        v.to_le_bytes()
+    }
+
+    fn s(out: &mut Vec<u8>, t: &[u8]) {
+        out.extend_from_slice(&le(t.len() as u32));
+        out.extend_from_slice(t);
+    }
+
+    fn ls(out: &mut Vec<u8>, key: u64) {
+        out.push(0);
+        out.extend_from_slice(&key.to_le_bytes());
+        s(out, b"0");
+    }
+
+    /// One override naming `interaction`, with one condition whose tree is
+    /// `and(CheckGimmickState, not(IsCrimeTarget))`.
+    fn override_bytes(interaction: u32) -> Vec<u8> {
+        let mut o = le(interaction).to_vec();
+        ls(&mut o, 7);
+        o.extend_from_slice(&le(0));
+        o.extend_from_slice(&le(0)); // (string, u32) list
+        o.extend_from_slice(&le(0)); // (4 strings, 36) list
+        o.extend_from_slice(&le(1)); // one condition
+        o.extend_from_slice(&[1, 1, 1]); // present, present, and
+        o.extend_from_slice(&[3]);
+        o.extend_from_slice(&0x066u16.to_le_bytes());
+        o.extend_from_slice(&le(42));
+        o.push(0); // no +0x98
+        o.extend_from_slice(&[2, 3]);
+        o.extend_from_slice(&0x104u16.to_le_bytes());
+        o.push(1); // a +0x98: string, 11 bytes
+        s(&mut o, b"x");
+        o.extend_from_slice(&[0; 11]);
+        o.extend_from_slice(&[0; 3]); // opt_cond tail
+        o.push(0); // second opt_cond absent
+        o.extend_from_slice(&[0; 11]);
+        o.extend_from_slice(&le(0)); // 28-byte list
+        o.extend_from_slice(&le(0)); // key list
+        o.extend_from_slice(&le(0));
+        o.extend_from_slice(&le(0));
+        o.extend_from_slice(&[0; 5]);
+        o
+    }
+
+    fn record(key: u32, interaction: u32, tags: &[&str], name_key: u64) -> Vec<u8> {
+        let mut r = Vec::new();
+        s(&mut r, b"basket");
+        r.extend_from_slice(&le(key));
+        r.push(0);
+        s(&mut r, b"path");
+        r.push(1);
+        r.extend_from_slice(&le(1));
+        r.push(1);
+        r.extend_from_slice(&override_bytes(interaction));
+        r.extend_from_slice(&le(0)); // propertyList
+        ls(&mut r, name_key);
+        s(&mut r, b"");
+        r.extend_from_slice(&[0; 8]);
+        r.push(0); // remoteCatchable
+        r.push(0); // chartParameters
+        r.push(1);
+        r.extend_from_slice(&le(tags.len() as u32));
+        for t in tags {
+            s(&mut r, t.as_bytes());
+        }
+        r.push(0); // triggerVolumeGroupDataList absent
+        r
+    }
+
+    #[test]
+    fn the_walk_reads_overrides_and_tags() {
+        let r = record(1005717, 10028, &["catch_itemcontainer", "x"], (1005717u64 << 32) | 0x200);
+        let g = gimmick(&r, 1005717).unwrap();
+        assert_eq!(g.interactions, vec![10028]);
+        assert_eq!(g.tags, vec!["catch_itemcontainer".to_string(), "x".to_string()]);
+    }
+
+    #[test]
+    fn a_misaligned_walk_is_refused() {
+        // The gimmickName key of another record.
+        let r = record(1005717, 10028, &[], (1005718u64 << 32) | 0x200);
+        assert!(gimmick(&r, 1005717).is_err());
+        // The header's key differs.
+        let r = record(1005717, 10028, &[], (1005717u64 << 32) | 0x200);
+        assert!(gimmick(&r, 1005718).is_err());
+        // Truncated.
+        assert!(gimmick(&r[..r.len() - 1], 1005717).is_err());
+        // A present byte that is not a bool.
+        let mut bad = r.clone();
+        let last = bad.len() - 1;
+        bad[last] = 2;
+        assert!(gimmick(&bad, 1005717).is_err());
+    }
+
+    #[test]
+    fn an_unknown_condition_subtype_is_refused() {
+        let mut r = Vec::new();
+        r.extend_from_slice(&[3]);
+        r.extend_from_slice(&0x0FFu16.to_le_bytes());
+        assert!(cond_node(&mut R::new(&r, 0), 0).is_err());
+        assert!(cond_node(&mut R::new(&[9], 0), 0).is_err());
+    }
+
+    #[test]
+    fn the_interaction_head_reads_the_loot_flag() {
+        let mut r = Vec::new();
+        s(&mut r, b"Gimmick_PickUp");
+        r.extend_from_slice(&le(5));
+        let mut flags = [0u8; INTER_FLAG_BYTES];
+        flags[CHECK_LOOTABLE_FIELD] = 1;
+        r.extend_from_slice(&flags);
+        r.extend_from_slice(&le(0));
+        assert_eq!(interaction(&r, 5), Ok(("Gimmick_PickUp".to_string(), true)));
+        assert!(interaction(&r, 6).is_err());
+        let mut bad = r.clone();
+        bad[4 + 14 + 4 + CHECK_LOOTABLE_FIELD] = 2;
+        assert!(interaction(&bad, 5).is_err());
+    }
+}

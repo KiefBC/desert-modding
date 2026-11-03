@@ -1,6 +1,6 @@
 # Dispatch internals
 
-Sources: `crates/desert-dispatch/src/lib.rs`, `scan.rs`, `apply.rs`, `node.rs`, `buff.rs`, `config.rs`, `crates/desert-core/src/gimmick.rs`, `CLAUDE.md` (How Desert Dispatch works). Evidence: `docs/findings/2026-09-10-dispatch.md`; `docs/reference-internals.md` §20 (§20.3.1 duration, §20.5 and §20.18 banking, §20.14 accessor census, §20.17 and §20.22 `dropsetinfo`).
+Sources: `crates/desert-dispatch/src/lib.rs`, `crates/desert-core/src/drop_levers.rs`, `scan.rs`, `apply.rs`, `node.rs`, `buff.rs`, `config.rs`, `crates/desert-core/src/gimmick.rs`, `CLAUDE.md` (How Desert Dispatch works). Evidence: `docs/findings/2026-09-10-dispatch.md`; `docs/reference-internals.md` §20 (§20.3.1 duration, §20.5 and §20.18 banking, §20.14 accessor census, §20.17 and §20.22 `dropsetinfo`).
 
 ## What it is
 
@@ -16,7 +16,7 @@ Across the plugin, startup makes 8 full passes over the image:
 
 | Site | Passes |
 | --- | --- |
-| `crates/desert-harvest/src/looter/game.rs` `pattern::find_unique_multi`, the nine signatures | 1 (was one per signature) |
+| `crates/desert-harvest/src/looter/game.rs` `pattern::find_unique_multi`, the ten signatures | 1 (was one per signature) |
 | `crates/desert-harvest/src/looter/game.rs` `rtti::vtables_for_class` | 3 |
 | `crates/desert-harvest/src/looter/tables.rs` accessor scan, no base | 1 |
 | `crates/desert-harvest/src/gatherer/entry.rs` accessor scan, no base | 1 |
@@ -32,6 +32,8 @@ The game parses its static-info tables once during loading and keeps the objects
 ## The levers
 
 `apply.rs` edits records the game already parsed: `Speed` divides the duration (the **middle** of the three-entry step list, `parsed::STEP_DURATION`, a `u32` in tenths of an hour, never `entry+0xC0`), `NoSkillRequirement` clears `OP_SKILL_REQ`, `AnyOperatorCount` sets `OP_MIN_OPERATORS` to 1, `Rewards` multiplies both halves of the `dropsetinfo` min/max pair. Four settings, **five** fields. Every write goes through `Ctx::put`, whose body is `self.dry || safe::write(at, v)`, and there are exactly four call sites. Under `DryRun=1` the pass reports and writes nothing. Nothing outlives the process: the game re-reads these tables from disk every launch.
+
+`[Harvest]`'s `Pouches` and `Breakables` are written here too (`apply::dropset_levers`, over the `desert_core::dropset_table` rows, on its own `Gate<DropLevers>`), because `dropsetinfo` is only reachable through an indirect accessor encoding and so through this subsystem's with-base scan; moving the write path to harvest would cost a full image pass. Since 0.16.0 the keys are parsed by harvest, not here: harvest publishes `Pouches`, `Breakables` and its own `DryRun` (1/1 under its `Enabled=0`) into `desert_core::drop_levers`, a one-`AtomicU64` mailbox with a generation, and `config::drop_levers_from` turns that into the pass's levers. Nothing published yet is vanilla and dry; this section's `Enabled=0` is still the revert; `[Dispatch] DryRun` does not reach this pass, `[Harvest] DryRun` does. `watch()` treats a new mailbox generation like an edit of its own section (`[ini] from [Harvest]: Pouches=.. Breakables=.. DryRun=..`), so the pass runs within a poll. A `Pouches`/`Breakables` still under `[Dispatch]` is ignored with a warning; `desert_harvest::migrate::move_drop_keys` moves them at launch.
 
 `OP_SKILL_REQ` and `OP_MIN_OPERATORS` share a trap: `0xFFFF` clears a requirement, `0` makes the mission unstartable (§20.16).
 

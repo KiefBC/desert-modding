@@ -209,6 +209,9 @@ pub struct PickupRequest {
     /// Species class byte for a carcass, 0 otherwise. Only the skin/`[recv]`
     /// pairing reads it.
     pub cat: u8,
+    /// A `Skin` at a dead person or monster rather than an animal: the send
+    /// re-checks the owner gate and the `[skin]` line says "body".
+    pub body: bool,
 }
 
 static API: OnceLock<EventApi> = OnceLock::new();
@@ -418,6 +421,8 @@ static SKIN_PENDING: Mutex<Option<SkinYield>> = Mutex::new(None);
 struct SkinYield {
     eid: u32,
     cat: u8,
+    /// A body rather than a carcass, for the line's wording.
+    body: bool,
     at: std::time::Instant,
     /// `(item key, count)`, merged by key in arrival order.
     items: Vec<(u32, u32)>,
@@ -590,8 +595,8 @@ fn flush_skin_yield_inner(force: bool) {
     let secs = format!("{:.1}", p.at.elapsed().as_secs_f32().min(YIELD_PAIR_WINDOW.as_secs_f32()));
     if p.items.is_empty() {
         crate::log!(
-            "[skin] carcass cat={:02X} eid={:08X} gave nothing within {secs}s",
-            p.cat, p.eid
+            "[skin] {} cat={:02X} eid={:08X} gave nothing within {secs}s",
+            if p.body { "body" } else { "carcass" }, p.cat, p.eid
         );
         return;
     }
@@ -610,8 +615,8 @@ fn flush_skin_yield_inner(force: bool) {
         None => p.items.iter().map(|&(key, n)| format!("key={key} x{n}")).collect(),
     };
     crate::log!(
-        "[skin] carcass cat={:02X} eid={:08X} gave (within {secs}s): {}",
-        p.cat, p.eid, named.join("; ")
+        "[skin] {} cat={:02X} eid={:08X} gave (within {secs}s): {}",
+        if p.body { "body" } else { "carcass" }, p.cat, p.eid, named.join("; ")
     );
 }
 
@@ -807,6 +812,7 @@ pub unsafe extern "system" fn on_sweep(this: usize, item: usize, _r8: usize, _r9
             *SKIN_PENDING.lock().unwrap_or_else(|e| e.into_inner()) = Some(SkinYield {
                 eid: r.target_eid,
                 cat: r.cat,
+                body: r.body,
                 at: std::time::Instant::now(),
                 items: Vec::new(),
             });
@@ -931,10 +937,31 @@ unsafe fn send_pickup(r: &PickupRequest) -> Result<usize, String> {
         // carcass was classified on the plugin thread and may have despawned
         // before this sweep. `Some(7)` cannot occur, because `Kind::Carcass`
         // requires type 3 or 6.
-        PickupMode::Skin => match desert_core::creature::type_byte(r.target_actor) {
-            Some(ty) => creature_preflight(r.target_actor, ty)?,
-            None => return Err("carcass type byte unreadable (despawned?); skipped".into()),
-        },
+        PickupMode::Skin => {
+            match desert_core::creature::type_byte(r.target_actor) {
+                Some(ty) => creature_preflight(r.target_actor, ty)?,
+                None => return Err("carcass type byte unreadable (despawned?); skipped".into()),
+            }
+            // A body is held to the game's own corpse-loot gate, asked again
+            // here because the plugin thread asked it a frame or more ago:
+            // three `safe` reads (`actors::corpse_owner`). An owner id that is
+            // set marks the eid for the session, which `review` then retires;
+            // an unreadable one only skips this send, since it may be a
+            // despawn in progress rather than anything about the body.
+            // Carcasses are not asked (reason 2 above).
+            if r.body {
+                match crate::looter::actors::corpse_owner(r.target_actor) {
+                    crate::looter::actors::Owner::Unowned => {}
+                    crate::looter::actors::Owner::Id(id) => {
+                        mark_owned(r.target_eid);
+                        return Err(format!("body has an owner/trigger (id={id:X}); skipped"));
+                    }
+                    crate::looter::actors::Owner::Unreadable => {
+                        return Err("body owner id unreadable; skipped".into());
+                    }
+                }
+            }
+        }
         PickupMode::Gather | PickupMode::Item | PickupMode::Catch => {
             // SAFETY: `would_steal` requires the game thread, which
             // `send_pickup` itself requires and the sweep hook - its only

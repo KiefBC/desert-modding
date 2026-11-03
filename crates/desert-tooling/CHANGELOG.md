@@ -9,6 +9,230 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.16.0] - 2026-11-03
+
+Game build 26361232. **Seen working in game 2026-11-03**: at `LootLogMinTier=0` a Zebra
+Swallowtail and a Peony got their lines; at 1 a Peony (tier 0) was hidden; copper (item type 32)
+showed with `LootLogMoney=1` and was hidden with 0. `LootLogQuest` has **not been seen in game
+yet**. Three new `[Harvest]` keys, so a MINOR; `desert-harvest` 0.10.0, `desert-core` 0.13.0 (a new
+trampoline shape, the `drop_levers` mailbox and the generated `quest_items` list) and
+`desert-dispatch` 0.5.0 (its config loses two keys) with it. All three keys default to the vanilla
+item log, so nothing changes until you move `LootLogMinTier`.
+
+### Added
+
+- **`[Harvest] LootLogMinTier`** (0..6, default 0): filters the item log at the side of the
+  screen, the stacked "Item xN" lines a pickup slides in. 0 shows every line, as the game does;
+  1..5 shows only items whose tier is at least that; 6 shows none. Only the line is dropped: the
+  item still goes into the bag, `[recv]` lines and quests still see it. Takes effect at once.
+- **`[Harvest] LootLogMoney`** (default 1): with a minimum tier set, coins and camp funds (item
+  type 32) still get their line.
+- **`[Harvest] LootLogQuest`** (default 1, menu "Always show quest items"; **not yet seen in
+  game**): with a minimum tier set, quest and key items still get their line. Which items those
+  are comes from the game's own inventory groups: everything under Equipment > Key Item (books,
+  documents, contracts, posters, bounty notices, memory fragments, abyss artifacts), Item >
+  Keepsake > Quest Item and Quest Reward, Item > Document > Quest Reward, and Item > Key > Key,
+  1194 of the 7064 items on 26361232. The list is generated from `itemgroupinfo` and `iteminfo` by
+  the new `just gen-quest-items` into `desert_core::quest_items`; the plugin turns it into one bit
+  per item record on the harvest thread once the item layout is known, logs `[itemlog] quest
+  items: N of M records marked (table K keys, R records read)`, and the hook reads that one bit.
+  Until that line, the tier alone decides. The stat line gains `quest N` (lines kept by this key),
+  and the debug line `quest=0|1|?`.
+- The filter is a hook on the game's own item-log line builder (`+0x116A5B0` on 26361232, picked out in
+  game by a probe of the seven builders the UI has, found by a new `item_log` signature in the looter's one signature walk, so no extra image pass), and the
+  first hook in the plugin that can skip a game function rather than observe or replace part of
+  it. A line is hidden by returning before the builder runs, which is the path the builder takes
+  itself when its skip flag is set. Any read that fails shows the line. The 60 s summary gains
+  `[itemlog] stat: seen N, shown N, hidden N, unreadable N, quest N`, and `Debug=1` logs one
+  `[itemlog] debug:` line per line built (capped at 500 a session).
+
+### Changed
+
+- **`Pouches` and `Breakables` are `[Harvest]` keys now**, next to the other loot multipliers on
+  the Harvest tab, instead of `[Dispatch]` keys on the Dispatch tab. Same range (1..100), same
+  default (1), same effect: the Dispatch subsystem still does the writing, so they need
+  `[Dispatch] Enabled=1`, and they follow `[Harvest] DryRun` and `[Harvest] Enabled` (0 = vanilla)
+  rather than `[Dispatch] DryRun`. **Migrated automatically**: at the first launch an ini that has
+  them under `[Dispatch]` gets them moved under `[Harvest]` with their values and comments (logged
+  as `[ini] Pouches and Breakables moved from [Dispatch] to [Harvest], values kept`); if
+  `[Harvest]` already has one, its value stands and the `[Dispatch]` copy is removed. One left
+  under `[Dispatch]` by hand is ignored with a warning saying where it belongs.
+
+## [0.15.0] - 2026-11-03
+
+Game build 26361232. **`Pouches` seen working in game 2026-11-03**: at `Pouches=10` a Light Copper
+Pouch paid 200 copper (vanilla 10..30), a Paltry Copper Pouch 21 (vanilla 1..10) and a Modest Silver
+Pouch 1394 (vanilla 100..500); back at 1 the log said `[revert] back to vanilla` and a Modest Silver
+Pouch paid 207. All 103 rows passed the key check at `+0x08`, with no refusal. That a pouch paid
+1394, not a flat 1000, also shows that pouches pay through the roller (min..max). **`Breakables`
+has not been tried in game.** Two new `[Dispatch]` keys, so a MINOR;
+`desert-dispatch` 0.4.0 and `desert-core` 0.12.0 with it.
+
+### Added
+
+- **`[Dispatch] Pouches`** (1..100, default 1): multiplies what an item pays when it is opened,
+  both ends of every item amount. 88 `dropsetinfo` rows: the silver pouches (Modest, Full,
+  Overflowing and Wayfarer's, `DropSet_Money_Copper_100_500`/`_10000`/`_20000`/`_100000`), the
+  copper pouches (Paltry, Light, Modest and Full, `DropSet_Money_Copper_1_10`/`_10_30`/`_50_70`/`_70_90`),
+  the Box of Fortune (`DropSet_Pinball_Bag`), seed packs, chest items,
+  recipe and gear boxes - every `itemuseinfo` RandomBox row an item names. Separate from
+  `[Harvest] Money`, which multiplies the coin piles placed in the world; the two never touch the
+  same number and do not stack.
+- **`[Dispatch] Breakables`** (1..100, default 1): multiplies the loot of barrels, crates, pots and
+  sacks smashed open. 15 rows, the `dropSetInfoList` of the 172 gimmick records the container
+  catalogue calls "Breakable container" (`DropSet_BoxBarrel_01`, `_02`, `DropSet_Pot_01`, ...).
+- **`just gen-dropsets`** writes those rows to `crates/desert-core/src/dropset_table.rs` from the
+  game's archives, every record of nine tables walked to its last byte, and refuses any row another
+  source also pays from: 40 refused on 26361232 - `DropSet_BoxBarrel_03`/`_04` (shared with
+  chests), `DropSet_Cloth`/`_Leather` (ground items), the three ammunition packages (crafting) -
+  and 33 more with no item entry to multiply (knowledge, mounts, pets). Nothing the levers touch is
+  a dispatch, quest, crafting, chest or character loot row.
+- Only item entries (kind 0) are multiplied. Before a row is written the plugin checks the parsed
+  row at its record index against the table: the key at `+0x08`, the entry count, the weight sum,
+  and `min + max` over its item entries as first seen. A row that fails any of them is logged and
+  left vanilla. The log line is `[dispatch] dropset levers: pouches N rows, breakables N rows,
+  written N (...)`; a refusal adds an `[apply] WARN dropset levers left rows or entries alone (...)`.
+- A row is read the first time the game loads it, so the first pouch of a kind opened (or barrel
+  of a kind smashed) in a session may still pay vanilla.
+
+## [0.14.0] - 2026-11-03
+
+Game build 26361232, the same build as 0.13.0. **0.13.0's split between hostile and friendly bodies
+was wrong**, and this release replaces it. 0.13.0 used the character record's `isEnableFriendly`
+flag, which means "can be befriended", not "is hostile", so named unique NPCs such as Ziane counted
+as hostile bodies and `GatherBodies=1` would search them. The split now follows the game's own ally
+groups (`charactergroupinfo`). Seen in game: an F11 survey classed all eight dead Bleed Bandits
+(types `0x5A`, `0x66`, `0x71`) as `Body`, each with `owner=-1`, and F9 searched the one still
+carrying loot (2 Very Small Copper Packs). A friendly NPC killed in town was classed `FriendlyBody`,
+skipped under `GatherFriendlyBodies=0` with the once-per-session hint, and searched under `=1`
+(Iron Ore and a Small Copper Pouch). Not yet seen in game: a dead protected character, and the
+owner gate refusing a body.
+Chests were recorded with F7 and are parked: opening one queues no event the looter can forge.
+
+### Added
+
+- **A generated container table, as a diagnostic.** `just gen-containers` writes
+  `crates/desert-core/src/container_table.rs` from the game's archives (`gimmickinfo` tags plus
+  `interactioninfo.checkLootableField`): the 71 records with a take interaction, 59 item containers
+  (baskets, sacks, potion and supply boxes) and 12 furniture drops, cross-checked against the
+  catalogue database where the key sets are identical. Only the F11 survey reads it; nothing targets
+  these records. A `LootContainers` lever that picked them up whole was built for this release and
+  withdrawn before it: in game these containers are broken apart to loot, never taken, and there is
+  no take prompt to forge.
+- **A `Protected` body class.** Playable characters and companions (Kliff, Damian, Oongka, Nairah) are never
+  searched, caught or skinned. At startup the `[species] table:` line gains `N protected`, and a dead
+  protected actor logs `[corpse] dead protected actor ...` once per session.
+- **The F11 survey names containers**: `container=item-container` or `container=furniture-drop` on
+  the line.
+
+### Fixed
+
+- **Hostile and friendly bodies were split by the wrong flag.** `gen-species` now reads
+  `charactergroupinfo` for every non-`Animal_` record with `Dead_Loot`: a member of
+  `CharacterGroup_Ally_Player`, or a record with `nonePlayerSubType == 3` (playable), is
+  Protected; `Ally_NPC`, `Ally_Guard` or `Ally_Mercenary` is a friendly body; `Ally_Enemy` or
+  `Ally_Aniaml_Wild` is a hostile body; a record in no ally group falls back to `isEnableFriendly`.
+  Body is 1414 rows (was 1625), FriendlyBody 4402 (was 4232), Protected 41. 224 rows changed class:
+  157 `Ally_NPC` bodies (named uniques such as Ziane) went from hostile to friendly, 16 guards and 4
+  mercenaries went to friendly, 6 `Ally_Enemy` henchmen went from friendly to hostile, and Kliff,
+  Damian, Oongka, Nairah and the other playable records became Protected.
+- **Companions and playable characters can no longer be searched** by `GatherBodies` or
+  `GatherFriendlyBodies`.
+
+### Changed
+
+- Seven hostile machines (drones, an air mine) carry `nonePlayerSubType 3` and so count as
+  Protected too. That is deliberately conservative: they are left alone rather than risk a
+  playable character.
+- The README, settings and log pages describe the ally-group rule.
+
+## [0.13.0] - 2026-11-03
+
+Game build 26361232, the same build as 0.12.0. F9 can now search the bodies of dead people, which
+the plugin never did, and dead bandits are no longer mistaken for animal carcasses. Which body is
+which comes from the game's own character records. Verified in game on 2026-11-03: four Bleed
+Bandit bodies classed as bodies with no owner, one searched with F9 (`Leather x2`) and then read as
+empty, three living fishermen classed as friendly bodies and left alone, a dropped pair of leather
+gloves skipped while `GatherItems=0` and `GatherGear=0`, and `GatherFriendlyBodies=1` searching
+a friendly (white-marker) body. Not yet seen in game: the owner check refusing a body.
+
+### Added
+
+- **`GatherBodies` (default 0) in `[Harvest]`.** 1 = F9 searches dead hostile people and monsters
+  within `GatherRange` (bandit gangs, criminals, monsters, bosses: the bodies with a grey map
+  marker), with the same game event as `GatherCarcass`. Only bodies the game's records list as
+  lootable count.
+- **`GatherFriendlyBodies` (default 0) in `[Harvest]`.** 1 = also search the bodies of people who
+  were not enemies (citizens, traders, nobles, mercenaries: the white-marker bodies). Needs
+  `GatherBodies=1`.
+- **An owner check.** Before searching a body the plugin reads its owner id the way the game's own
+  loot prompt does. A body with an owner or quest trigger set, or one that cannot be read, is
+  skipped, and the log says so once per body: `[gather] body eid=.. has an owner/trigger (id=..);
+  skipped`. It is checked again on the game thread just before the event is sent.
+- **The F11 survey names bodies.** New kinds `Body`, `FriendlyBody` and `BodyEmpty`, with `dd=` and
+  `owner=-1|<hex>|?` on the line. The `[skin]` line says `body` or `carcass`.
+- **The `[species] table:` line counts bodies** (`N body, N friendly body`).
+
+### Fixed
+
+- **Dead bandits were classed as animal carcasses.** Their class byte (0x5A) was not on the
+  plugin's short list of people's class bytes, so `GatherCarcass=1` could have skinned a bandit as
+  if it were an animal. The species table now
+  decides, and a person is never a carcass.
+- **Living people are never treated as catchable.**
+
+### Changed
+
+- **`Hunting` now visibly covers body searches.** Its hook gates on the search/skin loot method, so
+  a body searched by hand or with F9 is multiplied like a carcass. Nothing in the code changed for
+  this; it is now documented.
+- **Items an enemy drops on the ground stay under `GatherItems`** (and `GatherGear` for armour and
+  jewellery). They are ordinary `item_basic_*` props, and `GatherBodies` does not pick them up.
+- **The Harvest tab's auto-loot switches are grouped.** Four short rows instead of one block of
+  fourteen: Gather nodes, Loose items, Creatures (Insects, Fish, Critters) and Bodies (Animal
+  carcasses, Enemies, Friendly). The ini keys are unchanged.
+- **The menu's tab notices are one or two lines now.** The Dispatch tab carried a paragraph about
+  the banking gates; that detail stays in the README. A test caps each notice's length.
+- The generated species table grew to 6864 rows (Body 1625, FriendlyBody 4232 added), and the
+  `.asi` from 2,594,816 to 2,913,280 bytes.
+
+## [0.12.0] - 2026-11-02
+
+Game build 26361232, the same build as 0.11.0. Which creatures count as a bag catch is now read
+off the game's own species records instead of guessed from a class byte and a name, which fixes
+raccoons and ducks, and a new `Critters` family covers the small animals that were never
+multiplied. Verified in game on 2026-11-03: bugs, fish (the Rice Fish as a fish), critters (birds, a
+chameleon, a Heloderma lizard, moles, a baby hedgehog) all multiplied and auto-caught; raccoons
+and ducks left alone. Lobster and Sea Slater were not caught that session.
+
+### Added
+
+- **`Critters` (default 1, 1..100) and `GatherCritters` (default 1) in `[Harvest]`.** Critters are
+  the small animals the game puts in the bag when caught by hand: the five small lizards
+  (Chameleon, Frilled-Neck, Goanna, Heloderma, Iguana), ten small birds, four rats, frogs, toads,
+  salamanders, axolotls, the Mole, Muskrat, Opossum and the Baby Hedgehog. The giant riding
+  iguanas are not critters. `Critters` multiplies them with the same patch as `Bugs` and `Fish`.
+  `GatherCritters=1` means F9 auto-catch now goes for them too; set it to 0 to leave them alone.
+- **A `[species] table:` log line** with the counts per class (`N bug, N fish, N critter, N not
+  catchable, N unknown`), and `not hand-catchable species N` on the `[catch] stat:` line. With
+  `Debug=1` the catch debug line shows `species=`.
+
+### Fixed
+
+- **Raccoons and ducks are never a catch.** Raccoons carry the insect class byte, so F9 could walk
+  up to one as if it were a bug. Ducks and raccoons are caught, carried, killed and skinned; they
+  never go into the bag, so neither auto-catch nor `Bugs`/`Fish`/`Critters` touches them.
+- **Lobster and Sea Slater count as fish.** Their records are named `Animal_Insect_*` but the game
+  files them with the fish, so `Fish` multiplies them and `GatherFish` catches them, not `Bugs`.
+
+### Changed
+
+- **Species decide first, class bytes only when the species is unknown.** The 1007 creature
+  records are classified by the game's own data (a bag catch has the `Insect_Catch` interaction
+  and a convert item; its tribe group says bug, fish or critter). The old class-byte lists remain
+  as the fallback. Squirrels and chipmunks are left out: they use another interaction and have not
+  been seen caught.
+
 ## [0.11.0] - 2026-11-02
 
 Game build 26361232, the same build as 0.10.1. The gathering families are now read off the game's

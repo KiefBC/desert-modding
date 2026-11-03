@@ -52,6 +52,14 @@ pub const SPEED_MAX: u32 = 100;
 pub const REWARDS_MIN: u32 = 1;
 pub const REWARDS_MAX: u32 = 100;
 
+/// Bounds on `Pouches` and `Breakables`: the `Rewards` band, for the same
+/// reasons, and because [`derived_amount`] recognises a whole multiple of a
+/// vanilla amount only up to [`REWARDS_MAX`]. The keys are `[Harvest]`'s and
+/// harvest parses them to its own `1..=100`; [`drop_levers_from`] clamps what
+/// it is handed to this band all the same.
+pub const DROPS_MIN: u32 = REWARDS_MIN;
+pub const DROPS_MAX: u32 = REWARDS_MAX;
+
 /// The shortest a mission may be made: **one tenth of an hour, six in-game
 /// minutes** (about half a real minute).
 ///
@@ -209,6 +217,96 @@ impl Config {
             clear_skill: self.no_skill_requirement,
             any_operators: self.any_operator_count,
         }
+    }
+
+    /// The `Pouches` / `Breakables` levers and the `DryRun` that governs
+    /// them, from what `[Harvest]` published (see [`drop_levers_from`]), with
+    /// this section's `Enabled=0` collapsed to vanilla exactly as
+    /// [`Self::levers`] does.
+    pub fn drop_levers(&self, published: Option<desert_core::drop_levers::Snapshot>) -> (DropLevers, bool) {
+        drop_levers_from(self.enabled, published)
+    }
+}
+
+/// The dropset-row levers a pass runs with, and whether that pass is dry.
+///
+/// The keys are `[Harvest]`'s since 0.16.0: harvest parses `Pouches`,
+/// `Breakables` and its own `DryRun` and publishes them through
+/// `desert_core::drop_levers`; this subsystem only acts on them. So:
+///
+/// - `dispatch_enabled == false` (this section's `Enabled=0`): vanilla, which
+///   is the revert, as for every other lever here. Harvest's own `Enabled=0`
+///   arrives already collapsed to 1/1 by the publisher.
+/// - Nothing published yet: vanilla **and dry**, so a pass that somehow ran
+///   would write nothing. With nothing ever written the memo is clean and no
+///   pass runs at all.
+/// - Otherwise the published values, dry exactly when `[Harvest] DryRun=1`.
+///   `[Dispatch] DryRun` governs the mission and reward levers, not these.
+pub fn drop_levers_from(
+    dispatch_enabled: bool,
+    published: Option<desert_core::drop_levers::Snapshot>,
+) -> (DropLevers, bool) {
+    let Some(snap) = published else {
+        return (DropLevers::VANILLA, true);
+    };
+    let dry = snap.levers.dry_run;
+    if !dispatch_enabled {
+        return (DropLevers::VANILLA, dry);
+    }
+    // Harvest bounds both keys to this band already; the clamp is what keeps
+    // [`derived_amount`]'s "whole multiple up to `REWARDS_MAX`" true here even
+    // if a publisher ever did not.
+    let band = |n: u32| n.clamp(DROPS_MIN, DROPS_MAX);
+    (DropLevers { pouches: band(snap.levers.pouches), breakables: band(snap.levers.breakables) }, dry)
+}
+
+/// The two dropset-row levers, kept apart from [`Levers`] on purpose: their
+/// pass has its own memo ([`crate::gate::Gate`] over this type), so moving
+/// `Pouches` does not re-run the mission and reward passes, and moving `Speed`
+/// does not re-run this one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DropLevers {
+    pub pouches: u32,
+    pub breakables: u32,
+}
+
+impl DropLevers {
+    pub const VANILLA: DropLevers = DropLevers { pouches: 1, breakables: 1 };
+
+    pub fn is_vanilla(&self) -> bool {
+        *self == DropLevers::VANILLA
+    }
+
+    /// The factor for one group of rows.
+    pub fn factor(&self, group: desert_core::dropset_table::RowGroup) -> u32 {
+        match group {
+            desert_core::dropset_table::RowGroup::Pouch => self.pouches,
+            desert_core::dropset_table::RowGroup::Breakable => self.breakables,
+        }
+    }
+
+    /// The [`Levers`] whose `Rewards` is `group`'s factor, so the reward write
+    /// path's plan ([`crate::node::plan_entry`]) and its guards serve these rows
+    /// unchanged.
+    pub fn as_levers(&self, group: desert_core::dropset_table::RowGroup) -> Levers {
+        Levers { rewards: self.factor(group), ..Levers::VANILLA }
+    }
+
+    /// `Pouches=3 Breakables=1`, for the pass's summary line.
+    pub fn summary(&self) -> String {
+        format!("Pouches={} Breakables={}", self.pouches, self.breakables)
+    }
+}
+
+impl crate::gate::LeverSet for Levers {
+    fn is_vanilla(&self) -> bool {
+        Levers::is_vanilla(self)
+    }
+}
+
+impl crate::gate::LeverSet for DropLevers {
+    fn is_vanilla(&self) -> bool {
+        DropLevers::is_vanilla(self)
     }
 }
 
@@ -464,6 +562,13 @@ impl LiveConfig {
         self.load().levers()
     }
 
+    /// The dropset-row levers a pass should run with right now, and whether
+    /// it is dry: this section's `Enabled` and what `[Harvest]` last
+    /// published. See [`drop_levers_from`].
+    pub fn drop_levers(&self) -> (DropLevers, bool) {
+        drop_levers_from(self.enabled.load(Ordering::Relaxed), desert_core::drop_levers::load())
+    }
+
     /// `true` = log every change and write nothing.
     pub fn dry_run(&self) -> bool {
         self.dry_run.load(Ordering::Relaxed)
@@ -533,21 +638,11 @@ pub fn schema() -> Section {
         // grey this section out.
         module: None,
         order: 40,
+        // One or two lines in the menu, no more: the full story (the banking
+        // gates, why nothing outlives the plugin) is in the README.
         notice: Some(
-            "These settings edit tables the game re-reads from disk every time it starts, so they \
-             are not saved into your game: set them back and the missions go back, and removing \
-             the plugin leaves nothing to undo. The reward multiplier banks nothing either - a \
-             reward already waiting on you is worked out from the table at the moment it lands, so \
-             set Rewards back to 1 and it pays vanilla. Nor does anything else on any build \
-             measured so far. The game has code to bank a percentage figure when a mission FINISHES, part of it a \
-             bonus for sending more workers than the mission needed - the one thing 'Any number of \
-             workers' could have inflated - but both switches that code sits behind are off on \
-             every build measured so far (25116796, 25246367, 26361232): no mission defers a payout, and the \
-             figure ignores the worker count. \
-             The plugin reads both at startup and says so on the [banking] line of the log; check \
-             it after a game update, because an update can flip them. Faster missions and no skill \
-             requirement are nowhere in that figure at all. The dump on the Debug tab stays \
-             read-only whatever the levers say."
+            "Nothing is saved into your game: set a lever back, or remove the plugin, and \
+             missions and rewards are vanilla again."
                 .to_string(),
         ),
         presets_label: None,
@@ -751,6 +846,12 @@ pub fn parse(text: &str) -> (Config, Vec<String>) {
                     cfg.rewards
                 )),
             },
+            // `[Harvest]`'s since 0.16.0. `desert_harvest::migrate` moves
+            // them out of this section at launch; one left here (written back
+            // by hand, say) is named rather than called unknown.
+            "pouches" | "breakables" => warnings.push(format!(
+                "{k} is a [Harvest] key since 0.16.0 and is ignored here; set it under [Harvest]"
+            )),
             _ => warnings.push(format!("unknown key {k:?}")),
         }
     }
@@ -812,6 +913,54 @@ mod tests {
         assert!(c.dry_run);
         assert!(c.dump_buffs);
         assert!(w.is_empty(), "{w:?}");
+    }
+
+    fn snap(pouches: u32, breakables: u32, dry_run: bool) -> Option<desert_core::drop_levers::Snapshot> {
+        Some(desert_core::drop_levers::Snapshot {
+            levers: desert_core::drop_levers::Levers { pouches, breakables, dry_run },
+            generation: 1,
+        })
+    }
+
+    /// The two dropset levers come from what `[Harvest]` published, not from
+    /// this section; this section's `Enabled=0` still collapses them, and
+    /// each group gets its own factor as the `Rewards` of the reward write
+    /// path's plan.
+    #[test]
+    fn drop_levers_follow_the_harvest_mailbox_and_this_master_switch() {
+        use desert_core::dropset_table::RowGroup;
+        let c = Config::default();
+        let (d, dry) = c.drop_levers(snap(3, 4, false));
+        assert!(!dry);
+        assert_eq!(d, DropLevers { pouches: 3, breakables: 4 });
+        assert_eq!(d.factor(RowGroup::Pouch), 3);
+        assert_eq!(d.factor(RowGroup::Breakable), 4);
+        assert_eq!(d.as_levers(RowGroup::Pouch), Levers { rewards: 3, ..Levers::VANILLA });
+        assert_eq!(d.summary(), "Pouches=3 Breakables=4");
+        // The mission and reward levers are not moved by these.
+        assert!(c.levers().is_vanilla());
+        // Harvest's DryRun is what makes this pass dry; [Dispatch] DryRun is not.
+        assert_eq!(c.drop_levers(snap(3, 4, true)), (DropLevers { pouches: 3, breakables: 4 }, true));
+        let (c_dry, _) = parse("[Dispatch]\nDryRun=1\n");
+        assert!(!c_dry.drop_levers(snap(3, 4, false)).1);
+        // [Dispatch] Enabled=0 is the revert.
+        let (off, _) = parse("[Dispatch]\nEnabled=0\n");
+        assert_eq!(off.drop_levers(snap(3, 4, false)), (DropLevers::VANILLA, false));
+        // Nothing published yet: vanilla and dry, so nothing can be written.
+        assert_eq!(c.drop_levers(None), (DropLevers::VANILLA, true));
+        // Out of band is clamped to the band derived_amount recognises.
+        assert_eq!(c.drop_levers(snap(0, 1000, false)).0, DropLevers { pouches: DROPS_MIN, breakables: DROPS_MAX });
+    }
+
+    /// A `Pouches` / `Breakables` left under `[Dispatch]` is not read, and the
+    /// warning says where it belongs now.
+    #[test]
+    fn the_moved_keys_are_ignored_here_with_a_pointer_to_harvest() {
+        let (c, w) = parse("[Dispatch]\nPouches=5\nBreakables=7\n");
+        assert_eq!(c, Config::default());
+        assert_eq!(w.len(), 2, "{w:?}");
+        assert!(w.iter().all(|w| w.contains("[Harvest]")), "{w:?}");
+        assert!(!schema().fields.iter().any(|f| f.key == "Pouches" || f.key == "Breakables"));
     }
 
     /// `Enabled=0` is not a separate revert path: it is the levers reading
@@ -1245,9 +1394,9 @@ mod tests {
         // banking gates read 0 - but the notice still has to say so, because
         // silence reads as "nobody checked".
         let notice = s.notice.clone().unwrap_or_default();
-        assert!(notice.contains("re-reads"), "the tables are not saved: {notice}");
-        assert!(notice.contains("FINISHES"), "the banked payout must be called out: {notice}");
+        assert!(notice.contains("vanilla"), "nothing outlives the plugin: {notice}");
         assert!(!notice.contains("Read-only"), "it is not read-only any more: {notice}");
+        assert!(notice.len() <= 160, "one or two lines in the menu, not a paragraph: {notice}");
     }
 
     #[test]
@@ -1285,7 +1434,7 @@ mod tests {
     }
 
     /// Where the menu draws each of these keys. Everything that only writes to
-    /// the log is on the shared Debug tab; the five levers that change the game
+    /// the log is on the shared Debug tab; the four levers that change the game
     /// stay on this section's own tab, which is also what keeps it in the tab
     /// bar - a section with nothing left on [`Tab::Section`] gets no tab at all.
     #[test]

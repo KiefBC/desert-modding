@@ -14,6 +14,8 @@
 // Same split as desert-core: anything that talks to the game or to Win32 is
 // #[cfg(windows)], the rest links natively on Linux so `cargo test` runs there.
 pub mod config;
+/// The item-log filter's policy and live settings; the hook is [`itemlog`].
+pub mod logfilter;
 pub mod payload;
 pub mod recorder;
 
@@ -29,6 +31,9 @@ pub mod events;
 pub mod game;
 #[cfg(windows)]
 pub mod hunting;
+/// The gate hook on the HUD side item log's line builder.
+#[cfg(windows)]
+pub mod itemlog;
 #[cfg(windows)]
 pub mod tables;
 

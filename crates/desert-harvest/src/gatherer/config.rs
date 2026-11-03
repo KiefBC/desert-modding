@@ -36,6 +36,17 @@
 //! the parsing of the family keys, and nothing else - hence
 //! [`Config::catch_multiplier`] beside [`Config::multiplier`] rather than two
 //! more `Family` arms.
+//!
+//! `Pouches` and `Breakables` are a third kind again, and the only keys here
+//! this subsystem does not act on itself. They multiply rows of the game's
+//! drop table (what a pouch or box pays when opened, what a barrel or crate
+//! pays when smashed), and the only code that can reach that table is
+//! `desert-dispatch`'s, which already holds the accessor scan for it. So they
+//! are parsed here, beside the other loot multipliers in the menu, and handed
+//! over through `desert_core::drop_levers` ([`Config::drop_levers`], published
+//! by `crate::entry`); dispatch writes them, and needs `[Dispatch] Enabled=1`
+//! to do it. They moved here from `[Dispatch]` in 0.16.0, and
+//! `crate::migrate::move_drop_keys` carries an older ini's values across.
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
@@ -112,6 +123,20 @@ pub struct Config {
     /// Count multiplier for fish caught by hand
     /// (`desert_core::creature::CatchClass::Fish`). Same patch as `bugs`.
     pub fish: u32,
+    /// Count multiplier for the small animals caught by hand into the bag
+    /// (`desert_core::creature::CatchClass::Critter`: lizards, small birds,
+    /// rats, frogs, ...). Same patch as `bugs`.
+    pub critters: u32,
+    /// Amount multiplier for what an item pays when it is opened (the coin
+    /// pouches, seed packs, recipe and gear boxes): the pouch rows of
+    /// `desert_core::dropset_table`. Not acted on here - see the module docs.
+    /// Not `Money`, which multiplies the coin props placed in the world; the
+    /// two never touch the same number and do not stack.
+    pub pouches: u32,
+    /// Amount multiplier for what a barrel, crate, pot or sack pays when it is
+    /// smashed: the breakable rows of `desert_core::dropset_table`. Same
+    /// hand-off as `pouches`.
+    pub breakables: u32,
 }
 
 impl Default for Config {
@@ -128,6 +153,9 @@ impl Default for Config {
             money: 1,
             bugs: 1,
             fish: 1,
+            critters: 1,
+            pouches: 1,
+            breakables: 1,
         }
     }
 }
@@ -153,13 +181,14 @@ impl Config {
         match class {
             CatchClass::Bug => self.bugs,
             CatchClass::Fish => self.fish,
+            CatchClass::Critter => self.critters,
         }
     }
 
     /// True if no gather family is multiplied, i.e. the record-loader hook
     /// would never write. `Money` counts: its records are ordinary gimmick
     /// records with ordinary output blocks, so raising it gives the hook work
-    /// to do exactly as raising `Ore` does. Says nothing about `Bugs`/`Fish`,
+    /// to do exactly as raising `Ore` does. Says nothing about `Bugs`/`Fish`/`Critters`,
     /// which are not families and never touch a record.
     pub fn all_vanilla(&self) -> bool {
         self.foraging <= 1
@@ -167,6 +196,23 @@ impl Config {
             && self.mining <= 1
             && self.ore <= 1
             && self.money <= 1
+    }
+
+    /// What this half publishes to `desert_core::drop_levers` for
+    /// `desert-dispatch` to write: `Pouches`, `Breakables` and `DryRun`, with
+    /// `Enabled=0` collapsed to 1/1, the same "vanilla" every other multiplier
+    /// here goes to under the master switch.
+    pub fn drop_levers(&self) -> desert_core::drop_levers::Levers {
+        let (pouches, breakables) = if self.enabled { (self.pouches, self.breakables) } else { (1, 1) };
+        desert_core::drop_levers::Levers { pouches, breakables, dry_run: self.dry_run }
+    }
+
+    /// `self` with the two drop levers at 1: everything the record-loader hook
+    /// and the re-apply pass read. Two configs that agree on this need no
+    /// re-apply pass over the gimmick records, whatever `Pouches` and
+    /// `Breakables` did.
+    pub fn without_drop_levers(&self) -> Config {
+        Config { pouches: 1, breakables: 1, ..self.clone() }
     }
 }
 
@@ -197,6 +243,9 @@ pub struct LiveConfig {
     money: AtomicU32,
     bugs: AtomicU32,
     fish: AtomicU32,
+    critters: AtomicU32,
+    pouches: AtomicU32,
+    breakables: AtomicU32,
 }
 
 impl LiveConfig {
@@ -215,6 +264,9 @@ impl LiveConfig {
             money: AtomicU32::new(1),
             bugs: AtomicU32::new(1),
             fish: AtomicU32::new(1),
+            critters: AtomicU32::new(1),
+            pouches: AtomicU32::new(1),
+            breakables: AtomicU32::new(1),
         }
     }
 
@@ -233,6 +285,9 @@ impl LiveConfig {
         self.money.store(cfg.money, Ordering::Relaxed);
         self.bugs.store(cfg.bugs, Ordering::Relaxed);
         self.fish.store(cfg.fish, Ordering::Relaxed);
+        self.critters.store(cfg.critters, Ordering::Relaxed);
+        self.pouches.store(cfg.pouches, Ordering::Relaxed);
+        self.breakables.store(cfg.breakables, Ordering::Relaxed);
     }
 
     /// Snapshot the live values as a plain `Config`, e.g. for a log line.
@@ -249,6 +304,9 @@ impl LiveConfig {
             money: self.money.load(Ordering::Relaxed),
             bugs: self.bugs.load(Ordering::Relaxed),
             fish: self.fish.load(Ordering::Relaxed),
+            critters: self.critters.load(Ordering::Relaxed),
+            pouches: self.pouches.load(Ordering::Relaxed),
+            breakables: self.breakables.load(Ordering::Relaxed),
         }
     }
 
@@ -295,6 +353,7 @@ impl LiveConfig {
         match class {
             CatchClass::Bug => self.bugs.load(Ordering::Relaxed),
             CatchClass::Fish => self.fish.load(Ordering::Relaxed),
+            CatchClass::Critter => self.critters.load(Ordering::Relaxed),
         }
     }
 }
@@ -334,9 +393,7 @@ fn mult(key: &str, help: &str) -> Field {
 /// The line the menu shows on the Harvest tab about when a yield change
 /// lands.
 pub(crate) fn notice() -> String {
-    "The yield multipliers are applied to the gather records the game has already loaded, so a \
-     change to one takes effect on the next gather. Bugs and Fish are read as the creature is \
-     caught, so they take effect on the next catch."
+    "Yield changes apply on the next gather; Bugs, Fish and Critters on the next catch."
         .to_string()
 }
 
@@ -366,7 +423,7 @@ pub(crate) fn fields() -> Vec<Field> {
                 "DryRun",
                 "Dry run",
                 Kind::Bool { default: d.dry_run },
-                "Yield multipliers only: log what the gather-record and catch-count edits would be and write nothing to the game. Auto-loot is not affected.",
+                "Yield multipliers only: log what the gather-record, catch-count, pouch and breakable edits would be and write nothing to the game. Auto-loot is not affected.",
             ),
         ),
         Field {
@@ -402,6 +459,30 @@ pub(crate) fn fields() -> Vec<Field> {
             "Insects caught by hand. One code patch on the catch count, not a table edit.",
         ),
         mult("Fish", "Fish caught by hand at the water's edge. Same patch as Bugs."),
+        mult(
+            "Critters",
+            "Small animals caught by hand into the bag: lizards, small birds, rats, frogs, toads, \
+             salamanders... Same patch as Bugs. Animals you carry and skin (ducks, raccoons) are \
+             never multiplied.",
+        ),
+        Field {
+            heading: Some("Pouches and breakables:".to_string()),
+            ..mult(
+                "Pouches",
+                "What an item pays when you open it: the silver pouches, the Box of Fortune, seed \
+                 packs, recipe and gear boxes. Only rows nothing else in the game pays from are \
+                 touched. Not Money, which is the coin lying in the world; the two never touch the \
+                 same number. The first pouch of a kind opened in a session may still pay vanilla. \
+                 Written by the Dispatch subsystem, so it needs [Dispatch] Enabled=1.",
+            )
+        },
+        mult(
+            "Breakables",
+            "The loot that falls out of barrels, crates, pots and sacks when you smash them. Only \
+             rows nothing else in the game pays from are touched, so a chest that shares a \
+             barrel's loot table keeps it vanilla. The first barrel of a kind smashed in a session \
+             may still pay vanilla. Needs [Dispatch] Enabled=1, like Pouches.",
+        ),
         // Beside DryRun on the shared Debug tab (the field before it on
         // that tab), which is where it belongs: it does nothing unless that
         // box is ticked too, and the help says so.
@@ -429,7 +510,8 @@ impl Config {
         match lower {
             "dryrun" => self.dry_run = ini::parse_bool(v),
             "dumptable" => self.dump_table = ini::parse_bool(v),
-            "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" => {
+            "foraging" | "logging" | "mining" | "ore" | "money" | "bugs" | "fish" | "critters"
+            | "pouches" | "breakables" => {
                 let slot: &mut u32 = match lower {
                     "foraging" => &mut self.foraging,
                     "logging" => &mut self.logging,
@@ -437,6 +519,9 @@ impl Config {
                     "money" => &mut self.money,
                     "bugs" => &mut self.bugs,
                     "fish" => &mut self.fish,
+                    "critters" => &mut self.critters,
+                    "pouches" => &mut self.pouches,
+                    "breakables" => &mut self.breakables,
                     _ => &mut self.ore,
                 };
                 match v.parse::<u32>() {
@@ -456,7 +541,7 @@ impl Config {
     /// already says them, and they are one key each.
     pub fn summary(&self) -> String {
         format!(
-            "DryRun={} DumpTable={} Foraging={} Logging={} Mining={} Ore={} Money={} Bugs={} Fish={}",
+            "DryRun={} DumpTable={} Foraging={} Logging={} Mining={} Ore={} Money={} Bugs={} Fish={} Critters={} Pouches={} Breakables={}",
             self.dry_run as u8,
             self.dump_table as u8,
             self.foraging,
@@ -465,7 +550,10 @@ impl Config {
             self.ore,
             self.money,
             self.bugs,
-            self.fish
+            self.fish,
+            self.critters,
+            self.pouches,
+            self.breakables
         )
     }
 }
@@ -489,7 +577,7 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(c.multiplier(f), 1);
         }
-        for k in [CatchClass::Bug, CatchClass::Fish] {
+        for k in [CatchClass::Bug, CatchClass::Fish, CatchClass::Critter] {
             assert_eq!(c.catch_multiplier(k), 1);
         }
     }
@@ -505,7 +593,7 @@ mod tests {
         for f in [Family::Foraging, Family::Logging, Family::Mining, Family::Ore, Family::Money] {
             assert_eq!(live.multiplier(f), 1);
         }
-        for k in [CatchClass::Bug, CatchClass::Fish] {
+        for k in [CatchClass::Bug, CatchClass::Fish, CatchClass::Critter] {
             assert_eq!(live.catch_multiplier(k), 1);
         }
     }
@@ -515,7 +603,7 @@ mod tests {
         let live = LiveConfig::new();
         let (cfg, w) = crate::config::parse(
             "[Harvest]\nEnabled=0\nDryRun=1\nDebug=1\nDumpTable=1\nForaging=10\nLogging=2\n\
-             Mining=5\nOre=100\nMoney=7\nBugs=4\nFish=9\n",
+             Mining=5\nOre=100\nMoney=7\nBugs=4\nFish=9\nCritters=6\nPouches=3\nBreakables=8\n",
         );
         let cfg = cfg.gatherer;
         assert!(w.is_empty(), "{w:?}");
@@ -532,6 +620,26 @@ mod tests {
         assert_eq!(live.multiplier(Family::Money), 7);
         assert_eq!(live.catch_multiplier(CatchClass::Bug), 4);
         assert_eq!(live.catch_multiplier(CatchClass::Fish), 9);
+        assert_eq!(live.catch_multiplier(CatchClass::Critter), 6);
+        assert_eq!((live.load().pouches, live.load().breakables), (3, 8));
+    }
+
+    /// What goes into the mailbox for dispatch: the two values and this
+    /// half's `DryRun`, with `Enabled=0` meaning 1/1. And neither key is a
+    /// reason for a re-apply pass over the gimmick records.
+    #[test]
+    fn drop_levers_publish_vanilla_under_enabled_zero() {
+        use desert_core::drop_levers::Levers;
+        let (cfg, w) = crate::config::parse("[Harvest]\nPouches=4\nBreakables=6\nDryRun=1\n");
+        assert!(w.is_empty(), "{w:?}");
+        let g = cfg.gatherer;
+        assert_eq!(g.drop_levers(), Levers { pouches: 4, breakables: 6, dry_run: true });
+        let off = Config { enabled: false, ..g.clone() };
+        assert_eq!(off.drop_levers(), Levers { pouches: 1, breakables: 1, dry_run: true });
+        assert_eq!(Config::default().drop_levers(), Levers { pouches: 1, breakables: 1, dry_run: false });
+        assert!(g.all_vanilla(), "the drop levers are not gather families");
+        assert_eq!(g.without_drop_levers(), Config { dry_run: true, ..Config::default() });
+        assert_ne!(g, g.without_drop_levers());
     }
 
     #[test]
