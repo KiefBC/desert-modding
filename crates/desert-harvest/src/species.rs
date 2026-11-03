@@ -6,9 +6,12 @@
 //! (`desert_core::creature::BUG_CLASSES`). The species record does say: the
 //! generated table `desert_core::species_table` files every `Animal_*`
 //! record as a `Bug`, `Fish` or `Critter` bag catch or as `NotHandCatchable`,
-//! and every other record with the `Dead_Loot` interaction as a `Body`
-//! (bandits, criminals, monsters) or, when its `isEnableFriendly` flag is
-//! set, a `FriendlyBody` (citizens, traders, mercenaries).
+//! and every other record with the `Dead_Loot` interaction by its spawn ally
+//! group: a `Body` (`Ally_Enemy`: bandits, criminals, monsters), a
+//! `FriendlyBody` (`Ally_NPC`, `Ally_Guard`, `Ally_Mercenary`: citizens,
+//! traders, named uniques, mercenaries), or `Protected` (`Ally_Player` and
+//! the playable characters: never touched); a record in no ally group falls
+//! back to its `isEnableFriendly` flag.
 //! Rows shift between game builds (3935 on 25477059, 3966 on 26361232), so
 //! the row is never the key: the record's **name** is. This module reads
 //! every loaded `characterinfo` record's name once, on the plugin thread,
@@ -104,6 +107,7 @@ struct Counts {
     not_catchable: usize,
     body: usize,
     friendly_body: usize,
+    protected: usize,
     /// Rows whose name was read and is not in the species table: people,
     /// mounts, props without loot, and any species newer than the table.
     unknown: usize,
@@ -127,6 +131,7 @@ pub fn class_name(class: Option<SpeciesClass>) -> &'static str {
         Some(SpeciesClass::NotHandCatchable) => "not-catchable",
         Some(SpeciesClass::Body) => "body",
         Some(SpeciesClass::FriendlyBody) => "friendly-body",
+        Some(SpeciesClass::Protected) => "protected",
         None => "unknown",
     }
 }
@@ -283,14 +288,15 @@ fn walk(st: &mut State, at: NameAt, now: Instant) -> Vec<String> {
     st.walked_loaded = rows.len();
     BUILT.store(true, Ordering::Relaxed);
 
-    let [bug, fish, critter, not_catchable, body, friendly_body] = CLASSES.counts();
-    let unknown = EXAMINED.count().saturating_sub(bug + fish + critter + not_catchable + body + friendly_body);
-    let counts = Counts { bug, fish, critter, not_catchable, body, friendly_body, unknown };
+    let [bug, fish, critter, not_catchable, body, friendly_body, protected] = CLASSES.counts();
+    let unknown =
+        EXAMINED.count().saturating_sub(bug + fish + critter + not_catchable + body + friendly_body + protected);
+    let counts = Counts { bug, fish, critter, not_catchable, body, friendly_body, protected, unknown };
     if st.last_counts != Some(counts) {
         st.last_counts = Some(counts);
         lines.push(format!(
             "[species] table: {bug} bug, {fish} fish, {critter} critter, {not_catchable} not catchable, \
-             {body} body, {friendly_body} friendly body, {unknown} unknown ({} of {count} characterinfo records loaded)",
+             {body} body, {friendly_body} friendly body, {protected} protected, {unknown} unknown ({} of {count} characterinfo records loaded)",
             rows.len()
         ));
     }

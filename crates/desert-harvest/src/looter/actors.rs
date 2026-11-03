@@ -19,6 +19,7 @@
 //! (the `ClientStatusActorComponent` is found by RTTI name, not by a fixed
 //! slot) and what it does with the answer.
 
+use desert_core::container_table::ContainerClass;
 use desert_core::creature::{self, CatchClass, SpeciesClass};
 
 use crate::module::MainModule;
@@ -504,14 +505,15 @@ pub enum Kind {
     CarcassEmpty,
     /// A dead hostile person or monster with loot left: the species table
     /// files its `characterinfo` record as `SpeciesClass::Body` (not
-    /// `Animal_*`, has `Dead_Loot`, `isEnableFriendly` 0: bandits, criminals,
-    /// monsters). Searched with the same dead-drop event as a carcass, and
+    /// `Animal_*`, has `Dead_Loot`, in `CharacterGroup_Ally_Enemy`, or in no
+    /// ally group with `isEnableFriendly` 0: bandits, criminals, monsters). Searched with the same dead-drop event as a carcass, and
     /// targeted only when `[Harvest] GatherBodies=1`, off by default. See
     /// [`corpse_kind`].
     Body,
     /// [`Kind::Body`] for a person who was not an enemy
-    /// (`SpeciesClass::FriendlyBody`, `isEnableFriendly` 1: citizens, traders,
-    /// mercenaries; the white map marker). Targeted only when both
+    /// (`SpeciesClass::FriendlyBody`: `Ally_NPC`, `Ally_Guard` or
+    /// `Ally_Mercenary`, or no ally group with `isEnableFriendly` 1: citizens,
+    /// traders, named uniques, mercenaries). Targeted only when both
     /// `GatherBodies=1` and `GatherFriendlyBodies=1`.
     FriendlyBody,
     /// A dead body of either kind with nothing left on it. Never a candidate,
@@ -644,7 +646,10 @@ pub const BODY_TYPES: [u8; 4] = [3, 4, 5, 6];
 /// interaction category byte. Pure, so the rule is tested without the game.
 ///
 /// - A **body species** decides on its own: `Body` / `FriendlyBody` on any of
-///   [`BODY_TYPES`]. This is what keeps bandits on class 0x5A, which
+///   [`BODY_TYPES`].
+/// - A **protected species** (`SpeciesClass::Protected`: the player's own
+///   characters and their doubles) is `None` on every type: never searched,
+///   and never skinned as an animal either. This is what keeps bandits on class 0x5A, which
 ///   `creature::NPC_CLASSES` does not list, from being skinned as animals.
 /// - An **animal species** (Bug, Fish, Critter, NotHandCatchable) is an
 ///   animal on a catchable type, whatever its class byte: the species table
@@ -659,11 +664,28 @@ pub fn corpse_kind(ty: u8, species: Option<SpeciesClass>, category: Option<u8>) 
     match species {
         Some(SpeciesClass::Body) => BODY_TYPES.contains(&ty).then_some(Corpse::Body),
         Some(SpeciesClass::FriendlyBody) => BODY_TYPES.contains(&ty).then_some(Corpse::FriendlyBody),
+        Some(SpeciesClass::Protected) => None,
         Some(SpeciesClass::Bug | SpeciesClass::Fish | SpeciesClass::Critter | SpeciesClass::NotHandCatchable) => {
             creature::CATCHABLE_TYPES.contains(&ty).then_some(Corpse::Animal)
         }
         None => (creature::CATCHABLE_TYPES.contains(&ty) && !category.is_some_and(creature::is_npc_class))
             .then_some(Corpse::Animal),
+    }
+}
+
+/// Set once a dead [`SpeciesClass::Protected`] actor has been logged.
+static PROTECTED_SEEN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Log, once per session, that a dead protected actor was seen and left
+/// alone. `classify` runs on the plugin thread only, so logging here is
+/// allowed.
+fn note_dead_protected(actor: usize, ty: u8, row: Option<u16>) {
+    if !PROTECTED_SEEN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        let row = row.map_or_else(|| "?".to_string(), |r| r.to_string());
+        crate::log!(
+            "[corpse] dead protected actor 0x{actor:X} (type {ty}, species row {row}): a playable \
+             character or companion, never searched (logged once per session)"
+        );
     }
 }
 
@@ -818,6 +840,9 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
             if let Some(ty) = creature::type_byte(actor) {
                 let species = off.and_then(|o| species_at(actor, o)).and_then(crate::species::class);
                 let category = off.and_then(|o| category_at(actor, o));
+                if species == Some(SpeciesClass::Protected) {
+                    note_dead_protected(actor, ty, off.and_then(|o| species_at(actor, o)));
+                }
                 if let Some(corpse) = corpse_kind(ty, species, category) {
                     let full = carcass_has_drops(actor);
                     return match (corpse, full) {
@@ -841,6 +866,10 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
     if refers_to_player(actor, player) {
         return Kind::Equipment;
     }
+    // The take-able containers (`desert_core::container_table`) are not
+    // special here: in game they are broken apart to loot, never taken, so
+    // they classify by their objects like any other gimmick (armed: an
+    // `Interactable`, never a candidate). Only the F11 survey names them.
     if has_inter {
         match node_identity(m, actor).and_then(|n| n.family) {
             Some(_) => Kind::Gather,
@@ -855,6 +884,13 @@ pub fn classify(m: &MainModule, actor: usize, player: usize) -> Kind {
             _ => Kind::Inert,
         }
     }
+}
+
+/// The take-able container class of a gimmick record key, `None` for every
+/// other record (`desert_core::container_table`). Read by the F11 survey's
+/// `container=` label only: nothing targets these records.
+pub fn container_class(key: u32) -> Option<ContainerClass> {
+    desert_core::container_table::container_class(key)
 }
 
 /// Gimmick records that stand for a physical item lying on the ground.
@@ -1786,6 +1822,36 @@ mod tests {
         }
     }
 
+    /// The take-able containers are found by gimmick key; ground items,
+    /// chests and furniture doors are not containers.
+    #[test]
+    fn containers_are_found_by_key() {
+        assert_eq!(container_class(1005717), Some(ContainerClass::ItemContainer)); // donation box
+        assert_eq!(container_class(1004116), Some(ContainerClass::ItemContainer)); // breakable sack 06
+        assert_eq!(container_class(1004949), Some(ContainerClass::FurnitureDrop)); // cabinet drop
+        assert_eq!(container_class(1000425), None); // treasurebox_small_01, a chest
+        assert_eq!(container_class(1006143), None); // a cabinet door
+        assert_eq!(container_class(1000022), None); // a ground item
+    }
+
+    /// No container can become a `GatherItems` target: that path takes only
+    /// `item_basic*` records, and no row of the generated table is named like
+    /// one (the names are the row comments). In game these are broken apart,
+    /// never taken.
+    #[test]
+    fn no_container_is_a_ground_item_target() {
+        let src = include_str!("../../../desert-core/src/container_table.rs");
+        let names: Vec<&str> = src
+            .lines()
+            .filter(|l| l.contains(", ContainerClass::") && l.trim_start().starts_with('('))
+            .filter_map(|l| l.split_once("// ").map(|(_, n)| n.trim()))
+            .collect();
+        assert_eq!(names.len(), desert_core::container_table::CONTAINERS.len());
+        for name in names {
+            assert!(!is_ground_item_record(name) && !is_basic_item_record(name), "{name}");
+        }
+    }
+
     /// The species decides what a corpse is once the table is read; the
     /// class blacklist only answers for an unknown species.
     #[test]
@@ -1808,6 +1874,13 @@ mod tests {
         for ty in [0u8, 1, 2, 7, 8] {
             assert_eq!(corpse_kind(ty, Some(SpeciesClass::Body), None), None, "type {ty}");
             assert_eq!(corpse_kind(ty, Some(SpeciesClass::FriendlyBody), None), None, "type {ty}");
+        }
+        // A protected species is never a corpse this module acts on, on any
+        // type and class: not a body, and not an animal either.
+        for ty in 0u8..=255 {
+            for cat in [None, Some(0x5Au8), Some(0x66), Some(0xD9), Some(0x80)] {
+                assert_eq!(corpse_kind(ty, Some(SpeciesClass::Protected), cat), None, "type {ty} {cat:?}");
+            }
         }
         // An animal species is a carcass whatever its class byte, even one on
         // the NPC list, and only on a catchable type.
@@ -1910,6 +1983,8 @@ mod tests {
             // A living bandit or citizen is never a catch candidate either.
             assert_eq!(Catchable::of(ty, 0x66, Some(SpeciesClass::Body)), None, "type {ty}");
             assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::FriendlyBody)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x80, Some(SpeciesClass::Protected)), None, "type {ty}");
+            assert_eq!(Catchable::of(ty, 0x23, Some(SpeciesClass::Protected)), None, "type {ty}");
         }
     }
 

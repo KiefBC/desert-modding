@@ -44,6 +44,12 @@ Before anything large lands, raise `MAX_RECORDS` (512, `crates/desert-harvest/sr
 
 **Settles it:** per group, one logged pickup at a multiplier. Census: `docs/findings/2026-09-12-water-wells.md` §7 (local).
 
+## Chests
+
+**OPEN, parked.** The 52 `Chest_Open*` records (`analysis/CONTAINERS.md` §6) have no event the looter can forge. An F7 recording on 26361232 (2026-11-03) of a chest opened by hand queued only `TrocTrHandleGameEventOnceTimer` (the receipt and notification stream, whose 112-byte body carries live heap pointers) and `TrocTrSaveGameDataAutoTimer`. The chest's loot (`Faded_Necklace`, `Small_Silver_Pack`) arrived as receipts right after. No `PickUpItem`, `InteractionReward`, `InteractionDoStep*` or other descriptor appeared, so the open runs inside the interaction step machine without passing `enqueue`. `LootChests` would need that path reverse-engineered: `TrocTrInteractionDoStepReq` lands in a protected thunk, and `TrocTrInteractionDoStepDoInteractionOnceTimer` only completes an interaction the sender is already in.
+
+**Settles it:** a call into the interaction system that opens a chest the player is not standing at, found statically and proven with one recording. Until then, chests stay hand-opened.
+
 ## Digging
 
 **OPEN.** Two dig records carry output lists the block detector cannot see: `Action_dig_01` (`120040092`, items `1000629`, `200049`) and `gimmick_Dig_land_0001` (`1005245`, five items, each `1..1`). `block_ok` requires the zero pads at `+5` and `+64` to match, and these blocks carry a nonzero `u32` at `+64`. Dropping that clause grows the population from 573/896 to 589/1038; the clause stays because it held the population constant across the 2026-09-12 off-by-4 fix. The `+64` value is a list-entry key shared between records as reusable loot groups, which may make this the same problem as the second yield route; `treasurebox_01`'s nine ids around `391518521` show at least one of the 16 lists is mis-parsed.

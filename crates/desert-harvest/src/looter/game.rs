@@ -450,8 +450,14 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     Some(s) => format!(" status={:02X}/{:02X}{}", s.kind, s.flag, if actors::is_owned_or_special(s) { " OWNED" } else { "" }),
                     None => " status=?".to_string(),
                 };
+                let container = id
+                    .as_ref()
+                    .and_then(|n| n.key)
+                    .and_then(actors::container_class)
+                    .map(|c| format!(" container={}", c.name()))
+                    .unwrap_or_default();
                 crate::log!(
-                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{st}",
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} family={fam}{container}{st}",
                     pos.x, pos.y, pos.z
                 );
             }
@@ -467,12 +473,18 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                     ),
                     None => ("-".into(), "-".into(), "-".into()),
                 };
+                let container = id
+                    .as_ref()
+                    .and_then(|n| n.key)
+                    .and_then(actors::container_class)
+                    .map(|c| format!(" container={}", c.name()))
+                    .unwrap_or_default();
                 let comps: Vec<String> = actors::component_names(m, *a)
                     .into_iter()
                     .map(|(_, n)| actors::component_label(&actors::short_name(&n)))
                     .collect();
                 crate::log!(
-                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name} gimmick={} comps=[{}]",
+                    "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) rec={rec} key={key} name={name}{container} gimmick={} comps=[{}]",
                     pos.x, pos.y, pos.z, actors::interaction_words(m, *a), comps.join(" ")
                 );
                 if debug {

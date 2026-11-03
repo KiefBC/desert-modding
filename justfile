@@ -226,6 +226,14 @@ clean:
 gen-species *args: tools
     {{tools_bin}}/gen-species "$@"
 
+# Regenerate crates/desert-core/src/container_table.rs (the baskets, sacks and
+# boxes with a take interaction, by gimmick key; used only for the F11 survey's
+# container= label) from the game's gimmickinfo and interactioninfo. `--tables DIR` reads extracted copies instead
+# of the archives.
+[positional-arguments]
+gen-containers *args: tools
+    {{tools_bin}}/gen-containers "$@"
+
 # Regenerate desert-gatherer-dmm/ from the game's gimmickinfo and collect.rs. `--dry-run` writes nothing.
 [positional-arguments]
 dmm-pack *args: tools

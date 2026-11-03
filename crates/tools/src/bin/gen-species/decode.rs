@@ -1,10 +1,13 @@
-//! The two record layouts `gen-species` reads: `tribeinfo` and `characterinfo`.
+//! The three record layouts `gen-species` reads: `tribeinfo`, `characterinfo`
+//! and `charactergroupinfo`.
 //!
-//! A port of `analysis/items_catalog.py`'s `tribes()` and `characters()`,
-//! verified on build 26361232 (every one of the 383 tribe records and the 7315
-//! character records passes the check below there). Both tables use the
-//! `NameFirst` record start: `u32 name_len, name, u32 key`; the key repeats the
-//! header's and the fields follow it.
+//! A port of `analysis/items_catalog.py`'s `tribes()` and `characters()` and
+//! `analysis/npc_catalog.py`'s `groups()`, verified on build 26361232 (every
+//! one of the 383 tribe records, the 7315 character records and the 517
+//! character group records passes the check below there). All three use the
+//! `NameFirst` record start: `u32 name_len, name, key` (a `u32` key on the
+//! first two, a `u16` on `charactergroupinfo`); the key repeats the header's
+//! and the fields follow it.
 
 use std::collections::HashSet;
 
@@ -145,6 +148,10 @@ const CHAR_FLAG_BYTES: usize = 68;
 /// `CHAR_FLAGS`): 1 on people who were not enemies (citizens, traders,
 /// mercenaries; the white map marker), 0 on bandits and monsters.
 const IS_ENABLE_FRIENDLY: usize = 39;
+/// `nonePlayerSubType`'s index among the 64 flags (`items_catalog.py`
+/// `CHAR_FLAGS`): 0 civilian, 1 combatant, 3 playable (Kliff, Damiane,
+/// Oongka, Nairah and their doubles; ENEMIES.md section 1).
+const NONE_PLAYER_SUB_TYPE: usize = 49;
 /// `teleportSocketName`, `reviveSocketName`.
 const CHAR_SOCKETS: usize = 8;
 /// `characterAge`, `playerLockOnType`, `characterTier`, `gender`,
@@ -172,6 +179,8 @@ pub struct Character {
     pub interactions: Vec<u32>,
     /// The `isEnableFriendly` flag byte.
     pub enable_friendly: u8,
+    /// The `nonePlayerSubType` byte; 3 is playable.
+    pub none_player_sub_type: u8,
 }
 
 fn field(v: &[u32], name: &str) -> u32 {
@@ -196,6 +205,7 @@ pub fn character(rec: &[u8], key: u32, refs: &Refs) -> Result<Character, String>
     if enable_friendly > 1 {
         return Err(format!("isEnableFriendly reads {enable_friendly}, not a bool"));
     }
+    let none_player_sub_type = u8_at(rec, f + NONE_PLAYER_SUB_TYPE).ok_or("nonePlayerSubType past the record end")?;
     let mut o = f + CHAR_FLAG_BYTES + CHAR_SOCKETS + CHAR_SMALL;
     let mut v = Vec::with_capacity(CHAR_LAY.len());
     for (fname, w) in CHAR_LAY {
@@ -239,8 +249,104 @@ pub fn character(rec: &[u8], key: u32, refs: &Refs) -> Result<Character, String>
         tribe: field(&v, "tribeInfoWrapper"),
         interactions: interaction_list(rest, &refs.interactions),
         enable_friendly,
+        none_player_sub_type,
     })
 }
+
+/// The key sets a character group's lists must resolve into.
+pub struct GroupRefs {
+    pub characters: HashSet<u32>,
+    pub tribes: HashSet<u32>,
+    pub regions: HashSet<u32>,
+    pub jobs: HashSet<u32>,
+}
+
+/// What `gen-species` needs out of a `charactergroupinfo` record.
+pub struct Group {
+    pub name: String,
+    /// `characterInfoList`: the member characters.
+    pub characters: Vec<u32>,
+}
+
+/// A `u32` count, then that many elements of width `w`, each widened to
+/// `u32`. Returns the elements and the offset past them.
+fn ulist(b: &[u8], o: usize, w: usize) -> Option<(Vec<u32>, usize)> {
+    let n = u32_at(b, o)? as usize;
+    let start = o.checked_add(4)?;
+    let end = start.checked_add(n.checked_mul(w)?)?;
+    b.get(start..end)?;
+    let v = (0..n)
+        .map(|i| {
+            let p = start + w * i;
+            match w {
+                4 => u32_at(b, p),
+                2 => u16_at(b, p).map(u32::from),
+                _ => u8_at(b, p).map(u32::from),
+            }
+        })
+        .collect::<Option<Vec<u32>>>()?;
+    Some((v, end))
+}
+
+/// `CharacterGroupInfo` (deserialiser `0x1416FE6A0`): `u32 name_len, name,
+/// u16 key`, `u8 isBlocked`, `u8 stopAnimConstraintDead`, `u32 groupName`
+/// hash, then ten lists, each a `u32` count of elements:
+/// `characterInfoList` (`u32`), `groupTierList` (`u8`), `groupTribeList`
+/// (`u32`), `groupRegionInfoList` (`u16`), `groupAgeList` (`u8`),
+/// `groupWeaponTypeList` (`u32`), `groupGenderList` (`u8`),
+/// `groupAllyGroupList` (`u32`), `groupFactionList` (`u32`),
+/// `groupJobInfoList` (`u16`). The record passes when the last list ends
+/// exactly at the record end and every member, tribe, region and job key
+/// resolves.
+pub fn character_group(rec: &[u8], key: u32, refs: &GroupRefs) -> Result<Group, String> {
+    let len = u32_at(rec, 0).ok_or("no name length")? as usize;
+    let name = rec.get(4..4 + len).ok_or("the name runs past the record end")?;
+    if !name.iter().all(|c| (0x20..=0x7E).contains(c)) {
+        return Err("the name is not printable ASCII".into());
+    }
+    let name = String::from_utf8_lossy(name).into_owned();
+    let k = u16_at(rec, 4 + len).ok_or("no u16 key")?;
+    if u32::from(k) != key {
+        return Err(format!("body key {k} is not the header's {key}"));
+    }
+    let mut o = 4 + len + 2 + 1 + 1 + 4;
+    let mut lists: Vec<Vec<u32>> = Vec::with_capacity(GROUP_LISTS.len());
+    for (what, w) in GROUP_LISTS {
+        let (v, next) = ulist(rec, o, *w).ok_or_else(|| format!("{what} runs past the record end"))?;
+        lists.push(v);
+        o = next;
+    }
+    if o != rec.len() {
+        return Err(format!("the lists end at {o}, the record at {}", rec.len()));
+    }
+    let list = |what: &str| -> &[u32] {
+        GROUP_LISTS.iter().position(|(n, _)| *n == what).and_then(|i| lists.get(i)).map_or(&[], Vec::as_slice)
+    };
+    let checks = [
+        ("characterInfoList", list("characterInfoList").iter().all(|x| refs.characters.contains(x))),
+        ("groupTribeList", list("groupTribeList").iter().all(|x| refs.tribes.contains(x))),
+        ("groupRegionInfoList", list("groupRegionInfoList").iter().all(|x| refs.regions.contains(x))),
+        ("groupJobInfoList", list("groupJobInfoList").iter().all(|x| refs.jobs.contains(x))),
+    ];
+    if let Some((what, _)) = checks.iter().find(|(_, ok)| !ok) {
+        return Err(format!("{what} does not resolve"));
+    }
+    Ok(Group { name, characters: list("characterInfoList").to_vec() })
+}
+
+/// `charactergroupinfo`'s lists in order, with each element's width.
+const GROUP_LISTS: &[(&str, usize)] = &[
+    ("characterInfoList", 4),
+    ("groupTierList", 1),
+    ("groupTribeList", 4),
+    ("groupRegionInfoList", 2),
+    ("groupAgeList", 1),
+    ("groupWeaponTypeList", 4),
+    ("groupGenderList", 1),
+    ("groupAllyGroupList", 4),
+    ("groupFactionList", 4),
+    ("groupJobInfoList", 2),
+];
 
 /// The interaction list, located by shape; see [`character`].
 fn interaction_list(rest: &[u8], known: &HashSet<u32>) -> Vec<u32> {
@@ -271,6 +377,45 @@ mod tests {
 
     fn le(v: u32) -> [u8; 4] {
         v.to_le_bytes()
+    }
+
+    fn group_rec(name: &str, key: u16, chars: &[u32], tail: usize) -> Vec<u8> {
+        let mut r = le(name.len() as u32).to_vec();
+        r.extend_from_slice(name.as_bytes());
+        r.extend_from_slice(&key.to_le_bytes());
+        r.extend_from_slice(&[0, 0]);
+        r.extend_from_slice(&le(0xDEAD_BEEF));
+        r.extend_from_slice(&le(chars.len() as u32));
+        for c in chars {
+            r.extend_from_slice(&le(*c));
+        }
+        for _ in 1..GROUP_LISTS.len() {
+            r.extend_from_slice(&le(0));
+        }
+        r.extend_from_slice(&vec![0; tail]);
+        r
+    }
+
+    fn group_refs() -> GroupRefs {
+        GroupRefs {
+            characters: [10, 11].into_iter().collect(),
+            tribes: HashSet::new(),
+            regions: HashSet::new(),
+            jobs: HashSet::new(),
+        }
+    }
+
+    #[test]
+    fn a_character_group_reads_its_members_and_ends_at_the_record_end() {
+        let r = group_rec("CharacterGroup_Ally_Enemy", 7, &[10, 11], 0);
+        let g = character_group(&r, 7, &group_refs()).unwrap();
+        assert_eq!(g.name, "CharacterGroup_Ally_Enemy");
+        assert_eq!(g.characters, vec![10, 11]);
+        // A byte past the last list, a wrong key or an unknown member fails.
+        assert!(character_group(&group_rec("G", 7, &[10], 1), 7, &group_refs()).is_err());
+        assert!(character_group(&r, 8, &group_refs()).is_err());
+        assert!(character_group(&group_rec("G", 7, &[12], 0), 7, &group_refs()).is_err());
+        assert!(character_group(&r[..r.len() - 1], 7, &group_refs()).is_err());
     }
 
     #[test]

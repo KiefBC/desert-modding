@@ -9,6 +9,57 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.14.0] - 2026-11-03
+
+Game build 26361232, the same build as 0.13.0. **0.13.0's split between hostile and friendly bodies
+was wrong**, and this release replaces it. 0.13.0 used the character record's `isEnableFriendly`
+flag, which means "can be befriended", not "is hostile", so named unique NPCs such as Ziane counted
+as hostile bodies and `GatherBodies=1` would search them. The split now follows the game's own ally
+groups (`charactergroupinfo`). Seen in game: an F11 survey classed all eight dead Bleed Bandits
+(types `0x5A`, `0x66`, `0x71`) as `Body`, each with `owner=-1`, and F9 searched the one still
+carrying loot (2 Very Small Copper Packs). A friendly NPC killed in town was classed `FriendlyBody`,
+skipped under `GatherFriendlyBodies=0` with the once-per-session hint, and searched under `=1`
+(Iron Ore and a Small Copper Pouch). Not yet seen in game: a dead protected character, and the
+owner gate refusing a body.
+Chests were recorded with F7 and are parked: opening one queues no event the looter can forge.
+
+### Added
+
+- **A generated container table, as a diagnostic.** `just gen-containers` writes
+  `crates/desert-core/src/container_table.rs` from the game's archives (`gimmickinfo` tags plus
+  `interactioninfo.checkLootableField`): the 71 records with a take interaction, 59 item containers
+  (baskets, sacks, potion and supply boxes) and 12 furniture drops, cross-checked against the
+  catalogue database where the key sets are identical. Only the F11 survey reads it; nothing targets
+  these records. A `LootContainers` lever that picked them up whole was built for this release and
+  withdrawn before it: in game these containers are broken apart to loot, never taken, and there is
+  no take prompt to forge.
+- **A `Protected` body class.** Playable characters and companions (Kliff, Damian, Oongka, Nairah) are never
+  searched, caught or skinned. At startup the `[species] table:` line gains `N protected`, and a dead
+  protected actor logs `[corpse] dead protected actor ...` once per session.
+- **The F11 survey names containers**: `container=item-container` or `container=furniture-drop` on
+  the line.
+
+### Fixed
+
+- **Hostile and friendly bodies were split by the wrong flag.** `gen-species` now reads
+  `charactergroupinfo` for every non-`Animal_` record with `Dead_Loot`: a member of
+  `CharacterGroup_Ally_Player`, or a record with `nonePlayerSubType == 3` (playable), is
+  Protected; `Ally_NPC`, `Ally_Guard` or `Ally_Mercenary` is a friendly body; `Ally_Enemy` or
+  `Ally_Aniaml_Wild` is a hostile body; a record in no ally group falls back to `isEnableFriendly`.
+  Body is 1414 rows (was 1625), FriendlyBody 4402 (was 4232), Protected 41. 224 rows changed class:
+  157 `Ally_NPC` bodies (named uniques such as Ziane) went from hostile to friendly, 16 guards and 4
+  mercenaries went to friendly, 6 `Ally_Enemy` henchmen went from friendly to hostile, and Kliff,
+  Damian, Oongka, Nairah and the other playable records became Protected.
+- **Companions and playable characters can no longer be searched** by `GatherBodies` or
+  `GatherFriendlyBodies`.
+
+### Changed
+
+- Seven hostile machines (drones, an air mine) carry `nonePlayerSubType 3` and so count as
+  Protected too. That is deliberately conservative: they are left alone rather than risk a
+  playable character.
+- The README, settings and log pages describe the ally-group rule.
+
 ## [0.13.0] - 2026-11-03
 
 Game build 26361232, the same build as 0.12.0. F9 can now search the bodies of dead people, which

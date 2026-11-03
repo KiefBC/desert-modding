@@ -767,8 +767,28 @@ Regenerates `crates/desert-core/src/species_table.rs` (`just gen-species`) from
 `characterinfo`, `interactioninfo` and `tribeinfo` in the archives (`--tables
 DIR` for extracted copies). A record with the `Insect_Catch` interaction and a
 non-zero `convertItemInfo` is a bag catch, classed Bug, Fish or Critter by its
-tribe group; every other `Animal_*` record is NotHandCatchable. It rewrites the
-whole file, so diff it after a game update.
+tribe group; every other `Animal_*` record is NotHandCatchable. Every other
+record with the `Dead_Loot` interaction is a body, classed by the game's ally
+groups in `charactergroupinfo`: a member of `CharacterGroup_Ally_Player` or a
+record with `nonePlayerSubType == 3` is Protected (41 on 26361232); `Ally_NPC`,
+`Ally_Guard` or `Ally_Mercenary` is FriendlyBody (4402); `Ally_Enemy` or
+`Ally_Aniaml_Wild` is Body (1414); with no ally group it falls back to
+`isEnableFriendly`. It rewrites the whole file, so diff it after a game update.
+
+### `gen-containers`
+Regenerates `crates/desert-core/src/container_table.rs` (`just gen-containers`)
+from `gimmickinfo` and `interactioninfo` in the archives (`--tables DIR` for
+extracted copies, `--out FILE`, `--build ID`). Each gimmick record is walked from
+its key through its tag list (a port of `analysis/gimmick_tail.py` `walk()`), and
+each interaction's `checkLootableField` is read off its head. The rule is
+`analysis/container_catalog.py`'s: a take interaction that is not a puzzle box, a
+puzzle-box part, a chest, furniture storage or personal storage is a
+`FurnitureDrop` (tag `furniture_drop`, 12 on 26361232) or an `ItemContainer`
+(tag `catch_itemcontainer`, 59). It is all or nothing: every interaction must
+pass its head check, every gimmick must walk to its tags, every override must
+resolve and the spot checks must hold, or nothing is written. It prints the
+counts, the earlier-class records that carry one of the tags, and a diff against
+the file it replaces. The key sets are identical to `analysis/db/catalog-26361232.db`.
 
 ### `gen-collect-names`
 Regenerates `crates/desert-core/src/collect.rs` from the game's own tables:

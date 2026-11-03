@@ -313,7 +313,9 @@ pub fn catch_class_with_species(ty: u8, category: u8, fish_species: bool) -> Opt
 ///   as fish, which no class byte could;
 /// - [`SpeciesClass::Body`] and [`SpeciesClass::FriendlyBody`] are `None` -
 ///   a person or monster whose corpse is searched (`Dead_Loot`) is never a
-///   catch.
+///   catch;
+/// - [`SpeciesClass::Protected`] is `None` - the player's own characters and
+///   their doubles are never caught, searched or skinned.
 ///
 /// `None` - a species the table does not know, or a table the plugin has not
 /// read yet - is exactly the old answer: [`catch_class`], the class-byte
@@ -326,18 +328,29 @@ pub fn catch_class_by_species(ty: u8, category: u8, species: Option<SpeciesClass
         Some(SpeciesClass::Bug) => Some(CatchClass::Bug),
         Some(SpeciesClass::Fish) => Some(CatchClass::Fish),
         Some(SpeciesClass::Critter) => Some(CatchClass::Critter),
-        Some(SpeciesClass::NotHandCatchable | SpeciesClass::Body | SpeciesClass::FriendlyBody) => None,
+        Some(
+            SpeciesClass::NotHandCatchable
+            | SpeciesClass::Body
+            | SpeciesClass::FriendlyBody
+            | SpeciesClass::Protected,
+        ) => None,
         None => catch_class_with_species(ty, category, false),
     }
 }
 
 /// A known species that is never a hand catch, whatever its class byte:
-/// [`SpeciesClass::NotHandCatchable`] (ducks, raccoons) and both body classes
-/// (people and monsters, searched when dead, never bagged alive).
+/// [`SpeciesClass::NotHandCatchable`] (ducks, raccoons), both body classes
+/// (people and monsters, searched when dead, never bagged alive) and
+/// [`SpeciesClass::Protected`] (the player's own characters).
 pub fn is_never_a_catch(species: Option<SpeciesClass>) -> bool {
     matches!(
         species,
-        Some(SpeciesClass::NotHandCatchable | SpeciesClass::Body | SpeciesClass::FriendlyBody)
+        Some(
+            SpeciesClass::NotHandCatchable
+                | SpeciesClass::Body
+                | SpeciesClass::FriendlyBody
+                | SpeciesClass::Protected
+        )
     )
 }
 
@@ -407,6 +420,7 @@ impl SpeciesClasses {
             SpeciesClass::NotHandCatchable => 4,
             SpeciesClass::Body => 5,
             SpeciesClass::FriendlyBody => 6,
+            SpeciesClass::Protected => 7,
         }
     }
 
@@ -418,6 +432,7 @@ impl SpeciesClasses {
             4 => Some(SpeciesClass::NotHandCatchable),
             5 => Some(SpeciesClass::Body),
             6 => Some(SpeciesClass::FriendlyBody),
+            7 => Some(SpeciesClass::Protected),
             _ => None,
         }
     }
@@ -438,9 +453,9 @@ impl SpeciesClasses {
     }
 
     /// How many rows hold each class: `[bug, fish, critter, not catchable,
-    /// body, friendly body]`.
-    pub fn counts(&self) -> [usize; 6] {
-        let mut out = [0usize; 6];
+    /// body, friendly body, protected]`.
+    pub fn counts(&self) -> [usize; 7] {
+        let mut out = [0usize; 7];
         for slot in &self.rows {
             let code = slot.load(core::sync::atomic::Ordering::Relaxed);
             if let Some(n) = usize::from(code).checked_sub(1).and_then(|i| out.get_mut(i)) {
@@ -707,7 +722,7 @@ mod tests {
     }
 
     #[test]
-    fn never_a_catch_is_the_three_non_catch_classes() {
+    fn never_a_catch_is_the_four_non_catch_classes() {
         assert!(!is_never_a_catch(None));
         assert!(!is_never_a_catch(Some(SpeciesClass::Bug)));
         assert!(!is_never_a_catch(Some(SpeciesClass::Fish)));
@@ -715,12 +730,25 @@ mod tests {
         assert!(is_never_a_catch(Some(SpeciesClass::NotHandCatchable)));
         assert!(is_never_a_catch(Some(SpeciesClass::Body)));
         assert!(is_never_a_catch(Some(SpeciesClass::FriendlyBody)));
+        assert!(is_never_a_catch(Some(SpeciesClass::Protected)));
+    }
+
+    /// The player's own characters are never a catch, whatever their bytes.
+    #[test]
+    fn a_protected_species_is_never_a_catch() {
+        use crate::species_table::species_class;
+        for name in ["Kliff", "Damian", "Oongka", "Nairah"] {
+            assert_eq!(species_class(name), Some(SpeciesClass::Protected), "{name}");
+            for (ty, cat) in [(6u8, 0x80u8), (3, 0x80), (6, 0x23), (3, 0x5A)] {
+                assert_eq!(catch_class_by_species(ty, cat, species_class(name)), None, "{name} {ty} 0x{cat:02X}");
+            }
+        }
     }
 
     #[test]
     fn species_classes_store_and_count_every_row() {
         let s = SpeciesClasses::new();
-        assert_eq!(s.counts(), [0, 0, 0, 0, 0, 0]);
+        assert_eq!(s.counts(), [0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(s.get(0), None);
         assert!(s.set(0, SpeciesClass::Bug));
         assert!(!s.set(0, SpeciesClass::Bug), "the same class again is no change");
@@ -731,14 +759,16 @@ mod tests {
         assert_eq!(s.get(7), Some(SpeciesClass::Body));
         assert!(s.set(8, SpeciesClass::FriendlyBody));
         assert_eq!(s.get(8), Some(SpeciesClass::FriendlyBody));
+        assert!(s.set(9, SpeciesClass::Protected));
+        assert_eq!(s.get(9), Some(SpeciesClass::Protected));
         assert_eq!(s.get(0), Some(SpeciesClass::Bug));
         assert_eq!(s.get(3966), Some(SpeciesClass::Fish));
         assert_eq!(s.get(6684), Some(SpeciesClass::NotHandCatchable));
         assert_eq!(s.get(u16::MAX), Some(SpeciesClass::Critter));
         assert_eq!(s.get(1), None);
-        assert_eq!(s.counts(), [1, 1, 1, 1, 1, 1]);
+        assert_eq!(s.counts(), [1, 1, 1, 1, 1, 1, 1]);
         assert!(s.set(0, SpeciesClass::Fish), "a changed class is a change");
-        assert_eq!(s.counts(), [0, 2, 1, 1, 1, 1]);
+        assert_eq!(s.counts(), [0, 2, 1, 1, 1, 1, 1]);
     }
 
     /// The Rice Fish on the flag-only path: class 0x80 on type 6, flagged a
