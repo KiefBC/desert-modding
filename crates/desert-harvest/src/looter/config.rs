@@ -353,7 +353,7 @@ pub(crate) fn fields() -> Vec<Field> {
             "1 = automatic gathering is on from the start (the toggle key flips it).",
         ),
         under(
-            "Gather families:",
+            "Gather nodes:",
             f(
                 "GatherForaging",
                 "Foraging",
@@ -389,11 +389,20 @@ pub(crate) fn fields() -> Vec<Field> {
              Untested in game: the pickup is forged the same way as at an ore chunk. This is the \
              auto-loot switch; the amount is the Money multiplier below.",
         )),
-        f(
-            "GatherItems",
-            "Ground items",
-            Kind::Bool { default: d.gather_items },
-            "1 = also pick up basic items lying on the ground (ore chunks and other item_basic_* drops).",
+        beside(f(
+            "GatherUnarmed",
+            "Unarmed nodes",
+            Kind::Bool { default: d.gather_unarmed },
+            "1 = also target the nodes the game has not armed with interaction data, which is what lets auto mode mine a whole vein.",
+        )),
+        under(
+            "Loose items:",
+            f(
+                "GatherItems",
+                "Ground items",
+                Kind::Bool { default: d.gather_items },
+                "1 = also pick up basic items lying on the ground (ore chunks and other item_basic_* drops).",
+            ),
         ),
         beside(f(
             "GatherGear",
@@ -401,43 +410,43 @@ pub(crate) fn fields() -> Vec<Field> {
             Kind::Bool { default: d.gather_gear },
             "1 = dropped weapons and armour (item_basic_equip_*) are picked up too. Each one costs a bag slot.",
         )),
-        beside(f(
-            "GatherUnarmed",
-            "Unarmed nodes",
-            Kind::Bool { default: d.gather_unarmed },
-            "1 = also target the nodes the game has not armed with interaction data, which is what lets auto mode mine a whole vein.",
-        )),
-        f(
-            "GatherBugs",
-            "Catch insects",
-            Kind::Bool { default: d.gather_bugs },
-            "1 = catch insects within GatherRange; the game's steal check still applies.",
+        under(
+            "Creatures:",
+            f(
+                "GatherBugs",
+                "Insects",
+                Kind::Bool { default: d.gather_bugs },
+                "1 = catch insects within GatherRange; the game's steal check still applies.",
+            ),
         ),
         beside(f(
             "GatherFish",
-            "Catch fish",
+            "Fish",
             Kind::Bool { default: d.gather_fish },
             "1 = catch fish within GatherRange by hand, the same event as insects; the steal check still applies.",
         )),
         beside(f(
             "GatherCritters",
-            "Catch critters",
+            "Critters",
             Kind::Bool { default: d.gather_critters },
             "1 = catch the small animals that go into the bag (lizards, small birds, rats, frogs, \
              toads, salamanders...) within GatherRange, the same event as insects. Animals you \
              carry and skin, like ducks and raccoons, are never caught.",
         )),
-        beside(f(
-            "GatherCarcass",
-            "Skin carcasses",
-            Kind::Bool { default: d.gather_carcass },
-            "0 by default. 1 = loot animal carcasses within GatherRange, without the skinning \
-             animation. A third game event again, granting the same loot the animation would; \
-             a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
-        )),
+        under(
+            "Bodies:",
+            f(
+                "GatherCarcass",
+                "Animal carcasses",
+                Kind::Bool { default: d.gather_carcass },
+                "0 by default. 1 = loot animal carcasses within GatherRange, without the skinning \
+                 animation. A third game event again, granting the same loot the animation would; \
+                 a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
+            ),
+        ),
         beside(f(
             "GatherBodies",
-            "Search bodies",
+            "Enemies",
             Kind::Bool { default: d.gather_bodies },
             "0 by default. 1 = search dead people and monsters for loot (bandits, soldiers, \
              bosses) within GatherRange with the gather key, the same event as skinning. Bodies \
@@ -445,7 +454,7 @@ pub(crate) fn fields() -> Vec<Field> {
         )),
         beside(f(
             "GatherFriendlyBodies",
-            "Search friendly bodies",
+            "Friendly",
             Kind::Bool { default: d.gather_friendly_bodies },
             "0 by default. 1 = also search the bodies of people who were not enemies (citizens, \
              traders, mercenaries: the white-marker bodies). Needs GatherBodies=1. Off by default.",

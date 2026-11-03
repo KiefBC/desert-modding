@@ -148,8 +148,8 @@ pub(crate) fn on(tab: Tab, mut field: Field) -> Field {
 /// to the previous field on the same tab, so the order below is what makes the
 /// three tabs come out as:
 ///
-/// - Harvest: `Enabled`, `AutoGather`, the "Gather families:" row, ground
-///   items / gear / unarmed, bugs / fish / critters / carcass, `Hunting`, `ScanRange`,
+/// - Harvest: `Enabled`, `AutoGather`, four auto-loot rows ("Gather nodes:"
+///   with unarmed, "Loose items:", "Creatures:", "Bodies:"), `Hunting`, `ScanRange`,
 ///   `GatherRange`, `GatherInterval`, `NodeCooldown`, `StackLimit`, then
 ///   "Yield multipliers:" `Foraging` .. `Critters`.
 /// - Settings: the four hotkeys.
@@ -412,13 +412,13 @@ Scale=1.5
                 "|GatherMining",
                 "|GatherOre",
                 "|GatherMoney",
+                "|GatherUnarmed",
                 "GatherItems",
                 "|GatherGear",
-                "|GatherUnarmed",
                 "GatherBugs",
                 "|GatherFish",
                 "|GatherCritters",
-                "|GatherCarcass",
+                "GatherCarcass",
                 "|GatherBodies",
                 "|GatherFriendlyBodies",
                 "Hunting",
@@ -443,10 +443,14 @@ Scale=1.5
             expect(&["Debug", "|LogReceived", "SurveyLines", "BagTab", "DryRun", "|DumpTable"])
         );
 
-        // The headings: the families row, and one list of yield multipliers
-        // that Bugs, Fish and Critters continue rather than start.
+        // The headings: four auto-loot rows (nodes, loose items, creatures,
+        // bodies), and one list of yield multipliers that Bugs, Fish and
+        // Critters continue rather than start.
         let heading = |key: &str| s.field(key).and_then(|f| f.heading.clone());
-        assert_eq!(heading("GatherForaging").as_deref(), Some("Gather families:"));
+        assert_eq!(heading("GatherForaging").as_deref(), Some("Gather nodes:"));
+        assert_eq!(heading("GatherItems").as_deref(), Some("Loose items:"));
+        assert_eq!(heading("GatherBugs").as_deref(), Some("Creatures:"));
+        assert_eq!(heading("GatherCarcass").as_deref(), Some("Bodies:"));
         assert_eq!(heading("Foraging").as_deref(), Some("Yield multipliers:"));
         for key in ["Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Debug", "DryRun", "DumpTable"] {
             assert_eq!(heading(key), None, "{key}");
@@ -475,6 +479,7 @@ Scale=1.5
         // not the "next gather" the yield sliders talk about.
         let notice = s.notice.clone().unwrap_or_default();
         assert!(notice.contains("next gather") && notice.contains("next catch"), "{notice}");
+        assert!(notice.len() <= 160, "one or two lines in the menu, not a paragraph: {notice}");
     }
 
     /// Where the menu draws each key. The four hotkeys go on the shared

@@ -1,6 +1,6 @@
 [package]
 name = "desert-harvest"
-version = "0.8.0"
+version = "0.8.1"
 description = "Desert Harvest - Crimson Desert auto-loot and gathering yield multipliers (subsystem of DesertTooling.asi)"
 edition.workspace = true
 license.workspace = true

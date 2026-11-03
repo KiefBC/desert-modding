@@ -345,9 +345,7 @@ fn mult(key: &str, help: &str) -> Field {
 /// The line the menu shows on the Harvest tab about when a yield change
 /// lands.
 pub(crate) fn notice() -> String {
-    "The yield multipliers are applied to the gather records the game has already loaded, so a \
-     change to one takes effect on the next gather. Bugs, Fish and Critters are read as the \
-     creature is caught, so they take effect on the next catch."
+    "Yield changes apply on the next gather; Bugs, Fish and Critters on the next catch."
         .to_string()
 }
 

@@ -7,9 +7,9 @@ for the workspace's benefit and are never tagged or released.
 | Crate | Version | Ships | Tagged |
 | --- | --- | --- | --- |
 | `desert-tooling` | 0.13.0 | `DesertTooling.asi` | `desert-tooling-v0.13.0` |
-| `desert-harvest` | 0.8.0 | nothing, linked in | never |
+| `desert-harvest` | 0.8.1 | nothing, linked in | never |
 | `desert-overlay` | 0.3.0 | nothing, linked in | never |
-| `desert-dispatch` | 0.3.0 | nothing, linked in | never |
+| `desert-dispatch` | 0.3.1 | nothing, linked in | never |
 | `desert-core` | 0.10.0 | nothing, linked in | never |
 
 The DMM offset-patch pack in `desert-gatherer-dmm/` is versioned separately off its own

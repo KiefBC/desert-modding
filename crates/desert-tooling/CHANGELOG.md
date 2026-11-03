@@ -51,6 +51,11 @@ gloves skipped while `GatherItems=0` and `GatherGear=0`. Not yet seen in game:
   this; it is now documented.
 - **Items an enemy drops on the ground stay under `GatherItems`** (and `GatherGear` for armour and
   jewellery). They are ordinary `item_basic_*` props, and `GatherBodies` does not pick them up.
+- **The Harvest tab's auto-loot switches are grouped.** Four short rows instead of one block of
+  fourteen: Gather nodes, Loose items, Creatures (Insects, Fish, Critters) and Bodies (Animal
+  carcasses, Enemies, Friendly). The ini keys are unchanged.
+- **The menu's tab notices are one or two lines now.** The Dispatch tab carried a paragraph about
+  the banking gates; that detail stays in the README. A test caps each notice's length.
 - The generated species table grew to 6864 rows (Body 1625, FriendlyBody 4232 added), and the
   `.asi` from 2,594,816 to 2,913,280 bytes.
 

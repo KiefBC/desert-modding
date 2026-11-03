@@ -533,21 +533,11 @@ pub fn schema() -> Section {
         // grey this section out.
         module: None,
         order: 40,
+        // One or two lines in the menu, no more: the full story (the banking
+        // gates, why nothing outlives the plugin) is in the README.
         notice: Some(
-            "These settings edit tables the game re-reads from disk every time it starts, so they \
-             are not saved into your game: set them back and the missions go back, and removing \
-             the plugin leaves nothing to undo. The reward multiplier banks nothing either - a \
-             reward already waiting on you is worked out from the table at the moment it lands, so \
-             set Rewards back to 1 and it pays vanilla. Nor does anything else on any build \
-             measured so far. The game has code to bank a percentage figure when a mission FINISHES, part of it a \
-             bonus for sending more workers than the mission needed - the one thing 'Any number of \
-             workers' could have inflated - but both switches that code sits behind are off on \
-             every build measured so far (25116796, 25246367, 26361232): no mission defers a payout, and the \
-             figure ignores the worker count. \
-             The plugin reads both at startup and says so on the [banking] line of the log; check \
-             it after a game update, because an update can flip them. Faster missions and no skill \
-             requirement are nowhere in that figure at all. The dump on the Debug tab stays \
-             read-only whatever the levers say."
+            "Nothing is saved into your game: set a lever back, or remove the plugin, and \
+             missions and rewards are vanilla again."
                 .to_string(),
         ),
         presets_label: None,
@@ -1245,9 +1235,9 @@ mod tests {
         // banking gates read 0 - but the notice still has to say so, because
         // silence reads as "nobody checked".
         let notice = s.notice.clone().unwrap_or_default();
-        assert!(notice.contains("re-reads"), "the tables are not saved: {notice}");
-        assert!(notice.contains("FINISHES"), "the banked payout must be called out: {notice}");
+        assert!(notice.contains("vanilla"), "nothing outlives the plugin: {notice}");
         assert!(!notice.contains("Read-only"), "it is not read-only any more: {notice}");
+        assert!(notice.len() <= 160, "one or two lines in the menu, not a paragraph: {notice}");
     }
 
     #[test]

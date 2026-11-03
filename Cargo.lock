@@ -76,14 +76,14 @@ dependencies = [
 
 [[package]]
 name = "desert-dispatch"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "desert-core",
 ]
 
 [[package]]
 name = "desert-harvest"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "desert-core",
  "windows-sys",
