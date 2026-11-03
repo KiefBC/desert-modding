@@ -62,6 +62,15 @@ pub fn item_record_key_latched(rec: usize) -> Option<u32> {
     safe::read(rec.checked_add(l.key)?)
 }
 
+/// Has the item record layout latched? While it has not, this gives the
+/// probe its (rate-limited) chance, which is why it is for the plugin thread
+/// only: `crate::looter::itemlog::tick` calls it before building the quest
+/// map, so that map is never built through a guessed key offset.
+pub fn item_layout_latched() -> bool {
+    let _ = item_layout();
+    ITEM_LAYOUT.get().is_some()
+}
+
 fn item_slot() -> Option<usize> {
     ITEM_INFO_SLOT.get().copied()
 }

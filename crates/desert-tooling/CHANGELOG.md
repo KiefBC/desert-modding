@@ -13,10 +13,11 @@ still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
 Game build 26361232. **Seen working in game 2026-11-03**: at `LootLogMinTier=0` a Zebra
 Swallowtail and a Peony got their lines; at 1 a Peony (tier 0) was hidden; copper (item type 32)
-showed with `LootLogMoney=1` and was hidden with 0. Two new `[Harvest]` keys, so a MINOR;
-`desert-harvest` 0.10.0, `desert-core` 0.13.0 (a new trampoline shape, and the `drop_levers`
-mailbox) and `desert-dispatch` 0.5.0 (its config loses two keys) with it. Both keys
-default to the vanilla item log, so nothing changes until you move them.
+showed with `LootLogMoney=1` and was hidden with 0. `LootLogQuest` has **not been seen in game
+yet**. Three new `[Harvest]` keys, so a MINOR; `desert-harvest` 0.10.0, `desert-core` 0.13.0 (a new
+trampoline shape, the `drop_levers` mailbox and the generated `quest_items` list) and
+`desert-dispatch` 0.5.0 (its config loses two keys) with it. All three keys default to the vanilla
+item log, so nothing changes until you move `LootLogMinTier`.
 
 ### Added
 
@@ -26,12 +27,23 @@ default to the vanilla item log, so nothing changes until you move them.
   item still goes into the bag, `[recv]` lines and quests still see it. Takes effect at once.
 - **`[Harvest] LootLogMoney`** (default 1): with a minimum tier set, coins and camp funds (item
   type 32) still get their line.
+- **`[Harvest] LootLogQuest`** (default 1, menu "Always show quest items"; **not yet seen in
+  game**): with a minimum tier set, quest and key items still get their line. Which items those
+  are comes from the game's own inventory groups: everything under Equipment > Key Item (books,
+  documents, contracts, posters, bounty notices, memory fragments, abyss artifacts), Item >
+  Keepsake > Quest Item and Quest Reward, Item > Document > Quest Reward, and Item > Key > Key,
+  1194 of the 7064 items on 26361232. The list is generated from `itemgroupinfo` and `iteminfo` by
+  the new `just gen-quest-items` into `desert_core::quest_items`; the plugin turns it into one bit
+  per item record on the harvest thread once the item layout is known, logs `[itemlog] quest
+  items: N of M records marked (table K keys, R records read)`, and the hook reads that one bit.
+  Until that line, the tier alone decides. The stat line gains `quest N` (lines kept by this key),
+  and the debug line `quest=0|1|?`.
 - The filter is a hook on the game's own item-log line builder (`+0x116A5B0` on 26361232, picked out in
   game by a probe of the seven builders the UI has, found by a new `item_log` signature in the looter's one signature walk, so no extra image pass), and the
   first hook in the plugin that can skip a game function rather than observe or replace part of
   it. A line is hidden by returning before the builder runs, which is the path the builder takes
   itself when its skip flag is set. Any read that fails shows the line. The 60 s summary gains
-  `[itemlog] stat: seen N, shown N, hidden N, unreadable N`, and `Debug=1` logs one
+  `[itemlog] stat: seen N, shown N, hidden N, unreadable N, quest N`, and `Debug=1` logs one
   `[itemlog] debug:` line per line built (capped at 500 a session).
 
 ### Changed

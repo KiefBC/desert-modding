@@ -1,5 +1,5 @@
 //! Generate `crates/desert-core/src/dropset_table.rs`: the `dropsetinfo` rows
-//! the `[Dispatch]` `Pouches` and `Breakables` levers multiply, by dropset
+//! the `[Harvest]` `Pouches` and `Breakables` levers multiply, by dropset
 //! key.
 //!
 //! Usage: `gen-dropsets [--tables DIR] [--out FILE] [--build ID]`

@@ -399,8 +399,9 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `GatherBodies` | 0 | 1 = also search dead hostile people and monsters (bandits, criminals, monsters, bosses: grey map marker) within `GatherRange`, with the carcass event. A body with an owner or quest trigger is skipped. Items dropped on the ground are not part of this: they stay under `GatherItems`/`GatherGear`. 0 by default: opt in |
 | `GatherFriendlyBodies` | 0 | 1 = also search the bodies of people who were not enemies (citizens, traders, nobles, named NPCs, guards, mercenaries: white map marker). Companions and playable characters are never searched. Needs `GatherBodies=1`. 0 by default |
 | `Hunting` | 1 | 1..100, how much a looted carcass or searched body gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
-| `LootLogMinTier` | 0 | 0..6, which pickups get an "Item xN" line in the item log at the side of the screen. 0 = every line, as the game does; 1..5 = only items of at least that tier; 6 = none. Only the line is hidden: the item still goes into the bag and quests still count it. Takes effect at once. A code patch on the game's own line builder, so a game update can break it; the log says so and the item log stays vanilla |
+| `LootLogMinTier` | 0 | 0..6, which pickups get an "Item xN" line in the item log at the side of the screen. 0 = every line, as the game does; 1..5 = only items of at least that tier; 6 = none (except money and quest items, below). Only the line is hidden: the item still goes into the bag and quests still count it. Takes effect at once. A code patch on the game's own line builder, so a game update can break it; the log says so and the item log stays vanilla |
 | `LootLogMoney` | 1 | with `LootLogMinTier` above 0, coins and camp funds still get their line |
+| `LootLogQuest` | 1 | with `LootLogMinTier` above 0, quest and key items still get their line: everything the game files under Key Item in the inventory (books, documents, contracts, posters, bounty notices, memory fragments, abyss artifacts), quest keepsakes and quest rewards, and keys. The list is the game's own inventory groups, read at build time; the log's `[itemlog] quest items:` line says it is in use. Not yet seen in game |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
@@ -434,8 +435,9 @@ it yourself - lower, crank, take - and the multiplier still applies to what
 you take. When the nearest thing is a well the F9 line says it was refused
 rather than pretending nothing was there.
 
-On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the item-log filter, the ranges
-and pacing and every multiplier are on the Harvest tab; the four keys are on
+On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the item-log filter (under
+"Item log:", `LootLogMinTier`, then "Always show money" and "Always show quest items" on a row
+each), the ranges and pacing and every multiplier are on the Harvest tab; the four keys are on
 Settings; `Debug`, `LogReceived`, `SurveyLines`, `BagTab`, `DryRun` and
 `DumpTable` are on Debug.
 

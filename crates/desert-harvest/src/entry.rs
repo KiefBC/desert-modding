@@ -187,6 +187,7 @@ pub fn start() {
     hunting::install(&module, &anchors);
     // The item-log filter's gate, the same way: in regardless of
     // `LootLogMinTier`, which the callback reads live; 0 is the vanilla log.
+    // Its quest map is built later, by `itemlog::tick` in the loop below.
     itemlog::install(&module, &anchors);
     let api_ok = resolve_event_api(&module, &anchors);
     if let Some(m2) = MainModule::locate() {
@@ -205,7 +206,8 @@ pub fn start() {
     let boot_grace = std::time::Duration::from_secs(20);
     let mut census_done = false;
     let mut next_world_try = std::time::Instant::now() + boot_grace;
-    // The species walk reads heap records too, so it waits out the same grace.
+    // The species walk and the item-log quest map read heap records too, so
+    // they wait out the same grace.
     let species_from = std::time::Instant::now() + boot_grace;
     let mut k_toggle = Hotkey::new(cfg.looter.key_toggle);
     let mut k_scan = Hotkey::new(cfg.looter.key_scan);
@@ -299,6 +301,11 @@ pub fn start() {
             // hook, which runs whatever `Enabled` says. Rate-limited inside.
             if std::time::Instant::now() >= species_from {
                 crate::species::tick();
+                // The item-log filter's quest map, by record index, from
+                // `desert_core::quest_items`: built here, once the item
+                // layout latches (this call also drives that probe), so the
+                // hook only ever loads a bit. Rate-limited inside.
+                itemlog::tick();
             }
             if last_summary_at.elapsed() >= summary_every {
                 last_summary_at = std::time::Instant::now();

@@ -27,8 +27,9 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `GatherBodies` | 0 | 0/1 | Harvest | search dead hostile people and monsters (grey map marker) within `GatherRange`; skips a body with an owner or quest trigger. Ground drops stay under `GatherItems`/`GatherGear` |
 | `GatherFriendlyBodies` | 0 | 0/1 | Harvest | also search bodies of people who were not enemies (white marker; companions and playable characters are never searched); needs `GatherBodies=1` |
 | `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass or searched body gives, however it is looted |
-| `LootLogMinTier` | 0 | 0..6 | Harvest | the side item log's "Item xN" lines: 0 shows every line (vanilla), 1..5 only items of at least that tier, 6 none. Only the line is hidden; the item still reaches the bag and quests. Live |
+| `LootLogMinTier` | 0 | 0..6 | Harvest | the side item log's "Item xN" lines: 0 shows every line (vanilla), 1..5 only items of at least that tier, 6 none (but money and quest items, below). Only the line is hidden; the item still reaches the bag and quests. Live |
 | `LootLogMoney` | 1 | 0/1 | Harvest | with `LootLogMinTier` above 0, coins and camp funds still get their line |
+| `LootLogQuest` | 1 | 0/1 | Harvest | with `LootLogMinTier` above 0, quest and key items still get their line: everything under the inventory's Key Item group (books, documents, contracts, posters, bounty notices, memory fragments, abyss artifacts), quest keepsakes and quest rewards, and keys. Not yet seen in game |
 | `ScanRange` | 40 | 1..200 | Harvest | survey radius in game metres |
 | `GatherRange` | 6 | 1..50 | Harvest | the gather key and auto mode pick the nearest node within this many metres |
 | `GatherInterval` | 500 | 100..60000 | Harvest | milliseconds between two automatic sends |

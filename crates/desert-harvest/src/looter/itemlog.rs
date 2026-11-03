@@ -36,14 +36,36 @@
 //! `desert_core::safe` only, loads a few atomics, and returns. It never calls
 //! a game function, never allocates beyond a debug line, never blocks, and
 //! **shows the line on every failure** ([`crate::looter::logfilter`]).
+//!
+//! `LootLogQuest` asks one more question, "is this a quest item", and the
+//! callback answers it with one bit of [`logfilter::QUEST_MAP`]: it never
+//! walks the table and never starts a layout probe. The map is built by
+//! [`tick`] on the harvest thread.
+//!
+//! ## The quest map
+//!
+//! `desert_core::quest_items` lists item **keys**; the hook has a record
+//! **index**. [`tick`], called from the harvest thread's once-a-second work
+//! after the boot grace, waits until the item record layout has latched
+//! (`tables::item_layout_latched`, which also drives that probe), then walks
+//! every loaded `iteminfo` record through the manager, reads its key with
+//! `tables::item_record_key` and sets the record's bit when the list holds
+//! it. The first walk publishes the map and logs `[itemlog] quest items: N
+//! of M records marked (table K keys)`; later walks, every 30 s, read only
+//! records not examined yet, in case the game loads more, and log again only
+//! when the count moved. A table longer than
+//! [`logfilter::QUEST_MAP_RECORDS`] is refused with one line, and the tier
+//! alone decides.
 
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use desert_core::hook::{self, GateCallback};
 use desert_core::manager::{self, Slot};
 use desert_core::trampoline;
 
-use crate::looter::logfilter::{self, Decision, ItemFacts, COUNTERS, LIVE};
+use crate::looter::logfilter::{self, Decision, ItemFacts, COUNTERS, LIVE, QUEST_MAP};
 use crate::looter::{game, tables};
 use crate::module::MainModule;
 
@@ -133,17 +155,20 @@ pub unsafe extern "system" fn on_item_log(_this: usize, grant: usize, source: us
     }
     let rec = idx.and_then(item_record);
     let item = rec.and_then(facts);
-    let d = logfilter::decide(min_tier, LIVE.money(), item);
+    // One atomic load; `None` until the harvest thread has built the map.
+    let quest = idx.and_then(|i| QUEST_MAP.get(i));
+    let d = logfilter::decide(min_tier, LIVE.money(), LIVE.quest(), quest, item);
     COUNTERS.record(d);
     if debug && may_log() {
         let opt = |v: Option<String>| v.unwrap_or_else(|| "?".to_string());
         crate::log!(
-            "[itemlog] debug: idx={} source=0x{:X} r9={} type={} tier={} key={} -> {} ({d:?})",
+            "[itemlog] debug: idx={} source=0x{:X} r9={} type={} tier={} quest={} key={} -> {} ({d:?})",
             opt(idx.map(|i| i.to_string())),
             source & 0xFFFF,
             r9 & 0xFFFF,
             opt(item.map(|f| f.item_type.to_string())),
             opt(item.map(|f| f.tier.to_string())),
+            opt(quest.map(|q| u8::from(q).to_string())),
             opt(rec.and_then(tables::item_record_key_latched).map(|k| k.to_string())),
             d.word()
         );
@@ -160,6 +185,83 @@ pub fn log_counters(last: &mut Option<String>) {
             crate::log!("[itemlog] stat: {line}");
         }
         *last = now;
+    }
+}
+
+/// How often [`tick`] tries while the map is not built ...
+const QUEST_TRY_EVERY: Duration = Duration::from_secs(5);
+/// ... and walks again for records loaded since, once it is.
+const QUEST_REWALK_EVERY: Duration = Duration::from_secs(30);
+
+struct QuestBuild {
+    last: Option<Instant>,
+    /// The marked count the last `quest items` line printed.
+    logged: Option<usize>,
+    /// Refused for good: the table is longer than the map.
+    refused: bool,
+    warned: bool,
+}
+
+/// Plugin thread only, taken with `try_lock`.
+static QUEST_BUILD: Mutex<QuestBuild> = Mutex::new(QuestBuild { last: None, logged: None, refused: false, warned: false });
+
+/// Build (or extend) [`logfilter::QUEST_MAP`]; see the module comment. Called
+/// by the harvest thread on its once-a-second cadence after the boot grace,
+/// whatever `Enabled` and `LootLogMinTier` say: it is one walk, and a filter
+/// switched on later then has its map. Never called from a hook.
+pub fn tick() {
+    let Ok(mut st) = QUEST_BUILD.try_lock() else { return };
+    if st.refused {
+        return;
+    }
+    let every = if QUEST_MAP.ready() { QUEST_REWALK_EVERY } else { QUEST_TRY_EVERY };
+    if st.last.is_some_and(|t| t.elapsed() < every) {
+        return;
+    }
+    st.last = Some(Instant::now());
+    if !tables::item_layout_latched() {
+        return;
+    }
+    let Some((count, records)) = tables::item_slot_addr().and_then(manager::view) else { return };
+    let total = count as usize;
+    if total > logfilter::QUEST_MAP_RECORDS {
+        st.refused = true;
+        drop(st);
+        crate::log!(
+            "[itemlog] WARN iteminfo has {total} records, more than the quest map's {}; LootLogQuest is off and the tier alone decides",
+            logfilter::QUEST_MAP_RECORDS
+        );
+        return;
+    }
+    let mut examined = 0usize;
+    for i in 0..total {
+        if QUEST_MAP.examined(i) {
+            examined += 1;
+            continue;
+        }
+        let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+        let Some(key) = tables::item_record_key(rec) else { continue };
+        QUEST_MAP.record(i, desert_core::quest_items::contains(key));
+        examined += 1;
+    }
+    if examined == 0 {
+        return;
+    }
+    QUEST_MAP.set_ready();
+    let marked = QUEST_MAP.marked();
+    if st.logged == Some(marked) {
+        return;
+    }
+    st.logged = Some(marked);
+    let table = desert_core::quest_items::QUEST_ITEMS.len();
+    let warn = examined == total && logfilter::quest_map_suspicious(marked, table) && !st.warned;
+    st.warned |= warn;
+    drop(st);
+    crate::log!("[itemlog] quest items: {marked} of {total} records marked (table {table} keys, {examined} records read)");
+    if warn {
+        crate::log!(
+            "[itemlog] WARN only {marked} of the table's {table} quest keys were found among all {total} records; the key list may be from another game build (rerun `just gen-quest-items`) or the item layout moved"
+        );
     }
 }
 

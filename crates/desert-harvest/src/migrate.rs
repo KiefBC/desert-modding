@@ -616,6 +616,7 @@ mod tests {
             "GatherFriendlyBodies",
             "LootLogMinTier",
             "LootLogMoney",
+            "LootLogQuest",
             "Pouches",
             "Breakables",
         ];

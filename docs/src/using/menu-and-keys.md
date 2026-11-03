@@ -17,7 +17,7 @@ The Harvest tab opens with four presets, `Everything`, `Plants only`, `Wood only
 - `Enabled` and `AutoGather`.
 - Four auto-loot rows: "Gather nodes:" (`GatherForaging`, `GatherLogging`, `GatherMining`, `GatherOre`, `GatherMoney`, `GatherUnarmed`), "Loose items:" (`GatherItems`, `GatherGear`), "Creatures:" (`GatherBugs`, `GatherFish`, `GatherCritters`) and "Bodies:" (`GatherCarcass`, `GatherBodies`, `GatherFriendlyBodies`).
 - `Hunting`.
-- "Item log:" `LootLogMinTier`, then `LootLogMoney` on its own row.
+- "Item log:" `LootLogMinTier`, then `LootLogMoney` ("Always show money") and `LootLogQuest` ("Always show quest items"), each on its own row.
 - The ranges and pacing: `ScanRange`, `GatherRange`, `GatherInterval`, `NodeCooldown`, `StackLimit`.
 - "Yield multipliers:" `Foraging`, `Logging`, `Mining`, `Ore`, `Money`, `Bugs`, `Fish`, `Critters`.
 - "Pouches and breakables:" `Pouches` and `Breakables`. These are `[Harvest]` keys since 0.16.0 (they were under `[Dispatch]` in 0.15.0 and an old ini is moved over at launch), but dispatch does the writing, so they need `[Dispatch] Enabled=1`.

@@ -244,6 +244,14 @@ gen-containers *args: tools
 gen-dropsets *args: tools
     {{tools_bin}}/gen-dropsets "$@"
 
+# Regenerate crates/desert-core/src/quest_items.rs (the quest and key items the
+# [Harvest] LootLogQuest item-log filter always shows, by inventory group) from
+# the game's itemgroupinfo and iteminfo. `--tables DIR` reads extracted copies
+# instead of the archives.
+[positional-arguments]
+gen-quest-items *args: tools
+    {{tools_bin}}/gen-quest-items "$@"
+
 # Regenerate desert-gatherer-dmm/ from the game's gimmickinfo and collect.rs. `--dry-run` writes nothing.
 [positional-arguments]
 dmm-pack *args: tools

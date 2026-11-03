@@ -31,6 +31,7 @@ pub mod log;
 pub mod manager;
 pub mod pattern;
 pub mod pe;
+pub mod quest_items;
 pub mod rtti;
 pub mod schema;
 pub mod species_table;

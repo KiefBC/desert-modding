@@ -149,8 +149,8 @@ pub(crate) fn on(tab: Tab, mut field: Field) -> Field {
 /// three tabs come out as:
 ///
 /// - Harvest: `Enabled`, `AutoGather`, four auto-loot rows ("Gather nodes:"
-///   with unarmed, "Loose items:", "Creatures:", "Bodies:"), `Hunting`, "Item log:" `LootLogMinTier` |
-///   `LootLogMoney`, `ScanRange`,
+///   with unarmed, "Loose items:", "Creatures:", "Bodies:"), `Hunting`, "Item log:" `LootLogMinTier`,
+///   `LootLogMoney`, `LootLogQuest` (each on its own row), `ScanRange`,
 ///   `GatherRange`, `GatherInterval`, `NodeCooldown`, `StackLimit`, then
 ///   "Yield multipliers:" `Foraging` .. `Critters`, then "Pouches and
 ///   breakables:" `Pouches`, `Breakables` (parsed here, written by
@@ -427,6 +427,7 @@ Scale=1.5
                 "Hunting",
                 "LootLogMinTier",
                 "LootLogMoney",
+                "LootLogQuest",
                 "ScanRange",
                 "GatherRange",
                 "GatherInterval",
@@ -861,17 +862,17 @@ GatherBodies=off
             assert!(!help.contains("Needs GatherCarcass"), "{help}");
         }
 
-        /// The item-log filter's two keys: vanilla by default (every line,
-        /// money on), both ends of the tier range accepted, anything past
+        /// The item-log filter's three keys: vanilla by default (every line,
+        /// money and quest items on), both ends of the tier range accepted, anything past
         /// them warned about and refused, and the menu offering exactly the
         /// range `parse` enforces. No preset may set either.
         #[test]
         fn loot_log_keys_default_to_vanilla_and_hold_their_range() {
             let d = Config::default();
-            assert_eq!((d.loot_log_min_tier, d.loot_log_money), (0, true));
-            let (c, w) = parse(&sectioned("LootLogMinTier=3\nLootLogMoney=0\n"));
+            assert_eq!((d.loot_log_min_tier, d.loot_log_money, d.loot_log_quest), (0, true, true));
+            let (c, w) = parse(&sectioned("LootLogMinTier=3\nLootLogMoney=0\nLootLogQuest=0\n"));
             assert!(w.is_empty(), "{w:?}");
-            assert_eq!((c.loot_log_min_tier, c.loot_log_money), (3, false));
+            assert_eq!((c.loot_log_min_tier, c.loot_log_money, c.loot_log_quest), (3, false, false));
             for n in [LOOT_LOG_TIER_RANGE.0, LOOT_LOG_TIER_RANGE.1] {
                 let (c, w) = parse(&sectioned(&format!("LootLogMinTier={n}\n")));
                 assert!(w.is_empty(), "{w:?}");
@@ -891,10 +892,12 @@ GatherBodies=off
                 }
                 other => panic!("LootLogMinTier must be an Int, not {other:?}"),
             }
-            assert!(matches!(
-                section.field("LootLogMoney").map(|f| f.kind.clone()),
-                Some(Kind::Bool { default: true })
-            ));
+            for key in ["LootLogMoney", "LootLogQuest"] {
+                assert!(
+                    matches!(section.field(key).map(|f| f.kind.clone()), Some(Kind::Bool { default: true })),
+                    "{key}"
+                );
+            }
             for p in &section.presets {
                 assert!(!p.set.iter().any(|(k, _)| k.starts_with("LootLog")), "{}", p.label);
             }

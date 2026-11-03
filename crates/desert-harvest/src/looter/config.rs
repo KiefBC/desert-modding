@@ -31,7 +31,8 @@ pub const SURVEY_LINES_RANGE: (u32, u32) = (16, 2_000);
 /// out a carcass rather than leave it alone.
 pub const HUNTING_RANGE: (u32, u32) = (1, 100);
 /// `LootLogMinTier`'s range: `0` is the vanilla item log, `1..=5` a minimum
-/// `ItemInfo` tier, `6` above every tier (no line but money, if that is on).
+/// `ItemInfo` tier, `6` above every tier (no line but money and quest items,
+/// if those are on).
 pub const LOOT_LOG_TIER_RANGE: (u32, u32) = (0, 6);
 
 /// The furthest `GatherRange` may reach. The parser accepts anything above 0
@@ -168,6 +169,10 @@ pub struct Config {
     /// With a minimum tier set, still show currency (`itemType` 32: coins,
     /// camp funds) whatever its tier. Default on.
     pub loot_log_money: bool,
+    /// With a minimum tier set, still show quest and key items (the
+    /// inventory groups `desert_core::quest_items` lists: key items, quest
+    /// keepsakes and rewards, keys) whatever their tier. Default on.
+    pub loot_log_quest: bool,
     /// Assumed per-stack ceiling used only when the bag is full: a pickup that
     /// would push an existing stack past this is refused.
     pub stack_limit: u32,
@@ -212,6 +217,7 @@ impl Default for Config {
             hunting: 1,
             loot_log_min_tier: 0,
             loot_log_money: true,
+            loot_log_quest: true,
             bag_tab: Some(1),
             stack_limit: 999,
             gather_interval_ms: 500,
@@ -507,7 +513,7 @@ pub(crate) fn fields() -> Vec<Field> {
                 },
                 "Which pickups get an \"Item xN\" line in the item log at the side of the screen. \
                  0 = every line, as the game does. 1..5 = only items of at least that tier. \
-                 6 = no lines at all (except money, below). Only the line is hidden: the item \
+                 6 = no lines at all (except money and quest items, below). Only the line is hidden: the item \
                  still goes into your bag and quests still count it. Takes effect at once.",
             ),
         ),
@@ -516,6 +522,14 @@ pub(crate) fn fields() -> Vec<Field> {
             "Always show money",
             Kind::Bool { default: d.loot_log_money },
             "1 = coins and camp funds always get their line, whatever the minimum tier says.",
+        ),
+        f(
+            "LootLogQuest",
+            "Always show quest items",
+            Kind::Bool { default: d.loot_log_quest },
+            "1 = quest and key items (key items, documents and contracts, memory fragments, \
+             quest keepsakes and rewards, keys) always get their line, whatever the minimum \
+             tier says.",
         ),
         f(
             "ScanRange",
@@ -701,6 +715,7 @@ impl Config {
                 )),
             },
             "lootlogmoney" => self.loot_log_money = ini::parse_bool(v),
+            "lootlogquest" => self.loot_log_quest = ini::parse_bool(v),
             "surveylines" => match v.parse::<u32>() {
                 Ok(n) if (SURVEY_LINES_RANGE.0..=SURVEY_LINES_RANGE.1).contains(&n) => self.survey_lines = n,
                 _ => warnings.push(format!("SurveyLines: bad value {v:?}, keeping {}", self.survey_lines)),
@@ -748,10 +763,10 @@ impl Config {
     pub fn summary(&self) -> String {
         let cfg = self;
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} GatherBodies={} GatherFriendlyBodies={} Hunting={} LootLogMinTier={} LootLogMoney={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} GatherBodies={} GatherFriendlyBodies={} Hunting={} LootLogMinTier={} LootLogMoney={} LootLogQuest={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.gather_bodies as u8, cfg.gather_friendly_bodies as u8, cfg.hunting, cfg.loot_log_min_tier, cfg.loot_log_money as u8,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.gather_bodies as u8, cfg.gather_friendly_bodies as u8, cfg.hunting, cfg.loot_log_min_tier, cfg.loot_log_money as u8, cfg.loot_log_quest as u8,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

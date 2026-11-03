@@ -790,6 +790,44 @@ resolve and the spot checks must hold, or nothing is written. It prints the
 counts, the earlier-class records that carry one of the tags, and a diff against
 the file it replaces. The key sets are identical to `analysis/db/catalog-26361232.db`.
 
+### `gen-dropsets`
+Regenerates `crates/desert-core/src/dropset_table.rs` (`just gen-dropsets`):
+the `dropsetinfo` rows the `[Harvest]` `Pouches` and `Breakables` levers
+multiply (dispatch does the writing). Reads `dropsetinfo`, `gimmickinfo`,
+`interactioninfo`, `breakableobjectinfo`, `itemuseinfo`, `iteminfo`,
+`multichangeinfo`, `missioninfo` and `factionnode` from the archives (`--tables
+DIR` for extracted copies), every record walked to its last byte
+(`desert_tools::gimmick_walk::full` and the bin's own `walks.rs`) or nothing is
+written. Pouch rows are the dropsets of `itemuseinfo` RandomBox records an item
+names (88 on 26361232), breakable rows the `dropSetInfoList` of the "Breakable
+container" gimmicks (15); a row any other walked source also pays from is
+refused and listed with why (40). Each row carries its index, entry count and
+`min + max` sum, which the plugin checks the parsed row against before writing.
+
+### `gen-quest-items`
+Regenerates `crates/desert-core/src/quest_items.rs` (`just gen-quest-items`):
+the sorted item keys the `[Harvest] LootLogQuest` item-log filter keeps, with a
+`contains(key)` binary search. Reads `itemgroupinfo` and `iteminfo` from the
+archives (`--tables DIR` for extracted copies, `--out FILE`, `--build ID`); a
+port of `analysis/items_catalog.py` `itemgroups()`. Every `itemgroupinfo`
+record must decode to its end (`u16 key`, six flags, `orderIndex`, `iconPath`,
+the localised `groupName`, the `u16` sub-group list, the `u32` item list, the
+`u8` `categoryTypeList`) with every sub-group a group and every item an
+`iteminfo` key, or nothing is written. An item's inventory group path is the
+longest parent chain among the groups listing it (a group with two parents
+takes the later in record order); it counts when that path, by editor name, is
+under `ItemGroup_Equip / ItemGroup_ETC_Quest` (Equipment > Key Item, 1106 on
+26361232), is `ItemGroup_Main / ItemGroup_ETC_Quest_Memory /
+ItemGroup_ETC_Quest_Normal` (37) or `/ ItemGroup_Collection_Quest_Reward` (3),
+`ItemGroup_Main / ItemGroup_ETC_Document /
+ItemGroup_Collection_Quest_Reward_Document` (1), or one child below
+`ItemGroup_Main / ItemGroup_ETC_Key` (47): 1194 keys, identical to
+`analysis/db/catalog.db`'s `inventory_group_path` selection. Editor names
+because the display names live in the encrypted `.paloc`. Spot checks (a key,
+a memory fragment, a book, a permit, a keepsake, and three items that must
+stay out) must hold. It prints the per-group counts and a diff against the file
+it replaces.
+
 ### `gen-collect-names`
 Regenerates `crates/desert-core/src/collect.rs` from the game's own tables:
 `gimmickinfo`, `iteminfo`, `interactioninfo` and `knowledgeinfo`, read out of
