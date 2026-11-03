@@ -235,7 +235,7 @@ gen-containers *args: tools
     {{tools_bin}}/gen-containers "$@"
 
 # Regenerate crates/desert-core/src/dropset_table.rs (the dropsetinfo rows the
-# [Dispatch] Pouches and Breakables levers multiply, with every row another
+# [Harvest] Pouches and Breakables levers multiply (written by dispatch), with every row another
 # source also pays from refused) from the game's dropsetinfo, gimmickinfo,
 # interactioninfo, breakableobjectinfo, itemuseinfo, iteminfo, multichangeinfo,
 # missioninfo and factionnode. `--tables DIR` reads extracted copies instead of

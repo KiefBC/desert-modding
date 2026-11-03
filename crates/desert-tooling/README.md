@@ -134,8 +134,8 @@ subsystem re-reads its own section of it once a second, so:
 Presets sit at the top of the Harvest tab: `Everything`, `Plants only`, `Wood only`,
 `Rock and ore only`. One click sets the four gather families and ground items
 and leaves everything else alone. Below them come `Enabled` and `AutoGather`,
-what auto-loot takes, `Hunting`, the item-log filter, the ranges and pacing, and then the yield
-multipliers, `Foraging` to `Fish`.
+what auto-loot takes, `Hunting`, the item-log filter, the ranges and pacing, the yield
+multipliers `Foraging` to `Critters`, and last `Pouches` and `Breakables`.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
 cannot produce a value its own subsystem would refuse. A number typed into a
