@@ -16,8 +16,8 @@ the plugin never did, and dead bandits are no longer mistaken for animal carcass
 which comes from the game's own character records. Verified in game on 2026-11-03: four Bleed
 Bandit bodies classed as bodies with no owner, one searched with F9 (`Leather x2`) and then read as
 empty, three living fishermen classed as friendly bodies and left alone, a dropped pair of leather
-gloves skipped while `GatherItems=0` and `GatherGear=0`. Not yet seen in game:
-`GatherFriendlyBodies=1` searching a friendly body, and the owner check refusing a body.
+gloves skipped while `GatherItems=0` and `GatherGear=0`, and `GatherFriendlyBodies=1` searching
+a friendly (white-marker) body. Not yet seen in game: the owner check refusing a body.
 
 ### Added
 
