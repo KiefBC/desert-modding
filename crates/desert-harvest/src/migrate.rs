@@ -418,7 +418,7 @@ mod tests {
         // Every key of both old sections is under [Harvest], once. Keys added
         // after 0.9.0 were never in that file, and the migration does not
         // invent them: they read as their defaults, which `cfg` above proves.
-        const ADDED_SINCE_0_9_0: &[&str] = &["GatherCritters", "Critters"];
+        const ADDED_SINCE_0_9_0: &[&str] = &["GatherCritters", "Critters", "GatherBodies", "GatherFriendlyBodies"];
         for field in config::schema().fields {
             let n = ini::lines_in_section(&out, "Harvest")
                 .filter(|l| matches!(l, Line::Pair(k, _) if k.eq_ignore_ascii_case(&field.key)))

@@ -22,6 +22,8 @@ What is sent is the game's own `PickUpItem` event, byte for byte: `payload.rs` b
 
 ## The `Hunting` hook
 
+Bodies are a third class beside animals and catches. `gen-species` marks every non-`Animal_` `characterinfo` record with the `Dead_Loot` interaction as `Body` (`isEnableFriendly == 0`, 1625 rows) or `FriendlyBody` (`isEnableFriendly == 1`, 4232), and `species.rs` serves them like the other classes; `GatherBodies` and `GatherFriendlyBodies` pick which are aimed at, using the same forged dead-drop event as `GatherCarcass`. Before sending, the body's owner id is read as the game's loot gate does, `*(*(actor+0x68)+0x118)`: null or a u64 at `+0x20` equal to -1 is unowned, anything else (or a failed read) is refused, once on the plugin thread and again on the game thread. Animal carcasses do not use this gate. Class byte 0x5A is shared by dead bandits and animals, so the species table, not the byte, decides. The loot-grant hook gates on the method only, so `Hunting` scales body searches too. Ground drops from enemies are `item_basic_*` props under `GatherItems`/`GatherGear`.
+
 A carcass's loot comes from two arrays on the animal's `characterinfo` record, rolled lazily inside the grant, and one of them is the shared `dropsetinfo` table that dispatch also writes. So the multiplier is applied downstream of both, in the hook on `loot_grant`, and only when the loot-method mask includes method 0 (search or skin). It edits nothing static, so uninstalling is the revert. The reasoning and the measured log are in the `hunting.rs` module comment.
 
 ## Hooks and stolen bytes

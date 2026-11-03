@@ -9,6 +9,51 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.13.0] - 2026-11-03
+
+Game build 26361232, the same build as 0.12.0. F9 can now search the bodies of dead people, which
+the plugin never did, and dead bandits are no longer mistaken for animal carcasses. Which body is
+which comes from the game's own character records. Verified in game on 2026-11-03: four Bleed
+Bandit bodies classed as bodies with no owner, one searched with F9 (`Leather x2`) and then read as
+empty, three living fishermen classed as friendly bodies and left alone, a dropped pair of leather
+gloves skipped while `GatherItems=0` and `GatherGear=0`. Not yet seen in game:
+`GatherFriendlyBodies=1` searching a friendly body, and the owner check refusing a body.
+
+### Added
+
+- **`GatherBodies` (default 0) in `[Harvest]`.** 1 = F9 searches dead hostile people and monsters
+  within `GatherRange` (bandit gangs, criminals, monsters, bosses: the bodies with a grey map
+  marker), with the same game event as `GatherCarcass`. Only bodies the game's records list as
+  lootable count.
+- **`GatherFriendlyBodies` (default 0) in `[Harvest]`.** 1 = also search the bodies of people who
+  were not enemies (citizens, traders, nobles, mercenaries: the white-marker bodies). Needs
+  `GatherBodies=1`.
+- **An owner check.** Before searching a body the plugin reads its owner id the way the game's own
+  loot prompt does. A body with an owner or quest trigger set, or one that cannot be read, is
+  skipped, and the log says so once per body: `[gather] body eid=.. has an owner/trigger (id=..);
+  skipped`. It is checked again on the game thread just before the event is sent.
+- **The F11 survey names bodies.** New kinds `Body`, `FriendlyBody` and `BodyEmpty`, with `dd=` and
+  `owner=-1|<hex>|?` on the line. The `[skin]` line says `body` or `carcass`.
+- **The `[species] table:` line counts bodies** (`N body, N friendly body`).
+
+### Fixed
+
+- **Dead bandits were classed as animal carcasses.** Their class byte (0x5A) was not on the
+  plugin's short list of people's class bytes, so `GatherCarcass=1` could have skinned a bandit as
+  if it were an animal. The species table now
+  decides, and a person is never a carcass.
+- **Living people are never treated as catchable.**
+
+### Changed
+
+- **`Hunting` now visibly covers body searches.** Its hook gates on the search/skin loot method, so
+  a body searched by hand or with F9 is multiplied like a carcass. Nothing in the code changed for
+  this; it is now documented.
+- **Items an enemy drops on the ground stay under `GatherItems`** (and `GatherGear` for armour and
+  jewellery). They are ordinary `item_basic_*` props, and `GatherBodies` does not pick them up.
+- The generated species table grew to 6864 rows (Body 1625, FriendlyBody 4232 added), and the
+  `.asi` from 2,594,816 to 2,913,280 bytes.
+
 ## [0.12.0] - 2026-11-02
 
 Game build 26361232, the same build as 0.11.0. Which creatures count as a bag catch is now read

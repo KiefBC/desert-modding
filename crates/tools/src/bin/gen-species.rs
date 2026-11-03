@@ -26,6 +26,12 @@
 //!   group keys are found here, once, by their Korean editor names.
 //! - every other record whose name starts with `Animal_` (any case) is
 //!   `NotHandCatchable`.
+//! - every record not named `Animal_*` whose interaction list holds
+//!   `Dead_Loot` is a body: a person or monster whose corpse is searched. It
+//!   is a `FriendlyBody` when its `isEnableFriendly` flag is 1 (citizens,
+//!   traders, mercenaries: the white map marker) and a `Body` when it is 0
+//!   (bandits, criminals, monsters: the grey one). `Animal_*` records with
+//!   `Dead_Loot` (spiders, wyverns) stay animals.
 //!
 //! It prints the counts, the two group keys, every `Critter` with its group,
 //! and what changed against the file it replaces.
@@ -57,6 +63,8 @@ const VEHICLE: &str = "vehicleinfo";
 
 /// The interaction that puts a creature in the bag.
 const INSECT_CATCH: &str = "Insect_Catch";
+/// The interaction that searches a dead body.
+const DEAD_LOOT: &str = "Dead_Loot";
 /// The tribe groups' editor names: insect group, fish group.
 const INSECT_GROUP: &str = "곤충 그룹";
 const FISH_GROUP: &str = "어류 그룹";
@@ -74,6 +82,11 @@ pub const SPOT_CHECKS: &[(&str, Option<Class>)] = &[
     ("Animal_RiceFish", Some(Class::Fish)),
     ("Animal_Sparrow_Wild_30071", Some(Class::Critter)),
     ("Animal_Insect_GrassHopper", Some(Class::Bug)),
+    ("NHM_Bleed_Bandits_OneHandAxe_54140", Some(Class::Body)),
+    ("NHM_Bleed_Bandits_OneHandSword_54109", Some(Class::Body)),
+    ("NHM_Wandering_Mercenary_OneHandMusket_03", Some(Class::FriendlyBody)),
+    ("NHM_Citizen_3053", Some(Class::FriendlyBody)),
+    ("Animal_Crocodile_Wild_30052", Some(Class::NotHandCatchable)),
 ];
 
 #[derive(Parser)]
@@ -100,6 +113,8 @@ pub enum Class {
     Fish,
     Critter,
     NotHandCatchable,
+    Body,
+    FriendlyBody,
 }
 
 impl Class {
@@ -109,6 +124,8 @@ impl Class {
             Class::Fish => "Fish",
             Class::Critter => "Critter",
             Class::NotHandCatchable => "NotHandCatchable",
+            Class::Body => "Body",
+            Class::FriendlyBody => "FriendlyBody",
         }
     }
 }
@@ -198,6 +215,11 @@ fn run(cli: &Cli) -> Result<()> {
         bail!("{INTERACTION}: {} records named {INSECT_CATCH}, expected exactly 1", catch.len());
     };
     let insect_catch = *insect_catch;
+    let dead: Vec<u32> = interactions.iter().filter(|(_, n)| *n == DEAD_LOOT).map(|(&k, _)| k).collect();
+    let [dead_loot] = dead.as_slice() else {
+        bail!("{INTERACTION}: {} records named {DEAD_LOOT}, expected exactly 1", dead.len());
+    };
+    let dead_loot = *dead_loot;
 
     // tribeinfo: key -> (name, parent), every parent resolving.
     let tribe_recs = records_of(TRIBE, &src.read(TRIBE)?)?;
@@ -288,6 +310,9 @@ fn run(cli: &Cli) -> Result<()> {
             rows.push(Species { name: c.name.clone(), class, group: Some(group), convert_item: c.convert_item });
         } else if c.name.to_ascii_lowercase().starts_with("animal_") {
             rows.push(Species { name: c.name.clone(), class: Class::NotHandCatchable, group: None, convert_item: 0 });
+        } else if c.interactions.contains(&dead_loot) {
+            let class = if c.enable_friendly == 1 { Class::FriendlyBody } else { Class::Body };
+            rows.push(Species { name: c.name.clone(), class, group: None, convert_item: 0 });
         }
     }
     rows.sort_by(|a, b| a.name.as_bytes().cmp(b.name.as_bytes()));
@@ -308,6 +333,8 @@ fn run(cli: &Cli) -> Result<()> {
         fish: count(Class::Fish),
         critter: count(Class::Critter),
         not_hand_catchable: count(Class::NotHandCatchable),
+        body: count(Class::Body),
+        friendly_body: count(Class::FriendlyBody),
     };
     let previous = fs::read_to_string(&out_path).map(|t| render::previous_rows(&t)).unwrap_or_default();
     let text = render::species_table_rs(&rows, &counts, &build);
@@ -322,21 +349,33 @@ fn run(cli: &Cli) -> Result<()> {
         tribe_recs.len(),
         interactions.len()
     );
-    println!("{INSECT_CATCH}: interaction key {insect_catch}");
+    println!("{INSECT_CATCH}: interaction key {insect_catch}; {DEAD_LOOT}: interaction key {dead_loot}");
     println!("tribe groups: insect {INSECT_GROUP} = {insect_group}, fish {FISH_GROUP} = {fish_group}");
     let not_animal: Vec<&str> = rows
         .iter()
-        .filter(|r| r.class != Class::NotHandCatchable && !r.name.to_ascii_lowercase().starts_with("animal_"))
+        .filter(|r| !matches!(r.class, Class::NotHandCatchable | Class::Body | Class::FriendlyBody) && !r.name.to_ascii_lowercase().starts_with("animal_"))
         .map(|r| r.name.as_str())
         .collect();
     println!(
-        "rows: {} = Bug {}, Fish {}, Critter {} ({} bag catches), NotHandCatchable {}",
+        "rows: {} = Bug {}, Fish {}, Critter {} ({} bag catches), NotHandCatchable {}, Body {}, FriendlyBody {}",
         rows.len(),
         counts.bug,
         counts.fish,
         counts.critter,
         counts.bug + counts.fish + counts.critter,
-        counts.not_hand_catchable
+        counts.not_hand_catchable,
+        counts.body,
+        counts.friendly_body
+    );
+    let animal_dead_loot: Vec<&str> = chars
+        .iter()
+        .filter(|c| c.interactions.contains(&dead_loot) && c.name.to_ascii_lowercase().starts_with("animal_"))
+        .map(|c| c.name.as_str())
+        .collect();
+    println!(
+        "Animal_* records with {DEAD_LOOT}, kept as animals: {}: {}",
+        animal_dead_loot.len(),
+        animal_dead_loot.join(", ")
     );
     if !not_animal.is_empty() {
         println!("bag catches not named Animal_*: {}", not_animal.join(", "));
@@ -370,8 +409,9 @@ fn run(cli: &Cli) -> Result<()> {
         removed.len(),
         moved.len()
     );
-    // A first run adds every row; listing a thousand of them says nothing.
-    if !previous.is_empty() {
+    // A first run adds every row; listing a thousand of them says nothing,
+    // and neither does listing thousands of new rows of one class.
+    if !previous.is_empty() && added.len() + removed.len() + moved.len() <= 200 {
         for l in added.iter().chain(&removed).chain(&moved) {
             println!("{l}");
         }

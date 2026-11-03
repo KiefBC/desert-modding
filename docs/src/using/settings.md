@@ -24,7 +24,9 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `GatherFish` | 1 | 0/1 | Harvest | catch fish within `GatherRange` by hand |
 | `GatherCritters` | 1 | 0/1 | Harvest | catch critters (small lizards, small birds, rats, frogs, toads) within `GatherRange`; never ducks or raccoons |
 | `GatherCarcass` | 0 | 0/1 | Harvest | loot animal carcasses without the skinning animation |
-| `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass gives, however it is looted |
+| `GatherBodies` | 0 | 0/1 | Harvest | search dead hostile people and monsters (grey map marker) within `GatherRange`; skips a body with an owner or quest trigger. Ground drops stay under `GatherItems`/`GatherGear` |
+| `GatherFriendlyBodies` | 0 | 0/1 | Harvest | also search bodies of people who were not enemies (white marker); needs `GatherBodies=1` |
+| `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass or searched body gives, however it is looted |
 | `ScanRange` | 40 | 1..200 | Harvest | survey radius in game metres |
 | `GatherRange` | 6 | 1..50 | Harvest | the gather key and auto mode pick the nearest node within this many metres |
 | `GatherInterval` | 500 | 100..60000 | Harvest | milliseconds between two automatic sends |

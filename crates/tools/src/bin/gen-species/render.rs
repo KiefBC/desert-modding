@@ -18,6 +18,8 @@ pub struct Counts {
     pub fish: usize,
     pub critter: usize,
     pub not_hand_catchable: usize,
+    pub body: usize,
+    pub friendly_body: usize,
 }
 
 pub fn species_table_rs(rows: &[Species], counts: &Counts, build: &str) -> String {
@@ -36,8 +38,10 @@ pub fn species_table_rs(rows: &[Species], counts: &Counts, build: &str) -> Strin
         "//! holds `Insect_Catch` and whose `convertItemInfo` is not 0; it is a `Bug`,".into(),
         "//! `Fish` or `Critter` by the level-2 group of its tribe chain (the insect".into(),
         "//! group, the fish group, any other group). Every other record whose name".into(),
-        "//! starts with `Animal_` (any case) is `NotHandCatchable`; any other name".into(),
-        "//! is absent.".into(),
+        "//! starts with `Animal_` (any case) is `NotHandCatchable`. Every record".into(),
+        "//! not named `Animal_*` whose interaction list holds `Dead_Loot` is a".into(),
+        "//! `FriendlyBody` when its `isEnableFriendly` flag is 1 and a `Body` when".into(),
+        "//! it is 0. Any other name is absent.".into(),
         "".into(),
         "/// How a creature species is caught.".into(),
         "#[derive(Clone, Copy, Debug, PartialEq, Eq)]".into(),
@@ -51,6 +55,13 @@ pub fn species_table_rs(rows: &[Species], counts: &Counts, build: &str) -> Strin
         "    /// An `Animal_*` record that is not a bag catch: carried, skinned,".into(),
         "    /// ridden, or not caught at all.".into(),
         "    NotHandCatchable,".into(),
+        "    /// A hostile person or monster (not `Animal_*`, `isEnableFriendly`".into(),
+        "    /// 0: bandits, criminals, monsters) whose corpse is searched".into(),
+        "    /// (`Dead_Loot`): never a catch.".into(),
+        "    Body,".into(),
+        "    /// A person who was not an enemy (`isEnableFriendly` 1: citizens,".into(),
+        "    /// traders, mercenaries) whose corpse is searched: never a catch.".into(),
+        "    FriendlyBody,".into(),
         "}".into(),
         "".into(),
         "/// Every classified species as `(characterinfo record name, class)`, sorted".into(),
@@ -66,7 +77,7 @@ pub fn species_table_rs(rows: &[Species], counts: &Counts, build: &str) -> Strin
         "];".to_string(),
         "".into(),
         "/// The class of the characterinfo record named `name`, `None` when it is".into(),
-        "/// neither a bag catch nor an `Animal_*` record.".into(),
+        "/// neither a bag catch, an `Animal_*` record nor a searchable body.".into(),
         "pub fn species_class(name: &str) -> Option<SpeciesClass> {".into(),
         "    SPECIES".into(),
         "        .binary_search_by(|(n, _)| n.cmp(&name))".into(),
@@ -95,6 +106,8 @@ pub fn species_table_rs(rows: &[Species], counts: &Counts, build: &str) -> Strin
         format!("        assert_eq!(count(SpeciesClass::Fish), {});", counts.fish),
         format!("        assert_eq!(count(SpeciesClass::Critter), {});", counts.critter),
         format!("        assert_eq!(count(SpeciesClass::NotHandCatchable), {});", counts.not_hand_catchable),
+        format!("        assert_eq!(count(SpeciesClass::Body), {});", counts.body),
+        format!("        assert_eq!(count(SpeciesClass::FriendlyBody), {});", counts.friendly_body),
         "    }".into(),
         "".into(),
         "    #[test]".into(),
@@ -139,7 +152,7 @@ mod tests {
             Species { name: "Animal_A".into(), class: Class::Bug, group: None, convert_item: 1 },
             Species { name: "Animal_B".into(), class: Class::NotHandCatchable, group: None, convert_item: 0 },
         ];
-        let text = species_table_rs(&rows, &Counts { bug: 1, fish: 0, critter: 0, not_hand_catchable: 1 }, "1");
+        let text = species_table_rs(&rows, &Counts { bug: 1, fish: 0, critter: 0, not_hand_catchable: 1, body: 0, friendly_body: 0 }, "1");
         let got = previous_rows(&text);
         assert_eq!(got.len(), 2);
         assert_eq!(got["Animal_A"], "Bug");

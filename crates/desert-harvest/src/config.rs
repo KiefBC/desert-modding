@@ -419,6 +419,8 @@ Scale=1.5
                 "|GatherFish",
                 "|GatherCritters",
                 "|GatherCarcass",
+                "|GatherBodies",
+                "|GatherFriendlyBodies",
                 "Hunting",
                 "ScanRange",
                 "GatherRange",
@@ -752,6 +754,41 @@ Scale=1.5
             let (c, w) = parse(&sectioned("GatherBugs=0\nGatherFish=0\nGatherCarcass=1\n"));
             assert!(w.is_empty(), "{w:?}");
             assert!(!c.gather_bugs && !c.gather_fish && c.gather_carcass);
+        }
+
+        /// `GatherBodies` and `GatherFriendlyBodies` start **off**, parse like
+        /// `GatherCarcass`, are offered by the menu, are named by no preset, and
+        /// are independent of `GatherCarcass` in both directions.
+        #[test]
+        fn gather_bodies_default_off_and_parse_like_gather_carcass() {
+            let d = Config::default();
+            assert!(!d.gather_bodies && !d.gather_friendly_bodies);
+            let (c, w) = parse(&sectioned("GatherBodies=1
+"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(c.gather_bodies && !c.gather_friendly_bodies && !c.gather_carcass);
+            let (c, w) = parse(&sectioned("GatherBodies=on
+GatherFriendlyBodies=yes
+"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(c.gather_bodies && c.gather_friendly_bodies);
+            let (c, w) = parse(&sectioned("GatherCarcass=1
+GatherBodies=off
+"));
+            assert!(w.is_empty(), "{w:?}");
+            assert!(c.gather_carcass && !c.gather_bodies);
+            for key in ["GatherBodies", "GatherFriendlyBodies"] {
+                assert!(schema().field(key).is_some(), "the menu must offer {key}");
+                for p in &schema().presets {
+                    assert!(!p.set.iter().any(|(k, _)| k == key), "{}", p.label);
+                }
+                let help = schema().field(key).and_then(|f| f.help.clone()).unwrap_or_default();
+                assert!(help.contains("0 by default"), "{key}: {help}");
+            }
+            let help = schema().field("GatherBodies").and_then(|f| f.help.clone()).unwrap_or_default();
+            assert!(help.contains("quest trigger are skipped"), "{help}");
+            let help = schema().field("GatherFriendlyBodies").and_then(|f| f.help.clone()).unwrap_or_default();
+            assert!(help.contains("Needs GatherBodies=1"), "{help}");
         }
 
         /// `Hunting` is the one key in this section that is an amount rather than

@@ -126,6 +126,16 @@ pub struct Config {
     /// has never been tried in game, and a MINOR may not change behaviour the
     /// player did not ask for.
     pub gather_carcass: bool,
+    /// Search dead hostile people and monsters within `GatherRange` (the
+    /// species table's `Body` class: bandits, criminals, monsters, bosses)
+    /// with the same dead-drop event `gather_carcass` sends. Off by default.
+    /// A body whose owner id is set (a quest trigger, or owned by someone) is
+    /// skipped, the same gate the game's own loot interaction applies.
+    pub gather_bodies: bool,
+    /// Also search the bodies of people who were not enemies (the species
+    /// table's `FriendlyBody` class: citizens, traders, mercenaries; the
+    /// white-marker bodies). Needs `gather_bodies` too. Off by default.
+    pub gather_friendly_bodies: bool,
     /// Yield multiplier for looted carcasses, `1..=100`, `1` = vanilla.
     ///
     /// The one lever in this section that changes an *amount* rather than what
@@ -185,6 +195,8 @@ impl Default for Config {
             gather_fish: true,
             gather_critters: true,
             gather_carcass: false,
+            gather_bodies: false,
+            gather_friendly_bodies: false,
             hunting: 1,
             bag_tab: Some(1),
             stack_limit: 999,
@@ -423,6 +435,21 @@ pub(crate) fn fields() -> Vec<Field> {
              animation. A third game event again, granting the same loot the animation would; \
              a corpse already looted gives nothing. Animals only, not people. 0 by default: opt in.",
         )),
+        beside(f(
+            "GatherBodies",
+            "Search bodies",
+            Kind::Bool { default: d.gather_bodies },
+            "0 by default. 1 = search dead people and monsters for loot (bandits, soldiers, \
+             bosses) within GatherRange with the gather key, the same event as skinning. Bodies \
+             with a quest trigger are skipped.",
+        )),
+        beside(f(
+            "GatherFriendlyBodies",
+            "Search friendly bodies",
+            Kind::Bool { default: d.gather_friendly_bodies },
+            "0 by default. 1 = also search the bodies of people who were not enemies (citizens, \
+             traders, mercenaries: the white-marker bodies). Needs GatherBodies=1. Off by default.",
+        )),
         f(
             "Hunting",
             "Hunting",
@@ -607,6 +634,8 @@ impl Config {
             "gatherfish" => self.gather_fish = ini::parse_bool(v),
             "gathercritters" => self.gather_critters = ini::parse_bool(v),
             "gathercarcass" => self.gather_carcass = ini::parse_bool(v),
+            "gatherbodies" => self.gather_bodies = ini::parse_bool(v),
+            "gatherfriendlybodies" => self.gather_friendly_bodies = ini::parse_bool(v),
             "hunting" => match v.parse::<u32>() {
                 Ok(n) if (HUNTING_RANGE.0..=HUNTING_RANGE.1).contains(&n) => self.hunting = n,
                 _ => warnings.push(format!(
@@ -661,10 +690,10 @@ impl Config {
     pub fn summary(&self) -> String {
         let cfg = self;
         format!(
-            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
+            "Enabled={} Debug={} LogReceived={} ScanRange={} SurveyLines={} GatherRange={} AutoGather={} GatherUnarmed={} GatherItems={} GatherGear={} GatherForaging={} GatherLogging={} GatherMining={} GatherOre={} GatherMoney={} GatherBugs={} GatherFish={} GatherCritters={} GatherCarcass={} GatherBodies={} GatherFriendlyBodies={} Hunting={} BagTab={} StackLimit={} GatherInterval={} NodeCooldown={} KeyToggle=0x{:02X} KeyScan=0x{:02X} KeyGather=0x{:02X} KeyRecord=0x{:02X}",
             cfg.enabled as u8, cfg.debug as u8, cfg.log_received as u8, cfg.scan_range, cfg.survey_lines, cfg.gather_range, cfg.auto_gather as u8,
             cfg.gather_unarmed as u8, cfg.gather_items as u8, cfg.gather_gear as u8,
-            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.hunting,
+            cfg.gather_foraging as u8, cfg.gather_logging as u8, cfg.gather_mining as u8, cfg.gather_ore as u8, cfg.gather_money as u8, cfg.gather_bugs as u8, cfg.gather_fish as u8, cfg.gather_critters as u8, cfg.gather_carcass as u8, cfg.gather_bodies as u8, cfg.gather_friendly_bodies as u8, cfg.hunting,
             cfg.bag_tab.map(|t| t.to_string()).unwrap_or_else(|| "auto".into()), cfg.stack_limit, cfg.gather_interval_ms, cfg.node_cooldown_ms,
             cfg.key_toggle, cfg.key_scan, cfg.key_gather, cfg.key_record
         )

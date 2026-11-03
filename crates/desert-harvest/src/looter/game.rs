@@ -3,7 +3,7 @@
 
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use desert_core::creature::{self, CatchClass, SpeciesClass};
+use desert_core::creature::{self, CatchClass};
 
 use crate::looter::actors::{self, Catchable, Vec3};
 use crate::looter::config::Config;
@@ -209,10 +209,13 @@ fn survey_rank(k: actors::Kind) -> u8 {
         // the end of the `SurveyLines` budget, which is the failure this
         // whole ordering exists to prevent.
         actors::Kind::Carcass => 4,
+        // A body with loot left is a loot target exactly like a carcass, and
+        // for the same reason it prints ahead of `Catchable`.
+        actors::Kind::Body | actors::Kind::FriendlyBody => 4,
         // Prints, but below the actionable targets: an emptied carcass is
         // still worth seeing in a survey, because it is the difference
         // between "skinning did nothing" and "there was nothing to skin".
-        actors::Kind::CarcassEmpty => 5,
+        actors::Kind::CarcassEmpty | actors::Kind::BodyEmpty => 5,
         actors::Kind::Catchable => 6,
         actors::Kind::Character | actors::Kind::Player | actors::Kind::Other => 7,
         actors::Kind::Inert => 8,
@@ -262,14 +265,24 @@ fn catch_diagnostic_line(
     // the gap between it and `set_rows` is exactly the bug that switched
     // auto-gather off - class 0x82 reads `1/0/4(0)` once emptied.
     let dd = match kind {
-        actors::Kind::Carcass | actors::Kind::CarcassEmpty => {
-            match actors::dead_drop_state(a) {
+        actors::Kind::Carcass
+        | actors::Kind::CarcassEmpty
+        | actors::Kind::Body
+        | actors::Kind::FriendlyBody
+        | actors::Kind::BodyEmpty => {
+            let mut t = match actors::dead_drop_state(a) {
                 Some(s) => format!(
                     " dd={}/{}/{}({})",
                     s.rolled, s.item_rows, s.set_rows, s.grantable_set_rows
                 ),
                 None => " dd=none".to_string(),
+            };
+            // A body also prints the owner gate's reading, which is what
+            // decides whether `GatherBodies` will search it.
+            if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody | actors::Kind::BodyEmpty) {
+                t.push_str(&format!(" owner={}", owner_text(actors::corpse_owner(a))));
             }
+            t
         }
         _ => String::new(),
     };
@@ -281,6 +294,16 @@ fn catch_diagnostic_line(
         "  {d:6.1} m  {kind:<12?} eid={eid:08X} ({:7.1} {:7.1} {:7.1}) {} type={ty} cat={cat} chr={chr} status={st}{dd} comps=[{}]",
         pos.x, pos.y, pos.z, class_of(m, a), comps.join(" ")
     );
+}
+
+/// The owner gate's reading for a log line: `-1` unowned, the id in hex, or
+/// `?` when it would not read.
+fn owner_text(o: actors::Owner) -> String {
+    match o {
+        actors::Owner::Unowned => "-1".to_string(),
+        actors::Owner::Id(id) => format!("{id:X}"),
+        actors::Owner::Unreadable => "?".to_string(),
+    }
 }
 
 /// `creature::type_byte` as two hex digits, or `?` when it is not readable.
@@ -463,7 +486,12 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
             // - `cat=` is the class byte that decides it. `Catchable` is
             // named here rather than left to `_` precisely because it is the
             // line that says whether the rule picked the right actor.
-            actors::Kind::Character | actors::Kind::Catchable | actors::Kind::Carcass | actors::Kind::Other => {
+            actors::Kind::Character
+            | actors::Kind::Catchable
+            | actors::Kind::Carcass
+            | actors::Kind::Body
+            | actors::Kind::FriendlyBody
+            | actors::Kind::Other => {
                 catch_diagnostic_line(m, *a, *d, *eid, pos, kind);
             }
             _ => {
@@ -947,6 +975,10 @@ pub struct GatherTarget {
     pub mode: crate::looter::payload::PickupMode,
     /// Carries the game's interaction object (`Gather`) rather than `Unarmed`.
     pub armed: bool,
+    /// A dead person or monster (`Kind::Body`/`FriendlyBody`) rather than
+    /// an animal carcass: the send re-checks the owner gate, and the `[skin]`
+    /// line says "body".
+    pub body: bool,
     pub player_eid: u32,
     pub route: u32,
 }
@@ -1032,7 +1064,7 @@ fn note_passed_catchable(m: &MainModule, a: usize, eid: u32, kind: actors::Kind,
     // class byte names, is reported like a bug.
     let species = actors::species_class(m, a);
     let known = match species {
-        Some(SpeciesClass::NotHandCatchable) => false,
+        s if creature::is_never_a_catch(s) => false,
         Some(_) => true,
         None => creature::is_catch_class(cat),
     };
@@ -1075,6 +1107,41 @@ fn first_sighting_of(c: u8) -> bool {
 /// `UNKNOWN_CATCH_CATEGORIES` makes, and it needs no table behind it because
 /// there is nothing to say per carcass: the switch is the whole reason.
 static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+/// [`CARCASS_PASSED_WITH_SWITCH_OFF`] for a body passed over only because
+/// `GatherBodies=0`.
+static BODY_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+/// The same, for a friendly body passed over only because
+/// `GatherFriendlyBodies=0` while `GatherBodies=1`.
+static FRIENDLY_BODY_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
+
+/// Bodies refused by the owner gate (`actors::corpse_owner`), each logged
+/// once. Capped like `PASSED_CATCHABLE`: past the cap a refusal is still a
+/// refusal, it just is not logged again.
+static BODY_OWNED_LOGGED: std::sync::Mutex<Vec<u32>> = std::sync::Mutex::new(Vec::new());
+const BODY_OWNED_LOGGED_CAP: usize = 200;
+
+/// Log a body the owner gate refused, once per eid.
+fn note_owned_body(eid: u32, owner: actors::Owner) {
+    {
+        let mut seen = BODY_OWNED_LOGGED.lock().unwrap_or_else(|e| e.into_inner());
+        if seen.len() >= BODY_OWNED_LOGGED_CAP || seen.contains(&eid) {
+            return;
+        }
+        seen.push(eid);
+    }
+    crate::log!("[gather] body eid={eid:08X} has an owner/trigger (id={}); skipped", owner_text(owner));
+}
+
+/// The corpse switches out of the live config, for
+/// `actors::Kind::is_gather_candidate`: here and in `autogather::review`, the
+/// two places that must agree.
+pub fn corpse_switches(cfg: &Config) -> actors::CorpseSwitches {
+    actors::CorpseSwitches {
+        carcass: cfg.gather_carcass,
+        bodies: cfg.gather_bodies,
+        friendly_bodies: cfg.gather_friendly_bodies,
+    }
+}
 
 /// Nearest node within `GatherRange` metres that classifies as `Gather`
 /// (interaction object present and the gimmick record is a
@@ -1084,7 +1151,9 @@ static CARCASS_PASSED_WITH_SWITCH_OFF: AtomicBool = AtomicBool::new(false);
 /// the species table files as bag catches) are candidates too; a creature comes
 /// back with `mode: Catch`, which is a different game event entirely (see
 /// `payload::catch_payload`). So are animal carcasses when `GatherCarcass=1`,
-/// with `mode: Skin` and a third event again (`payload::skin_payload`).
+/// with `mode: Skin` and a third event again (`payload::skin_payload`), and
+/// dead people and monsters when `GatherBodies=1` (friendly ones only with
+/// `GatherFriendlyBodies=1` too), the same event, after the owner gate.
 /// `cfg` is the live config, so what counts as a candidate follows the ini
 /// without this having to be told twice - `actors::Kind::is_gather_candidate`
 /// is where that set is defined, once, for here and for
@@ -1104,6 +1173,14 @@ pub fn nearest_gather(
     // failure is silent.
     let mut unreadable = 0usize;
     let unarmed = cfg.gather_unarmed;
+    let corpses = corpse_switches(cfg);
+    // Nodes passed over only because their family is switched off. Creatures
+    // skipped by `GatherBugs=0`, `GatherFish=0` or `GatherCritters=0` are counted here too: to the
+    // player it is the same kind of "you switched that off", and the summary
+    // reads the same. A creature of an unknown class is *not* counted, because
+    // nothing the player can set would have taken it. Bodies passed over by
+    // `GatherBodies=0` or `GatherFriendlyBodies=0` count too.
+    let mut family_off_seen = 0usize;
     // (dist, eid, actor, pos, kind) for every gather-record node in range.
     let mut nodes: Vec<(f32, u32, usize, Vec3, actors::Kind)> = Vec::new();
     for &(eid, a) in &sc.entries {
@@ -1116,13 +1193,13 @@ pub fn nearest_gather(
             continue;
         }
         let kind = actors::classify(m, a, sc.player);
-        if !kind.is_gather_candidate(cfg.gather_carcass) {
+        if !kind.is_gather_candidate(corpses) {
             note_passed_catchable(m, a, eid, kind, d);
         }
         // One shared definition of the candidate set, `actors::Kind`'s own,
         // so this and `autogather::Gatherer::review` cannot come to disagree
         // about what the gatherer aims at - see `Kind::is_gather_candidate`.
-        if !kind.is_gather_candidate(cfg.gather_carcass) {
+        if !kind.is_gather_candidate(corpses) {
             // An interactable gimmick whose record names nothing: a gather
             // node `classify` could not give a family because the record did
             // not read, which is the shape of a moved layout.
@@ -1137,6 +1214,24 @@ pub fn nearest_gather(
                 crate::log!(
                     "[gather] a skinnable carcass is {d:.0} m away and GatherCarcass=0, so it is not a target; set [Harvest] GatherCarcass=1 to skin carcasses (said once per session)"
                 );
+            }
+            // The same once-per-session word for a body, and a separate one
+            // for a friendly body passed over only by its own switch.
+            if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody) {
+                family_off_seen += 1;
+                if !cfg.gather_bodies {
+                    if !BODY_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed) {
+                        crate::log!(
+                            "[gather] a body with loot is {d:.0} m away and GatherBodies=0, so it is not a target; set [Harvest] GatherBodies=1 to search bodies (said once per session)"
+                        );
+                    }
+                } else if kind == actors::Kind::FriendlyBody
+                    && !FRIENDLY_BODY_PASSED_WITH_SWITCH_OFF.swap(true, Ordering::Relaxed)
+                {
+                    crate::log!(
+                        "[gather] a friendly body (citizen, trader, mercenary) with loot is {d:.0} m away and GatherFriendlyBodies=0, so it is not a target; set [Harvest] GatherFriendlyBodies=1 to search those too (said once per session)"
+                    );
+                }
             }
             continue;
         }
@@ -1154,12 +1249,6 @@ pub fn nearest_gather(
     }
     nodes.sort_by(|x, y| x.0.total_cmp(&y.0));
     let mut unarmed_seen = 0usize;
-    // Nodes passed over only because their family is switched off. Creatures
-    // skipped by `GatherBugs=0`, `GatherFish=0` or `GatherCritters=0` are counted here too: to the
-    // player it is the same kind of "you switched that off", and the summary
-    // reads the same. A creature of an unknown class is *not* counted, because
-    // nothing the player can set would have taken it.
-    let mut family_off_seen = 0usize;
     let mut refused_seen = 0usize;
     for &(d, eid, a, pos, kind) in &nodes {
         // Catchable creatures carry no gimmick record, so they are decided
@@ -1217,6 +1306,7 @@ pub fn nearest_gather(
                 cat: 0,
                 mode: crate::looter::payload::PickupMode::Catch,
                 armed: true,
+                body: false,
                 player_eid: sc.player_eid,
                 route: sc.route,
             });
@@ -1260,6 +1350,48 @@ pub fn nearest_gather(
                 // word means "not an `Unarmed` twin" here, and nothing
                 // downstream reads it except the log's UNARMED note.
                 armed: true,
+                body: false,
+                player_eid: sc.player_eid,
+                route: sc.route,
+            });
+        }
+        // A body: the carcass branch above, plus the owner gate. The game's
+        // own corpse-loot interaction refuses a corpse whose owner id is not
+        // -1 (`actors::owner_verdict`, read on 26361232), which is what keeps
+        // a body with a quest trigger out of reach; the forged event skips
+        // that interaction, so the gate is asked here instead, and refuses an
+        // unreadable id too. `events::send_pickup` asks it again on the game
+        // thread. Carcasses are not held to it: that path is verified in game
+        // and stays as it was.
+        if matches!(kind, actors::Kind::Body | actors::Kind::FriendlyBody) {
+            if skip(eid) {
+                continue;
+            }
+            let owner = actors::corpse_owner(a);
+            if owner != actors::Owner::Unowned {
+                note_owned_body(eid, owner);
+                continue;
+            }
+            let friendly = kind == actors::Kind::FriendlyBody;
+            return Ok(GatherTarget {
+                eid,
+                // No gimmick record, as for a carcass: a body's drops are its
+                // `characterinfo` record's reward dropsets.
+                record: 0xFFFF,
+                actor: a,
+                player_actor: sc.player,
+                dist: d,
+                name: format!(
+                    "{} cat={} type={}",
+                    if friendly { "friendly body" } else { "body" },
+                    category_text(m, a),
+                    type_text(a)
+                ),
+                cat: actors::interaction_category(m, a).unwrap_or(0),
+                family: if friendly { "FriendlyBody" } else { "Body" }.to_string(),
+                mode: crate::looter::payload::PickupMode::Skin,
+                armed: true,
+                body: true,
                 player_eid: sc.player_eid,
                 route: sc.route,
             });
@@ -1328,6 +1460,7 @@ pub fn nearest_gather(
             cat: 0,
             mode,
             armed: kind == actors::Kind::Gather,
+            body: false,
             player_eid: sc.player_eid,
             route: sc.route,
         });
@@ -1335,7 +1468,7 @@ pub fn nearest_gather(
     let why = if unarmed_seen > 0 && !unarmed {
         format!("no armed Gather node within {range:.1} m ({unarmed_seen} unarmed; GatherUnarmed=1 to try them)")
     } else if family_off_seen > 0 {
-        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish/GatherCritters switches)")
+        format!("no Gather node within {range:.1} m ({family_off_seen} skipped by the Gather<Family>/GatherBugs/GatherFish/GatherCritters/GatherBodies/GatherFriendlyBodies switches)")
     } else if refused_seen > 0 {
         format!("no Gather node within {range:.1} m ({refused_seen} water well bucket refused: the plugin never takes it, crank and take it yourself)")
     } else {

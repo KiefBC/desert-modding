@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.12.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.13.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -177,6 +177,16 @@ from the menu: Insert is `KeyMenu` under `[Overlay]`, the other four are
   the loot arrives without the skinning animation. A carcass you have already
   emptied is left alone. `Hunting` multiplies what a carcass gives, 1..100, and
   ships at 1 - it works whether the plugin skins the animal or you do.
+- **Searches dead bodies** within the same range when `GatherBodies=1`, off by default, with
+  the same game event as a carcass. `GatherBodies` covers hostile people and monsters (bandit
+  gangs, criminals, monsters, bosses: the bodies with a grey map marker). `GatherFriendlyBodies=1`,
+  which needs `GatherBodies=1`, adds people who were not enemies (citizens, traders, nobles,
+  mercenaries: the white-marker bodies). Which a body is comes from the game's own character
+  records. A body with an owner or quest trigger set on it is never searched (the same test the
+  game makes before its own loot prompt), and a body already emptied is left alone. `Hunting`
+  multiplies what a body gives too. Weapons and armour an enemy drops on the ground are ordinary
+  ground items, picked up under `GatherItems` (and `GatherGear` for armour and jewellery), not by
+  `GatherBodies`.
 - **Catches insects, fish and critters** within the same range, using the game's own
   "catch" event rather than a pickup. Fish within reach at the water's edge go
   the same way, with the very same event as an insect. The steal check applies
@@ -384,7 +394,9 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `GatherFish` | 1 | 0 = do not catch fish (same event as insects, at the water's edge) |
 | `GatherCritters` | 1 | 0 = do not catch critters: small lizards, small birds, rats, frogs, toads, salamanders (same event as insects). Ducks and raccoons are never caught, whatever this is |
 | `GatherCarcass` | 0 | 1 = also loot animal carcasses within `GatherRange`, without the skinning animation. A carcass already skinned gives nothing, and the classes known to be people are refused. 0 by default: opt in |
-| `Hunting` | 1 | 1..100, how much a looted carcass gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
+| `GatherBodies` | 0 | 1 = also search dead hostile people and monsters (bandits, criminals, monsters, bosses: grey map marker) within `GatherRange`, with the carcass event. A body with an owner or quest trigger is skipped. Items dropped on the ground are not part of this: they stay under `GatherItems`/`GatherGear`. 0 by default: opt in |
+| `GatherFriendlyBodies` | 0 | 1 = also search the bodies of people who were not enemies (citizens, traders, nobles, mercenaries: white map marker). Needs `GatherBodies=1`. 0 by default |
+| `Hunting` | 1 | 1..100, how much a looted carcass or searched body gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |

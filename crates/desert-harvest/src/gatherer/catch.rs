@@ -60,7 +60,7 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use desert_core::creature::{self, SpeciesClass, CATCH_BYTES, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN};
+use desert_core::creature::{self, CATCH_BYTES, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN};
 use desert_core::pattern::{Found, Pattern};
 use desert_core::safe;
 use desert_core::trampoline;
@@ -312,7 +312,9 @@ fn count_for(actor: usize) -> u32 {
     // on type 6 and a deer on type 3 (`creature::FISH_TYPES`), and only the
     // first is multiplied.
     let species = species_row(actor).and_then(crate::species::class);
-    if species == Some(SpeciesClass::NotHandCatchable) {
+    // A body species (a person or monster) is vanilla the same way: never a
+    // hand catch.
+    if creature::is_never_a_catch(species) {
         bump(&NOT_HAND_CATCHABLE);
         return 1;
     }

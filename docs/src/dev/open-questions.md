@@ -26,7 +26,7 @@ When built, it is its own key (`TradeGoods`, record-keyed, default `1`, ini text
 
 ## Hunting scales the copper from cleaning fish
 
-**OPEN, unmeasured.** The fish carcass dropsets (`DropSet_*_Animal_Fish_*`) carry Copper x20..150, so `Hunting` (which scales whatever the game rolled for a corpse) multiplies that copper too, on top of whatever `Money` does to coins. Whether the two stack (a fish cleaned at `Hunting=10` paying the money lever's rate again), or the grant is a different path from the placed coin props `Money` edits, has not been checked. Found in the item catalogue (`analysis/ITEMS.md`).
+**OPEN, unmeasured.** The fish carcass dropsets (`DropSet_*_Animal_Fish_*`) carry Copper x20..150, so `Hunting` (which scales whatever the game rolled for a corpse, and for a body searched since 0.13.0) multiplies that copper too, on top of whatever `Money` does to coins. Whether the two stack (a fish cleaned at `Hunting=10` paying the money lever's rate again), or the grant is a different path from the placed coin props `Money` edits, has not been checked. Found in the item catalogue (`analysis/ITEMS.md`).
 
 **Settles it:** clean a fish with `LogReceived=1` at `Hunting=1`, then at `Hunting=10`, and compare the bag's copper; repeat with `Money` raised to see whether it moves.
 

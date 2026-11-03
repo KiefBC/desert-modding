@@ -300,7 +300,7 @@ impl Gatherer {
             // classifying as `Catchable`), and that going-away is what "gone
             // after" measures.
             let still_gather = sc.actor(d.eid).is_some_and(|a| {
-                actors::classify(m, a, sc.player).is_gather_candidate(self.cfg.gather_carcass)
+                actors::classify(m, a, sc.player).is_gather_candidate(game::corpse_switches(&self.cfg))
             });
             if !still_gather {
                 self.gathered += 1;
@@ -343,6 +343,7 @@ impl Gatherer {
             route: target.route,
             flag: 0,
             cat: target.cat,
+            body: target.body,
         };
         if events::request(req) {
             self.sent += 1;

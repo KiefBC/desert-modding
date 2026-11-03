@@ -141,6 +141,10 @@ pub const CHAR_LAY: &[(&str, usize)] = &[
 /// The 64 one-byte flags (`isBlocked` .. `isTeleportable`) and the 4 bytes
 /// after them that read 0 on all but one record.
 const CHAR_FLAG_BYTES: usize = 68;
+/// `isEnableFriendly`'s index among the 64 flags (`items_catalog.py`
+/// `CHAR_FLAGS`): 1 on people who were not enemies (citizens, traders,
+/// mercenaries; the white map marker), 0 on bandits and monsters.
+const IS_ENABLE_FRIENDLY: usize = 39;
 /// `teleportSocketName`, `reviveSocketName`.
 const CHAR_SOCKETS: usize = 8;
 /// `characterAge`, `playerLockOnType`, `characterTier`, `gender`,
@@ -166,6 +170,8 @@ pub struct Character {
     pub convert_item: u32,
     pub tribe: u32,
     pub interactions: Vec<u32>,
+    /// The `isEnableFriendly` flag byte.
+    pub enable_friendly: u8,
 }
 
 fn field(v: &[u32], name: &str) -> u32 {
@@ -186,6 +192,10 @@ fn field(v: &[u32], name: &str) -> u32 {
 /// list with a key of at least 1000; failing that, none.
 pub fn character(rec: &[u8], key: u32, refs: &Refs) -> Result<Character, String> {
     let (name, f) = record_start(rec, key).ok_or("no NameFirst record start")?;
+    let enable_friendly = u8_at(rec, f + IS_ENABLE_FRIENDLY).ok_or("isEnableFriendly past the record end")?;
+    if enable_friendly > 1 {
+        return Err(format!("isEnableFriendly reads {enable_friendly}, not a bool"));
+    }
     let mut o = f + CHAR_FLAG_BYTES + CHAR_SOCKETS + CHAR_SMALL;
     let mut v = Vec::with_capacity(CHAR_LAY.len());
     for (fname, w) in CHAR_LAY {
@@ -228,6 +238,7 @@ pub fn character(rec: &[u8], key: u32, refs: &Refs) -> Result<Character, String>
         convert_item: field(&v, "convertItemInfo"),
         tribe: field(&v, "tribeInfoWrapper"),
         interactions: interaction_list(rest, &refs.interactions),
+        enable_friendly,
     })
 }
 
