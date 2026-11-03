@@ -215,7 +215,8 @@ mod entry {
     }
 
     /// Fold a pre-0.10 ini's `[Looter]` and `[Gatherer]` sections into
-    /// `[Harvest]`, once. Every outcome is a log line at most and none of them
+    /// `[Harvest]`, once, then move a 0.15 ini's `[Dispatch]` `Pouches` /
+    /// `Breakables` under `[Harvest]`. Every outcome is a log line at most and none of them
     /// stops the plugin: a failure leaves the file as it was, and the harvest
     /// thread then reads its defaults from a file with no `[Harvest]` in it.
     fn migrate_ini() {
@@ -239,6 +240,30 @@ mod entry {
             ),
             Err(e) => crate::log!(
                 "[ini] WARN could not migrate {}: {e}; the [Harvest] defaults are in effect",
+                crate::INI_NAME
+            ),
+        }
+        // 0.16: `Pouches` / `Breakables` left [Dispatch] for [Harvest]. After
+        // the merge above, so a [Harvest] it just made is the one they join.
+        match migrate::move_drop_keys_file(&path) {
+            Ok(migrate::KeyMove::Unchanged) => {}
+            Ok(migrate::KeyMove::Rewritten { moved, dropped, .. }) => {
+                if !moved.is_empty() {
+                    crate::log!(
+                        "[ini] {} moved from [Dispatch] to [Harvest], values kept",
+                        moved.join(" and ")
+                    );
+                }
+                if !dropped.is_empty() {
+                    crate::log!(
+                        "[ini] {} removed from [Dispatch]: [Harvest] already had them, and its values stand",
+                        dropped.join(" and ")
+                    );
+                }
+            }
+            Err(e) => crate::log!(
+                "[ini] WARN could not move Pouches/Breakables from [Dispatch] to [Harvest] in {}: {e}; \
+                 they read as 1 until they are set under [Harvest]",
                 crate::INI_NAME
             ),
         }

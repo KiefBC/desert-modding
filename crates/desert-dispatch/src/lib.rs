@@ -9,7 +9,11 @@
 //! `Rewards` writes both halves of a min/max pair. Since 0.4.0 two more,
 //! `Pouches` and `Breakables`, write the same min/max pair on a fixed list of
 //! other `dropsetinfo` rows (`desert_core::dropset_table`), through the same
-//! `Rewards` write path and the same `Ctx::put` call sites. The diagnostic
+//! `Rewards` write path and the same `Ctx::put` call sites. Since 0.5.0
+//! (tooling 0.16.0) those two are `[Harvest]` keys: harvest parses them with
+//! its own `DryRun` and publishes them through `desert_core::drop_levers`, and
+//! this crate only reads that mailbox (`config::drop_levers_from`), still
+//! gated on its own `Enabled`. The diagnostic
 //! half is unchanged and is still read-only; the write half is [`apply`], and
 //! this paragraph is the whole of what it may claim.
 //!

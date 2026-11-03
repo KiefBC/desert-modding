@@ -8,7 +8,7 @@ This page is the player side. The developer checklist is in [Build, test and jus
 
 The plugin carries no hard-coded game address. Everything is resolved by content at every launch:
 
-- auto-loot finds its functions by nine byte signatures and the actor manager by its RTTI vtable;
+- auto-loot finds its functions by ten byte signatures and the actor manager by its RTTI vtable;
 - the yield multipliers find the record loader through the accessor that names the `gimmickinfo` table, refuses to patch unless the twelve bytes it would overwrite are exactly the expected prologue, and finds the yield numbers by walking each record's output lists;
 - the `Bugs` and `Fish` patch scans for a 21-byte instruction sequence and refuses unless the thirteen bytes it would overwrite are the two instructions it expects;
 - the Overlay looks up no game address at all.

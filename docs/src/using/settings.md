@@ -27,6 +27,8 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `GatherBodies` | 0 | 0/1 | Harvest | search dead hostile people and monsters (grey map marker) within `GatherRange`; skips a body with an owner or quest trigger. Ground drops stay under `GatherItems`/`GatherGear` |
 | `GatherFriendlyBodies` | 0 | 0/1 | Harvest | also search bodies of people who were not enemies (white marker; companions and playable characters are never searched); needs `GatherBodies=1` |
 | `Hunting` | 1 | 1..100 | Harvest | multiplier on what a looted carcass or searched body gives, however it is looted |
+| `LootLogMinTier` | 0 | 0..6 | Harvest | the side item log's "Item xN" lines: 0 shows every line (vanilla), 1..5 only items of at least that tier, 6 none. Only the line is hidden; the item still reaches the bag and quests. Live |
+| `LootLogMoney` | 1 | 0/1 | Harvest | with `LootLogMinTier` above 0, coins and camp funds still get their line |
 | `ScanRange` | 40 | 1..200 | Harvest | survey radius in game metres |
 | `GatherRange` | 6 | 1..50 | Harvest | the gather key and auto mode pick the nearest node within this many metres |
 | `GatherInterval` | 500 | 100..60000 | Harvest | milliseconds between two automatic sends |
@@ -40,6 +42,8 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `Bugs` | 1 | 1..100 | Harvest | insects caught by hand (a code patch on the catch count) |
 | `Fish` | 1 | 1..100 | Harvest | fish caught by hand (the same patch) |
 | `Critters` | 1 | 1..100 | Harvest | critters caught by hand (the same patch); ducks and raccoons are never multiplied |
+| `Pouches` | 1 | 1..100 | Harvest | what an item pays when opened: silver and copper pouches, Box of Fortune, seed packs, recipe and gear boxes. Written by the Dispatch subsystem, so it needs `[Dispatch] Enabled=1`. Was a `[Dispatch]` key in 0.15; moved here at the first 0.16 launch |
+| `Breakables` | 1 | 1..100 | Harvest | the loot of barrels, crates, pots and sacks you smash; same hand-off and same `[Dispatch] Enabled=1` need as `Pouches` |
 | `KeyToggle` | F10 | key name | Settings | toggle automatic gathering |
 | `KeyScan` | F11 | key name | Settings | write the survey to the log |
 | `KeyGather` | F9 | key name | Settings | gather the nearest node once |
@@ -48,7 +52,7 @@ Auto-loot and the yield multipliers in one section. It used to be two, `[Looter]
 | `LogReceived` | 0 | 0/1 | Debug | log every item the game hands the player as `[recv] item <key> x<count>` |
 | `SurveyLines` | 200 | 16..2000 | Debug | actor lines one F11 survey prints |
 | `BagTab` | 1 | -1..15 | Debug | which inventory tab counts as the bag; -1 = the tab with the largest capacity |
-| `DryRun` | 0 | 0/1 | Debug | yield multipliers only: log what would change and write nothing. Auto-loot still runs |
+| `DryRun` | 0 | 0/1 | Debug | yield multipliers only (`Pouches` and `Breakables` included): log what would change and write nothing. Auto-loot still runs |
 | `DumpTable` | 0 | 0/1 | Debug | write the vanilla `gimmickinfo` table to `DesertTooling.gimmickinfo.bin`; needs `DryRun=1` |
 
 ## `[Overlay]`
@@ -81,11 +85,11 @@ The menu notes on this section: `Theme` changes live; everything else here is re
 | `LogRecords` | 1 | 0/1 | Debug | one log line per dispatch mission |
 | `DumpRewards` | 1 | 0/1 | Debug | dump the reward rows the missions name |
 | `MaxLines` | 4000 | 0..20000 | Debug | ceiling on the lines one pass writes; summaries are never capped |
-| `DryRun` | 0 | 0/1 | Debug | log every change and write nothing |
+| `DryRun` | 0 | 0/1 | Debug | log every mission and reward change and write nothing (`[Harvest] Pouches`/`Breakables` follow `[Harvest] DryRun`) |
 | `Debug` | 0 | 0/1 | Debug | also log empty nodes, every change, and every skip reason |
 | `DumpRaw` | 0 | 0/1 | Debug | raw hex of every mission and reward row |
 | `DumpBuffs` | 0 | 0/1 | Debug | read-only census of the buff and stat tables, tagged `[buffs]` |
 
 ## Multipliers at 1 are vanilla
 
-Every multiplier ships at 1, which is vanilla: the seven yield multipliers and `Hunting` under `[Harvest]`, and `Speed` and `Rewards` under `[Dispatch]`. Deleting `DesertTooling.ini` makes the plugin write a fresh one at every default on the next launch, which turns all of them off.
+Every multiplier ships at 1, which is vanilla: the yield multipliers, `Pouches`, `Breakables` and `Hunting` under `[Harvest]`, and `Speed` and `Rewards` under `[Dispatch]`. Deleting `DesertTooling.ini` makes the plugin write a fresh one at every default on the next launch, which turns all of them off.

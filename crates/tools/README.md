@@ -244,7 +244,7 @@ required file not found". Job outputs survive a re-run of `nexus` alone.
 
 ### `sigscan` + `reference-signatures.txt` (`just sigscan`)
 Scans the installed `CrimsonDesert.exe` for every byte signature the
-plugins resolve at load (twelve on build 26361232: the looter's nine, the
+plugins resolve at load (thirteen on build 26361232: the looter's ten, the
 catch site and the two `[banking]` gate reads), plus a handful of class and event names. Each
 signature must hit **exactly once**; more than one hit means the pattern is no
 longer unique and the plugin could bind to the wrong function. Run it after a

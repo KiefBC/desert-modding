@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.15.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.16.0**, for Crimson Desert Enhanced, Steam build **26361232**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -134,7 +134,7 @@ subsystem re-reads its own section of it once a second, so:
 Presets sit at the top of the Harvest tab: `Everything`, `Plants only`, `Wood only`,
 `Rock and ore only`. One click sets the four gather families and ground items
 and leaves everything else alone. Below them come `Enabled` and `AutoGather`,
-what auto-loot takes, `Hunting`, the ranges and pacing, and then the yield
+what auto-loot takes, `Hunting`, the item-log filter, the ranges and pacing, and then the yield
 multipliers, `Foraging` to `Fish`.
 
 The sliders and number fields stop at the ranges the parsers accept, so the menu
@@ -399,6 +399,8 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `GatherBodies` | 0 | 1 = also search dead hostile people and monsters (bandits, criminals, monsters, bosses: grey map marker) within `GatherRange`, with the carcass event. A body with an owner or quest trigger is skipped. Items dropped on the ground are not part of this: they stay under `GatherItems`/`GatherGear`. 0 by default: opt in |
 | `GatherFriendlyBodies` | 0 | 1 = also search the bodies of people who were not enemies (citizens, traders, nobles, named NPCs, guards, mercenaries: white map marker). Companions and playable characters are never searched. Needs `GatherBodies=1`. 0 by default |
 | `Hunting` | 1 | 1..100, how much a looted carcass or searched body gives. Does **not** need `GatherCarcass` - it hooks the game's own grant, so it reaches a carcass whether the plugin skins it or you do. It scales the amounts the game rolled for that one corpse, so no table is edited and no other kind of loot changes. A code patch, so a game update breaks it first and the log says so. 1 by default: it changes how much you get, not how many trips you make |
+| `LootLogMinTier` | 0 | 0..6, which pickups get an "Item xN" line in the item log at the side of the screen. 0 = every line, as the game does; 1..5 = only items of at least that tier; 6 = none. Only the line is hidden: the item still goes into the bag and quests still count it. Takes effect at once. A code patch on the game's own line builder, so a game update can break it; the log says so and the item log stays vanilla |
+| `LootLogMoney` | 1 | with `LootLogMinTier` above 0, coins and camp funds still get their line |
 | `BagTab` | 1 | which inventory tab is the bag for the full check |
 | `StackLimit` | 999 | at a full bag, do not grow a stack past this |
 | `ScanRange` | 40 | radius of the F11 survey |
@@ -415,6 +417,8 @@ and `[Gatherer]` before; see [Upgrading](#upgrading-from-09-and-earlier)).
 | `Bugs` | 1 | multiplier for insects caught by hand, 1..100. A code patch on the catch count, not a table edit |
 | `Fish` | 1 | multiplier for fish caught by hand, 1..100. Same patch as `Bugs` |
 | `Critters` | 1 | multiplier for critters caught by hand (small lizards, small birds, rats, frogs, toads, salamanders), 1..100. Same patch as `Bugs`. Ducks and raccoons are never multiplied |
+| `Pouches` | 1 | multiply what an item pays when you open it, 1..100: the silver pouches, Box of Fortune, seed packs, recipe and gear boxes (88 drop-table rows no other source pays from). Not `Money` above, which is the coin piles in the world; the two do not stack. The first pouch of a kind opened in a session may pay vanilla while the game loads its row. Written by the Dispatch subsystem, so it needs `[Dispatch] Enabled=1`; `[Harvest] DryRun` covers it. A `[Dispatch]` key in 0.15, moved here automatically |
+| `Breakables` | 1 | multiply the loot of barrels, crates, pots and sacks you smash, 1..100 (15 drop-table rows no other source pays from, so a chest sharing a barrel's table stays vanilla). The first of a kind smashed in a session may pay vanilla. Needs `[Dispatch] Enabled=1`, like `Pouches` |
 
 For the multipliers, `1` means vanilla: that family's records are read and left
 untouched. A value outside 1..100, or one that is not a number, is refused with
@@ -430,8 +434,8 @@ it yourself - lower, crank, take - and the multiplier still applies to what
 you take. When the nearest thing is a well the F9 line says it was refused
 rather than pretending nothing was there.
 
-On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the ranges
-and pacing and the seven multipliers are on the Harvest tab; the four keys are on
+On the menu, `Enabled`, `AutoGather`, what auto-loot takes, `Hunting`, the item-log filter, the ranges
+and pacing and every multiplier are on the Harvest tab; the four keys are on
 Settings; `Debug`, `LogReceived`, `SurveyLines`, `BagTab`, `DryRun` and
 `DumpTable` are on Debug.
 
@@ -474,8 +478,6 @@ turning you away.
 | `NoSkillRequirement` | `0` | `1` = clear the skill a mission demands of an assigned worker, on the 147 missions that demand one. Checked when a mission starts |
 | `AnyOperatorCount` | `0` | `1` = let every mission start with a single worker. 693 of the game's 936 missions already ask for one, so this changes the other 243, the ones wanting 2, 3, 5, 8, 10 or another number. Checked when a mission starts |
 | `Rewards` | `1` | multiply how much of each item a mission pays, 1..100. Both ends of every reward range are scaled, so 2-3 becomes 6-9 at x3. Reaches rewards already waiting to be paid |
-| `Pouches` | `1` | multiply what an item pays when you open it, 1..100: the silver pouches, Box of Fortune, seed packs, recipe and gear boxes (88 drop-table rows no other source pays from). Not `[Harvest] Money`, which is the coin piles in the world; the two do not stack. The first pouch of a kind opened in a session may pay vanilla while the game loads its row |
-| `Breakables` | `1` | multiply the loot of barrels, crates, pots and sacks you smash, 1..100 (15 drop-table rows no other source pays from, so a chest sharing a barrel's table stays vanilla). The first of a kind smashed in a session may pay vanilla |
 | `LogRecords` | `1` | `1` = one line per mission in the log |
 | `MaxLines` | `4000` | ceiling on the lines one pass writes, 0..20000. The summaries are never capped, and hitting it never stops a change being made |
 | `DryRun` | `0` | `1` = log every change that would be made and write nothing |
@@ -486,8 +488,10 @@ turning you away.
 
 A change takes effect within about a second. Only the 219 reward rows dispatch
 missions actually name are touched, never the game's wider drop table, so this
-does not become a loot multiplier for chests and carcasses. `Pouches` and
-`Breakables` are the two exceptions, by design and by a fixed list: the rows
+does not become a loot multiplier for chests and carcasses. `[Harvest]`'s
+`Pouches` and `Breakables` are the two exceptions, written by this subsystem's
+pass (so they need `Enabled=1` here) but set, and dry-run, from `[Harvest]`,
+by design and by a fixed list: the rows
 `just gen-dropsets` picked out of the game's tables because nothing but a pouch
 or a breakable pays from them, each checked against that list (key, entry count
 and vanilla amounts) before a byte of it is written. No game code is
@@ -733,7 +737,7 @@ x<count>`), once before the pickup and once after.
 
 ## How it survives game updates
 
-Nothing here is a hard-coded address. The auto-loot half resolves nine byte
+Nothing here is a hard-coded address. The auto-loot half resolves ten byte
 signatures and finds the actor manager through its RTTI vtable. The yield half
 scans the
 running image for the accessor that names the `gimmickinfo` table and follows it
@@ -803,9 +807,11 @@ anything else, because the record-loader hook has to go in before the game
 reads the gather table and must not queue behind the auto-loot's signature scan
 or its 20-second boot grace.
 
-`desert-harvest` has two halves. The looter resolves nine byte signatures,
-hooks two functions with inline trampolines (a per-frame job, for a callback on
-a game thread, and the event queue's push, for observation), finds the actor
+`desert-harvest` has two halves. The looter resolves ten byte signatures,
+hooks four functions with inline trampolines (a per-frame job, for a callback on
+a game thread; the event queue's push, for observation; the loot grant, for
+`Hunting`; and the side item log's line builder, which the item-log filter can
+skip for a line it hides), finds the actor
 manager through its RTTI vtable, and builds pickups exactly as the game's own
 event builder builds them, queued from inside the hook.
 

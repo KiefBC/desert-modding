@@ -12,7 +12,8 @@ const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/Cri
 
 /// `desert_harvest::looter::game::SIGNATURES`, spelled out again because that
 /// module is Windows-only and these tests run natively, with the RVA each one
-/// hits on Steam build 26361232. All nine, `loot_grant` included. The patterns
+/// hits on Steam build 26361232. All ten, `loot_grant` and `item_log` included
+/// (`item_log` was added on 26361232 and has no older RVA). The patterns
 /// were re-derived on 26345091, whose RVAs were, in this order: 0x161AFD0,
 /// 0x29A8370, 0x3B539AF, 0x2D35585, 0x1937610, 0x29A97C3, 0x22D6A50, 0x22D6D70,
 /// 0x2E1F010. On 26356046 they were 0x161AFD0, 0x29A86A0, 0x3B53D6F,
@@ -28,6 +29,7 @@ const SIGNATURES: &[(&str, &str, usize)] = &[
     ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??", 0x22D6A00),
     ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9", 0x22D6D20),
     ("loot_grant", "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9", 0x2E1F2F0),
+    ("item_log", "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84", 0x116A5B0),
 ];
 
 /// The steal check `own_check_site`'s call lands on, and the context static
@@ -56,7 +58,7 @@ fn all_signatures_unique_and_actor_manager_vtable_found() {
     let file = std::fs::read(EXE).expect("game exe present");
     let h = pe::parse(&file).unwrap();
     let img = pe::file_to_image(&file).unwrap();
-    assert_eq!(SIGNATURES.len(), 9);
+    assert_eq!(SIGNATURES.len(), 10);
     for (name, text, want) in SIGNATURES {
         let p = Pattern::parse(text).unwrap();
         match p.find_unique(&img) {
@@ -93,11 +95,20 @@ fn all_signatures_unique_and_actor_manager_vtable_found() {
     assert_eq!(p.find_unique(&img), Found::Unique(CATCH_RVA));
     assert_eq!(&img[CATCH_RVA..CATCH_RVA + CATCH_STOLEN], &CATCH_BYTES[..]);
     println!("catch site             = +0x{CATCH_RVA:X}");
+
+    // The item-log gate replays the handler's first 15 bytes; they must be the
+    // ones `looter::itemlog::ITEM_LOG_PROLOGUE` checks (that module is
+    // Windows-only, so they are spelled again here).
+    let il = rva("item_log");
+    assert_eq!(
+        &img[il..il + 15],
+        &[0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20]
+    );
 }
 
-/// `game::resolve` scans for all nine in one walk of the image rather than one
+/// `game::resolve` scans for all ten in one walk of the image rather than one
 /// walk each (1.56 s to 0.22 s measured on build 25246367). One walk is only
-/// worth having if it answers what nine walks did, and a signature table is exactly
+/// worth having if it answers what ten walks did, and a signature table is exactly
 /// where that could quietly stop being true: the walk anchors each pattern on
 /// its rarest byte, so which byte carries which signature depends on the image.
 /// The test above is the oracle for the addresses; this is the oracle for the

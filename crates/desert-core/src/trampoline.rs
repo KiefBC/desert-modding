@@ -77,6 +77,71 @@ pub fn count_hook_stub(callback: usize, resume: usize, replay: &[u8]) -> Vec<u8>
     s
 }
 
+/// Build a stub for a prologue hook that may **skip** the original function.
+///
+/// The observing hook ([`stub_bytes`]) always runs the original; this one
+/// lets the callback veto it. The callback gets the hooked function's first
+/// four integer arguments, exactly as [`stub_bytes`] passes them, and returns
+/// a `u8`: `0` returns straight to the hooked function's caller without the
+/// original running at all, anything else replays the stolen prologue and
+/// jumps back into it, so the original runs as if nothing had happened.
+///
+/// ```text
+/// stub:  sub rsp,0x48                      ; entry rsp is 8 mod 16, so 0 mod 16 here
+///        mov [rsp+0x20..0x38],rcx/rdx/r8/r9
+///        mov rax,<callback>; call rax      ; extern "system" fn(usize x4) -> u8
+///        mov rcx/rdx/r8/r9,[rsp+0x20..0x38]
+///        add rsp,0x48                      ; rsp is the entry rsp again
+///        test al,al
+///        jnz replay
+///        ret                               ; al == 0: the original never runs
+/// replay: <stolen bytes>; mov rax,<target+n>; jmp rax
+/// ```
+///
+/// Three things make the `ret` legal, and the caller owns all of them. The
+/// function must be one whose caller expects nothing back (a `void`; `rax`
+/// is whatever the callback left in it), it must have no side effect a
+/// caller relies on, and it must not be reached by anything that expects the
+/// stolen bytes to have run (a `jmp` thunk is fine: its `ret` goes to the
+/// thunk's caller). For the item-log handler this was written for, the
+/// function's own early-out (`ItemKey == 0xFFFF`) already takes exactly this
+/// path - straight to its epilogue, nothing built - so skipping it hands the
+/// game a state it produces itself.
+///
+/// The replay runs at the entry `rsp`, so stolen instructions that spill to
+/// `[rsp+8]`/`[rsp+0x10]` or `push` land exactly where the original put them.
+/// The flags `add rsp` sets are overwritten by `test` before the branch reads
+/// them, which is why the test comes after the stack is restored rather than
+/// straight after the call.
+pub fn gate_hook_stub(target: usize, stolen: &[u8], callback: usize) -> Vec<u8> {
+    let mut s = Vec::with_capacity(GATE_PREFIX + stolen.len() + 12);
+    s.extend_from_slice(&[0x48, 0x83, 0xEC, 0x48]); // sub rsp,0x48
+    s.extend_from_slice(&[0x48, 0x89, 0x4C, 0x24, 0x20]); // mov [rsp+0x20],rcx
+    s.extend_from_slice(&[0x48, 0x89, 0x54, 0x24, 0x28]); // mov [rsp+0x28],rdx
+    s.extend_from_slice(&[0x4C, 0x89, 0x44, 0x24, 0x30]); // mov [rsp+0x30],r8
+    s.extend_from_slice(&[0x4C, 0x89, 0x4C, 0x24, 0x38]); // mov [rsp+0x38],r9
+    s.extend_from_slice(&[0x48, 0xB8]); // mov rax,imm64
+    s.extend_from_slice(&(callback as u64).to_le_bytes());
+    s.extend_from_slice(&[0xFF, 0xD0]); // call rax
+    s.extend_from_slice(&[0x48, 0x8B, 0x4C, 0x24, 0x20]); // mov rcx,[rsp+0x20]
+    s.extend_from_slice(&[0x48, 0x8B, 0x54, 0x24, 0x28]); // mov rdx,[rsp+0x28]
+    s.extend_from_slice(&[0x4C, 0x8B, 0x44, 0x24, 0x30]); // mov r8,[rsp+0x30]
+    s.extend_from_slice(&[0x4C, 0x8B, 0x4C, 0x24, 0x38]); // mov r9,[rsp+0x38]
+    s.extend_from_slice(&[0x48, 0x83, 0xC4, 0x48]); // add rsp,0x48
+    s.extend_from_slice(&[0x84, 0xC0]); // test al,al
+    s.extend_from_slice(&[0x75, 0x01]); // jnz +1 (over the ret)
+    s.push(0xC3); // ret
+    debug_assert_eq!(s.len(), GATE_PREFIX);
+    s.extend_from_slice(stolen);
+    s.extend_from_slice(&[0x48, 0xB8]); // mov rax,imm64
+    s.extend_from_slice(&((target + stolen.len()) as u64).to_le_bytes());
+    s.extend_from_slice(&[0xFF, 0xE0]); // jmp rax
+    s
+}
+
+/// Length of [`gate_hook_stub`]'s fixed head: everything before the replay.
+pub const GATE_PREFIX: usize = 0x41;
+
 /// The bytes written over the start of the original function.
 pub fn patch_bytes(stub: usize, stolen: usize) -> Vec<u8> {
     let mut p = Vec::with_capacity(stolen);
@@ -146,6 +211,55 @@ mod tests {
         // all that moves rsp: 16-aligned in, 16-aligned at the call, which is
         // what puts the callee's rsp at 8 mod 16 the way the ABI wants.
         assert_eq!(0x20 % 16, 0);
+    }
+
+    /// Every byte of the gate stub. The fixed head was assembled and read
+    /// back with `objdump -D -b binary -m i386:x86-64 -M intel`; the
+    /// mnemonics in the messages are what it printed.
+    #[test]
+    fn gate_hook_stub_matches_the_disassembly() {
+        // The item-log handler's first 15 bytes on build 26361232.
+        let stolen = [
+            0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x56, 0x57, 0x41, 0x54,
+        ];
+        let s = gate_hook_stub(0x1_4116_C7A0, &stolen, 0xDEAD_BEEF);
+        assert_eq!(s.len(), GATE_PREFIX + stolen.len() + 12);
+
+        assert_eq!(&s[0x00..0x04], &[0x48, 0x83, 0xEC, 0x48], "sub rsp,0x48");
+        assert_eq!(&s[0x04..0x09], &[0x48, 0x89, 0x4C, 0x24, 0x20], "mov [rsp+0x20],rcx");
+        assert_eq!(&s[0x09..0x0E], &[0x48, 0x89, 0x54, 0x24, 0x28], "mov [rsp+0x28],rdx");
+        assert_eq!(&s[0x0E..0x13], &[0x4C, 0x89, 0x44, 0x24, 0x30], "mov [rsp+0x30],r8");
+        assert_eq!(&s[0x13..0x18], &[0x4C, 0x89, 0x4C, 0x24, 0x38], "mov [rsp+0x38],r9");
+        assert_eq!(&s[0x18..0x1A], &[0x48, 0xB8], "mov rax,imm64");
+        assert_eq!(u64::from_le_bytes(s[0x1A..0x22].try_into().unwrap()), 0xDEAD_BEEF);
+        assert_eq!(&s[0x22..0x24], &[0xFF, 0xD0], "call rax");
+        assert_eq!(&s[0x24..0x29], &[0x48, 0x8B, 0x4C, 0x24, 0x20], "mov rcx,[rsp+0x20]");
+        assert_eq!(&s[0x29..0x2E], &[0x48, 0x8B, 0x54, 0x24, 0x28], "mov rdx,[rsp+0x28]");
+        assert_eq!(&s[0x2E..0x33], &[0x4C, 0x8B, 0x44, 0x24, 0x30], "mov r8,[rsp+0x30]");
+        assert_eq!(&s[0x33..0x38], &[0x4C, 0x8B, 0x4C, 0x24, 0x38], "mov r9,[rsp+0x38]");
+        assert_eq!(&s[0x38..0x3C], &[0x48, 0x83, 0xC4, 0x48], "add rsp,0x48");
+        assert_eq!(&s[0x3C..0x3E], &[0x84, 0xC0], "test al,al");
+        assert_eq!(&s[0x3E..0x40], &[0x75, 0x01], "jnz over the ret");
+        assert_eq!(s[0x40], 0xC3, "ret");
+        assert_eq!(&s[0x41..0x41 + 15], &stolen, "the replayed prologue");
+        assert_eq!(&s[0x50..0x52], &[0x48, 0xB8], "mov rax,imm64");
+        assert_eq!(u64::from_le_bytes(s[0x52..0x5A].try_into().unwrap()), 0x1_4116_C7A0 + 15);
+        assert_eq!(&s[0x5A..0x5C], &[0xFF, 0xE0], "jmp rax");
+
+        // The jnz lands on the first replayed byte: rel8 is from the end of
+        // the jnz (0x40), plus 1 skips the ret.
+        const { assert!(0x40 + 1 == GATE_PREFIX) };
+        // Entry rsp is 8 mod 16 (the caller's return address); the 0x48 in
+        // the first instruction makes it 0 mod 16 at the call, and the four
+        // saves sit above the 0x20 of shadow space the callee owns.
+        assert_eq!((8 + usize::from(s[3])) % 16, 0);
+        // The save/restore head is byte-identical to the observing stub's, so
+        // the two stubs cannot disagree about where an argument is kept.
+        let obs = stub_bytes(0x1_4116_C7A0, &stolen, 0xDEAD_BEEF);
+        assert_eq!(&s[..0x3C], &obs[..0x3C]);
+        // It fits in a stub slot (`hook::STUB_SIZE` is 0xA0) at the most the
+        // trampoline will ever steal.
+        const { assert!(GATE_PREFIX + MAX_STOLEN + 12 <= 0xA0) };
     }
 
     #[test]

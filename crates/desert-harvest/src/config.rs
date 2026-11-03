@@ -51,7 +51,7 @@ impl Config {
     }
 }
 
-/// `Enabled=1 Debug=0 ... DryRun=0 DumpTable=0 Foraging=1 ... Critters=1`: the
+/// `Enabled=1 Debug=0 ... DryRun=0 DumpTable=0 Foraging=1 ... Breakables=1`: the
 /// `[ini]` line the harvest thread logs at startup and on every reload, the
 /// auto-loot half's keys first and then the yield half's.
 pub fn ini_summary(cfg: &Config) -> String {
@@ -149,9 +149,12 @@ pub(crate) fn on(tab: Tab, mut field: Field) -> Field {
 /// three tabs come out as:
 ///
 /// - Harvest: `Enabled`, `AutoGather`, four auto-loot rows ("Gather nodes:"
-///   with unarmed, "Loose items:", "Creatures:", "Bodies:"), `Hunting`, `ScanRange`,
+///   with unarmed, "Loose items:", "Creatures:", "Bodies:"), `Hunting`, "Item log:" `LootLogMinTier` |
+///   `LootLogMoney`, `ScanRange`,
 ///   `GatherRange`, `GatherInterval`, `NodeCooldown`, `StackLimit`, then
-///   "Yield multipliers:" `Foraging` .. `Critters`.
+///   "Yield multipliers:" `Foraging` .. `Critters`, then "Pouches and
+///   breakables:" `Pouches`, `Breakables` (parsed here, written by
+///   `desert-dispatch`).
 /// - Settings: the four hotkeys.
 /// - Debug: `Debug` | `LogReceived`, `SurveyLines`, `BagTab`,
 ///   `DryRun` | `DumpTable`.
@@ -422,6 +425,8 @@ Scale=1.5
                 "|GatherBodies",
                 "|GatherFriendlyBodies",
                 "Hunting",
+                "LootLogMinTier",
+                "LootLogMoney",
                 "ScanRange",
                 "GatherRange",
                 "GatherInterval",
@@ -435,6 +440,8 @@ Scale=1.5
                 "Bugs",
                 "Fish",
                 "Critters",
+                "Pouches",
+                "Breakables",
             ])
         );
         assert_eq!(tab(&s, Tab::Settings), expect(&["KeyToggle", "KeyScan", "KeyGather", "KeyRecord"]));
@@ -452,7 +459,8 @@ Scale=1.5
         assert_eq!(heading("GatherBugs").as_deref(), Some("Creatures:"));
         assert_eq!(heading("GatherCarcass").as_deref(), Some("Bodies:"));
         assert_eq!(heading("Foraging").as_deref(), Some("Yield multipliers:"));
-        for key in ["Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Debug", "DryRun", "DumpTable"] {
+        assert_eq!(heading("Pouches").as_deref(), Some("Pouches and breakables:"));
+        for key in ["Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Breakables", "Debug", "DryRun", "DumpTable"] {
             assert_eq!(heading(key), None, "{key}");
         }
 
@@ -504,7 +512,7 @@ Scale=1.5
             }
             assert_eq!(field.tab, Tab::Section, "{} belongs on the Harvest tab", field.key);
         }
-        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters"] {
+        for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Pouches", "Breakables"] {
             assert_eq!(at(key), Some(Tab::Section), "{key}");
         }
     }
@@ -518,7 +526,7 @@ Scale=1.5
         for key in ["Enabled=", "Debug=", "DryRun=", "DumpTable="] {
             assert_eq!(line.matches(&format!(" {key}")).count() + usize::from(line.starts_with(key)), 1, "{key} in {line}");
         }
-        assert!(line.ends_with("Bugs=1 Fish=1 Critters=1"), "{line}");
+        assert!(line.ends_with("Bugs=1 Fish=1 Critters=1 Pouches=1 Breakables=1"), "{line}");
     }
 
     /// Prints this section as it is seeded into `DesertTooling.ini`.
@@ -853,6 +861,45 @@ GatherBodies=off
             assert!(!help.contains("Needs GatherCarcass"), "{help}");
         }
 
+        /// The item-log filter's two keys: vanilla by default (every line,
+        /// money on), both ends of the tier range accepted, anything past
+        /// them warned about and refused, and the menu offering exactly the
+        /// range `parse` enforces. No preset may set either.
+        #[test]
+        fn loot_log_keys_default_to_vanilla_and_hold_their_range() {
+            let d = Config::default();
+            assert_eq!((d.loot_log_min_tier, d.loot_log_money), (0, true));
+            let (c, w) = parse(&sectioned("LootLogMinTier=3\nLootLogMoney=0\n"));
+            assert!(w.is_empty(), "{w:?}");
+            assert_eq!((c.loot_log_min_tier, c.loot_log_money), (3, false));
+            for n in [LOOT_LOG_TIER_RANGE.0, LOOT_LOG_TIER_RANGE.1] {
+                let (c, w) = parse(&sectioned(&format!("LootLogMinTier={n}\n")));
+                assert!(w.is_empty(), "{w:?}");
+                assert_eq!(u32::from(c.loot_log_min_tier), n);
+            }
+            for bad in ["7", "-1", "256", "x", ""] {
+                let (c, w) = parse(&sectioned(&format!("LootLogMinTier={bad}\n")));
+                assert_eq!(c.loot_log_min_tier, 0, "{bad:?} must keep the default");
+                assert_eq!(w.len(), 1, "{bad:?} must warn: {w:?}");
+            }
+            let section = schema();
+            match section.field("LootLogMinTier").map(|f| f.kind.clone()) {
+                Some(Kind::Int { min, max, default, slider, .. }) => {
+                    assert_eq!((min, max), (i64::from(LOOT_LOG_TIER_RANGE.0), i64::from(LOOT_LOG_TIER_RANGE.1)));
+                    assert_eq!(default, 0);
+                    assert!(slider);
+                }
+                other => panic!("LootLogMinTier must be an Int, not {other:?}"),
+            }
+            assert!(matches!(
+                section.field("LootLogMoney").map(|f| f.kind.clone()),
+                Some(Kind::Bool { default: true })
+            ));
+            for p in &section.presets {
+                assert!(!p.set.iter().any(|(k, _)| k.starts_with("LootLog")), "{}", p.label);
+            }
+        }
+
         #[test]
         fn every_preset_names_a_field_and_sets_a_value_it_accepts() {
             let s = schema();
@@ -1012,7 +1059,8 @@ GatherBodies=off
         fn parses_every_key() {
             let (c, w) = parse(
                 "; comment\n[Harvest]\nEnabled=1\nDryRun=yes\nDebug=on\nDumpTable=true\n\
-                 Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\nCritters=5\n",
+                 Foraging=10\nLogging=2\nMining=5\nOre=100\nMoney=4\nBugs=3\nFish=7\nCritters=5\n\
+                 Pouches=6\nBreakables=9\n",
             );
             assert!(c.enabled);
             assert!(c.dry_run);
@@ -1026,6 +1074,7 @@ GatherBodies=off
             assert_eq!(c.catch_multiplier(CatchClass::Bug), 3);
             assert_eq!(c.catch_multiplier(CatchClass::Fish), 7);
             assert_eq!(c.catch_multiplier(CatchClass::Critter), 5);
+            assert_eq!((c.pouches, c.breakables), (6, 9));
             assert!(!c.all_vanilla());
             assert!(w.is_empty(), "{w:?}");
         }
@@ -1048,6 +1097,25 @@ GatherBodies=off
             let (c, w) = parse("[Harvest]\nBugs=10\nFish=10\nCritters=10\n");
             assert!(w.is_empty(), "{w:?}");
             assert!(c.all_vanilla(), "Bugs/Fish/Critters never touch a gimmick record");
+        }
+
+        /// `Pouches` and `Breakables` parse like every other multiplier here
+        /// (and are handed to dispatch, which is tested with the mailbox).
+        #[test]
+        fn pouches_and_breakables_parse_like_the_family_keys() {
+            let d = Config::default();
+            let (c, w) = parse("[Harvest]\npOuChEs=2\nBREAKABLES=100\n");
+            assert!(w.is_empty(), "{w:?}");
+            assert_eq!((c.pouches, c.breakables), (2, MULT_MAX));
+            assert!(c.all_vanilla(), "they never touch a gimmick record either");
+            let (c, w) = parse("[Harvest]\nPouches=0\nBreakables=101\n");
+            assert_eq!(w.len(), 2, "{w:?}");
+            assert_eq!((c.pouches, c.breakables), (d.pouches, d.breakables));
+            // Under another header they are not ours: [Dispatch] is where they
+            // used to be, and `crate::migrate::move_drop_keys` moves them.
+            let (c, w) = parse("[Dispatch]\nPouches=5\n[Harvest]\n");
+            assert!(w.is_empty(), "{w:?}");
+            assert_eq!(c.pouches, 1);
         }
 
         /// The water well is a `Foraging` record, so the `Foraging` key is what
@@ -1113,7 +1181,7 @@ GatherBodies=off
         #[test]
         fn schema_ranges_are_the_ones_parse_enforces() {
             let s = schema();
-            for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters"] {
+            for key in ["Foraging", "Logging", "Mining", "Ore", "Money", "Bugs", "Fish", "Critters", "Pouches", "Breakables"] {
                 match s.field(key).map(|f| f.kind.clone()) {
                     Some(Kind::Int { min, max, default, slider, .. }) => {
                         assert_eq!(min, i64::from(MULT_MIN), "{key}");

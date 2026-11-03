@@ -23,6 +23,15 @@
 //! (`desert_core::ini::write_atomically`, the same swap the overlay uses).
 //! `desert-tooling` runs it once per launch, right after seeding the ini and
 //! before any subsystem thread exists, so nothing reads the file mid-rewrite.
+//!
+//! The second move here is smaller: 0.15 put `Pouches` and `Breakables` under
+//! `[Dispatch]`, and since 0.16 they are `[Harvest]` keys.
+//! [`move_drop_keys`] takes each one (with the comment run directly above it)
+//! out of `[Dispatch]` and puts it under `[Harvest]`, after the section's last
+//! key, unless `[Harvest]` already has that key, in which case the
+//! `[Dispatch]` copy is only dropped, since `[Harvest]` is the one that is read.
+//! [`move_drop_keys_file`] is its read and atomic write, run by
+//! `desert-tooling` straight after [`migrate_file`].
 
 use std::io;
 use std::path::Path;
@@ -383,6 +392,188 @@ pub fn migrate_file(path: &Path) -> io::Result<Migration> {
     Ok(m)
 }
 
+// ---------------------------------------------------------------------------
+// 0.16: Pouches and Breakables, [Dispatch] -> [Harvest]
+// ---------------------------------------------------------------------------
+
+/// The section 0.15 kept `Pouches` and `Breakables` under.
+const OLD_DROPS_SECTION: &str = "Dispatch";
+
+/// The keys that moved, in the order they are put back.
+const MOVED_KEYS: [&str; 2] = ["Pouches", "Breakables"];
+
+/// The comment put above the first key moved into `[Harvest]`.
+pub const MOVED_NOTE: &str =
+    "; Pouches and Breakables moved here from [Dispatch] in 0.16.0. They need [Dispatch] Enabled=1.";
+
+/// What [`move_drop_keys`] made of a file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum KeyMove {
+    /// No `Pouches` or `Breakables` under `[Dispatch]`.
+    Unchanged,
+    /// The new file text. `moved` are the keys now under `[Harvest]` with the
+    /// value `[Dispatch]` had; `dropped` are the ones `[Harvest]` already had,
+    /// whose `[Dispatch]` copy was removed and whose `[Harvest]` value stands.
+    Rewritten { text: String, moved: Vec<String>, dropped: Vec<String> },
+}
+
+/// Index of `key` in [`MOVED_KEYS`], case-insensitively.
+fn moved_slot(key: &str) -> Option<usize> {
+    MOVED_KEYS.iter().position(|k| k.eq_ignore_ascii_case(key))
+}
+
+/// Whether a comment run is the 0.15 template's banner over the two keys
+/// (it names both): it describes keys that are gone, so it goes with them.
+fn is_drops_banner(run: &[Row]) -> bool {
+    let text: String = run.iter().map(|r| r.body.to_ascii_lowercase()).collect::<Vec<_>>().join("\n");
+    text.contains("pouches") && text.contains("breakables")
+}
+
+/// Take every `Pouches` / `Breakables` row out of `body`, each with the comment
+/// run directly above it, into `taken` by key; then drop a comment run left
+/// behind that names both keys (the template's banner over them).
+fn take_drop_rows(body: Vec<Row>, taken: &mut [Vec<Row>; 2]) -> Vec<Row> {
+    let mut out: Vec<Row> = Vec::with_capacity(body.len());
+    let mut any = false;
+    for row in body {
+        let Some(slot) = pair_key(&row.body).and_then(moved_slot) else {
+            out.push(row);
+            continue;
+        };
+        any = true;
+        let keep = out.iter().rposition(|r| !is_comment(&r.body)).map_or(0, |i| i + 1);
+        let mut run = out.split_off(keep);
+        run.push(row);
+        if let Some(dst) = taken.get_mut(slot) {
+            dst.extend(run);
+        }
+    }
+    if !any {
+        return out;
+    }
+    // Comment runs bounded by anything that is not a comment.
+    let mut kept: Vec<Row> = Vec::with_capacity(out.len());
+    let mut run: Vec<Row> = Vec::new();
+    for row in out {
+        if is_comment(&row.body) {
+            run.push(row);
+            continue;
+        }
+        if !is_drops_banner(&run) {
+            kept.append(&mut run);
+        }
+        run.clear();
+        kept.push(row);
+    }
+    if !is_drops_banner(&run) {
+        kept.append(&mut run);
+    }
+    collapse_blank_runs(kept)
+}
+
+/// Move 0.15's `[Dispatch] Pouches` / `Breakables` under `[Harvest]`. Pure; see
+/// the module docs for the rules. Everything else in the file is untouched.
+pub fn move_drop_keys(text: &str) -> KeyMove {
+    let (preamble, mut blocks) = blocks(text);
+    let mut taken: [Vec<Row>; 2] = [Vec::new(), Vec::new()];
+    for b in blocks.iter_mut().filter(|b| b.name.eq_ignore_ascii_case(OLD_DROPS_SECTION)) {
+        let body = std::mem::take(&mut b.body);
+        b.body = take_drop_rows(body, &mut taken);
+    }
+    if taken.iter().all(Vec::is_empty) {
+        return KeyMove::Unchanged;
+    }
+
+    let newline: &'static str = if text.contains("\r\n") { "\r\n" } else { "\n" };
+    let in_harvest = |key: &str| {
+        ini::lines_in_section(text, INI_SECTION)
+            .any(|l| matches!(l, Line::Pair(k, _) if k.eq_ignore_ascii_case(key)))
+    };
+    let mut moved: Vec<String> = Vec::new();
+    let mut dropped: Vec<String> = Vec::new();
+    let mut insert: Vec<Row> = Vec::new();
+    for (key, rows) in MOVED_KEYS.iter().zip(taken) {
+        if rows.is_empty() {
+            continue;
+        }
+        if in_harvest(key) {
+            dropped.push((*key).to_string());
+            continue;
+        }
+        if moved.is_empty() {
+            insert.push(Row { body: String::new(), eol: newline });
+            insert.push(Row { body: MOVED_NOTE.to_string(), eol: newline });
+        }
+        moved.push((*key).to_string());
+        insert.push(Row { body: String::new(), eol: newline });
+        insert.extend(rows.into_iter().map(|r| Row { eol: if r.eol.is_empty() { newline } else { r.eol }, ..r }));
+    }
+
+    if !insert.is_empty() {
+        let last_harvest = blocks.iter().rposition(|b| b.name.eq_ignore_ascii_case(INI_SECTION));
+        match last_harvest.and_then(|i| blocks.get_mut(i)) {
+            Some(b) => {
+                // After the section's last key, so the moved pair lands beside
+                // the other multipliers rather than after a closing banner.
+                let at = b.body.iter().rposition(|r| pair_key(&r.body).is_some()).map_or(0, |i| i + 1);
+                if let Some(prev) = at.checked_sub(1).and_then(|i| b.body.get_mut(i)) {
+                    if prev.eol.is_empty() {
+                        prev.eol = newline;
+                    }
+                }
+                let tail = b.body.split_off(at);
+                b.body.extend(insert);
+                b.body.extend(tail);
+                b.body = collapse_blank_runs(std::mem::take(&mut b.body));
+            }
+            None => {
+                // No [Harvest] at all: a new one at the end of the file.
+                let mut body = insert;
+                if let Some(first) = body.first() {
+                    if is_blank(&first.body) {
+                        body.remove(0);
+                    }
+                }
+                blocks.push(Block {
+                    above: vec![Row { body: String::new(), eol: newline }],
+                    header: Row { body: format!("[{INI_SECTION}]"), eol: newline },
+                    name: INI_SECTION.to_string(),
+                    body,
+                });
+            }
+        }
+    }
+
+    let mut out: Vec<Row> = preamble;
+    for b in blocks {
+        out.extend(b.above);
+        out.push(b.header);
+        out.extend(b.body);
+    }
+    let last = out.len().saturating_sub(1);
+    let mut text_out = String::with_capacity(text.len() + 256);
+    for (i, row) in out.iter().enumerate() {
+        text_out.push_str(&row.body);
+        text_out.push_str(if row.eol.is_empty() && i != last { newline } else { row.eol });
+    }
+    KeyMove::Rewritten { text: text_out, moved, dropped }
+}
+
+/// Read `path`, [`move_drop_keys`], and on [`KeyMove::Rewritten`] write the
+/// result back atomically. A missing file is [`KeyMove::Unchanged`].
+pub fn move_drop_keys_file(path: &Path) -> io::Result<KeyMove> {
+    let text = match std::fs::read_to_string(path) {
+        Ok(t) => t,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(KeyMove::Unchanged),
+        Err(e) => return Err(e),
+    };
+    let m = move_drop_keys(&text);
+    if let KeyMove::Rewritten { text: new, .. } = &m {
+        ini::write_atomically(path, new)?;
+    }
+    Ok(m)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -418,7 +609,16 @@ mod tests {
         // Every key of both old sections is under [Harvest], once. Keys added
         // after 0.9.0 were never in that file, and the migration does not
         // invent them: they read as their defaults, which `cfg` above proves.
-        const ADDED_SINCE_0_9_0: &[&str] = &["GatherCritters", "Critters", "GatherBodies", "GatherFriendlyBodies"];
+        const ADDED_SINCE_0_9_0: &[&str] = &[
+            "GatherCritters",
+            "Critters",
+            "GatherBodies",
+            "GatherFriendlyBodies",
+            "LootLogMinTier",
+            "LootLogMoney",
+            "Pouches",
+            "Breakables",
+        ];
         for field in config::schema().fields {
             let n = ini::lines_in_section(&out, "Harvest")
                 .filter(|l| matches!(l, Line::Pair(k, _) if k.eq_ignore_ascii_case(&field.key)))
@@ -645,6 +845,147 @@ mod tests {
         assert!(out.ends_with("[Overlay]\nTheme=x"), "{out:?}");
         let out = rewritten("[Overlay]\nTheme=x\n[Looter]\nGatherOre=0");
         assert!(out.ends_with("GatherOre=0"), "{out:?}");
+    }
+
+    // -------------------------------------------------------------------
+    // 0.16: Pouches and Breakables, [Dispatch] -> [Harvest]
+    // -------------------------------------------------------------------
+
+    /// The `DesertTooling.ini` 0.15.0 shipped, byte for byte: `Pouches` and
+    /// `Breakables` under `[Dispatch]`.
+    const V0_15_0: &str = include_str!("../tests/fixtures/0.15.0.ini");
+
+    fn moved(text: &str) -> (String, Vec<String>, Vec<String>) {
+        match move_drop_keys(text) {
+            KeyMove::Rewritten { text, moved, dropped } => (text, moved, dropped),
+            KeyMove::Unchanged => panic!("expected a rewrite of {text:?}"),
+        }
+    }
+
+    fn section_has(text: &str, section: &str, key: &str) -> usize {
+        ini::lines_in_section(text, section)
+            .filter(|l| matches!(l, Line::Pair(k, _) if k.eq_ignore_ascii_case(key)))
+            .count()
+    }
+
+    /// Only `[Dispatch]` has them: both move, values and comments with them,
+    /// and land after `Critters`, the last key of `[Harvest]`.
+    #[test]
+    fn the_0_15_template_moves_both_keys_into_harvest() {
+        let input = V0_15_0.replace("\nPouches=1\n", "\nPouches=4\n").replace("\nBreakables=1\n", "\nBreakables=6\n");
+        let (out, mv, dr) = moved(&input);
+        assert_eq!(mv, ["Pouches", "Breakables"]);
+        assert!(dr.is_empty());
+        assert_eq!(headers(&out), ["Harvest", "Overlay", "Dispatch"]);
+        for key in MOVED_KEYS {
+            assert_eq!(section_has(&out, "Harvest", key), 1, "{key}");
+            assert_eq!(section_has(&out, "Dispatch", key), 0, "{key}");
+        }
+        let (cfg, w) = config::parse(&out);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((cfg.gatherer.pouches, cfg.gatherer.breakables), (4, 6));
+        assert_eq!(cfg, config::Config { gatherer: crate::gatherer::config::Config { pouches: 4, breakables: 6, ..Default::default() }, ..Default::default() });
+        // Placed after Critters, the note first, each key's own comment with it.
+        let crit = out.find("\nCritters=1\n").unwrap_or(usize::MAX);
+        let note = out.find(MOVED_NOTE).unwrap_or(0);
+        let p = out.find("\nPouches=4\n").unwrap_or(0);
+        let b = out.find("\nBreakables=6\n").unwrap_or(0);
+        assert!(crit < note && note < p && p < b && b < out.find("\n[Overlay]\n").unwrap_or(0), "{out}");
+        assert!(out.contains("; This is NOT [Harvest] Money"), "Pouches' comment travelled");
+        // The banner over the two keys is gone from [Dispatch], and nothing
+        // else of it changed shape.
+        assert!(!out.contains("; Loot: pouches and breakables"), "{out}");
+        assert!(out.contains("Rewards=1\n"), "{out}");
+        assert!(!out.contains("\n\n\n"), "no doubled blank lines");
+        // Done once; the second launch finds nothing to do.
+        assert_eq!(move_drop_keys(&out), KeyMove::Unchanged);
+    }
+
+    /// Both present: `[Harvest]` is what is read, so its value stands and the
+    /// `[Dispatch]` copy only goes.
+    #[test]
+    fn a_key_harvest_already_has_is_dropped_from_dispatch_not_copied() {
+        let text = "[Harvest]\nEnabled=1\nPouches=2\n\n[Dispatch]\nEnabled=1\n; mine\nPouches=9\nBreakables=5\n";
+        let (out, mv, dr) = moved(text);
+        assert_eq!(mv, ["Breakables"]);
+        assert_eq!(dr, ["Pouches"]);
+        let (cfg, w) = config::parse(&out);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!((cfg.gatherer.pouches, cfg.gatherer.breakables), (2, 5));
+        assert_eq!(section_has(&out, "Harvest", "Pouches"), 1);
+        assert_eq!(section_has(&out, "Dispatch", "Pouches"), 0);
+        assert!(!out.contains("; mine"), "the dropped line's comment goes with it: {out}");
+        // Both already there: both dropped, nothing inserted, no note.
+        let text = "[Harvest]\nPouches=2\nBreakables=3\n[Dispatch]\nPouches=9\nBreakables=9\nSpeed=2\n";
+        let (out, mv, dr) = moved(text);
+        assert!(mv.is_empty());
+        assert_eq!(dr, ["Pouches", "Breakables"]);
+        assert_eq!(out, "[Harvest]\nPouches=2\nBreakables=3\n[Dispatch]\nSpeed=2\n");
+    }
+
+    /// Neither present (a 0.16 file, or one from before 0.15): nothing to do.
+    #[test]
+    fn neither_key_under_dispatch_is_unchanged() {
+        assert_eq!(move_drop_keys(V0_15_0.split("[Dispatch]").next().unwrap_or("")), KeyMove::Unchanged);
+        assert_eq!(move_drop_keys(PRE_MERGE), KeyMove::Unchanged);
+        assert_eq!(move_drop_keys(include_str!("../../desert-tooling/DesertTooling.ini")), KeyMove::Unchanged);
+        assert_eq!(move_drop_keys("[Harvest]\nPouches=3\n"), KeyMove::Unchanged);
+        assert_eq!(move_drop_keys("[Overlay]\nPouches=3\n"), KeyMove::Unchanged, "only [Dispatch]'s move");
+        assert_eq!(move_drop_keys(""), KeyMove::Unchanged);
+    }
+
+    /// No `[Harvest]` at all: one is added at the end of the file. Line
+    /// endings, an unterminated last line and junk are all survived.
+    #[test]
+    fn the_edges_of_the_drop_key_move() {
+        let (out, mv, _) = moved("[Dispatch]\nSpeed=2\nbreakables = 7");
+        assert_eq!(mv, ["Breakables"]);
+        assert_eq!(headers(&out), ["Dispatch", "Harvest"]);
+        assert!(out.contains("Speed=2\n"), "{out:?}");
+        assert!(out.ends_with("breakables = 7\n"), "{out:?}");
+        let (cfg, w) = config::parse(&out);
+        assert!(w.is_empty(), "{w:?}");
+        assert_eq!(cfg.gatherer.breakables, 7);
+
+        let (out, _, _) = moved("[Harvest]\r\nOre=2\r\n[Dispatch]\r\nPouches=3\r\n");
+        assert!(!out.replace("\r\n", "").contains('\n'), "a bare LF crept in: {out:?}");
+        assert_eq!(config::parse(&out).0.gatherer.pouches, 3);
+
+        // Unterminated last line in [Harvest]: the insert does not glue onto it.
+        let (out, _, _) = moved("[Dispatch]\nPouches=3\n[Harvest]\nOre=2");
+        assert!(out.contains("Ore=2\n"), "{out:?}");
+        assert_eq!(config::parse(&out).0.gatherer.pouches, 3);
+
+        for text in ["[Dispatch]\nPouches", "[dispatch]\nPOUCHES=\n[", "[Dispatch]\n=\nPouches=\u{e9}\n; x\n"] {
+            if let KeyMove::Rewritten { text: out, .. } = move_drop_keys(text) {
+                let _ = config::parse(&out);
+                assert_eq!(move_drop_keys(&out), KeyMove::Unchanged, "{text:?} -> {out:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn move_drop_keys_file_rewrites_in_place() {
+        let dir = std::env::temp_dir().join(format!("desert-harvest-dropmove-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("DesertTooling.ini");
+        std::fs::write(&path, V0_15_0).unwrap();
+        let m = move_drop_keys_file(&path).unwrap();
+        let on_disk = std::fs::read_to_string(&path).unwrap();
+        assert!(matches!(&m, KeyMove::Rewritten { text, .. } if *text == on_disk));
+        assert!(!desert_core::ini::temp_path(&path).exists());
+        assert_eq!(move_drop_keys_file(&path).unwrap(), KeyMove::Unchanged);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(move_drop_keys_file(&path).unwrap(), KeyMove::Unchanged);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Prints what the 0.15.0 template becomes.
+    /// `cargo test -- --ignored --nocapture show_drop_key_move`.
+    #[test]
+    #[ignore]
+    fn show_drop_key_move() {
+        println!("{}", moved(V0_15_0).0);
     }
 
     /// Prints what the 0.9.0 template becomes, with `[Gatherer] Enabled=0`

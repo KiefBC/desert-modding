@@ -38,6 +38,25 @@ pub const LOOT_GRANT_SIG: &str = "loot_grant";
 /// `+0x2B84650` on 25477059 and `+0x2AB6F20` on 25246367.
 pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9";
 
+/// The name [`SIGNATURES`] gives the HUD item-log line builder, so
+/// [`crate::looter::itemlog`] and the table cannot come to spell it differently.
+pub const ITEM_LOG_SIG: &str = "item_log";
+
+/// The HUD side item log's line builder, `(this, const Grant*, u16 source,
+/// ...)`, RVA `0x116A5B0` on 26361232, reached only through a `jmp` thunk in
+/// the UI notification manager's handler table. Found in game 2026-11-03: the
+/// only `ItemLogData` builder that fired on pickups. Named separately because
+/// `crate::looter::itemlog` holds its stolen bytes to being a literal prefix
+/// of it.
+///
+/// It runs on into the body because the prologue alone is shared: the four
+/// argument moves (`movzx edi,r9w; movzx r15d,r8w; mov r13,rdx; mov
+/// r12,rcx`), the stack-flag early-out (`cmp byte [rsp+..],0; jne`) and the
+/// `source` switch's first two cases (`sub r9d,7; je`, `sub r9d,0x11; je`),
+/// which are what make it this function. The frame size, the flag's stack
+/// offset and the branch displacements are wildcarded.
+pub const ITEM_LOG_PATTERN: &str = "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84";
+
 /// The `enqueue` signature, named separately because `crate::looter::entry`
 /// holds its stolen bytes to being a literal prefix of it. Function start,
 /// RVA `0x29A8370` on 26345091 (`0x29A86A0` on 26356046, `0x29A8650` on 26361232): the `call` at `desc_mask+queue_site`+0x98
@@ -100,6 +119,9 @@ pub const SIGNATURES: &[(&str, &str)] = &[
     ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9"),
     // 0x2E1F010; 0x2E1F340 on 26356046, 0x2E1F2F0 on 26361232.
     (LOOT_GRANT_SIG, LOOT_GRANT_PATTERN),
+    // 0x116A5B0 on 26361232: the item-log line builder, gated by
+    // `crate::looter::itemlog`.
+    (ITEM_LOG_SIG, ITEM_LOG_PATTERN),
 ];
 
 pub const ACTOR_MANAGER_RTTI: &str = ".?AVClientActorManager@pa@@";
@@ -125,7 +147,7 @@ pub fn resolve(m: &MainModule) -> Anchors {
     // The signatures above are built in and all parse; a typo in one is a
     // skipped anchor, never a panic in the game process.
     let parsed: Vec<Option<Pattern>> = SIGNATURES.iter().map(|(_, t)| Pattern::parse(t)).collect();
-    // One walk of the image for all nine, not one each: eight passes
+    // One walk of the image for all ten, not one each: eight passes
     // measured 1.49 s in game, some 80% of this subsystem's startup, and the
     // inline hooks installed right after it can only go in while the game is
     // still loading.
@@ -1551,7 +1573,7 @@ mod tests {
     /// Every signature parses, and the table carries each name once.
     #[test]
     fn every_signature_parses_and_is_named_once() {
-        assert_eq!(SIGNATURES.len(), 9);
+        assert_eq!(SIGNATURES.len(), 10);
         for (name, text) in SIGNATURES {
             assert!(Pattern::parse(text).is_some(), "{name}");
             assert_eq!(SIGNATURES.iter().filter(|(n, _)| n == name).count(), 1, "{name}");

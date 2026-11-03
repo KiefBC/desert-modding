@@ -776,7 +776,7 @@ fn finish_walk(sum: Summary, budget: &Budget, cfg: &Config) -> Summary {
 fn ini_summary(cfg: &Config) -> String {
     format!(
         "Enabled={} LogRecords={} MaxLines={} Debug={} DumpRaw={} DumpRewards={} \
-         DumpBuffs={} Speed={} Rewards={} Pouches={} Breakables={} NoSkillRequirement={} \
+         DumpBuffs={} Speed={} Rewards={} NoSkillRequirement={} \
          AnyOperatorCount={} DryRun={}",
         cfg.enabled as u8,
         cfg.log_records as u8,
@@ -787,8 +787,6 @@ fn ini_summary(cfg: &Config) -> String {
         cfg.dump_buffs as u8,
         cfg.speed,
         cfg.rewards,
-        cfg.pouches,
-        cfg.breakables,
         cfg.no_skill_requirement as u8,
         cfg.any_operator_count as u8,
         cfg.dry_run as u8
@@ -1441,18 +1439,22 @@ impl Watch {
     /// session away; and each row is identified on its own before it is
     /// written (`apply::dropset_levers`: key, entry count, weights and its
     /// vanilla item amounts against the generated table), which is a stronger
-    /// check on these rows than the dispatch census is. `DryRun` still holds.
+    /// check on these rows than the dispatch census is.
+    ///
+    /// The levers and the `DryRun` that governs them are `[Harvest]`'s, read
+    /// out of `desert_core::drop_levers` (`config::drop_levers_from`): nothing
+    /// published yet is vanilla and dry, and this section's `Enabled=0` is
+    /// still the revert. `[Dispatch] DryRun` does not reach this pass.
     ///
     /// The memo's key is a fingerprint of which of the rows are loaded and
     /// where, so a newly loaded row, or one the game re-parsed at a new
     /// address, owes a pass; nothing else does.
     fn drops_tick(&mut self, slot: usize, cfg: &Config) {
-        let lev = config::LIVE.drop_levers();
+        let (lev, dry) = config::LIVE.drop_levers();
         if lev.is_vanilla() && !self.drops_gate.dirty() {
             return;
         }
         let fingerprint = drop_rows_fingerprint(slot);
-        let dry = cfg.dry_run;
         if !self.drops_gate.owed(fingerprint, dry, &lev) {
             return;
         }
@@ -1537,10 +1539,27 @@ fn watch(
     let mut live = cfg;
     let mut last_ini_mtime = ini_mtime(ini_path);
     let mut last_watch = std::time::Instant::now();
+    // What `[Harvest]` last published for `Pouches` / `Breakables`, by
+    // generation: a new one is a change like an edit of this section, so the
+    // pass it owes does not wait out a watch interval.
+    let mut drop_generation = 0u32;
     loop {
         std::thread::sleep(std::time::Duration::from_millis(RELOAD_POLL_MS));
 
         let mut changed = false;
+        if let Some(snap) = desert_core::drop_levers::load() {
+            if snap.generation != drop_generation {
+                drop_generation = snap.generation;
+                let l = snap.levers;
+                crate::log!(
+                    "[ini] from [Harvest]: Pouches={} Breakables={} DryRun={}",
+                    l.pouches,
+                    l.breakables,
+                    l.dry_run as u8
+                );
+                changed = true;
+            }
+        }
         let mtime = ini_mtime(ini_path);
         // `None` is a change like any other. The condition here used to be
         // `mtime.is_some() && mtime != last`, and a **deleted** ini stats as

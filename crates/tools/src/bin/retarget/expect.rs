@@ -71,6 +71,7 @@ pub const SIGNATURES: &[(&str, u32)] = &[
     ("category fn", 0x22d6d20),
     ("catch_count", 0x2dd6728),
     ("loot_grant", 0x2e1f2f0),
+    ("item_log", 0x116a5b0),
     ("banking_deferred_gate", 0x2a8ab2c),
     ("banking_surplus_gate", 0x2a8a9d6),
 ];

@@ -9,6 +9,43 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.16.0] - 2026-11-03
+
+Game build 26361232. **Seen working in game 2026-11-03**: at `LootLogMinTier=0` a Zebra
+Swallowtail and a Peony got their lines; at 1 a Peony (tier 0) was hidden; copper (item type 32)
+showed with `LootLogMoney=1` and was hidden with 0. Two new `[Harvest]` keys, so a MINOR;
+`desert-harvest` 0.10.0, `desert-core` 0.13.0 (a new trampoline shape, and the `drop_levers`
+mailbox) and `desert-dispatch` 0.5.0 (its config loses two keys) with it. Both keys
+default to the vanilla item log, so nothing changes until you move them.
+
+### Added
+
+- **`[Harvest] LootLogMinTier`** (0..6, default 0): filters the item log at the side of the
+  screen, the stacked "Item xN" lines a pickup slides in. 0 shows every line, as the game does;
+  1..5 shows only items whose tier is at least that; 6 shows none. Only the line is dropped: the
+  item still goes into the bag, `[recv]` lines and quests still see it. Takes effect at once.
+- **`[Harvest] LootLogMoney`** (default 1): with a minimum tier set, coins and camp funds (item
+  type 32) still get their line.
+- The filter is a hook on the game's own item-log line builder (`+0x116A5B0` on 26361232, picked out in
+  game by a probe of the seven builders the UI has, found by a new `item_log` signature in the looter's one signature walk, so no extra image pass), and the
+  first hook in the plugin that can skip a game function rather than observe or replace part of
+  it. A line is hidden by returning before the builder runs, which is the path the builder takes
+  itself when its skip flag is set. Any read that fails shows the line. The 60 s summary gains
+  `[itemlog] stat: seen N, shown N, hidden N, unreadable N`, and `Debug=1` logs one
+  `[itemlog] debug:` line per line built (capped at 500 a session).
+
+### Changed
+
+- **`Pouches` and `Breakables` are `[Harvest]` keys now**, next to the other loot multipliers on
+  the Harvest tab, instead of `[Dispatch]` keys on the Dispatch tab. Same range (1..100), same
+  default (1), same effect: the Dispatch subsystem still does the writing, so they need
+  `[Dispatch] Enabled=1`, and they follow `[Harvest] DryRun` and `[Harvest] Enabled` (0 = vanilla)
+  rather than `[Dispatch] DryRun`. **Migrated automatically**: at the first launch an ini that has
+  them under `[Dispatch]` gets them moved under `[Harvest]` with their values and comments (logged
+  as `[ini] Pouches and Breakables moved from [Dispatch] to [Harvest], values kept`); if
+  `[Harvest]` already has one, its value stands and the `[Dispatch]` copy is removed. One left
+  under `[Dispatch]` by hand is ignored with a warning saying where it belongs.
+
 ## [0.15.0] - 2026-11-03
 
 Game build 26361232. **`Pouches` seen working in game 2026-11-03**: at `Pouches=10` a Light Copper
