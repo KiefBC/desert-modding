@@ -25,6 +25,6 @@ on_update = "untested"      # untested | broken         - shown once Steam's bui
 note = ""                   # optional one-liner next to the status
 # Up to 3 lines on the card as "<name>: <version>"; bump them when a release is tagged.
 releases = [
-  { name = "Desert Tooling",  version = "0.11.0" },   # crates/desert-tooling/Cargo.toml
+  { name = "Desert Tooling",  version = "0.16.0" },   # crates/desert-tooling/Cargo.toml
   { name = "Desert Gatherer", version = "1.4" },      # desert-gatherer-dmm/dmm_pack.json
 ]
