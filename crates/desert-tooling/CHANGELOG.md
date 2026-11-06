@@ -9,20 +9,20 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
-## [Unreleased]
+## [0.16.1] - 2026-11-06
 
 Game build **26480954** (the Steam update of 2026-11-06). **Seen in game on 26480954**: one
 launch with this build of the plugin, every hook installed and every check in the log passed.
-Nothing you set or see changes, and there is no new key; the version stays 0.16.0 until a
-release is cut.
+Nothing you set changes and there is no new key, so a PATCH; the only thing you can see change
+is the `tab=` value on the F11 survey's bag line.
 
 ### Changed
 
 - **Supported game build 26480954**, up from 26361232 by way of 26423880 (the Steam update of
   2026-11-04, never launched). Both updates moved the game's code but changed none of the
   patterns the plugin finds it by: all 13 byte signatures still hit exactly once and the table
-  accessors read the same, so the plugin needed no new code, only its build-specific test and
-  tool figures re-pinned to each new exe and its tables
+  accessors read the same, so the plugin needed no new code to keep working, only its
+  build-specific test and tool figures re-pinned to each new exe and its tables
   (`docs/findings/2026-11-04-build-26423880-retarget.md` and
   `docs/findings/2026-11-06-build-26480954-retarget.md`, local). None of the generated tables
   changed a row on either update (collect.rs 294, species 6864, containers 71, dropsets 103,
@@ -32,6 +32,17 @@ release is cut.
   item-log filter reads. Five Goblin Merchant armour items got new keys on 26423880, and on
   26480954 the five old keys came back beside them. The gathering table kept its 14,210 records
   with no yield changed on either build.
+
+### Fixed
+
+- **The F11 survey's `tab=` shows each item's real default tab.** It was still read at
+  `+0x428`, the offset from before 26361232, which reads 0 for every item on 26480954; the bag
+  line flagged it as `tab= unverified`. The default tab is the first of the item record's
+  inventory fields, at `+0x248` on 26480954 (`+0x240` on 26361232; the two strings 26423880
+  added moved it by 8). Checked against an F11 item-record dump on 2026-11-06: 8 of 10 items
+  sat in the tab they report, and the other two were collection items whose default is tab 1.
+  The bag line now reads `tab= default tab, +0x248`. It feeds only that line; looting and
+  yields never read it.
 
 ## [0.16.0] - 2026-11-03
 

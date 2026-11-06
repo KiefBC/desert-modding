@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.16.0**, for Crimson Desert Enhanced, Steam build **26480954**.
+**Version 0.16.1**, for Crimson Desert Enhanced, Steam build **26480954**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
