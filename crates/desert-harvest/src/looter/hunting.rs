@@ -77,7 +77,7 @@ use crate::looter::game;
 use crate::module::MainModule;
 
 /// Bytes the hook steals from the grant's prologue (build 26345091; the same
-/// on 26356046 and 26361232):
+/// on 26356046, 26361232, 26423880 and 26480954):
 ///
 /// ```text
 /// 48 89 5C 24 08        mov  [rsp+0x08],rbx

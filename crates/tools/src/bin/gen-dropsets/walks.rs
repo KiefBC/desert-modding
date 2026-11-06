@@ -1,5 +1,5 @@
 //! The record layouts `gen-dropsets` reads besides `gimmickinfo`, each walked
-//! to the record end in the order of the 26361232 deserialiser and failed
+//! to the record end in the order of the 26423880 deserialiser and failed
 //! when the walk does not end on the last byte.
 //!
 //! Ports of `analysis/reward_tables.py` (`item_uses`, `item_use_lists`,
@@ -91,13 +91,32 @@ pub fn item_use(rec: &[u8], key: u32) -> Result<(u8, Option<u32>), Stop> {
     Ok((kind, dropset))
 }
 
-/// `iteminfo`'s `_itemUseInfoList` (`+0x100`), FINDINGS 2.6 and
-/// `reward_tables.py` `item_use_lists()`: 124 bytes past the key, a `u8` (and
-/// four more bytes unless it is `0x12`), 32 bytes, `itemName` (a localised
-/// string whose table key must be `(key << 32) | 0x70`, the check that the
-/// offsets are right), a localised string, an optional one, two strings, two
-/// `u32`, `occupiedEquipSlotDataList`, `itemTagList`, then the list.
-pub fn item_use_list(rec: &[u8], key: u32) -> Result<Vec<u32>, Stop> {
+/// Which `ItemInfo` layout a table carries. The tables have no version, so
+/// `gen-dropsets` reads it off the records: exactly one layout must walk every
+/// record (`economy.iteminfo_layout()` in the Python makes the same choice).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemLayout {
+    /// Through 26361232: `filterType` is followed by the two `u32`.
+    Plain,
+    /// 26423880 on: two plain strings, `soundNameOnMaxCharged` and
+    /// `soundSocketNameOnMaxCharged` (parsed `+0xE8`/`+0xF0`), follow
+    /// `filterType`, and every later parsed field sits 8 further on.
+    Sound,
+}
+
+impl ItemLayout {
+    pub const ALL: [ItemLayout; 2] = [ItemLayout::Sound, ItemLayout::Plain];
+}
+
+/// `iteminfo`'s `_itemUseInfoList` (`+0x100` through 26361232), FINDINGS 2.6
+/// and `reward_tables.py` `item_use_lists()`: 124 bytes past the key, a `u8`
+/// (and four more bytes unless it is `0x12`), 32 bytes, `itemName` (a
+/// localised string whose table key must be `(key << 32) | 0x70`, the check
+/// that the offsets are right), a localised string, an optional one, two
+/// strings (the second is `filterType`), on [`ItemLayout::Sound`] two more
+/// strings, two `u32`, `occupiedEquipSlotDataList`, `itemTagList`, then the
+/// list.
+pub fn item_use_list(rec: &[u8], key: u32, layout: ItemLayout) -> Result<Vec<u32>, Stop> {
     let mut r = at_key(rec, key)?;
     r.o = r.o - 4 + 124;
     if r.u8()? != 0x12 {
@@ -114,6 +133,10 @@ pub fn item_use_list(rec: &[u8], key: u32) -> Result<Vec<u32>, Stop> {
     }
     r.s()?;
     r.s()?;
+    if layout == ItemLayout::Sound {
+        r.s()?;
+        r.s()?;
+    }
     r.skip(8)?;
     r.oeach(|r| {
         r.u32()?;

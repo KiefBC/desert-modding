@@ -528,7 +528,9 @@ pub fn item_record(m: &MainModule, index: u16) -> Option<usize> {
 /// none). **Unverified on 26361232**: the item record's key and name moved
 /// there, so this offset probably did too, and nothing validates it. It
 /// feeds only the F11 survey's `tab=` display, which says so; do not build
-/// on it before it is re-read.
+/// on it before it is re-read. 26423880 inserted two strings into the parsed
+/// record at `+0xE8`/`+0xF0` and moved every later field 8 further on
+/// (`analysis/FINDINGS.md` 7.15), so this one has more reasons to be stale.
 pub const ITEM_TAB_OFF: usize = 0x428;
 
 /// The item record's `u32` key, through the latched [`ItemLayout`]: `@0`

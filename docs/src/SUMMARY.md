@@ -52,6 +52,8 @@
   - [2026-09-15 skinning](re/findings/2026-09-15-skinning.md)
   - [2026-09-24 build 25477059 retarget](re/findings/2026-09-24-build-25477059-retarget.md)
   - [2026-11-01 build 26345091 retarget](re/findings/2026-11-01-build-26345091-retarget.md)
+  - [2026-11-04 build 26423880 retarget](re/findings/2026-11-04-build-26423880-retarget.md)
+  - [2026-11-06 build 26480954 retarget](re/findings/2026-11-06-build-26480954-retarget.md)
 - [Archive](re/archive.md)
   - [2026-09-08 next session prompt](re/archive/2026-09-08-next-session-prompt.md)
   - [2026-09-13 next session prompts](re/archive/2026-09-13-next-session-prompts.md)

@@ -266,15 +266,15 @@ fn report_exits_one_when_dirty_and_zero_when_clean() {
     let f = Fixture::new();
     let names = f.names();
     let dirty = f.file("dirty.txt", &format!("{GOOD_SIGS}{DEAD_SIG}"));
-    let o = f.run(&["report", "--sigs", p(&dirty), "--names", p(&names)], "26361232");
+    let o = f.run(&["report", "--sigs", p(&dirty), "--names", p(&names)], "26480954");
     let s = text(&o);
     assert_eq!(o.status.code(), Some(1), "{s}");
-    assert!(s.starts_with("# retarget report: build 26361232"), "{s}");
+    assert!(s.starts_with("# retarget report: build 26480954"), "{s}");
     assert!(s.contains("To re-derive: moved."), "{s}");
     assert!(s.contains("Verdict: work to do"), "{s}");
 
     let good = f.file("good.txt", GOOD_SIGS);
-    let o = f.run(&["report", "--sigs", p(&good), "--names", p(&names)], "26361232");
+    let o = f.run(&["report", "--sigs", p(&good), "--names", p(&names)], "26480954");
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
     assert!(text(&o).contains("Verdict: clean"));
     assert!(

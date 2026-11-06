@@ -9,6 +9,30 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [Unreleased]
+
+Game build **26480954** (the Steam update of 2026-11-06). **Seen in game on 26480954**: one
+launch with this build of the plugin, every hook installed and every check in the log passed.
+Nothing you set or see changes, and there is no new key; the version stays 0.16.0 until a
+release is cut.
+
+### Changed
+
+- **Supported game build 26480954**, up from 26361232 by way of 26423880 (the Steam update of
+  2026-11-04, never launched). Both updates moved the game's code but changed none of the
+  patterns the plugin finds it by: all 13 byte signatures still hit exactly once and the table
+  accessors read the same, so the plugin needed no new code, only its build-specific test and
+  tool figures re-pinned to each new exe and its tables
+  (`docs/findings/2026-11-04-build-26423880-retarget.md` and
+  `docs/findings/2026-11-06-build-26480954-retarget.md`, local). None of the generated tables
+  changed a row on either update (collect.rs 294, species 6864, containers 71, dropsets 103,
+  quest items 1194). `gen-dropsets` now reads the item-table layout off the records, because
+  26423880 added two sound strings after `filterType`.
+- The game's item table grew two (empty) sound fields on 26423880, after the two item fields the
+  item-log filter reads. Five Goblin Merchant armour items got new keys on 26423880, and on
+  26480954 the five old keys came back beside them. The gathering table kept its 14,210 records
+  with no yield changed on either build.
+
 ## [0.16.0] - 2026-11-03
 
 **Since 0.11.0, the last tagged release, this also carries 0.12.0, 0.13.0, 0.14.0 and 0.15.0**,

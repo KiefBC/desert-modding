@@ -3,7 +3,7 @@
 # Crimson Desert mods
 
 Cargo workspace for my [Crimson Desert
-Enhanced](https://store.steampowered.com/) mods (Steam build 26361232). They
+Enhanced](https://store.steampowered.com/) mods (Steam build 26480954). They
 load as one `.asi` plugin through [Ultimate ASI
 Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (`winmm.dll` in the
 game's `bin64`).
@@ -54,7 +54,7 @@ Grab the zip from the latest release, or build it yourself, then copy
 `DesertTooling.asi` and `DesertTooling.ini` into the game's `bin64`.
 
 - **Desert Tooling**: [desert-tooling-v0.16.0](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.16.0)
-- **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.4](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.4)
+- **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.5](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.5)
 
 Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).
 

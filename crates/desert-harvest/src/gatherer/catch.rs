@@ -25,7 +25,9 @@
 //! [`CATCH_SITE`] matches those 21 bytes and hits exactly once in the mapped
 //! image, so nothing here is hard-coded to an address - the RVAs above are
 //! 26345091's (file offset `0x2DD5848`; the site is `+0x2DD6778`, file `0x2DD5B78`, on 26356046, and `+0x2DD6728`,
-//! file `0x2DD5B28`, calling `+0x25FA420`, on 26361232) and are illustration only: the site
+//! file `0x2DD5B28`, calling `+0x25FA420`, on 26361232, and `+0x2DDBF68`, file `0x2DDB368`,
+//! calling `+0x25FDFA0`, on 26423880, and `+0x2DDCBD8`, file `0x2DDBFD8`, calling
+//! `+0x25FED70`, on 26480954) and are illustration only: the site
 //! shifted 0x1740 from 25116796 to 25246367 and has moved on every build since
 //! without a byte of the pattern changing. The hook steals the
 //! first **13** bytes (the whole `mov r8d,1` and the whole

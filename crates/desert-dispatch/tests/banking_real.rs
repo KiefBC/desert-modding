@@ -3,23 +3,25 @@
 //!
 //! The `[banking]` line's two gates, found by signature the way the plugin
 //! finds them at startup (`node::globals::resolve_gates`), pinned to Steam
-//! build 26361232. The signatures were derived on 26345091; the gates resolve
-//! to the same two addresses on 26356046 and 26361232.
+//! build 26480954. The signatures were derived on 26345091; the gates resolved
+//! to the same two addresses on 26356046 and 26361232 and moved on 26423880
+//! and again on 26480954.
 
 use desert_core::pe;
 use desert_dispatch::node::globals;
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
 
-/// The deferred-reward and surplus-worker gates on 26361232, the same as on
-/// 26356046 (`0x714FE68` and
+/// The deferred-reward and surplus-worker gates on 26480954 (`0x71580B8` and
+/// `0x712FDB8` on 26423880, `0x7150E18` and
+/// `0x7128CA8` on 26361232 and 26356046, `0x714FE68` and
 /// `0x7127CF8` on 26345091; `0x6BC6AA8` and `0x6BA07C8` on 25116796, never
 /// re-derived on the builds between).
-const DEFERRED_GATE_RVA: usize = 0x7150E18;
-const SURPLUS_GATE_RVA: usize = 0x7128CA8;
+const DEFERRED_GATE_RVA: usize = 0x715A1D8;
+const SURPLUS_GATE_RVA: usize = 0x7131ED8;
 /// The surplus-worker rate global the same arithmetic multiplies by: 0xA0
-/// below the surplus gate on 25116796 (`0x6BA0728`), on 26345091 and on
-/// 26361232.
+/// below the surplus gate on 25116796 (`0x6BA0728`), on 26345091, on
+/// 26361232, on 26423880 (`0x712FD18`) and on 26480954 (`0x7131E38`).
 const RATE_BELOW_SURPLUS: usize = 0xA0;
 
 #[test]

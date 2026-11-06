@@ -1,16 +1,16 @@
 {
   "name": "Logging - 5X",
-  "version": "1.4",
+  "version": "1.5",
   "author": "KiefBC",
   "description": "Multiplies logging node minimum and maximum yields by 5. Select no more than one Logging rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "26361232",
+  "game_build": "26480954",
   "multiplier": 5,
   "category": "Logging",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Logging - 5X",
-    "version": "1.4",
+    "version": "1.5",
     "author": "KiefBC",
     "description": "5x yields for logging nodes.",
     "allow_partial_apply": true

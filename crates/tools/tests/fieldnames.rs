@@ -50,11 +50,12 @@ fn a_rebuild_passes_every_self_check() {
         !text.contains("FAIL"),
         "a self-check moved; explain it before trusting the inventory:\n{text}"
     );
-    // Build 26361232, the same as 26345091 and 26356046. On 25477059 these were 4712
-    // pairs and 537 classes, and on 25246367 4675 and 536; the growth is schema change, itemised at
+    // Builds 26423880 and 26480954: three pairs more than 26345091, 26356046 and 26361232
+    // (5034). On 25477059 these were 4712 pairs and 537 classes, and on
+    // 25246367 4675 and 536; the growth is schema change, itemised at
     // `EXPECT_PAIRS` in the tool.
     assert!(
-        text.contains("5034 (class, field) pairs, expected 5034"),
+        text.contains("5037 (class, field) pairs, expected 5037"),
         "{text}"
     );
     assert!(
@@ -94,7 +95,7 @@ fn every_rva_matches_an_independent_section_walk() {
         .collect();
 
     let pairs = doc["pairs"].as_array().unwrap();
-    assert_eq!(pairs.len(), 5034); // builds 26345091, 26356046 and 26361232; 4712 on 25477059, 4675 on 25246367
+    assert_eq!(pairs.len(), 5037); // builds 26423880 and 26480954; 5034 on 26345091, 26356046 and 26361232, 4712 on 25477059, 4675 on 25246367
     for p in pairs {
         let off = p["message_off"].as_u64().unwrap() as u32;
         let want = secs

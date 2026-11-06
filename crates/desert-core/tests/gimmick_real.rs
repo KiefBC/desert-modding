@@ -76,28 +76,30 @@ fn skipped(what: &str) {
     println!("{bar}\n");
 }
 
-/// RVA of the `gimmickinfo` record loader on Steam build 26361232, the same as
-/// on 26356046 and on 26345091, where it was re-derived (was
+/// RVA of the `gimmickinfo` record loader on Steam build 26480954 (`0x3D8FA0`
+/// on 26423880, `0x3D89A0` on 26361232, 26356046 and 26345091, where it was re-derived; was
 /// `0x38BA40`, `FUN_14038ba40`, on 25477059, `0x385CD0` on 25246367 and
 /// `FUN_1403856b0` on the build before that; the function is the same, the
 /// address is not).
-const LOADER_RVA: usize = 0x3D89A0;
+const LOADER_RVA: usize = 0x3D9280;
 
-/// RVAs of the two `*InfoManager` global pointer slots on Steam build 26361232,
-/// the same as on 26356046 (were `0x71B6C20` and `0x71B6C48` on 26345091, `0x6D69AA8` and `0x6D69AC8`
+/// RVAs of the two `*InfoManager` global pointer slots on Steam build 26480954
+/// (`0x71BEE70` and `0x71BEE98` on 26423880, `0x71B7BD0` and `0x71B7BF8` on 26361232 and 26356046, `0x71B6C20` and `0x71B6C48` on 26345091, `0x6D69AA8` and `0x6D69AC8`
 /// on 25477059, `0x6C2E2E8` and `0x6C2E308` on 25246367).
 /// These are the oracle for `gimmick::resolve_manager_slot`, and are the values
 /// `crates/desert-harvest/src/looter/tables.rs` used to carry as hard-coded constants before
 /// the slots were resolved by content at startup.
-const ITEM_INFO_SLOT_RVA: usize = 0x71B7BD0;
-const GIMMICK_INFO_SLOT_RVA: usize = 0x71B7BF8;
+const ITEM_INFO_SLOT_RVA: usize = 0x71C1080;
+const GIMMICK_INFO_SLOT_RVA: usize = 0x71C10A8;
 
 /// RVA of the `mov r8d,1` inside the catch-count function on Steam build
-/// 26361232, file offset `0x2DD5B28` (was `0x2DD6778`, file `0x2DD5B78`, on
+/// 26480954, file offset `0x2DDBFD8` (was `0x2DDBF68`, file `0x2DDB368`, on
+/// 26423880, `0x2DD6728`, file `0x2DD5B28`, on
+/// 26361232, `0x2DD6778`, file `0x2DD5B78`, on
 /// 26356046, `0x2DD6448`, file `0x2DD5848`, on 26345091, `0x2B42FB1` on 25477059, `0x2A75891`
 /// on 25246367, inside `FUN_142a73c20` on the build before that;
 /// `docs/reference-internals.md` section 17.4).
-const CATCH_RVA: usize = 0x2DD6728;
+const CATCH_RVA: usize = 0x2DDCBD8;
 
 #[test]
 #[ignore]
@@ -326,7 +328,7 @@ fn multiply_doubles_every_collect_record_from_the_archive_table() {
     };
     println!("table: {} ({} bytes)", table_path().display(), table.len());
     let ranges = record_ranges(&header, table.len()).expect("the header splits the body");
-    assert_eq!(ranges.len(), 14210, "records on build 26361232");
+    assert_eq!(ranges.len(), 14210, "records on builds 26361232, 26423880 and 26480954");
     let shape = gimmick::detect_header_shape(&table).expect("the first record has one header shape");
 
     let (mut records, mut blocks, mut scalars, mut most) = (0usize, 0usize, 0usize, 0usize);
@@ -353,7 +355,8 @@ fn multiply_doubles_every_collect_record_from_the_archive_table() {
         most = most.max(edits.len() / 2);
     }
     println!("{records} records, {blocks} blocks, {scalars} scalars doubled; at most {most} blocks in one record");
-    // Build 26361232, measured 2026-11-02 against the archive's table.
+    // Build 26361232, measured 2026-11-02 against the archive's table; the same
+    // on 26423880 and 26480954.
     assert_eq!((records, blocks, scalars), (294, 606, 1212));
     // `desert_harvest::gatherer::remember` keeps at most 8 blocks a record.
     assert!(most <= 8, "a row has {most} blocks");
@@ -503,7 +506,8 @@ fn multiply_reproduces_the_dmm_pack_edits() {
         blocks += offsets / 2;
     }
     println!("total: {records} records, {blocks} blocks, {scalars} u64 offsets");
-    // Pack 1.4 on build 26361232, measured 2026-11-02: every non-Money row of
+    // Pack 1.4 on build 26361232, measured 2026-11-02, and pack 1.5 on 26423880
+    // and 26480954 with the same offsets and values: every non-Money row of
     // collect.rs (the three Money rows and their three blocks are the plugin's
     // alone).
     assert_eq!((records, blocks, scalars), (291, 603, 1206));
@@ -586,7 +590,8 @@ fn output_blocks_read_the_item_id_the_table_actually_carries() {
 /// The installed build's table body is a `NameFirst` table: its first
 /// record validates as that shape and no other, a strict scan in that shape
 /// finds 14210 headers with 14210 distinct keys (one per record the game's
-/// manager counts), and the well and the 26361232 example record sit where
+/// manager counts), and the well and the 26361232 example record (both
+/// unmoved on 26423880 and 26480954) sit where
 /// they always have. On 25477059 and before the same body was `KeyFirst`; the
 /// rule for which shape a table uses is what the gatherer latches in game.
 ///
@@ -643,13 +648,15 @@ fn u32_at(b: &[u8], o: usize) -> Option<u32> {
 /// The two tables that are reachable only through the **indirect** accessor
 /// template (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
 /// `gimmick::resolve_manager_slot_based`. `FactionNode` is the one
-/// `desert-dispatch` walks. RVAs on builds 26356046 and 26361232 (`0x71B96E8` and
+/// `desert-dispatch` walks. RVAs on build 26480954 (`0x71C1938` and
+/// `0x71BEED0` on 26423880, `0x71BA698` and
+/// `0x71B7C30` on 26356046 and 26361232, `0x71B96E8` and
 /// `0x71B6C80` on 26345091); on 25477059 they were
 /// `0x6D6BE70` and `0x6D69AF0`, and on 25246367 `0x6C30308` and `0x6C2E330`,
 /// the values the offline census in `docs/findings/2026-09-10-dispatch.md`
 /// records.
 const PTR_TEMPLATE_SLOTS: &[(&[u8], usize)] =
-    &[(gimmick::FACTION_NODE_TABLE, 0x71BA698), (b"Skill", 0x71B7C30)];
+    &[(gimmick::FACTION_NODE_TABLE, 0x71C3B58), (b"Skill", 0x71C10E0)];
 
 #[test]
 #[ignore]
@@ -762,26 +769,36 @@ const UNLISTED_NAMES: &[&str] = &[
 /// the dispatch-mission reward table and a `45 33 C9 + lea` copy on this build
 /// (`45 31 C9 + lea` on 25477059).
 ///
-/// Values are build 26361232's, the same as 26356046's. The loaders are 26345091's too; its slots were
+/// Values are build 26480954's. On 26423880 the rows read, in this order,
+/// `(0x71BEE98, 0x3D8FA0)`, `(0x71BEE70, 0x3D7EB0)`, `(0x71C1938, 0x4D5740)`,
+/// `(0x71BEED0, 0x3D9260)`, `(0x71C3EF8, 0x551AF0)`, `(0x71C72F8, 0x73E750)`,
+/// `(0x71BEEC8, 0x3D86F0)`. On 26361232, the same as 26356046, the rows
+/// read, in this order, `(0x71B7BF8, 0x3D89A0)`, `(0x71B7BD0, 0x3D78B0)`,
+/// `(0x71BA698, 0x4D4ED0)`, `(0x71B7C30, 0x3D8C60)`, `(0x71BCC70, 0x5511D0)`,
+/// `(0x71C0040, 0x73DE10)`, `(0x71B7C28, 0x3D80F0)`. Those loaders were
+/// 26345091's too; its slots were
 /// `0x71B6C48`, `0x71B6C20`, `0x71B96E8`, `0x71B6C80`, `0x71BBCC0`,
 /// `0x71BF090` and `0x71B6C78`. On 25477059 the rows read, in the same order:
 /// `(0x6D69AC8, 0x38BA40)`, `(0x6D69AA8, 0x38AE70)`, `(0x6D6BE70, 0x433880)`,
 /// `(0x6D69AF0, 0x38CF30)`, `(0x6D6E428, 0x4A6760)`, `(0x6D71E60, 0x671370)`,
 /// `(0x6D69AE8, 0x584C70)`.
 const TABLES: &[(&[u8], usize, usize)] = &[
-    (gimmick::GIMMICK_TABLE, 0x71B7BF8, 0x3D89A0),
-    (gimmick::ITEM_TABLE, 0x71B7BD0, 0x3D78B0),
-    (gimmick::FACTION_NODE_TABLE, 0x71BA698, 0x4D4ED0),
-    (b"Skill", 0x71B7C30, 0x3D8C60),
-    (gimmick::DROPSET_TABLE, 0x71BCC70, 0x5511D0),
-    (gimmick::BUFF_TABLE, 0x71C0040, 0x73DE10),
-    (gimmick::STATUS_TABLE, 0x71B7C28, 0x3D80F0),
+    (gimmick::GIMMICK_TABLE, 0x71C10A8, 0x3D9280),
+    (gimmick::ITEM_TABLE, 0x71C1080, 0x3D8190),
+    (gimmick::FACTION_NODE_TABLE, 0x71C3B58, 0x4D5DA0),
+    (b"Skill", 0x71C10E0, 0x3D9540),
+    (gimmick::DROPSET_TABLE, 0x71C6110, 0x552150),
+    (gimmick::BUFF_TABLE, 0x71C9500, 0x73EDB0),
+    (gimmick::STATUS_TABLE, 0x71C10D8, 0x3D89D0),
 ];
 
-/// The `gimmickinfo` accessor on 26361232 (and 26356046 and 26345091): its head, its slot load, and the
-/// distance from the head to the loader call's `E8`.
-const GIMMICK_HEAD: usize = 0x3DD9A8;
-const GIMMICK_SLOT_LOAD: usize = 0x3DD975;
+/// The `gimmickinfo` accessor on 26480954: its head, its slot load, and the
+/// distance from the head to the loader call's `E8`. On 26423880 the head was
+/// `0x3DDFA8` and the slot load `0x3DDF75`; on 26361232 (and 26356046
+/// and 26345091) the head was `0x3DD9A8` and the slot load `0x3DD975`, the
+/// same 0x9C to the `E8`.
+const GIMMICK_HEAD: usize = 0x3DE288;
+const GIMMICK_SLOT_LOAD: usize = 0x3DE255;
 const GIMMICK_LOADER_E8_FROM_HEAD: usize = 0x9C;
 
 /// The stream layout the `gimmickinfo` accessor fills in before its loader
@@ -1001,7 +1018,9 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
     }
 
     // The gatherer's table-less entry point is unchanged by the widening.
-    // Build 26361232 values, the same as 26356046's; on 26345091 the dropset slot was 0x71BBCC0, and on
+    // Build 26480954 values; on 26423880 the dropset slot was 0x71C3EF8, on
+    // 26361232 and 26356046
+    // 0x71BCC70, on 26345091 0x71BBCC0, and on
     // 25477059 they were 0x38BA40, 0x6D69AC8, 0x6D69AA8 and 0x6D6E428.
     assert_eq!(gimmick::resolve_record_loader(&img, base), Ok(base + LOADER_RVA));
     // And so are the two slots the looter resolves without an image base.
@@ -1010,5 +1029,5 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
         Ok(GIMMICK_INFO_SLOT_RVA)
     );
     assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::ITEM_TABLE), Ok(ITEM_INFO_SLOT_RVA));
-    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x71BCC70));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x71C6110));
 }

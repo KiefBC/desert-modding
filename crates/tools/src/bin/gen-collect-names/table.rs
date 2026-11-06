@@ -14,7 +14,7 @@
 //! non-overlapping, with each list attributed to the header that precedes it.
 //! It is kept for [`CALIBRATION`] alone: its counts and three anchors are what
 //! prove the body is the one the rule was measured on, and nothing is written
-//! unless they reproduce. On 26361232 both walks find the same 581 lists: a
+//! unless they reproduce. On 26361232, 26423880 and 26480954 both walks find the same 581 lists: a
 //! list never crosses a record boundary, because every header in between would
 //! have to read as blocks.
 //!
@@ -31,7 +31,7 @@ pub use desert_tools::outputs::{output_lists, record_pays, Detector};
 /// Table-wide totals and three (list offset -> record, record-relative offset)
 /// anchors the global walk must reproduce. `firewood_0001` is the load-bearing
 /// one: its list at body offset 10136473 is 1796 bytes into the record on
-/// 26361232 (1999 on 25477059 and 25246367), so a walk that puts this list
+/// 26361232, 26423880 and 26480954 (1999 on 25477059 and 25246367), so a walk that puts this list
 /// anywhere else is not calibrated. On a `KeyFirst` body without the echo test
 /// the first two resolve to `NatureBuffTrigger` and `UnnamedTrigger_0`, both
 /// with the bogus key 16777216. The well and the pot are anchors because they
@@ -64,6 +64,12 @@ pub struct Calibration {
 /// header scan rather than the echo test. The relative offsets moved because
 /// the record bodies did: the lists sit 120 to 320 bytes nearer their record's
 /// start than on 25477059, and the header itself grew a prefab path.
+///
+/// 26423880 reproduces every number and anchor of 26361232: the body is the
+/// same 17,621,227 bytes, with 336 bytes inside it changed. 26480954 does too:
+/// its body is 17,622,309 bytes, 32 records changed (one,
+/// `gimmick_puzzle_tesla_coil_02`, grew 1082 bytes), every change past body
+/// offset 15,488,617 and so past all three anchors.
 pub const CALIBRATION: Calibration = Calibration {
     build: desert_tools::paths::CALIBRATED_BUILD,
     lists: 581,

@@ -1,16 +1,16 @@
 {
   "name": "Mining - 2X",
-  "version": "1.4",
+  "version": "1.5",
   "author": "KiefBC",
   "description": "Multiplies mining node minimum and maximum yields by 2. Select no more than one Mining rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "26361232",
+  "game_build": "26480954",
   "multiplier": 2,
   "category": "Mining",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Mining - 2X",
-    "version": "1.4",
+    "version": "1.5",
     "author": "KiefBC",
     "description": "2x yields for mining nodes.",
     "allow_partial_apply": true

@@ -73,7 +73,9 @@
 //! (`node::globals::DEFERRED_GATE_SIG` and `SURPLUS_GATE_SIG`, one walk of the
 //! image), never by address: they were the bare RVAs `0x6BC6AA8` and
 //! `0x6BA07C8` on 25116796, and resolve to `0x714FE68`/`0x7127CF8` on 26345091
-//! and `0x7150E18`/`0x7128CA8` on 26356046 and 26361232 alike.
+//! `0x7150E18`/`0x7128CA8` on 26356046 and 26361232 alike, and
+//! `0x71580B8`/`0x712FDB8` on 26423880 and `0x715A1D8`/`0x7131ED8` on
+//! 26480954.
 //! `node::globals::banking_gate_line`
 //! prints the address and the byte at startup on the `[banking]` line, and that
 //! line - not this comment - is the check after an update; a signature that

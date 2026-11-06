@@ -27,7 +27,7 @@
 //! long as the process, which is exactly as long as the records do.
 //!
 //! [`MAX_RECORDS`] is comfortably above the 294 gather records `collect` knows
-//! about on build 26361232 (the family rule's rows plus the overrides),
+//! about on builds 26361232, 26423880 and 26480954 (the family rule's rows plus the overrides),
 //! and [`MAX_BLOCKS`] above the 4 blocks the biggest vanilla record has.
 //! Both are refusals, not truncations: a record that does not fit is simply not
 //! remembered, and the live path leaves it alone rather than half-rewriting it.
