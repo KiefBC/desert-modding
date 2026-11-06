@@ -402,11 +402,10 @@ pub fn survey(m: &MainModule, w: &World, range: f32, max_lines: usize, debug: bo
                                 format!("[{}] {name} key={key} x{} tab={tab}", sl.slot, sl.count)
                             })
                             .collect();
-                        // `tab=` is read at the pre-26361232 offset
-                        // (`tables::ITEM_TAB_OFF`), which nothing validates
-                        // on the current build; the line says so.
+                        // `tab=` is the item's default tab
+                        // (`tables::ITEM_TAB_OFF`, verified on 26480954).
                         crate::log!(
-                            "[survey] bag: {} stacks (tab= unverified, +0x{:X}); {}",
+                            "[survey] bag: {} stacks (tab= default tab, +0x{:X}); {}",
                             slots.len(),
                             crate::looter::tables::ITEM_TAB_OFF,
                             shown.join("; ")
