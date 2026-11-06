@@ -23,8 +23,9 @@ date = "2026-11-06"         # when (YYYY-MM-DD)
 status = "working"          # working | broken | wip    - shown while the game is still on `build`
 on_update = "untested"      # untested | broken         - shown once Steam's build moves past it
 note = ""                   # optional one-liner next to the status
-# Up to 3 lines on the card as "<name>: <version>"; bump them when a release is tagged.
+# Up to 3 lines on the card as "<name>: <version>". Each version is read from the newest
+# GitHub release whose tag starts with `tag`, so tagging a release updates the card on its own.
 releases = [
-  { name = "Desert Tooling",  version = "0.16.0" },   # crates/desert-tooling/Cargo.toml
-  { name = "Desert Gatherer", version = "1.4" },      # desert-gatherer-dmm/dmm_pack.json
+  { name = "Desert Tooling",  tag = "desert-tooling-v" },
+  { name = "Desert Gatherer", tag = "desert-gatherer-dmm-v" },
 ]

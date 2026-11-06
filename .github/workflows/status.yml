@@ -1,11 +1,13 @@
 # .github/workflows/status.yml - copy into your mod's repo as is.
 # Every 15 minutes: read the game's Steam build, redraw the cards, push them to the `badges` branch.
-# Also right away when a push to main changes baise.toml (a new release line, status or note).
+# Also right away when a push to main changes baise.toml, and after every `release` run.
 # Run it by hand (Actions -> baise -> Run workflow) to pin a status after you have tested.
 name: baise
 on:
   schedule: [{ cron: "*/15 * * * *" }]
   push: { branches: [main], paths: [baise.toml] }
+  # Right after a release is published, so the card shows the new version at once.
+  workflow_run: { workflows: [release], types: [completed] }
   workflow_dispatch:
     inputs:
       mod: { description: "mod key (empty: just refresh)", required: false }
@@ -13,5 +15,5 @@ on:
 permissions: { contents: write }
 jobs:
   status:
-    uses: KiefBC/baise/.github/workflows/status.yml@v0.4.0
+    uses: KiefBC/baise/.github/workflows/status.yml@v0.5.0
     with: { mod: "${{ inputs.mod }}", status: "${{ inputs.status }}" }
