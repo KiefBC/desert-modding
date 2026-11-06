@@ -1,12 +1,14 @@
 //! Desert PazDump - a reverse-engineering aid, not a shipped mod.
 //!
-//! Hooks the archive decode switch of build 26361232 (RVA `0x1587380`, the
-//! function that decrypts and/or LZ4-decompresses one `.paz` entry after it
-//! has been read from disk) and writes every ENCRYPTED entry it sees to
+//! Hooks the archive decode switch of build 26480954 (RVA `0x15890B0`; `0x1588890`
+//! on 26423880, `0x1587380` on 26361232: the function that decrypts and/or
+//! LZ4-decompresses one `.paz` entry after it has been read from disk) and
+//! writes every ENCRYPTED entry it sees to
 //! `bin64/pazdump/`: the 12-byte decode header the game hands it (kind byte,
 //! three flag bytes, the 4-byte key, the declared size), the ciphertext as
 //! read from disk, the same buffer after the in-place decrypt, and the final
-//! plaintext. The cipher itself lives in the virtualised `.xtext` section and
+//! plaintext. The cipher itself lives in the virtualised code section (`.xtext`
+//! on 26361232, `.text` on 26423880) and
 //! cannot be read statically; these pairs are how its keystream and key
 //! derivation are recovered offline (`analysis/FINDINGS.md` section 7).
 //!
@@ -39,9 +41,14 @@ mod entry {
     const GAME_EXE: &str = "CrimsonDesert.exe";
     const LOG_NAME: &str = "PazDump.log";
     const DIR_NAME: &str = "pazdump";
-    /// `FUN_141587380` on build 26361232: `(buf_in: &mut *u8, in_len: u32,
-    /// header: *const u8, buf_out: &mut *u8, out_len: &mut u32) -> bool`.
-    const DECODE_RVA: usize = 0x1587380;
+    /// `FUN_1415890B0` on build 26480954 (the same 48 bytes, once exe-wide, +0x820;
+    /// callers `0x158A887`/`0x158B10D`), `FUN_141588890` on 26423880, `FUN_141587380` on 26361232:
+    /// `(buf_in: &mut *u8, in_len: u32, header: *const u8, buf_out: &mut *u8,
+    /// out_len: &mut u32) -> bool`. Re-found by its 16-byte prologue (45 hits
+    /// exe-wide, one at the old RVA + 0x1510, the shift of the code around
+    /// it), its caller `0x1589F70` (the old `0x1588A60` + 0x1510) and its LZ4
+    /// callee `0x1467760` (old `0x1466440`).
+    const DECODE_RVA: usize = 0x15890B0;
     const STOLEN: usize = 16;
     /// `mov [rsp+8],rbx; mov [rsp+0x10],edx; push rbp; push rsi; push rdi;
     /// push r12; push r13` - whole instructions, nothing RIP-relative.

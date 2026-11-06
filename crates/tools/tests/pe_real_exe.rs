@@ -36,14 +36,24 @@ fn headers_are_the_expected_shape() {
     assert_eq!(pe.sections.len(), 12);
 
     // DO NOT select a section by its name. This exe's section names are
-    // scrambled, and scrambled differently on every build. Build 26361232:
+    // scrambled, and scrambled differently on every build. Build 26480954:
     //
-    //   .sxdata .xtls .udata .debug$P .reloc .data .link .xtext .rdata .sdata
-    //   .rodata .shared
+    //   .text1 .arch .rodata .sdata .edata .tls .ecode .tls$ .rsrc .reloc
+    //   .xpdata .shared
     //
-    // and the 89 MB first one holding the code is the one called `.sxdata`.
-    // `.xtext` is the 200 MB one that is not where the functions start, and
+    // and the 89 MB first one holding the code is the one called `.text1`.
+    // `.tls$` is the 200 MB one that is not where the functions start, and
     // the exception directory (data directory 3) is the whole of `.shared`.
+    //
+    // 26423880, the build it replaced, was `.rsrc .tls$ .data .xdata .shared
+    // .ecode .idata .text .debug$P .text1 .debug .edata`: the code in `.rsrc`,
+    // the 200 MB one `.text`, and the exception directory the whole of
+    // `.edata`.
+    //
+    // 26361232, the build before that, was `.sxdata .xtls .udata .debug$P
+    // .reloc .data .link .xtext .rdata .sdata .rodata .shared`: the code in
+    // `.sxdata`, the 200 MB one `.xtext`, and the exception directory the
+    // whole of `.shared`.
     //
     // 26356046, the hotfix it replaced, was `.xtext .shared .sdata .didata
     // .trace .xcode .data .text .ecode .rsrc .tls .rdata`: the code in the
@@ -72,27 +82,29 @@ fn headers_are_the_expected_shape() {
     assert_eq!(
         names,
         [
-            ".sxdata", ".xtls", ".udata", ".debug$P", ".reloc", ".data", ".link", ".xtext", ".rdata",
-            ".sdata", ".rodata", ".shared",
+            ".text1", ".arch", ".rodata", ".sdata", ".edata", ".tls", ".ecode", ".tls$", ".rsrc",
+            ".reloc", ".xpdata", ".shared",
         ],
         "the section names moved again - a game update, not a parser bug"
     );
-    // `get_pos` (RVA 0x19375C0 on 26361232, 0x1937610 on 26356046 as on
-    // 26345091, see tests/dis_cli.rs) is code, in the section that happens to
-    // be called `.sxdata` this build (`.xtext` on 26356046).
-    let get_pos = 0x193_75C0;
+    // `get_pos` (RVA 0x19399B0 on 26480954, 0x1938D70 on 26423880, 0x19375C0
+    // on 26361232, 0x1937610 on 26356046 as on 26345091, see
+    // tests/dis_cli.rs) is code, in the section that happens to be called
+    // `.text1` this build (`.rsrc` on 26423880, `.sxdata` on 26361232,
+    // `.xtext` on 26356046).
+    let get_pos = 0x193_99B0;
     let holding = pe.section_of(get_pos).expect("get_pos is in no section");
-    assert_eq!(holding.name, ".sxdata");
+    assert_eq!(holding.name, ".text1");
     assert_eq!(holding.virtual_address, 0x1000);
 
     // The exception directory, found by index and never by name.
     let x = pe.exception_directory().expect("the exe has an exception directory");
-    assert_eq!((x.rva, x.size), (0x13D9_A000, 0x2D_8844));
+    assert_eq!((x.rva, x.size), (0x139E_B000, 0x2D_8C4C));
     assert_eq!(pe.section_of(x.rva).map(|s| s.name.as_str()), Some(".shared"));
-    assert_eq!(pe.size_of_image(), 0x1407_3000);
-    assert_eq!(pe.timestamp(), 0x6AE6_E3E8);
+    assert_eq!(pe.size_of_image(), 0x13CC_4000);
+    assert_eq!(pe.timestamp(), 0x6AED_2E85);
     let funcs = desert_tools::funcs::FunctionTable::from_image(&pe.image(), x.rva, x.size).unwrap();
-    assert_eq!((funcs.len(), funcs.chained), (248_667, 51_083));
+    assert_eq!((funcs.len(), funcs.chained), (248_753, 51_092));
     let (_, root) = funcs.containing(get_pos + 0x20).expect("get_pos has a RUNTIME_FUNCTION");
     assert_eq!(root.begin, get_pos);
     assert!(pe.size_of_image as usize > data.len() / 2);

@@ -12,37 +12,44 @@ const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/Cri
 
 /// `desert_harvest::looter::game::SIGNATURES`, spelled out again because that
 /// module is Windows-only and these tests run natively, with the RVA each one
-/// hits on Steam build 26361232. All ten, `loot_grant` and `item_log` included
+/// hits on Steam build 26480954. All ten, `loot_grant` and `item_log` included
 /// (`item_log` was added on 26361232 and has no older RVA). The patterns
 /// were re-derived on 26345091, whose RVAs were, in this order: 0x161AFD0,
 /// 0x29A8370, 0x3B539AF, 0x2D35585, 0x1937610, 0x29A97C3, 0x22D6A50, 0x22D6D70,
 /// 0x2E1F010. On 26356046 they were 0x161AFD0, 0x29A86A0, 0x3B53D6F,
 /// 0x2D358B5, 0x1937610, 0x29A9AF3, 0x22D6A50, 0x22D6D70, 0x2E1F340; every one
-/// is exactly 0x50 lower on 26361232.
+/// was exactly 0x50 lower on 26361232 (0x161AF80, 0x29A8650, 0x3B53C9F,
+/// 0x2D35865, 0x19375C0, 0x29A9AA3, 0x22D6A00, 0x22D6D20, 0x2E1F2F0, and
+/// `item_log` 0x116A5B0). On 26423880 each moved up by its own amount, from
+/// +0x1250 (`item_log`) to +0x5A60 (`area_sweep`): 0x161C490, 0x29AC1E0,
+/// 0x3B596FF, 0x2D3B0A5, 0x1938D70, 0x29AD633, 0x22D9620, 0x22D9940,
+/// 0x2E24BA0 and 0x116B800. On 26480954 they moved up again, by +0x7B0
+/// (`item_log`) to +0xDB0 (`area_sweep`).
 const SIGNATURES: &[(&str, &str, usize)] = &[
-    ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00", 0x161AF80),
-    ("enqueue", "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00", 0x29A8650),
-    ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B", 0x3B53C9F),
-    ("own_check_site", "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02", 0x2D35865),
-    ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01", 0x19375C0),
-    ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25", 0x29A9AA3),
-    ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??", 0x22D6A00),
-    ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9", 0x22D6D20),
-    ("loot_grant", "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9", 0x2E1F2F0),
-    ("item_log", "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84", 0x116A5B0),
+    ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00", 0x161CCB0),
+    ("enqueue", "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00", 0x29ACE30),
+    ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B", 0x3B5A4AF),
+    ("own_check_site", "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02", 0x2D3BD15),
+    ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01", 0x19399B0),
+    ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25", 0x29AE283),
+    ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??", 0x22DA260),
+    ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9", 0x22DA580),
+    ("loot_grant", "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9", 0x2E25810),
+    ("item_log", "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84", 0x116BFB0),
 ];
 
 /// The steal check `own_check_site`'s call lands on, and the context static
-/// its `lea r9` loads 0xE bytes before the site, on 26361232 (`0x2801700` and
-/// `0x58EB918` on 26345091; on 26356046 the check was `0x2801A10` and the
-/// context the same as now).
-const STEAL_CHECK_RVA: usize = 0x28019C0;
-const STEAL_CTX_RVA: usize = 0x58EC918;
+/// its `lea r9` loads 0xE bytes before the site, on 26480954 (`0x2805550` and
+/// `0x58F2958` on 26423880; `0x28019C0` and
+/// `0x58EC918` on 26361232; `0x2801700` and `0x58EB918` on 26345091; on
+/// 26356046 the check was `0x2801A10` and the context `0x58EC918`).
+const STEAL_CHECK_RVA: usize = 0x28061C0;
+const STEAL_CTX_RVA: usize = 0x58F4960;
 
-/// RVA of the catch-count patch site on 26361232, file offset `0x2DD5B28`
-/// (`0x2DD6778`, file `0x2DD5B78`, on 26356046; `0x2DD6448`, file `0x2DD5848`,
-/// on 26345091).
-const CATCH_RVA: usize = 0x2DD6728;
+/// RVA of the catch-count patch site on 26480954, file offset `0x2DDBFD8`
+/// (`0x2DDBF68`, file `0x2DDB368`, on 26423880; `0x2DD6728`, file `0x2DD5B28`, on 26361232; `0x2DD6778`, file `0x2DD5B78`,
+/// on 26356046; `0x2DD6448`, file `0x2DD5848`, on 26345091).
+const CATCH_RVA: usize = 0x2DDCBD8;
 
 /// Where the `call rel32` at `e8` lands, `None` if there is no call there.
 fn rel32_target(img: &[u8], e8: usize) -> Option<usize> {

@@ -16,9 +16,12 @@ use super::table::{Detector, Table, BLOCK, PAD_AT};
 // build 25246367. On 25477059 573 / 896 / 13412 became 572 / 895 / 13447
 // (`itembox_11`, key 1012375, lost its only block; 35 records were added,
 // none with blocks), 215 item ids. Measured again on
-// `paths::CALIBRATED_BUILD` (26361232), the body `gen-collect-names`'
-// CALIBRATION is taken on and the first `NameFirst` one: 581 / 904 / 14210,
-// 220 item ids.
+// 26361232, the first `NameFirst` body: 581 / 904 / 14210, 220 item ids.
+// Re-measured on 26423880 (the body the same size, 336 bytes inside it
+// changed) and on `paths::CALIBRATED_BUILD` (26480954), the body
+// `gen-collect-names`' CALIBRATION is taken on (1082 bytes longer, 32 records
+// changed, all past every anchor): every count, loose count and anchor
+// unchanged on both.
 pub const EXPECT_LISTS: usize = 581;
 pub const EXPECT_BLOCKS: u64 = 904;
 pub const EXPECT_ITEMS: usize = 220;
@@ -27,7 +30,7 @@ pub const EXPECT_RECORDS: usize = 14210;
 // populations: every shipped list is also a loose list, and the extras are
 // exactly the blocks with a nonzero entry key. Build 25246367 was 589 / 1038;
 // the lost `itembox_11` block was in both populations, so on 25477059 (588 /
-// 1037 / 311) the loose-only counts did not move. 26361232: 597 / 1047 / 317,
+// 1037 / 311) the loose-only counts did not move. 26361232, 26423880 and 26480954: 597 / 1047 / 317,
 // 16 loose-only lists holding 143 blocks (142 before).
 pub const EXPECT_LOOSE_LISTS: usize = 597;
 pub const EXPECT_LOOSE_BLOCKS: u64 = 1047;
@@ -39,7 +42,7 @@ pub const EXPECT_LOOSE_ONLY_BLOCKS: u64 = EXPECT_LOOSE_BLOCKS - EXPECT_BLOCKS; /
 // default.
 pub const EXPECT_IMPLAUSIBLE_IDS: usize = 9;
 pub const IMPLAUSIBLE_HOME: &str = "gimmick_item_dropset_treasurebox_01";
-// 102 ids occur in the 143 loose-only blocks on 26361232 (101 in 142 through
+// 102 ids occur in the 143 loose-only blocks on 26361232, 26423880 and 26480954 (101 in 142 through
 // 25477059). Five of them also occur in the shipped population, so 97 items
 // (96) are ones the mod is blind to outright. Five
 // out of 101 is not corroboration and is not meant to read as any: chests yield

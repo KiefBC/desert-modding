@@ -244,7 +244,7 @@ required file not found". Job outputs survive a re-run of `nexus` alone.
 
 ### `sigscan` + `reference-signatures.txt` (`just sigscan`)
 Scans the installed `CrimsonDesert.exe` for every byte signature the
-plugins resolve at load (thirteen on build 26361232: the looter's ten, the
+plugins resolve at load (thirteen on build 26480954, as on 26423880 and 26361232: the looter's ten, the
 catch site and the two `[banking]` gate reads), plus a handful of class and event names. Each
 signature must hit **exactly once**; more than one hit means the pattern is no
 longer unique and the plugin could bind to the wrong function. Run it after a
@@ -255,7 +255,7 @@ game update. Not in CI, because CI has no copy of the game.
 signature deliberately matches `0xF` bytes into its function rather than at the
 entry point, and the comment says so.
 
-It also checks `static-info-names.txt`, 221 names on 26361232: the 216 names
+It also checks `static-info-names.txt`, 221 names on 26480954, 26423880 and 26361232: the 216 names
 of the game's 149 static-info types as of 25116796 (149 class names plus the
 67 lowercase table names that differ), less `reviepointinfo` and plus the six
 table names 26345091 added, extracted from `FUN_1424fef70` and recorded in
@@ -393,11 +393,17 @@ extra for `evidence` and nothing else.
 
 **None of them may select a PE section by name, and there is a test asserting
 it.** This exe's twelve section names are scrambled on every build, hotfixes
-included. On 26361232 they are `.sxdata .xtls .udata .debug$P .reloc .data
+included. On 26480954 they are `.text1 .arch .rodata .sdata .edata .tls
+.ecode .tls$ .rsrc .reloc .xpdata .shared`, the 89 MB code section every
+signature hits is `.text1` (RVA `0x1000`), `.tls$` is the 200 MB shielded code
+section at RVA `0x7a44000`, and the exception directory is all of `.shared`.
+On 26423880 they were `.rsrc .tls$ .data .xdata .shared .ecode .idata .text
+.debug$P .text1 .debug .edata`, the code in `.rsrc`, the shielded section
+`.text` at RVA `0x7a41000`, and the exception directory all of `.edata`. On 26361232 they were `.sxdata .xtls .udata .debug$P .reloc .data
 .link .xtext .rdata .sdata .rodata .shared`, the 89 MB code section every
-signature hits is `.sxdata` (RVA `0x1000`), `.xtext` is the 203 MB writable
-code section at RVA `0x7a3a000`, and the exception directory is all of
-`.shared`. Earlier the same day they were `.xtext .shared .sdata .didata .trace
+signature hits was `.sxdata` (RVA `0x1000`), `.xtext` was the 203 MB writable
+code section at RVA `0x7a3a000`, and the exception directory was all of
+`.shared`. Earlier that day they were `.xtext .shared .sdata .didata .trace
 .xcode .data .text .ecode .rsrc .tls .rdata` on 26356046, with the 89 MB code
 section named `.xtext` and the exception directory all of `.rdata`, and on
 26345091 `.trace .xtls .reloc .arch .text1 .shared .data2 .didata .debug .data1
@@ -441,11 +447,11 @@ straight in.
   register, the loader-call shape and distance, `LOADER_PROLOGUE` at the
   target, the stream fill (the three stores that put the stream's buffer,
   size and cursor into the stack stream before `lea r9,[rsp+0x30]`: `stream
-  fill: buffer +0x20 size +0x28 cursor +0x2c at 154 of 154 sites` on 26361232,
+  fill: buffer +0x20 size +0x28 cursor +0x2c at 154 of 154 sites` on 26480954, 26423880 and 26361232,
   plus a `stream fill:` line for `gimmickinfo` alone, and a `fill` column under
   `--sites`), and each passed name against `static-info-names.txt`. Its constants
   mirror `gimmick.rs` with a comment saying so, because `crates/tools/` does not
-  depend on `desert-core`; `expect.rs` pins the 26361232 figures (including
+  depend on `desert-core`; `expect.rs` pins the 26480954 figures (including
   `STREAM_LAYOUT` 0x20 / 0x28 / 0x2c and `STREAM_SITES` 154) and
   `crates/desert-core/tests/gimmick_real.rs` asserts the same ones.
 * `calls` lists every `E8`/`E9` target in a range with its `.pdata` status,
@@ -547,8 +553,9 @@ instruction - the `4C 8D 05` at `+0x1529527`, reported once at the REX byte as
 `lea` and once at the opcode as `lea32`. On build 25477059 the literal is at
 `+0x57AFC28`, the cell at `+0x59792A8`, and the one instruction reads as `lea`
 at `+0x15BBA17` and `lea32` at `+0x15BBA18`. On build 26356046 the literal is
-at `+0x5B58050`, the cell at `+0x5D2E048`, and the instruction at `+0x17E03B7`
-(`tests/xrefs_cli.rs` pins it).
+at `+0x5B58050`, the cell at `+0x5D2E048`, and the instruction at `+0x17E03B7`.
+On 26480954 the literal is at `+0x5B5FE28`, the cell at `+0x5D358A8`, and the
+instruction at `+0x17E2257` (`tests/xrefs_cli.rs` pins it).
 
 **It takes an RVA. `sigscan` prints file offsets.** The two are not directly
 composable: feeding a `sigscan` offset to `xrefs` will usually report zero
@@ -557,8 +564,9 @@ table (`desert_tools::pe`) first.
 
 ### `fieldnames`
 Recovers the **field names of every static-info record class** from the
-shipped exe - 5034 `(class, field)` pairs across 581 classes on build
-26361232, as on 26345091 and 26356046 (4712 across 537 on 25477059, 4675 across 536 on 25246367) - and
+shipped exe - 5037 `(class, field)` pairs on build 26480954, as on 26423880 (the two new
+`ItemInfo` sound fields and `SpawningPoolAutoSpawnInfo.useSceneCollectSpawn`),
+5034 across 581 classes on 26361232, as on 26345091 and 26356046 (4712 across 537 on 25477059, 4675 across 536 on 25246367) - and
 writes them to
 `analysis/fieldnames.json`.
 
@@ -722,9 +730,9 @@ and both cost an earlier investigation a wrong answer:
   `firewood_0001` should be.
 
 Every run re-checks the five numbers and three offset anchors that were
-confirmed three independent ways on build 25246367, re-measured on 25477059
-and again on 26361232 (`paths::CALIBRATED_BUILD`) - now 581 output lists,
-904 blocks, 220 distinct item ids, 14210 records (25477059: 572, 895, 215,
+confirmed three independent ways on build 25246367, re-measured on 25477059,
+again on 26361232, on 26423880 and on 26480954 (`paths::CALIBRATED_BUILD`) - now
+581 output lists, 904 blocks, 220 distinct item ids and 14210 records on 26480954, unchanged from 26423880 and 26361232 (25477059: 572, 895, 215,
 13447), and the known item names - and prints `FAIL` for any that
 moved. On 26361232 the `--loose` walk is 597 lists / 1047 blocks / 317 items,
 the loose-only part 16 lists / 143 blocks / 97 items, the 9 implausible ids
@@ -866,7 +874,7 @@ the rule already covers is a refusal. Item 1 is money and the rule on it is
 two-way: every family but `Money` refuses a record that pays it, and `Money`
 refuses a record that pays anything else. Nothing is decoded unless the body
 reproduces `CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide
-counts and three anchor records, taken on build 26361232 (581 lists / 904
+counts and three anchor records, taken on build 26480954 (unchanged from 26423880 and 26361232: 14210 records, 581 lists, 904 blocks; anchors firewood_0001 (10136473) +1796, gimmick_well_0001_parts01 (3374134) +731, Background_Breakable_66 (807359) +1393; on 26361232 581 lists / 904
 blocks / 14210 records; `firewood_0001`'s list at table offset 10136473, +1796
 from its record start, `gimmick_well_0001_parts01` at 3374134, +731,
 `Background_Breakable_66` at 807359, +1393) - and a refusal names that build

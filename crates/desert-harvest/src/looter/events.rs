@@ -65,7 +65,9 @@ pub struct EventApi {
 /// Where the four things the `desc_mask+queue` call site yields sit inside
 /// its signature hit, as `(instruction offset, disp offset within it,
 /// instruction length)`. Confirmed by disassembly on build 26345091
-/// (`+0x29A97C3`; `+0x29A9AA3` on 26361232), unchanged since 25116796.
+/// (`+0x29A97C3`; `+0x29A9AA3` on 26361232, `+0x29AD633` on 26423880,
+/// `+0x29AE283` on 26480954),
+/// unchanged since 25116796.
 mod queue_site {
     /// `E8 rel32` at +0: `prepare`.
     pub const PREPARE: (usize, usize, usize) = (0, 1, 5);

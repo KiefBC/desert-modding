@@ -32,7 +32,7 @@
 //! would multiply that source too. The sources not walked here (the
 //! character tables' loot and pockets, quest dialogue rewards, stage and
 //! sub-level rewards, mini-games) are named in the generated header; on
-//! 26361232 the catalogue database (`analysis/catalog_db.py`, which does walk
+//! 26361232 and 26423880 the catalogue database (`analysis/catalog_db.py`, which does walk
 //! the characters and quests) finds none of the emitted rows shared with them.
 //!
 //! Each emitted row carries what the plugin checks the parsed row against
@@ -229,6 +229,24 @@ fn walk_all<T>(name: &str, recs: &[Rec], mut f: impl FnMut(&Rec) -> Result<T, gw
         );
     }
     Ok(out)
+}
+
+/// The one `ItemInfo` layout every `iteminfo` record walks under. None or
+/// both is a refusal: the walk cannot tell which build the table came from.
+fn item_layout(recs: &[Rec]) -> Result<walks::ItemLayout> {
+    let fits: Vec<walks::ItemLayout> = walks::ItemLayout::ALL
+        .into_iter()
+        .filter(|l| recs.iter().all(|r| walks::item_use_list(&r.bytes, r.key, *l).is_ok()))
+        .collect();
+    match fits.as_slice() {
+        [one] => Ok(*one),
+        [] => {
+            // Report the failures of the newest layout, the likelier one.
+            walk_all(ITEM, recs, |r| walks::item_use_list(&r.bytes, r.key, walks::ItemLayout::ALL[0]))?;
+            bail!("{ITEM}: no ItemInfo layout walks every record")
+        }
+        _ => bail!("{ITEM}: every record walks under more than one ItemInfo layout ({fits:?}); nothing written"),
+    }
 }
 
 /// The facts the class rule reads off one gimmick record.
@@ -443,7 +461,8 @@ fn run(cli: &Cli) -> Result<()> {
         .filter_map(|(r, (kind, d))| (*kind == walks::RANDOM_BOX).then_some((r.key, d.unwrap_or(0))))
         .collect();
     let item_recs = records_of(&src, ITEM)?;
-    let use_lists = walk_all(ITEM, &item_recs, |r| walks::item_use_list(&r.bytes, r.key))?;
+    let layout = item_layout(&item_recs)?;
+    let use_lists = walk_all(ITEM, &item_recs, |r| walks::item_use_list(&r.bytes, r.key, layout))?;
     let used: BTreeSet<u32> = use_lists.iter().flatten().copied().collect();
     let mut pouch_items = 0usize;
     for l in &use_lists {
@@ -581,6 +600,7 @@ fn run(cli: &Cli) -> Result<()> {
         mi_recs.len(),
         fn_recs.len()
     );
+    println!("{ITEM} layout: {layout:?} (the only one every record walks under)");
     let cls: Vec<String> = classes.iter().map(|(c, n)| format!("{c} {n}")).collect();
     println!("gimmick classes: {}", cls.join(", "));
     println!(

@@ -523,13 +523,17 @@ pub fn item_record(m: &MainModule, index: u16) -> Option<usize> {
     safe::read_ptr(arr + index as usize * 8)
 }
 
-/// The default inventory tab id of an item record, `i16 @0x428` through
-/// 25477059 (read by the game's cross-tab item counter `FUN_14207F770`, -1 =
-/// none). **Unverified on 26361232**: the item record's key and name moved
-/// there, so this offset probably did too, and nothing validates it. It
-/// feeds only the F11 survey's `tab=` display, which says so; do not build
-/// on it before it is re-read.
-pub const ITEM_TAB_OFF: usize = 0x428;
+/// The default inventory tab id of an item record: the first of ItemInfo's twelve
+/// `u16` inventory fields (`analysis/economy.py` `u240`), which the deserialiser
+/// stores converted from the table's inventory key to a tab index (key - 1:
+/// Arrow's key 2 reads tab 1). `@0x248` on 26480954 (`+0x240` on 26361232, moved
+/// +8 by the two ItemInfo strings 26423880 inserted; `@0x428` through 25477059,
+/// where the record layout differed). Verified on 26480954 from an F11
+/// `[itemrec]` dump (2026-11-06, `analysis/item_tab_probe.py`): 8 of 10 records
+/// hold the tab they sit in, the other two are tab-7 collection items whose
+/// default is 1, and all 10 equal the static `u240[0]` minus one. `0x428` reads
+/// 0 on every record there. Feeds only the F11 survey's `tab=` display.
+pub const ITEM_TAB_OFF: usize = 0x248;
 
 /// The item record's `u32` key, through the latched [`ItemLayout`]: `@0`
 /// through 25477059, wherever [`maybe_probe_items`] found it on a later
@@ -544,7 +548,7 @@ pub fn item_record_name(rec: usize) -> Option<String> {
     read_name(rec, item_layout().name)
 }
 
-/// See [`ITEM_TAB_OFF`]: the pre-26361232 offset, unverified.
+/// See [`ITEM_TAB_OFF`]: the item's default tab (-1 = none).
 pub fn item_record_tab(rec: usize) -> Option<i16> {
     safe::read(rec.checked_add(ITEM_TAB_OFF)?)
 }

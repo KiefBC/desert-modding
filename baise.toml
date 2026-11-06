@@ -18,8 +18,8 @@ title_prefix = "LIVE STATUS"
 [[mod]]
 key = "desert-tooling"
 label = "Desert Tooling"
-build = "26361232"          # the Steam build you verified the mod on
-date = "2026-11-03"         # when (YYYY-MM-DD)
+build = "26480954"          # the Steam build you verified the mod on
+date = "2026-11-06"         # when (YYYY-MM-DD)
 status = "working"          # working | broken | wip    - shown while the game is still on `build`
 on_update = "untested"      # untested | broken         - shown once Steam's build moves past it
 note = ""                   # optional one-liner next to the status

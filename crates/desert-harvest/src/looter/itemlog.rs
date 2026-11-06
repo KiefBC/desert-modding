@@ -19,6 +19,10 @@
 //! 0xD for the bug and 0x1C for the flowers. The first guess, `0x116C7A0`,
 //! never fired: it is another notification.
 //!
+//! The addresses above are 26361232's. On 26423880 the `item_log` signature
+//! hits the function at `0x116B800`, on 26480954 at `0x116BFB0`; the rest were
+//! not re-read.
+//!
 //! ## Why skipping it is safe
 //!
 //! The stub ([`desert_core::trampoline::gate_hook_stub`]) returns straight to
@@ -69,7 +73,8 @@ use crate::looter::logfilter::{self, Decision, ItemFacts, COUNTERS, LIVE, QUEST_
 use crate::looter::{game, tables};
 use crate::module::MainModule;
 
-/// Bytes the hook steals from the handler's prologue (build 26361232):
+/// Bytes the hook steals from the handler's prologue (build 26361232; the
+/// same on 26423880 and 26480954):
 ///
 /// ```text
 /// 48 89 5C 24 10        mov  [rsp+0x10],rbx

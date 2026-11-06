@@ -21,7 +21,7 @@
 //! listed by two parents takes the one **later in record order** (the Python
 //! builds the map with a dict comprehension, and the last write wins). The
 //! group's path is its parent chain, root first. An item sits in several
-//! groups (6859 of 7064 on 26361232); its path is the **longest** of its
+//! groups (6859 of 7064 on 26361232 and 26423880, 6864 of 7069 on 26480954); its path is the **longest** of its
 //! groups' paths, the first in record order on a tie (`max(paths, key=len)`).
 //!
 //! The Python joins display names (`Equipment > Key Item > Book`), which come
@@ -36,7 +36,7 @@
 //! | `Item > Document > Quest Reward` | `ItemGroup_Main / ItemGroup_ETC_Document / ItemGroup_Collection_Quest_Reward_Document` |
 //! | `Item > Key > Key` | `ItemGroup_Main / ItemGroup_ETC_Key / <any child>` (`_Key_Quest`, `_Key_Normal`, `_Key_Cube`) |
 //!
-//! On 26361232 that is 1106 + 37 + 3 + 1 + 47 = 1194 items, the same set
+//! On 26361232, 26423880 and 26480954 that is 1106 + 37 + 3 + 1 + 47 = 1194 items, the same set
 //! `analysis/db/catalog.db`'s `items_items.inventory_group_path` gives.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

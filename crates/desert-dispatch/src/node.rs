@@ -106,6 +106,14 @@ use crate::remember::{Mission, Reward};
 /// carried over unchanged on that basis, and the census and write gate are
 /// what confirm them on this build too.
 ///
+/// Build 26423880 was not re-derived either: every signature still hits once
+/// with no pattern changed, but the code moved by different amounts (the
+/// reward function is at `0x2A8F440`, the item constructor at `0x25FDFA0`),
+/// so the layout below is carried over on the same terms and the census and
+/// write gate are again what confirm it. 26480954 is the same case (reward
+/// function `0x2A90090`, item constructor `0x25FED70`), and its first launch
+/// logged `LOOKS RIGHT` for both verdicts with the layout carried over.
+///
 /// None of this was confirmed in game yet. That is what `verdict()` and the
 /// write gate in `scan.rs` are for: nothing is written until a vanilla census
 /// on this launch says LOOKS RIGHT.
@@ -328,7 +336,8 @@ pub mod parsed {
     /// roller tests the condition keys at `entry+0x04`/`+0x06`/`+0x08`, sums
     /// weights from `entry+0x10`, and its per-entry applier (`0x1C49FE0`) draws
     /// `max - min + 1` from `[e+0x28] - [e+0x20]`, passes `e+0x38` to the item
-    /// constructor (`0x25FA160` on 26345091, `0x25FA420` on 26361232, the catch
+    /// constructor (`0x25FA160` on 26345091, `0x25FA420` on 26361232, `0x25FDFA0`
+    /// on 26423880, `0x25FED70` on 26480954, the catch
     /// hook's callee), and switches on the
     /// byte at `e+0x60`.
     ///
@@ -516,8 +525,9 @@ pub mod parsed {
 /// RIP-relative operand of that instruction resolved. Until 0.10.0 they were
 /// two bare RVAs measured on build 25116796 (`0x6BC6AA8` and `0x6BA07C8`) and
 /// never re-derived; on 26345091 the signatures resolve them to `0x714FE68` and
-/// `0x7127CF8`, on 26356046 to `0x7150E18` and `0x7128CA8`, and on 26361232 to
-/// the same two. Because **nothing acts on either value**, a signature that does
+/// `0x7127CF8`, on 26356046 to `0x7150E18` and `0x7128CA8`, on 26361232 to
+/// the same two, on 26423880 to `0x71580B8` and `0x712FDB8`, and on 26480954
+/// to `0x715A1D8` and `0x7131ED8`. Because **nothing acts on either value**, a signature that does
 /// not resolve costs one log line saying so, never a write.
 ///
 /// They were read to settle whether the `AnyOperatorCount` warning describes
@@ -539,7 +549,7 @@ pub mod parsed {
 /// on the repeating flag and before the `mov r8b,1; ...; call` that builds the
 /// stored-reward list, whose callee is the same function `FUN_14038d1d0` was.
 /// The rate global still sits 0xA0 below the surplus gate on 25116796,
-/// 26345091, 26356046 and 26361232.
+/// 26345091, 26356046, 26361232, 26423880 and 26480954.
 pub mod globals {
     use desert_core::pattern::{self, Found, Pattern};
 
@@ -547,7 +557,8 @@ pub mod globals {
     /// operators]; ...; movsxd rax,[rip+rate]; imul; imul rcx,rax,10000`. The
     /// hit is the `38` opcode (any REX before it is outside the pattern), so
     /// the `cmp` is [`GATE_CMP_LEN`] bytes from the hit. `+0x2A8A6F6` on
-    /// 26345091, `+0x2A8AA26` on 26356046, `+0x2A8A9D6` on 26361232.
+    /// 26345091, `+0x2A8AA26` on 26356046, `+0x2A8A9D6` on 26361232,
+    /// `+0x2A90156` on 26423880, `+0x2A90DA6` on 26480954.
     pub const SURPLUS_GATE_SIG: &str = "38 ?? ?? ?? ?? ?? 74 ?? ?? 8B ?? ?? ?? 00 00 48 8B ?? ?? 48 2B ?? 48 39 ?? ?? ?? 0F 46 ?? 48 63 05 ?? ?? ?? ?? 48 0F AF ?? 48 69 ?? 10 27 00 00";
     /// Where the `38` of the surplus read sits in a [`SURPLUS_GATE_SIG`] hit.
     pub const SURPLUS_GATE_CMP_AT: usize = 0;
@@ -555,7 +566,8 @@ pub mod globals {
     /// `cmp byte [rip+gate],r8; je rel32`, then the start of the
     /// stored-reward list build (`mov rax,[r+0x10]; lea rdx,[rax+8];
     /// test rax,rax; cmovz; mov r8b,1`). `+0x2A8A84C` on 26345091, `+0x2A8AB7C`
-    /// on 26356046, `+0x2A8AB2C` on 26361232.
+    /// on 26356046, `+0x2A8AB2C` on 26361232, `+0x2A902AC` on 26423880,
+    /// `+0x2A90EFC` on 26480954.
     pub const DEFERRED_GATE_SIG: &str = "0F 84 ?? ?? ?? ?? ?? 38 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? ?? 8B ?? ?? 10 48 8D 50 08 48 85 C0 ?? 0F 44 ?? ?? B0 01";
     /// Where the `38` of the deferred read sits in a [`DEFERRED_GATE_SIG`] hit
     /// (after the 6-byte `je` and one REX byte).

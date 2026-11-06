@@ -11,7 +11,7 @@
 /// side of the pin; `paths::CALIBRATED_BUILD` is the table side (the walk
 /// calibrations re-pinned from a `DumpTable=1` launch) and lags it until that
 /// dump has been read.
-pub const BUILD: &str = "26361232";
+pub const BUILD: &str = "26480954";
 
 /// Accessor sites per head encoding (`census::HEADS` order), and their sum.
 pub const HEAD_COUNTS: [usize; 4] = [132, 20, 2, 0];
@@ -33,19 +33,24 @@ pub const SLOT_REG: &str = "edx";
 /// with the `48 89 D9` (`mov rcx,rbx`) encoding and no index load. History:
 /// 153 and 151 on 26345091 (`characterinfo` lacked the call), 152 and 150 on
 /// 26356046 (`characterinfo` and `tribeinfo` both had an accessor the
-/// compiler rearranged past the grammar), 154 and 152 again on 26361232.
+/// compiler rearranged past the grammar), 154 and 152 again on 26361232,
+/// 26423880 and 26480954.
 pub const LOADER_CALLS: usize = 154;
 pub const LOADER_CALLS_WITH_PROLOGUE: usize = 152;
 pub const LOADER_DIST: (u32, u32) = (0x74, 0x7E);
 
-/// The `gimmickinfo` site. The code side did not move between 26345091,
-/// 26356046 and 26361232; the slot (a data cell) moved once, from
-/// `+0x71b6c48` on 26345091, and is the same on 26356046 and 26361232.
-pub const GIMMICK_ACCESSOR: u32 = 0x3dd9a8;
-pub const GIMMICK_SLOT_LOAD: u32 = 0x3dd975;
-pub const GIMMICK_SLOT: u32 = 0x71b7bf8;
-pub const GIMMICK_LOADER_CALL: u32 = 0x3dda44;
-pub const GIMMICK_LOADER: u32 = 0x3d89a0;
+/// The `gimmickinfo` site on 26480954. The code side did not move between
+/// 26345091, 26356046 and 26361232 (accessor `+0x3dd9a8`, slot load
+/// `+0x3dd975`, loader call `+0x3dda44`, loader `+0x3d89a0`); 26423880 moved
+/// all four 0x600 higher (`+0x3ddfa8`, `+0x3ddf75`, `+0x3de044`, `+0x3d8fa0`)
+/// and 26480954 another 0x2e0. The slot (a data cell) was `+0x71b6c48` on
+/// 26345091, `+0x71b7bf8` on 26356046 and 26361232 and `+0x71bee98` on
+/// 26423880.
+pub const GIMMICK_ACCESSOR: u32 = 0x3de288;
+pub const GIMMICK_SLOT_LOAD: u32 = 0x3de255;
+pub const GIMMICK_SLOT: u32 = 0x71c10a8;
+pub const GIMMICK_LOADER_CALL: u32 = 0x3de324;
+pub const GIMMICK_LOADER: u32 = 0x3d9280;
 
 /// The stream layout the `gimmickinfo` accessor fills in before its loader
 /// call (`gimmick::StreamLayout::NEW`): buffer, size, cursor. Every site with
@@ -58,22 +63,27 @@ pub const STREAM_SITES: usize = 154;
 
 /// Every signature in `reference-signatures.txt`, by its `# name - ...`
 /// comment, and the RVA it hits on this build. `sigscan` prints FILE offsets;
-/// `retarget triage` prints both. Every one is exactly 0x50 lower than on
-/// 26356046.
+/// `retarget triage` prints both. On 26361232 every one was exactly 0x50
+/// lower than on 26356046; on 26423880 they moved up by amounts from +0x1250
+/// (`item_log`) to +0x5a60 (`area_sweep`), not one shift. On 26423880 they
+/// were, in this order, 0x161c490, 0x29ac1e0, 0x3b596ff, 0x2d3b0a5,
+/// 0x1938d70, 0x29ad633, 0x22d9620, 0x22d9940, 0x2ddbf68, 0x2e24ba0,
+/// 0x116b800, 0x2a902ac and 0x2a90156; 26480954 moved them up again, by
+/// +0x7b0 (`item_log`) to +0xdb0 (`area_sweep`).
 pub const SIGNATURES: &[(&str, u32)] = &[
-    ("alloc_event", 0x161af80),
-    ("enqueue", 0x29a8650),
-    ("area_sweep", 0x3b53c9f),
-    ("own_check_site", 0x2d35865),
-    ("get_pos", 0x19375c0),
-    ("desc_mask+queue", 0x29a9aa3),
-    ("interaction fn", 0x22d6a00),
-    ("category fn", 0x22d6d20),
-    ("catch_count", 0x2dd6728),
-    ("loot_grant", 0x2e1f2f0),
-    ("item_log", 0x116a5b0),
-    ("banking_deferred_gate", 0x2a8ab2c),
-    ("banking_surplus_gate", 0x2a8a9d6),
+    ("alloc_event", 0x161ccb0),
+    ("enqueue", 0x29ace30),
+    ("area_sweep", 0x3b5a4af),
+    ("own_check_site", 0x2d3bd15),
+    ("get_pos", 0x19399b0),
+    ("desc_mask+queue", 0x29ae283),
+    ("interaction fn", 0x22da260),
+    ("category fn", 0x22da580),
+    ("catch_count", 0x2ddcbd8),
+    ("loot_grant", 0x2e25810),
+    ("item_log", 0x116bfb0),
+    ("banking_deferred_gate", 0x2a90efc),
+    ("banking_surplus_gate", 0x2a90da6),
 ];
 
 /// `static-info-names.txt` on this build: 216 less `reviepointinfo`, plus the

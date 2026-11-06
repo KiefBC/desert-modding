@@ -1,4 +1,4 @@
-//! Gather-node records of Crimson Desert build 26361232, generated from the
+//! Gather-node records of Crimson Desert build 26480954, generated from the
 //! game's own archive tables (gimmickinfo, iteminfo, interactioninfo and
 //! knowledgeinfo) by the family rule in
 //! crates/tools/src/bin/gen-collect-names/classify.rs, plus the overrides in

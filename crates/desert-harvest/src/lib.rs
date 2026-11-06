@@ -44,8 +44,8 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// come out as `[harvest]`. Nothing else names it.
 pub const LOG_TAG: &str = "harvest";
 
-/// How many gather records `desert_core::collect` knows about (294 on build
-/// 26361232: the records the family rule picks out of the game's own tables,
+/// How many gather records `desert_core::collect` knows about (294 on builds
+/// 26361232, 26423880 and 26480954: the records the family rule picks out of the game's own tables,
 /// plus the overrides, the water well and the three money props among them). The ceiling
 /// on the yield half's own per-record log lines.
 pub fn known_records() -> usize {

@@ -1,16 +1,16 @@
 {
   "name": "Ore Nodes - 2X",
-  "version": "1.4",
+  "version": "1.5",
   "author": "KiefBC",
   "description": "Multiplies ore nodes node minimum and maximum yields by 2. Select no more than one Ore Nodes rate in DMM.",
   "game": "Crimson Desert Enhanced",
-  "game_build": "26361232",
+  "game_build": "26480954",
   "multiplier": 2,
   "category": "Ore Nodes",
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Ore Nodes - 2X",
-    "version": "1.4",
+    "version": "1.5",
     "author": "KiefBC",
     "description": "2x yields for ore nodes nodes.",
     "allow_partial_apply": true

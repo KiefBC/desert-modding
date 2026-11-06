@@ -71,7 +71,9 @@
 //! `lea r8,[rip+disp]` points at the C string `"gimmickinfo\0"` (that string
 //! occurs exactly once in the exe).
 //!
-//! The addresses below are build 26345091's (the same on 26356046 and 26361232) and are here to be read beside a
+//! The addresses below are build 26345091's (the same on 26356046 and 26361232;
+//! 26423880 moved the code 0x600 higher, the slot load to `+3ddf75`, and
+//! 26480954 another 0x2e0, to `+3de255`) and are here to be read beside a
 //! disassembly rather than relied on: all of them move when the game updates,
 //! and nothing in this file resolves anything by address.
 //!
@@ -160,7 +162,8 @@
 //! 152 calls, 150 with the prologue, nothing else moved. On 26361232 all 154
 //! have one again: 127 `48 8B CB`, 2 `48 89 D9` (`characterinfo` and
 //! `tribeinfo`, neither with an index load) and 25 `mov r8d`; 152 reach the
-//! prologue, the two `jmp` thunks being the same two. A table whose call is
+//! prologue, the two `jmp` thunks being the same two. 26423880 and 26480954 have the same
+//! census, shape for shape. A table whose call is
 //! missing is an error for that table only; for `gimmickinfo` the gatherer
 //! treats it as fatal.
 //!
@@ -175,7 +178,8 @@
 //! for a whole dry run before anyone noticed. So the offsets are read off the
 //! accessor's fill sequence ([`parse_stream_fill`], [`AccessorSites::stream_layout`])
 //! rather than assumed: on 26361232 all 152 sites with a resolved loader call
-//! parse, every one to [`StreamLayout::NEW`].
+//! parse, every one to [`StreamLayout::NEW`], and the same on 26423880 and
+//! 26480954.
 //!
 //! # The manager slot
 //!
@@ -1377,7 +1381,8 @@ fn named_accessor(
 /// [`crate::pe::file_to_image`] on the exe file). The result is an RVA, not a
 /// virtual address: callers add the module base themselves. On build 26345091
 /// this answers `0x71B6C20` for `iteminfo` and `0x71B6C48` for `gimmickinfo`
-/// (`0x71B7BD0` and `0x71B7BF8` on 26356046 and 26361232).
+/// (`0x71B7BD0` and `0x71B7BF8` on 26356046 and 26361232, `0x71BEE70` and
+/// `0x71BEE98` on 26423880, `0x71C1080` and `0x71C10A8` on 26480954).
 ///
 /// See the module docs for the `mov rbx,[rip+disp32]; cmp r32,[rbx+0x8]`
 /// shape this looks for in the [`SLOT_WINDOW`] bytes before the named

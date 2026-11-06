@@ -1,45 +1,51 @@
 # Byte signatures lifted from the reference mod (names are its own).
 # One line per signature; '#' lines are comments; ?? is a wildcard byte.
-# alloc_event      - function start; returns a fresh event object. RVA 0x161AF80 on 26361232,
-#                    0x161AFD0 on 26345091 and 26356046 (the call at desc_mask+queue+0x22; 68 callers). The
+# alloc_event      - function start; returns a fresh event object. RVA 0x161CCB0 on 26480954, 0x161C490 on 26423880,
+#                    0x161AF80 on 26361232, 0x161AFD0 on 26345091 and 26356046 (the call at desc_mask+queue+0x22; 68 callers). The
 #                    pre-26345091 line was
 #                    48 89 5C 24 ?? 4C 89 44 24 ?? 57 48 83 EC 20 8B ?? BA ?? ?? 00 00
 48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00
-# enqueue          - function start; (queue, event). RVA 0x29A8650 on 26361232 (0x29A86A0 on 26356046,
+# enqueue          - function start; (queue, event). RVA 0x29ACE30 on 26480954 (0x29AC1E0 on 26423880, 0x29A8650 on 26361232, 0x29A86A0 on 26356046,
 #                    0x29A8370 on 26345091; the call at desc_mask+queue+0x98); hooked, 15 bytes stolen. The
 #                    pre-26345091 line was
 #                    48 89 5C 24 08 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00
 48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00
 # area_sweep       - hit is 0xF bytes into the function (prologue starts 15 bytes earlier); hooked.
-#                    Hit RVA 0x3B53C9F on 26361232 (0x3B53D6F on 26356046, 0x3B539AF on 26345091).
+#                    Hit RVA 0x3B5A4AF on 26480954 (0x3B596FF on 26423880, 0x3B53C9F on 26361232, 0x3B53D6F on 26356046, 0x3B539AF on 26345091).
 55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B
 # own_check_site   - call site; the E8 at +7 targets the owner-check function
-#                    (0x28019C0 on 26361232, 0x2801A10 on 26356046, 0x2801700 on 26345091, nine callers);
-#                    lea r9,[rip+ctx] 0xE before. Hit RVA 0x2D35865 (0x2D358B5 on 26356046, 0x2D35585 on 26345091). The pre-26345091 line ended
+#                    (0x28061C0 on 26480954, 0x2805550 on 26423880, 0x28019C0 on 26361232, 0x2801A10 on 26356046, 0x2801700 on 26345091, nine callers);
+#                    lea r9,[rip+ctx] 0xE before (ctx 0x58F4960 on 26480954, 0x58F2958 on 26423880). Hit RVA 0x2D3BD15
+#                    (0x2D3B0A5 on 26423880, 0x2D35865 on 26361232,
+#                    0x2D358B5 on 26356046, 0x2D35585 on 26345091). The pre-26345091 line ended
 #                    "84 C0 74 04 B3 02" (mov bl,2; now mov dil,2)
 48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02
-# get_pos          - function start; [rcx+0x68]->[+0x1A0]->vtbl+0x140. RVA 0x19375C0 on 26361232, 0x1937610 on 26345091 and 26356046
+# get_pos          - function start; [rcx+0x68]->[+0x1A0]->vtbl+0x140. RVA 0x19399B0 on 26480954, 0x1938D70 on 26423880, 0x19375C0 on 26361232,
+#                    0x1937610 on 26345091 and 26356046
 40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01
 # desc_mask+queue  - call site; E8@+0 -> "prepare" fn, E8@+0x11 -> descriptor-by-id fn,
 #                    RIP-rel @+8 -> desc_mask u32, RIP-rel @+0x19 -> queue ptr.
-#                    RVA 0x29A9AA3 on 26361232 (0x29A9AF3 on 26356046, 0x29A97C3 on 26345091)
+#                    RVA 0x29AE283 on 26480954 (0x29AD633 on 26423880, 0x29A9AA3 on 26361232, 0x29A9AF3 on 26356046, 0x29A97C3 on 26345091)
 E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25
 # interaction fn   - function start; hooked (FUN_180017ff0 in the mod); preceded by a
-#                    "4C 8D 05 .. 33 D2 48 8B .. E8" call-site scan. RVA 0x22D6A00 on 26361232, 0x22D6A50 on 26345091 and 26356046
+#                    "4C 8D 05 .. 33 D2 48 8B .. E8" call-site scan. RVA 0x22DA260 on 26480954, 0x22D9620 on 26423880, 0x22D6A00 on 26361232,
+#                    0x22D6A50 on 26345091 and 26356046
 88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??
 # category fn      - function start; scanned for an embedded "FF 9x imm32" constant in 0x100..0x2000.
-#                    RVA 0x22D6D20 on 26361232, 0x22D6D70 on 26345091 and 26356046, the function right after interaction fn
+#                    RVA 0x22DA580 on 26480954, 0x22D9940 on 26423880, 0x22D6D20 on 26361232, 0x22D6D70 on 26345091 and 26356046, the function
+#                    right after interaction fn
 #                    (call [rax+0x818] inside). The pre-26345091 line had "0F B6 F2"
 #                    (movzx esi,dl) where "44 0F B6 EA" (movzx r13d,dl) is now
 48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9
 # --- desert-harvest, yields -----------------------------------------------
-# catch_count  - inside the catch handler (RVA 0x2DD6728 on 26361232, file
-#                0x2DD5B28; 0x2DD6778, file 0x2DD5B78, on 26356046; 0x2DD6448 on 26345091; 0x2a74151 on 25116796): "mov r8d,1" feeding the
+# catch_count  - inside the catch handler (RVA 0x2DDCBD8 on 26480954, file
+#                0x2DDBFD8; 0x2DDBF68, file 0x2DDB368, on 26423880; 0x2DD6728, file 0x2DD5B28, on 26361232; 0x2DD6778, file 0x2DD5B78, on 26356046; 0x2DD6448 on 26345091; 0x2a74151 on 25116796): "mov r8d,1" feeding the
 #                item-instance constructor, plus the two leas and the call's E8.
 #                Hooked by desert-harvest/src/gatherer/catch.rs; 13 bytes stolen.
 41 B8 01 00 00 00 48 8D 95 D0 01 00 00 48 8D 8D B0 00 00 00 E8
 # --- desert-harvest, Hunting ----------------------------------------------
-# loot_grant   - function start of the loot grant (RVA 0x2E1F2F0 on 26361232, 0x2E1F340 on 26356046, 0x2E1F010 on 26345091,
+# loot_grant   - function start of the loot grant (RVA 0x2E25810 on 26480954, 0x2E24BA0 on 26423880, 0x2E1F2F0 on 26361232, 0x2E1F340 on 26356046,
+#                0x2E1F010 on 26345091,
 #                FUN_142ab6f20 on 25246367): it walks a dead-drop component's
 #                item rows (comp+0x48) and drop-set rows (comp+0x58) and hands
 #                the ones matching the loot-method mask to the inventory. Hooked
@@ -52,8 +58,8 @@ E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25
 #                48 89 5C 24 08 4C 89 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B F9 4C 8B E2 4C 8B E9
 48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9
 # --- desert-harvest, item-log filter --------------------------------------
-# item_log     - function start of the HUD side item log's line builder (RVA 0x116A5B0 on
-#                26361232), (this, const Grant*, u16 source, ...), the item's iteminfo
+# item_log     - function start of the HUD side item log's line builder (RVA 0x116BFB0 on
+#                26480954, 0x116B800 on 26423880, 0x116A5B0 on 26361232), (this, const Grant*, u16 source, ...), the item's iteminfo
 #                index a u16 at Grant+8; reached through a jmp thunk in the UI notification
 #                manager. Found in game 2026-11-03 by a probe of all seven ItemLogData
 #                builders. Gated by desert-harvest/src/looter/itemlog.rs; 15 bytes stolen.
@@ -61,17 +67,17 @@ E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25
 #                early-out and the first two cases of the source switch.
 48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84
 # --- desert-dispatch, [banking] -------------------------------------------
-# banking_deferred_gate - inside the dispatch reward function (RVA 0x2A89CD0 on
-#                26361232, 0x2A89D20 on 26356046, 0x2A899F0 on 26345091): je on the
+# banking_deferred_gate - inside the dispatch reward function (RVA 0x2A90090 on
+#                26480954, 0x2A8F440 on 26423880, 0x2A89CD0 on 26361232, 0x2A89D20 on 26356046, 0x2A899F0 on 26345091): je on the
 #                repeating flag, then the 38 /r cmp byte [rip+gate],r8 at +7 whose RIP
-#                target is the deferred-reward gate (0x7150E18 on 26356046 and the same
-#                on 26361232; 0x714FE68 on 26345091). Hit RVA 0x2A8AB2C (0x2A8AB7C on
-#                26356046). node::globals::DEFERRED_GATE_SIG
+#                target is the deferred-reward gate (0x715A1D8 on 26480954; 0x71580B8 on 26423880; 0x7150E18 on 26356046
+#                and 26361232; 0x714FE68 on 26345091). Hit RVA 0x2A90EFC (0x2A902AC on 26423880, 0x2A8AB2C on 26361232,
+#                0x2A8AB7C on 26356046). node::globals::DEFERRED_GATE_SIG
 0F 84 ?? ?? ?? ?? ?? 38 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? ?? 8B ?? ?? 10 48 8D 50 08 48 85 C0 ?? 0F 44 ?? ?? B0 01
 # banking_surplus_gate - same function: the 38 /r cmp byte [rip+gate],r8 at +0
-#                whose RIP target is the surplus-worker gate (0x7128CA8 on 26356046
-#                and the same on 26361232; 0x7127CF8 on 26345091; hit RVA 0x2A8A9D6,
-#                0x2A8AA26 on 26356046), then
+#                whose RIP target is the surplus-worker gate (0x7131ED8 on 26480954; 0x712FDB8 on 26423880;
+#                0x7128CA8 on 26356046 and 26361232; 0x7127CF8 on 26345091; hit RVA
+#                0x2A90DA6, 0x2A90156 on 26423880, 0x2A8A9D6 on 26361232, 0x2A8AA26 on 26356046), then
 #                the surplus-worker arithmetic (imul ...,10000).
 #                node::globals::SURPLUS_GATE_SIG
 38 ?? ?? ?? ?? ?? 74 ?? ?? 8B ?? ?? ?? 00 00 48 8B ?? ?? 48 2B ?? 48 39 ?? ?? ?? 0F 46 ?? 48 63 05 ?? ?? ?? ?? 48 0F AF ?? 48 69 ?? 10 27 00 00

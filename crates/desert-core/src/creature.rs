@@ -53,7 +53,8 @@ pub use crate::species_table::SpeciesClass;
 /// ```
 ///
 /// The bytes are the contract and the RVAs (26345091's, file offset
-/// `0x2DD5848`; `+0x2DD6778` on 26356046, `+0x2DD6728` on 26361232) are only illustration: the site moved 0x1740 between builds
+/// `0x2DD5848`; `+0x2DD6778` on 26356046, `+0x2DD6728` on 26361232, `+0x2DDBF68`
+/// on 26423880, `+0x2DDCBD8` on 26480954) are only illustration: the site moved 0x1740 between builds
 /// 25116796 and 25246367, and again on every build since, without one of these
 /// bytes changing, which is exactly why it is found by scanning for them.
 ///

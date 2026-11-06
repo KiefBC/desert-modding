@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.16.0**, for Crimson Desert Enhanced, Steam build **26361232**.
+**Version 0.16.0**, for Crimson Desert Enhanced, Steam build **26480954**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -560,7 +560,8 @@ read-only and nothing here acts on either.
 
 If a game update moves the code they are found by, the line says `not found by
 signature on this build` in place of the address, and the warning below stands as
-it is. On 26361232 both gates resolved at the addresses above and both read `0`.
+it is. On 26361232 both gates resolved at the addresses above and both read `0`. On
+26480954 the first launch (2026-11-06) resolved them at `0x715A1D8` and `0x7131ED8`.
 
 **Check that line after a game update**, because these are the kind of switch an
 update can flip, and it is the only thing that would tell you.
@@ -600,7 +601,7 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 14,210 records on build 26361232 (13,941 on 25477059), 294 of which this plugin multiplies: the gather nodes as the game's own data
+called `gimmickinfo`: 14,210 records on build 26480954, as on 26423880 and 26361232 (13,941 on 25477059), 294 (unchanged since 26361232) of which this plugin multiplies: the gather nodes as the game's own data
 marks them, plus the water well, the wild rock honey, three stalactites and the
 three placed money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs

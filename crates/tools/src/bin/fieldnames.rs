@@ -75,7 +75,7 @@ use serde::{Deserialize, Serialize};
 const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1,80})\xeb\xa5\xbc";
 
 /// Anchors re-checked on every rebuild. The two counts are this walk's own
-/// numbers on build 26361232; the four relations under them are the ones that
+/// numbers on build 26480954; the four relations under them are the ones that
 /// made the inventory worth keeping, and each is independently checkable.
 ///
 /// Build 25246367 had 4675 pairs and 536 classes. The 25477059 growth is real
@@ -94,7 +94,13 @@ const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1
 /// `simulationProxyRoleType`, four housing and buoyancy flags, two spawn
 /// distance levels), `managementStatData` and `useSimulationProxy` gone. The
 /// four relations below all still hold.
-const EXPECT_PAIRS: usize = 5034;
+///
+/// Build 26423880 (2026-11-04) has 5037 pairs, still 581 classes: three new
+/// fields, `ItemInfo`'s `soundNameOnMaxCharged` and
+/// `soundSocketNameOnMaxCharged` and `SpawningPoolAutoSpawnInfo`'s
+/// `useSceneCollectSpawn`, and none gone. Build 26480954 (2026-11-06) has the
+/// same 5037 pairs, pair for pair.
+const EXPECT_PAIRS: usize = 5037;
 const EXPECT_CLASSES: usize = 581;
 
 /// (description, class, fields that must be present)

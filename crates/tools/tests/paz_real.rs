@@ -5,7 +5,7 @@
 //! runs every ignored test in this workspace, this file's with them.
 //!
 //! The oracle is `analysis/tables/`, the 274 static-info files the Python
-//! reader (`analysis/pamt.py`, `lz4block.py`) extracted on build 26361232:
+//! reader (`analysis/pamt.py`, `lz4block.py`) extracted on build 26480954:
 //! every one must come out of the archive byte for byte.
 
 use std::path::PathBuf;
@@ -49,7 +49,11 @@ fn gimmickinfo_entries_are_what_the_listing_says() {
     let a = archive();
     let (group, body) = a.find(&staticinfo::archive_path("gimmickinfo", BODY_EXT)).unwrap();
     assert_eq!(group, "0008");
-    assert_eq!((body.flags, body.size, body.comp_size, body.paz()), (0x0802_0001, 17_621_227, 1_360_890, 1));
+    // 26480954: the body grew 1082 bytes (one record, 32 changed) and
+    // compresses to 1_361_087. On 26423880 it was the same size as on
+    // 26361232, 17_621_227 bytes (336 bytes differ inside it), and compressed
+    // to 1_360_869 (1_360_890 on 26361232).
+    assert_eq!((body.flags, body.size, body.comp_size, body.paz()), (0x0802_0001, 17_622_309, 1_361_087, 1));
     assert_eq!((body.compression(), body.encryption()), (2, 0));
     let (_, header) = a.find(&staticinfo::archive_path("gimmickinfo", HEADER_EXT)).unwrap();
     assert_eq!((header.flags, header.size, header.comp_size), (0x0900_0001, 113_682, 113_682));
