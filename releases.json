@@ -1,0 +1,76 @@
+{
+  "KiefBC/desert-modding": [
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-06T20:24:34Z",
+      "tagName": "desert-tooling-v0.16.1"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-06T20:11:17Z",
+      "tagName": "desert-gatherer-dmm-v1.5"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-03T23:18:06Z",
+      "tagName": "desert-tooling-v0.16.0"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-02T20:41:54Z",
+      "tagName": "desert-tooling-v0.11.0"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-02T20:35:22Z",
+      "tagName": "desert-gatherer-dmm-v1.4"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-02T17:01:23Z",
+      "tagName": "desert-tooling-v0.10.1"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-02T03:15:16Z",
+      "tagName": "desert-gatherer-dmm-v1.3"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-11-02T03:14:56Z",
+      "tagName": "desert-tooling-v0.10.0"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-09-13T18:49:41Z",
+      "tagName": "desert-tooling-v0.6.0"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-09-07T17:53:30Z",
+      "tagName": "desert-gatherer-v0.1.1"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-09-07T17:53:13Z",
+      "tagName": "desert-looter-v0.1.1"
+    },
+    {
+      "isDraft": false,
+      "isPrerelease": false,
+      "publishedAt": "2026-09-07T17:51:24Z",
+      "tagName": "desert-gatherer-dmm-v1.1"
+    }
+  ]
+}
