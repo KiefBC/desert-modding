@@ -13,18 +13,23 @@
 //!
 //! ```text
 //! list    u32 count (1..=64), then count x block
-//! block   68 bytes: +0 u8 flag = 1, +1 u32 item id, +5 u32 pad,
-//!         +42 u64 minimum, +50 u64 maximum, +58 FF FF,
-//!         +60 u32 item id again, +64 u32 (the list entry's key field)
+//! block   69 bytes: +0 u8 flag = 1, +1 u32 item id, +5 u32 pad,
+//!         +42 u64 minimum, +50 u64 maximum, +58 FF FF (enchantLevel),
+//!         +60 u8 (unnamed, 0), +61 u32 item id again,
+//!         +65 u32 (the list entry's key field)
 //! ```
+//!
+//! History: 68 bytes through 26480954 (no `+60` u8; the echo at `+60`, the
+//! key field at `+64`). 26636972 added the u8 after enchantLevel to every
+//! `DropInfoData`.
 
 /// Bytes per block.
-pub const BLOCK: usize = 68;
+pub const BLOCK: usize = 69;
 /// The item id. It is `+1`, not `+5`: bytes `+5..+8` are zero padding
 /// (`docs/findings/2026-09-12-water-wells.md` section 5).
 pub const ITEM_AT: usize = 1;
 /// The item id's echo.
-pub const ITEM_TAIL_AT: usize = 60;
+pub const ITEM_TAIL_AT: usize = 61;
 pub const PAD_AT: usize = ITEM_AT + 4;
 pub const PAD_TAIL_AT: usize = ITEM_TAIL_AT + 4;
 /// The `u64` minimum and maximum.
@@ -46,7 +51,7 @@ pub const MAX_QTY: u64 = 100_000;
 ///   `desert_core::gimmick::block_ok` does. **This is the population the
 ///   plugin sees**, and the only one whose yields the gatherer multiplies.
 /// * `Loose` drops that clause and keeps everything else. Blocks only it finds
-///   carry a list-entry key at `+64`, and the plugin never edits them.
+///   carry a list-entry key at `+65`, and the plugin never edits them.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Detector {
     Shipped,
@@ -74,7 +79,7 @@ impl Detector {
         }
     }
 
-    /// Whether `+5` must equal `+64`. The whole difference between the two.
+    /// Whether `+5` must equal `+65`. The whole difference between the two.
     pub fn pad_clause(self) -> bool {
         matches!(self, Detector::Shipped)
     }
@@ -89,7 +94,7 @@ fn u64_at(buf: &[u8], o: usize) -> Option<u64> {
 }
 
 /// A well-formed output block at `at`, per `d`: flag 1, `FF FF` at `+58`, the
-/// item id equal at `+1` and `+60`, (Shipped only) the pads at `+5` and `+64`
+/// item id equal at `+1` and `+61`, (Shipped only) the pads at `+5` and `+65`
 /// equal, and `1 <= min <= max <= MAX_QTY`.
 pub fn block_ok(buf: &[u8], at: usize, d: Detector) -> bool {
     let Some(b) = at.checked_add(BLOCK).and_then(|end| buf.get(at..end)) else {

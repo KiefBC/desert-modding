@@ -21,11 +21,13 @@ use super::table::{Detector, Table, BLOCK, PAD_AT};
 // changed) and on `paths::CALIBRATED_BUILD` (26480954), the body
 // `gen-collect-names`' CALIBRATION is taken on (1082 bytes longer, 32 records
 // changed, all past every anchor): every count, loose count and anchor
-// unchanged on both.
+// unchanged on both. On `paths::CALIBRATED_BUILD` (26636972), with the
+// 69-byte block, 581 / 904 / 220 and every loose count again, 14218 records
+// (8 new), and the anchors at new offsets with the same relative ones.
 pub const EXPECT_LISTS: usize = 581;
 pub const EXPECT_BLOCKS: u64 = 904;
 pub const EXPECT_ITEMS: usize = 220;
-pub const EXPECT_RECORDS: usize = 14210;
+pub const EXPECT_RECORDS: usize = 14218;
 // The same three for the loose walk, plus what must stay true *between* the two
 // populations: every shipped list is also a loose list, and the extras are
 // exactly the blocks with a nonzero entry key. Build 25246367 was 589 / 1038;
@@ -58,11 +60,13 @@ pub const EXPECT_SHARED_IDS: &[u64] = &[1, 53, 75001, 1001597, 1001957];
 /// 25477059). Build 25246367 had the lists at 12843209, 4373870 and 1049316
 /// and 25477059 at 12921539, 4382086 and 1051437, relative 1999, 965 and
 /// 1600; on 26361232 the record bodies changed and the relative offsets with
-/// them.
+/// them. 26361232..26480954 had the lists at 10136473, 3374134 and 807359;
+/// 26636972 moved them (the bodies grew a byte per drop entry), relative
+/// offsets unchanged.
 pub const ANCHORS: &[(usize, &str, usize)] = &[
-    (10136473, "firewood_0001", 1796),
-    (3374134, "gimmick_well_0001_parts01", 731),
-    (807359, "Background_Breakable_66", 1393),
+    (10164968, "firewood_0001", 1796),
+    (3379211, "gimmick_well_0001_parts01", 731),
+    (808668, "Background_Breakable_66", 1393),
 ];
 
 /// Item id -> the inferred name the doc confirmed by two agreeing records each.
@@ -198,7 +202,7 @@ pub fn run_checks(
             EXPECT_LOOSE_ONLY_BLOCKS
         );
         // The discriminator itself: every extra block carries a nonzero entry
-        // key at +64 and a zero pad at +5. If that ever stops holding, the two
+        // key at +65 and a zero pad at +5. If that ever stops holding, the two
         // populations differ for some other reason and nothing below is safe.
         let ents: Vec<&super::dataset::LooseEntry> =
             loose_only_lists.iter().flat_map(|l| l.entries.iter()).collect();
@@ -206,7 +210,7 @@ pub fn run_checks(
         let distinct: HashSet<u32> = ents.iter().map(|e| e.entry_key).collect();
         note!(
             nz == ents.len() && ents.len() as u64 == EXPECT_LOOSE_ONLY_BLOCKS,
-            "every loose-only block has a nonzero +64",
+            "every loose-only block has a nonzero +65",
             format!("{nz}/{}, {} distinct", ents.len(), distinct.len())
         );
         let pads = lists

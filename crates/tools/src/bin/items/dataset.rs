@@ -459,7 +459,7 @@ pub fn build(
     data.insert(
         "method".into(),
         "Blocks found by the desert_core::gimmick::output_lists detector; \
-         item id read at block+1 (echoed at +60). Blocks attributed to \
+         item id read at block+1 (echoed at +61). Blocks attributed to \
          records by the key-echo discriminator. Item NAMES are INFERRED \
          from the names of the records that yield them - the game's own \
          item names live in the .paz archives and are not read here."

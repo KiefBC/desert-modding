@@ -36,7 +36,7 @@
 //! # Why it polls, and why the status half goes first
 //!
 //! Both tables are parsed into objects that live for the session, so a plain
-//! pass over `manager+0x58` on this subsystem's own thread sees everything the
+//! pass over the manager's entries on this subsystem's own thread sees everything the
 //! loader ever produced - the same reason `scan.rs` needs no hook. They load
 //! lazily and independently, so each half gets its own settle-then-dump clock,
 //! exactly like `scan::Watch`.

@@ -3,7 +3,7 @@
 # Crimson Desert mods
 
 Cargo workspace for my [Crimson Desert
-Enhanced](https://store.steampowered.com/) mods (Steam build 26480954). They
+Enhanced](https://store.steampowered.com/) mods (Steam build 26636972). They
 load as one `.asi` plugin through [Ultimate ASI
 Loader](https://github.com/ThirteenAG/Ultimate-ASI-Loader) (`winmm.dll` in the
 game's `bin64`).
@@ -26,7 +26,7 @@ game's `bin64`).
 
 | Mod | Version | What it does |
 | --- | --- | --- |
-| [desert-tooling](crates/desert-tooling) | 0.16.1 | Auto-loot, gathering yields, dispatch levers and the in-game menu, in one plugin |
+| [desert-tooling](crates/desert-tooling) | 0.16.2 | Auto-loot, gathering yields, dispatch levers and the in-game menu, in one plugin |
 
 One `DesertTooling.asi`, one `DesertTooling.ini`, one `DesertTooling.log`. It
 carries three subsystems, each with its own section in that ini and its own tag
@@ -53,7 +53,7 @@ Manager without an ASI loader. Never mount it alongside the plugin.
 Grab the zip from the latest release, or build it yourself, then copy
 `DesertTooling.asi` and `DesertTooling.ini` into the game's `bin64`.
 
-- **Desert Tooling**: [desert-tooling-v0.16.1](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.16.1)
+- **Desert Tooling**: [desert-tooling-v0.16.2](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.16.2)
 - **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.5](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.5)
 
 Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).

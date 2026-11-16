@@ -57,20 +57,21 @@ pub(crate) fn write_pending_dump() {
     }
 }
 
-/// Find the record loader, cheapest search first.
+/// Find the record loader, through the `lea` encoding first.
 ///
-/// `gimmickinfo` is named by one of the two `lea` encodings on every build seen
-/// so far, and those two are half the scan: `AccessorSites::scan(img, None)`
-/// searches them alone, 0.25 s against 0.50 s over build 25246367's 363 MB
-/// image. The base is still passed to [`AccessorSites::record_loader`], which
-/// wants it only as the addend - the base the cheap scan declines is the one
-/// that reads a name out of a pointer cell, and `gimmickinfo`'s name is not in
-/// one.
+/// `gimmickinfo` is named by a `lea` accessor on every build seen so far, so
+/// `AccessorSites::scan(img, None)` is tried first. Through 26480954 that also
+/// halved the image walk (two head patterns instead of four, 0.25 s against
+/// 0.50 s on 25246367's 363 MB image); since 26636972 the walk is for the
+/// getters either way and what the base decides is only whether the `mov r8`
+/// accessors are kept. The base is still passed to
+/// [`AccessorSites::record_loader`], which wants it only as the addend - the
+/// base the first scan declines is the one that reads a name out of a pointer
+/// cell, and `gimmickinfo`'s name is not in one.
 ///
-/// **This subsystem is the one that cannot afford the other half.** The game
-/// reads the gimmickinfo table during loading, so there is no boot grace here
-/// and the hook has to be installed before that happens; every 0.25 s is margin
-/// on a deadline the other subsystems do not have.
+/// **This subsystem is the one with a deadline.** The game reads the
+/// gimmickinfo table during loading, so there is no boot grace here and the
+/// hook has to be installed before that happens.
 ///
 /// Betting on an encoding is exactly what this project does not do - the old
 /// single-encoding scan reached 111 of the 149 tables and that was a bug worth
@@ -91,8 +92,8 @@ fn resolve_loader(module: &MainModule) -> Option<(usize, Result<gimmick::StreamL
     match gimmick::AccessorSites::scan(img, None).and_then(found) {
         Ok(r) => return Some(r),
         Err(e) => crate::log!(
-            "[gimmick] the record loader is not reachable through the lea encodings ({e}); \
-             searching all four"
+            "[gimmick] the record loader is not reachable through the lea encoding ({e}); \
+             searching both"
         ),
     }
     match gimmick::AccessorSites::scan(img, Some(module.base)).and_then(found) {
@@ -104,7 +105,7 @@ fn resolve_loader(module: &MainModule) -> Option<(usize, Result<gimmick::StreamL
     }
 }
 
-/// Find the loader, check its prologue really is the 12 bytes we are
+/// Find the loader, check its prologue really is the 15 bytes we are
 /// about to overwrite, and patch it. A refusal here is a plugin that does
 /// nothing; a wrong patch is a crash, so every doubt means refusing.
 pub(crate) fn install_loader_hook(module: &MainModule) -> bool {

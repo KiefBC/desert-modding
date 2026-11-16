@@ -14,7 +14,7 @@
 //! non-overlapping, with each list attributed to the header that precedes it.
 //! It is kept for [`CALIBRATION`] alone: its counts and three anchors are what
 //! prove the body is the one the rule was measured on, and nothing is written
-//! unless they reproduce. On 26361232, 26423880 and 26480954 both walks find the same 581 lists: a
+//! unless they reproduce. On 26361232, 26423880, 26480954 and 26636972 both walks find the same 581 lists: a
 //! list never crosses a record boundary, because every header in between would
 //! have to read as blocks.
 //!
@@ -70,15 +70,19 @@ pub struct Calibration {
 /// its body is 17,622,309 bytes, 32 records changed (one,
 /// `gimmick_puzzle_tesla_coil_02`, grew 1082 bytes), every change past body
 /// offset 15,488,617 and so past all three anchors.
+///
+/// 26636972 (69-byte blocks, one u8 more per drop entry; 17,664,283 bytes,
+/// 14218 records) keeps 581 lists / 904 blocks and every relative offset;
+/// the three lists moved to 10164968, 3379211 and 808668.
 pub const CALIBRATION: Calibration = Calibration {
     build: desert_tools::paths::CALIBRATED_BUILD,
     lists: 581,
     blocks: 904,
-    records: 14210,
+    records: 14218,
     anchors: &[
-        (10136473, 1002971, "firewood_0001", 1796),
-        (3374134, 1001081, "gimmick_well_0001_parts01", 731),
-        (807359, 21030076, "Background_Breakable_66", 1393),
+        (10164968, 1002971, "firewood_0001", 1796),
+        (3379211, 1001081, "gimmick_well_0001_parts01", 731),
+        (808668, 21030076, "Background_Breakable_66", 1393),
     ],
 };
 

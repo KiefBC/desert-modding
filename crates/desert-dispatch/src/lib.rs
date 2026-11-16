@@ -169,7 +169,7 @@
 //! The gatherer hooks the record loader because the raw stream buffer it edits
 //! is freed seconds after loading, so there is exactly one instant per record
 //! in which to write. The *parsed* objects this subsystem edits live for the
-//! session, so a plain pass on the plugin's own thread over `manager+0x58` can
+//! session, so a plain pass on the plugin's own thread over the manager's entries can
 //! reach every record the loader ever produced, and can reach it again a minute
 //! later when the ini changes. That is why this carries near-zero crash risk:
 //! no prologue is patched, no game function is called, and every foreign read

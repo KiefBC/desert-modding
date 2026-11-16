@@ -28,7 +28,7 @@
 //!
 //! Nothing is hard-coded to an address: the loader is found by content
 //! (`desert_core::gimmick::resolve_record_loader`), the output blocks by
-//! their 68-byte signature and the catch site by a 21-byte signature that
+//! their 69-byte signature and the catch site by a 21-byte signature that
 //! hits once. Every step that fails logs and leaves vanilla yields behind.
 //!
 //! The thread that installs both hooks and watches the ini is the one harvest

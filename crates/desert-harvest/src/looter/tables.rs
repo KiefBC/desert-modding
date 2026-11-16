@@ -1,14 +1,20 @@
-//! Name lookup in the game's `*InfoManager` data tables, following the
-//! traversal the reference mod uses (`FUN_1800151f0`, whose argument is the
-//! global slot, so `*slot` is the manager object):
-//!   manager+8 = u32 count (< 0x40000); manager+0x58 = record**;
-//!   record+8 -> ptr -> ptr -> NUL-terminated name (3+ printable chars).
+//! Name lookup in the game's `*InfoManager` data tables. `*slot` is the
+//! manager object, and its record count and entries are read through
+//! [`desert_core::manager`] and nowhere else (`u32` count at `+0x28`, 24-byte
+//! entries at `+0x20` with the object at `+8`, since 26636972; through
+//! 26480954 the count was at `+8` and the objects a pointer array at `+0x58`,
+//! the traversal the reference mod's `FUN_1800151f0` used). Not every
+//! manager uses that entry layout on 26636972: four getters index 32-byte
+//! entries with the object at `+0x10`. So only a slot the startup scan saw
+//! indexed at 24 (`READABLE_SLOTS`) is ever read, by [`manager_at`] or by the
+//! census walks over the RTTI `*InfoManager` list.
 //!
-//! The two global pointer slots this file needs, `iteminfo` and `gimmickinfo`,
-//! are not constants here. [`resolve_slots`] asks
-//! [`desert_core::gimmick::resolve_manager_slot`] for each of them once at
-//! startup, which finds the `mov rbx,[rip+disp]` in front of the accessor copy
-//! that names the table, so nothing in this file is a build-specific address.
+//! The global pointer slots this file needs, `iteminfo`, `gimmickinfo` and
+//! `characterinfo`, are not constants here. [`resolve_slots`] asks
+//! [`desert_core::gimmick::AccessorSites`] for them once at startup, which
+//! finds the `mov rcx,[rip+disp]` in the getters that call the accessor
+//! function naming the table, so nothing in this file is a build-specific
+//! address.
 //!
 //! Neither is the layout of a parsed *gimmick* record: 26361232 moved its key,
 //! name and output list, so the `gimmick_record_*` readers go through a layout
@@ -40,6 +46,20 @@ static ITEM_SLOT_ADDR: OnceLock<usize> = OnceLock::new();
 /// Resolved in the same scan as the other two; only the absolute address is
 /// kept, since nothing here reads that table through an RVA.
 static CHARACTER_SLOT_ADDR: OnceLock<usize> = OnceLock::new();
+/// Every slot RVA whose getters index 24-byte entries with the object at
+/// `+8`, the one layout `desert_core::manager` reads, from the same scan
+/// ([`desert_core::gimmick::AccessorSites::readable_slots`]). Since 26636972
+/// a few managers (`AIEventTableInfo`, `NpcFriendlyInfo`,
+/// `characterappearanceindexinfo`) use 32-byte entries; [`manager_at`] and the
+/// census walks below decline any slot not in this list, so one of those is
+/// never read at the wrong stride. Empty (everything declines) when the scan
+/// failed.
+static READABLE_SLOTS: OnceLock<Vec<usize>> = OnceLock::new();
+
+/// Is `slot_rva` a manager slot `desert_core::manager` may read?
+fn readable_slot(slot_rva: usize) -> bool {
+    READABLE_SLOTS.get().is_some_and(|v| v.binary_search(&slot_rva).is_ok())
+}
 
 /// The `characterinfo` manager slot, once [`resolve_slots`] found it.
 pub fn character_slot_addr() -> Option<usize> {
@@ -83,17 +103,16 @@ fn gimmick_slot() -> Option<usize> {
 /// `game::resolve`'s `[sig]` lines. Called once at startup; a failure for one
 /// table leaves the other working.
 pub fn resolve_slots(m: &MainModule) {
-    // Both slots come out of one scan. Finding the accessor template's copies
-    // does not depend on which table is being asked about - the name is
-    // consulted only afterwards - so a resolve per table searched the whole
-    // 363 MB image twice over for the same two encodings. Measured 0.53-0.65 s
-    // per-call against 0.25-0.28 s shared, 2.1-2.4x.
+    // Every slot comes out of one scan. Finding the getters and accessor
+    // functions does not depend on which table is being asked about - the
+    // name is consulted only afterwards - so a resolve per table searched the
+    // whole 363 MB image once per table. Measured 0.53-0.65 s per-call against
+    // 0.25-0.28 s shared, 2.1-2.4x (build 25246367).
     //
-    // `None`, not `m.base`: this subsystem wants two tables that a `lea`
-    // encoding names, and a base would put the two indirect encodings into the
-    // scan as well - twice the passes to reach the same two answers. The base
-    // belongs to the scan rather than to each lookup precisely so that this
-    // call site can decline it.
+    // `None`, not `m.base`: this subsystem wants tables a `lea` accessor
+    // names, and declines the indirect encoding it has no use for. Through
+    // 26480954 that also halved the image walk; since 26636972 the walk is the
+    // same either way.
     let sites = match desert_core::gimmick::AccessorSites::scan(m.bytes(), None) {
         Ok(sites) => sites,
         Err(e) => {
@@ -101,6 +120,18 @@ pub fn resolve_slots(m: &MainModule) {
             return;
         }
     };
+    let readable = sites.readable_slots();
+    crate::log!(
+        "[slot] {} of {} getters' slots index 24-byte entries (object at +8); the rest are not walked",
+        readable.len(),
+        {
+            let mut all: Vec<usize> = sites.getters().iter().map(|g| g.slot).collect();
+            all.sort_unstable();
+            all.dedup();
+            all.len()
+        }
+    );
+    let _ = READABLE_SLOTS.set(readable);
     for (name, table, cell) in [
         ("iteminfo", desert_core::gimmick::ITEM_TABLE, &ITEM_INFO_SLOT),
         ("gimmickinfo", desert_core::gimmick::GIMMICK_TABLE, &GIMMICK_INFO_SLOT),
@@ -132,14 +163,42 @@ pub fn resolve_slots(m: &MainModule) {
     }
 }
 
+/// The manager object behind `slot_rva`, or `None` for a slot whose getters
+/// do not index the entry layout `desert_core::manager` reads.
 pub fn manager_at(m: &MainModule, slot_rva: usize) -> Option<usize> {
+    if !readable_slot(slot_rva) {
+        return None;
+    }
     safe::read_ptr(m.base + slot_rva)
 }
 
+/// `(count, entries)` of the manager at `mgr` when the count is in
+/// `1..MAX_RECORDS`, the bound every walk in this file holds a table to.
+fn bounded(mgr: usize) -> Option<(usize, usize)> {
+    let (count, entries) = manager::view_of(mgr)?;
+    let n = count as usize;
+    (n > 0 && n < MAX_RECORDS).then_some((n, entries))
+}
+
+/// [`bounded`], and the whole entries array readable: what the census walks
+/// below check before reading one pointer per record.
+fn walkable(mgr: usize) -> Option<(usize, usize)> {
+    bounded(mgr).filter(|&(n, entries)| safe::readable(entries, manager::ENTRY_STRIDE * n))
+}
+
+/// Record `index` of the manager at `mgr`, or `None` past the count or while
+/// the game has not loaded it (a null object pointer).
+fn record_at(mgr: usize, index: usize) -> Option<usize> {
+    let (count, entries) = manager::view_of(mgr)?;
+    if index >= count as usize {
+        return None;
+    }
+    manager::record(entries, index)
+}
+
 pub fn record_count(m: &MainModule, slot_rva: usize) -> Option<u32> {
-    let inner = manager_at(m, slot_rva)?;
-    let n: u32 = safe::read(inner + 8)?;
-    (n > 0 && n < 0x40000).then_some(n)
+    let (n, _) = bounded(manager_at(m, slot_rva)?)?;
+    u32::try_from(n).ok()
 }
 
 /// The name of record `id` (an index) of the table at `slot_rva`, for the
@@ -150,13 +209,11 @@ pub fn record_count(m: &MainModule, slot_rva: usize) -> Option<u32> {
 /// known to hold for any table on 26361232 - the listing prints the raw
 /// qwords beside it, so a wrong guess reads `?`, never misleads.
 pub fn name(m: &MainModule, slot_rva: usize, id: u32) -> Option<String> {
-    let inner = manager_at(m, slot_rva)?;
-    let n: u32 = safe::read(inner + 8)?;
-    if n == 0 || n >= 0x40000 || id >= n {
+    let (n, entries) = bounded(manager_at(m, slot_rva)?)?;
+    if id as usize >= n {
         return None;
     }
-    let arr = safe::read_ptr(inner + 0x58)?;
-    let rec = safe::read_ptr(arr + id as usize * 8)?;
+    let rec = manager::record(entries, id as usize)?;
     if item_slot() == Some(slot_rva) {
         return item_record_name(rec);
     }
@@ -171,14 +228,9 @@ pub fn name(m: &MainModule, slot_rva: usize, id: u32) -> Option<String> {
 /// key -> record pointer for every record in a table whose key is at `key_off`.
 pub fn key_index(m: &MainModule, slot_rva: usize, key_off: usize) -> std::collections::HashMap<u32, usize> {
     let mut out = std::collections::HashMap::new();
-    let Some(mgr) = manager_at(m, slot_rva) else { return out };
-    let n: u32 = safe::read(mgr + 8).unwrap_or(0);
-    let Some(arr) = safe::read_ptr(mgr + 0x58) else { return out };
-    if n == 0 || n >= 0x40000 || !safe::readable(arr, 8 * n as usize) {
-        return out;
-    }
-    for i in 0..n as usize {
-        let Some(rec) = safe::read_ptr(arr + i * 8) else { continue };
+    let Some((n, entries)) = manager_at(m, slot_rva).and_then(walkable) else { return out };
+    for i in 0..n {
+        let Some(rec) = manager::record(entries, i) else { continue };
         if let Some(k) = safe::read::<u32>(rec + key_off) {
             out.entry(k).or_insert(rec);
         }
@@ -224,24 +276,21 @@ pub fn probe_all_tables(_m: &MainModule, census: &[(usize, usize, String)], id: 
         if !class.ends_with("InfoManager") {
             continue;
         }
-        let Some(count) = safe::read::<u32>(obj + 8) else { continue };
-        if count == 0 || count > 0x40000 {
+        // Only a manager whose slot the scan confirmed reads at 24 bytes.
+        if !readable_slot(*rva) {
             continue;
         }
-        let Some(arr) = safe::read_ptr(obj + 0x58) else { continue };
-        if !safe::readable(arr, 8 * count as usize) {
-            continue;
-        }
-        if id < count {
-            if let Some(rec) = safe::read_ptr(arr + id as usize * 8) {
+        let Some((count, entries)) = walkable(*obj) else { continue };
+        if (id as usize) < count {
+            if let Some(rec) = manager::record(entries, id as usize) {
                 if let Some(n) = record_name_any(rec) {
                     crate::log!("[probe] {class} (+0x{rva:X}) count={count}: [index {id}] = {n}");
                 }
             }
         }
         let mut hits = 0;
-        for i in 0..count as usize {
-            let Some(rec) = safe::read_ptr(arr + i * 8) else { continue };
+        for i in 0..count {
+            let Some(rec) = manager::record(entries, i) else { continue };
             for koff in [0usize, 8] {
                 if safe::read::<u32>(rec + koff) == Some(id) {
                     let n = record_name_any(rec).unwrap_or_else(|| "?".into());
@@ -260,20 +309,17 @@ pub fn record_pointer_set(
     classes: &[&str],
 ) -> std::collections::HashMap<usize, (String, usize)> {
     let mut out = std::collections::HashMap::new();
-    for (_, obj, class) in census {
+    for (rva, obj, class) in census {
         if !classes.iter().any(|c| c == class) {
             continue;
         }
-        let Some(count) = safe::read::<u32>(obj + 8) else { continue };
-        if count == 0 || count > 0x40000 {
+        // Only a manager whose slot the scan confirmed reads at 24 bytes.
+        if !readable_slot(*rva) {
             continue;
         }
-        let Some(arr) = safe::read_ptr(obj + 0x58) else { continue };
-        if !safe::readable(arr, 8 * count as usize) {
-            continue;
-        }
-        for i in 0..count as usize {
-            if let Some(rec) = safe::read_ptr(arr + i * 8) {
+        let Some((count, entries)) = walkable(*obj) else { continue };
+        for i in 0..count {
+            if let Some(rec) = manager::record(entries, i) {
                 out.insert(rec, (class.clone(), i));
             }
         }
@@ -287,20 +333,17 @@ pub fn key_index_multi(
     classes: &[&str],
 ) -> std::collections::HashMap<u32, Vec<(String, usize, usize)>> {
     let mut out: std::collections::HashMap<u32, Vec<(String, usize, usize)>> = std::collections::HashMap::new();
-    for (_, obj, class) in census {
+    for (rva, obj, class) in census {
         if !classes.iter().any(|c| c == class) {
             continue;
         }
-        let Some(count) = safe::read::<u32>(obj + 8) else { continue };
-        if count == 0 || count > 0x40000 {
+        // Only a manager whose slot the scan confirmed reads at 24 bytes.
+        if !readable_slot(*rva) {
             continue;
         }
-        let Some(arr) = safe::read_ptr(obj + 0x58) else { continue };
-        if !safe::readable(arr, 8 * count as usize) {
-            continue;
-        }
-        for i in 0..count as usize {
-            let Some(rec) = safe::read_ptr(arr + i * 8) else { continue };
+        let Some((count, entries)) = walkable(*obj) else { continue };
+        for i in 0..count {
+            let Some(rec) = manager::record(entries, i) else { continue };
             for koff in [0usize, 8] {
                 if let Some(k) = safe::read::<u32>(rec + koff) {
                     if k > 0xFFFF && k != 0xFFFF_FFFF {
@@ -316,13 +359,7 @@ pub fn key_index_multi(
 /// Gimmick record by index (the u16 the game stores on the component).
 /// Records are lazily loaded by the game; a null slot means "not loaded yet".
 pub fn gimmick_record(m: &MainModule, index: u16) -> Option<usize> {
-    let mgr = manager_at(m, gimmick_slot()?)?;
-    let count: u32 = safe::read(mgr + 8)?;
-    if index as u32 >= count {
-        return None;
-    }
-    let arr = safe::read_ptr(mgr + 0x58)?;
-    safe::read_ptr(arr + index as usize * 8)
+    record_at(manager_at(m, gimmick_slot()?)?, usize::from(index))
 }
 
 /// The record's `u32` key, at the latched layout's `key`: `+0x08` through
@@ -437,14 +474,14 @@ fn maybe_probe() {
     }
     st.last = Some(Instant::now());
     let Some(&slot) = GIMMICK_SLOT_ADDR.get() else { return };
-    let Some((count, records)) = manager::view(slot) else { return };
+    let Some((count, entries)) = manager::view(slot) else { return };
     let n = (count as usize).min(MAX_RECORDS);
 
     if LAYOUT.get().is_none() {
         let mut vote = LayoutVote::default();
         let mut loaded = 0usize;
         for i in 0..n {
-            let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+            let Slot::Loaded(rec) = manager::slot(entries, i) else { continue };
             loaded += 1;
             vote.observe(rec, |k| crate::collect::family_by_key(k).is_some(), &read_bytes);
             if vote.best() >= ENOUGH {
@@ -482,7 +519,7 @@ fn maybe_probe() {
     let mut vote = NameVote::default();
     let mut named = 0usize;
     for i in 0..n {
-        let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+        let Slot::Loaded(rec) = manager::slot(entries, i) else { continue };
         let Some(key) = rec.checked_add(layout.key).and_then(safe::read::<u32>) else { continue };
         let Some(&(_, name, _, _)) = crate::collect::COLLECT_RECORDS.iter().find(|(k, _, _, _)| *k == key) else {
             continue;
@@ -514,13 +551,7 @@ fn maybe_probe() {
 
 /// Item record by index (the u16 an inventory slot stores at +0x08).
 pub fn item_record(m: &MainModule, index: u16) -> Option<usize> {
-    let mgr = manager_at(m, item_slot()?)?;
-    let count: u32 = safe::read(mgr + 8)?;
-    if index as u32 >= count {
-        return None;
-    }
-    let arr = safe::read_ptr(mgr + 0x58)?;
-    safe::read_ptr(arr + index as usize * 8)
+    record_at(manager_at(m, item_slot()?)?, usize::from(index))
 }
 
 /// The default inventory tab id of an item record: the first of ItemInfo's twelve
@@ -557,15 +588,10 @@ pub fn item_record_tab(rec: usize) -> Option<i16> {
 /// call rarely and cache). Reads each key through the latched [`ItemLayout`].
 pub fn item_index_by_key(m: &MainModule, key: u32) -> Option<u16> {
     let key_off = item_layout().key;
-    let mgr = manager_at(m, item_slot()?)?;
-    let count: u32 = safe::read(mgr + 8)?;
-    if count == 0 || count >= 0x40000 {
-        return None;
-    }
-    let arr = safe::read_ptr(mgr + 0x58)?;
+    let (count, entries) = bounded(manager_at(m, item_slot()?)?)?;
     (0..count)
         .find(|&i| {
-            safe::read_ptr(arr + i as usize * 8)
+            manager::record(entries, i)
                 .and_then(|rec| rec.checked_add(key_off))
                 .and_then(safe::read::<u32>)
                 == Some(key)
@@ -622,9 +648,9 @@ fn known_item_ids() -> std::collections::HashSet<u32> {
     let _ = record_layout();
     let Some(&layout) = LAYOUT.get() else { return out };
     let Some(&slot) = GIMMICK_SLOT_ADDR.get() else { return out };
-    let Some((count, records)) = manager::view(slot) else { return out };
+    let Some((count, entries)) = manager::view(slot) else { return out };
     for i in 0..(count as usize).min(MAX_RECORDS) {
-        let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+        let Slot::Loaded(rec) = manager::slot(entries, i) else { continue };
         let Some(key) = rec.checked_add(layout.key).and_then(safe::read::<u32>) else { continue };
         if crate::collect::family_by_key(key).is_none() {
             continue;
@@ -659,9 +685,9 @@ fn maybe_probe_items() {
     }
     st.last = Some(Instant::now());
     let Some(&slot) = ITEM_SLOT_ADDR.get() else { return };
-    let Some((count, records)) = manager::view(slot) else { return };
+    let Some((count, entries)) = manager::view(slot) else { return };
     let objs: Vec<usize> = (0..(count as usize).min(MAX_RECORDS))
-        .filter_map(|i| match manager::slot(records, i) {
+        .filter_map(|i| match manager::slot(entries, i) {
             Slot::Loaded(rec) => Some(rec),
             _ => None,
         })

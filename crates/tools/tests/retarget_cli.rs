@@ -3,11 +3,15 @@
 //! The real-exe numbers are pinned in `src/bin/retarget/expect.rs` and run
 //! under `just tools-check-game`. These run everywhere: a hand-built PE32+
 //! (`common/synth_pe.rs`) with a caller, a callee with a 13-byte
-//! position-independent prologue, and one accessor site laid out the way the
-//! 26345091 codegen lays it out (slot load 0x33 before the head, the `r11`
-//! tail, the loader call 0x7A past the accessor's call, and the 26361232
-//! stream fill right before it), so every subcommand
-//! has something real to find and every exit code can be driven both ways.
+//! position-independent prologue, and one static-info access chain laid out
+//! the way the 26636972 codegen lays it out (a getter whose slot load and
+//! manager reads lead to a call into an accessor function, the head 0x31 into
+//! that function, the `rbp` tail, the rbp-relative stream fill and the loader
+//! call 0x7B past the accessor's call, into a loader opening with the 15-byte
+//! prologue), so every subcommand has something real to find and every exit
+//! code can be driven both ways. Through 26480954 the fixture was the older
+//! template: the slot load 0x33 before the head in the accessor's own
+//! function, the `r11` tail and the rsp-relative fill.
 
 #[path = "common/synth_pe.rs"]
 mod synth_pe;
@@ -19,25 +23,33 @@ use synth_pe::{rel32, SynthPe, RDATA};
 
 const CALLER: u32 = 0x1000;
 const CALLEE: u32 = 0x1100;
-const HEAD: u32 = 0x1840;
-const SLOT_LOAD: u32 = HEAD - 0x33;
+const GETTER: u32 = 0x1700;
+const SLOT_LOAD: u32 = GETTER + 8;
+/// The getter's `E8` into the accessor function.
+const GETTER_CALL: u32 = GETTER + 52;
+const ACCESSOR_FN: u32 = 0x1800;
+const HEAD: u32 = ACCESSOR_FN + 0x31;
 const SLOT: u32 = RDATA + 0x800;
+const DEFAULT: u32 = RDATA + 0x810;
 const NAME: u32 = RDATA + 0x100;
 const ACCESSOR_CALL: u32 = HEAD + 18;
-const LOADER_CALL: u32 = ACCESSOR_CALL + 0x7A;
+const LOADER_CALL: u32 = ACCESSOR_CALL + 0x7B;
 const LOADER: u32 = 0x1A00;
-/// `mov rax,[rcx]; mov [rsp+0x50],rax; mov eax,[rcx+0xc]; mov [rsp+0x58],eax;
-/// mov eax,[rdx+0x4]; mov [rsp+0x5c],eax`: the stream fill the `gimmickinfo`
-/// accessor emits on 26361232, ending where the loader call starts. Against
-/// the loader call's `lea r9,[rsp+0x30]` that is buffer +0x20, size +0x28,
+/// `mov rax,[rbx]; mov [rbp-0x10],rax; mov eax,[rbx+0xc]; mov [rbp-0x8],eax;
+/// mov eax,[rdx+0x4]; mov [rbp-0x4],eax`: the stream fill the `gimmickinfo`
+/// accessor emits on 26636972, ending where the loader call starts. Against
+/// the loader call's `lea r9,[rbp-0x30]` that is buffer +0x20, size +0x28,
 /// cursor +0x2c.
-const FILL: [u8; 22] = [
-    0x48, 0x8B, 0x01, 0x48, 0x89, 0x44, 0x24, 0x50, 0x8B, 0x41, 0x0C, 0x89, 0x44, 0x24, 0x58, 0x8B, 0x42, 0x04,
-    0x89, 0x44, 0x24, 0x5C,
+const FILL: [u8; 19] = [
+    0x48, 0x8B, 0x03, 0x48, 0x89, 0x45, 0xF0, 0x8B, 0x43, 0x0C, 0x89, 0x45, 0xF8, 0x8B, 0x42, 0x04, 0x89, 0x45, 0xFC,
 ];
-/// `mov [rsp+0x20],rbx; mov [rsp+0x10],rdx; push rbp; push rsi`, the
-/// loader prologue (`census::LOADER_PROLOGUE`).
-const LOADER_PROLOGUE: [u8; 12] = [0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x56];
+/// `mov [rsp+0x20],rbx; mov [rsp+0x10],rdx; push rbp; push rsi`: the callee's
+/// 12-byte prologue (the record loader's through 26480954).
+const CALLEE_PROLOGUE: [u8; 12] = [0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x55, 0x56];
+/// `mov [rsp+0x20],rbx; mov [rsp+0x10],rdx; mov [rsp+0x8],rcx`: the record
+/// loader's prologue on 26636972 (`census::LOADER_PROLOGUE`).
+const LOADER_PROLOGUE: [u8; 15] =
+    [0x48, 0x89, 0x5C, 0x24, 0x20, 0x48, 0x89, 0x54, 0x24, 0x10, 0x48, 0x89, 0x4C, 0x24, 0x08];
 
 fn image() -> SynthPe {
     let mut pe = SynthPe::default();
@@ -47,33 +59,46 @@ fn image() -> SynthPe {
     caller.extend_from_slice(&[0x48, 0x83, 0xC4, 0x28, 0xC3]);
     pe.code(CALLER, &caller).function(CALLER, CALLER + 0x40);
 
-    // The loader prologue plus `push rdi` (13 bytes, all safe), then
+    // The 12-byte prologue plus `push rdi` (13 bytes, all safe), then
     // `lea rax,[rip+..]` (RIP-relative: the end of the safe counts), ret.
-    let mut callee = LOADER_PROLOGUE.to_vec();
+    let mut callee = CALLEE_PROLOGUE.to_vec();
     callee.push(0x57);
     callee.extend_from_slice(&[0x48, 0x8D, 0x05]);
     callee.extend_from_slice(&rel32(CALLEE + 20, RDATA));
     callee.push(0xC3);
     pe.code(CALLEE, &callee).function(CALLEE, CALLEE + 0x40);
 
-    // The accessor site. mov rbx,[rip+SLOT]; cmp edx,[rbx+8]
-    let mut slot = vec![0x48, 0x8B, 0x1D];
-    slot.extend_from_slice(&rel32(SLOT_LOAD + 7, SLOT));
-    slot.extend_from_slice(&[0x3B, 0x53, 0x08]);
-    pe.code(SLOT_LOAD, &slot);
-    // xor r9d,r9d; lea r8,[rip+NAME]; mov rdx,[rbx+0x10]; lea rcx,[r11+0x10]; call LOADER
+    // The getter: sub rsp,0x28; movzx r8d,word [rcx]; mov rcx,[rip+SLOT];
+    // cmp r8d,[rcx+0x28]; jb +12; mov rax,[rip+DEFAULT]; add rsp,0x28; ret;
+    // mov rax,[rcx+0x20]; lea rdx,[r8+r8*2]; cmp qword [rax+rdx*8+8],0;
+    // lea rdx,[rsp+0x30]; call ACCESSOR_FN; add rsp,0x28; ret
+    let mut g = vec![0x48, 0x83, 0xEC, 0x28, 0x44, 0x0F, 0xB7, 0x01, 0x48, 0x8B, 0x0D];
+    g.extend_from_slice(&rel32(SLOT_LOAD + 7, SLOT));
+    g.extend_from_slice(&[0x44, 0x3B, 0x41, 0x28, 0x72, 0x0C, 0x48, 0x8B, 0x05]);
+    g.extend_from_slice(&rel32(GETTER + 28, DEFAULT));
+    g.extend_from_slice(&[0x48, 0x83, 0xC4, 0x28, 0xC3]);
+    g.extend_from_slice(&[0x48, 0x8B, 0x41, 0x20, 0x4B, 0x8D, 0x14, 0x40, 0x48, 0x83, 0x7C, 0xD0, 0x08, 0x00]);
+    g.extend_from_slice(&[0x48, 0x8D, 0x54, 0x24, 0x30, 0xE8]);
+    assert_eq!(GETTER + g.len() as u32 - 1, GETTER_CALL);
+    g.extend_from_slice(&rel32(GETTER_CALL + 5, ACCESSOR_FN));
+    g.extend_from_slice(&[0x48, 0x83, 0xC4, 0x28, 0xC3]);
+    pe.code(GETTER, &g).function(GETTER, GETTER + 0x80);
+
+    // The accessor function (its start is the getter's call target; no
+    // RUNTIME_FUNCTION of its own). The head:
+    // xor r9d,r9d; lea r8,[rip+NAME]; mov rdx,[rcx+8]; lea rcx,[rbp+0x40]; call LOADER
+    pe.code(ACCESSOR_FN, &[0x90; 0x31]);
     let mut head = vec![0x45, 0x33, 0xC9, 0x4C, 0x8D, 0x05];
     head.extend_from_slice(&rel32(HEAD + 10, NAME));
-    head.extend_from_slice(&[0x48, 0x8B, 0x53, 0x10, 0x49, 0x8D, 0x4B, 0x10, 0xE8]);
+    head.extend_from_slice(&[0x48, 0x8B, 0x51, 0x08, 0x48, 0x8D, 0x4D, 0x40, 0xE8]);
     head.extend_from_slice(&rel32(ACCESSOR_CALL + 5, LOADER));
     pe.code(HEAD, &head);
-    // lea r9,[rsp+0x30]; lea rdx,[rsp+0x80]; mov rcx,rbx; call LOADER
-    let mut call = vec![0x4C, 0x8D, 0x4C, 0x24, 0x30, 0x48, 0x8D, 0x94, 0x24, 0x80, 0x00, 0x00, 0x00, 0x48, 0x8B, 0xCB, 0xE8];
-    call.extend_from_slice(&rel32(LOADER_CALL + 21, LOADER));
+    // lea r9,[rbp-0x30]; movzx r8d,r14w; mov rdx,rdi; mov rcx,rsi; call LOADER
+    let mut call = vec![0x4C, 0x8D, 0x4D, 0xD0, 0x45, 0x0F, 0xB7, 0xC6, 0x48, 0x8B, 0xD7, 0x48, 0x8B, 0xCE, 0xE8];
+    call.extend_from_slice(&rel32(LOADER_CALL + 19, LOADER));
     pe.code(LOADER_CALL - FILL.len() as u32, &FILL);
     pe.code(LOADER_CALL, &call);
     pe.code(LOADER, &LOADER_PROLOGUE).function(LOADER, LOADER + 0x20);
-    pe.function(HEAD - 0x40, HEAD + 0x100);
     pe.data(NAME, b"gimmickinfo\0");
     pe
 }
@@ -225,14 +250,20 @@ fn census_finds_the_planted_site_end_to_end() {
     let o = f.run(&["census", "--names", p(&f.names()), "--sites"], "1");
     let s = text(&o);
     assert_eq!(o.status.code(), Some(0), "{s}");
-    assert!(s.contains("census: 1 accessor site(s)"), "{s}");
-    assert!(s.contains("tails: lea rcx,[r11+d8]: 1"), "{s}");
-    assert!(s.contains("slot loads: 1/1 found within 0x60 before the head; distances 0x33: 1; cmp register edx: 1"), "{s}");
-    assert!(s.contains("loader calls: 1/1 found, 1 with the loader prologue at the target"), "{s}");
-    assert!(s.contains("0x7a..0x7a"), "{s}");
-    assert!(s.contains(&format!("gimmickinfo: accessor +{HEAD:#x}")), "{s}");
-    assert!(s.contains(&format!("slot load +{SLOT_LOAD:#x} (head-0x33), slot +{SLOT:#x}, cmp edx")), "{s}");
-    assert!(s.contains(&format!("-> loader +{LOADER:#x}, prologue ok")), "{s}");
+    assert!(s.contains("census: 1 getter(s), 1 accessor site(s), 1 loader call(s)"), "{s}");
+    assert!(s.contains("registers mov rcx / cmp r8d: 1"), "{s}");
+    assert!(s.contains("manager: count +0x28, entries +0x20, stride 24, object +0x8: 1"), "{s}");
+    assert!(s.contains("slot load -> accessor call: 0x2c: 1"), "{s}");
+    assert!(s.contains("prologue standalone 48 83 EC 28 44 0F B7 01: 1"), "{s}");
+    assert!(s.contains("function start from a getter's call at 1, head offset into the function 0x31: 1"), "{s}");
+    assert!(s.contains("tails: lea rcx,[rbp+d8]: 1"), "{s}");
+    assert!(s.contains("0 accessor(s) without a getter; 0 with getters disagreeing on the slot; 1 distinct slot(s)"), "{s}");
+    assert!(s.contains("loader calls: 1/1 found, 1 open with LOADER_PROLOGUE (15 bytes)"), "{s}");
+    assert!(s.contains("distance from the head: 0x8d: 1"), "{s}");
+    assert!(s.contains("0x7b..0x7b"), "{s}");
+    assert!(s.contains(&format!("gimmickinfo: accessor function +{ACCESSOR_FN:#x}, head +{HEAD:#x} (+0x31 in)")), "{s}");
+    assert!(s.contains(&format!("getter +{GETTER:#x} slot load +{SLOT_LOAD:#x}, slot +{SLOT:#x}, call +{GETTER_CALL:#x}")), "{s}");
+    assert!(s.contains(&format!("-> loader +{LOADER:#x}, prologue = LOADER_PROLOGUE")), "{s}");
     assert!(s.contains("stream fill: buffer +0x20 size +0x28 cursor +0x2c at 1 of 1 sites\n"), "{s}");
     assert!(s.contains("    stream fill: buffer +0x20 size +0x28 cursor +0x2c\n"), "{s}");
     assert!(s.contains("fill 0x20/0x28/0x2c"), "the --sites column: {s}");
@@ -266,15 +297,15 @@ fn report_exits_one_when_dirty_and_zero_when_clean() {
     let f = Fixture::new();
     let names = f.names();
     let dirty = f.file("dirty.txt", &format!("{GOOD_SIGS}{DEAD_SIG}"));
-    let o = f.run(&["report", "--sigs", p(&dirty), "--names", p(&names)], "26480954");
+    let o = f.run(&["report", "--sigs", p(&dirty), "--names", p(&names)], "26636972");
     let s = text(&o);
     assert_eq!(o.status.code(), Some(1), "{s}");
-    assert!(s.starts_with("# retarget report: build 26480954"), "{s}");
+    assert!(s.starts_with("# retarget report: build 26636972"), "{s}");
     assert!(s.contains("To re-derive: moved."), "{s}");
     assert!(s.contains("Verdict: work to do"), "{s}");
 
     let good = f.file("good.txt", GOOD_SIGS);
-    let o = f.run(&["report", "--sigs", p(&good), "--names", p(&names)], "26480954");
+    let o = f.run(&["report", "--sigs", p(&good), "--names", p(&names)], "26636972");
     assert_eq!(o.status.code(), Some(0), "{}", text(&o));
     assert!(text(&o).contains("Verdict: clean"));
     assert!(

@@ -38,7 +38,7 @@ pub fn stub_bytes(target: usize, stolen: &[u8], callback: usize) -> Vec<u8> {
 ///
 /// ```text
 /// stub:  sub rsp,0x20         ; shadow space; rsp stays 16-aligned for the call
-///        mov rcx,r15          ; the site's live pointer -> first argument
+///        mov rcx,<src>        ; the site's live pointer -> first argument
 ///        mov rax,<callback>; call rax     ; extern "system" fn(usize) -> u32
 ///        add rsp,0x20
 ///        mov r8d,eax          ; the value the game will use, from us
@@ -46,8 +46,9 @@ pub fn stub_bytes(target: usize, stolen: &[u8], callback: usize) -> Vec<u8> {
 ///        mov rax,<resume>; jmp rax
 /// ```
 ///
-/// The caller owns three facts a disassembly has to establish: that `r15`
-/// holds what the callback wants, that every volatile register (rax, rcx,
+/// The caller owns three facts a disassembly has to establish: that `src`
+/// (an x86-64 register number, 0 = rax .. 15 = r15; only the low four bits
+/// are encoded) holds what the callback wants, that every volatile register (rax, rcx,
 /// rdx, r8-r11, xmm0-5) is dead at the site, and that `rsp` is 16-byte
 /// aligned there. Nothing is saved or restored, so a live volatile register
 /// would be lost. `replay` is the tail of the stolen bytes - the whole,
@@ -60,10 +61,10 @@ pub fn stub_bytes(target: usize, stolen: &[u8], callback: usize) -> Vec<u8> {
 /// there to be read beside a disassembly - the hook finds the site by its
 /// bytes (`desert_core::creature::CATCH_SITE`), which is why it survived that
 /// address moving 0x1740 in the update from 25116796.
-pub fn count_hook_stub(callback: usize, resume: usize, replay: &[u8]) -> Vec<u8> {
+pub fn count_hook_stub(callback: usize, resume: usize, replay: &[u8], src: u8) -> Vec<u8> {
     let mut s = Vec::with_capacity(0x26 + replay.len());
     s.extend_from_slice(&[0x48, 0x83, 0xEC, 0x20]); // sub rsp,0x20
-    s.extend_from_slice(&[0x4C, 0x89, 0xF9]); // mov rcx,r15
+    s.extend_from_slice(&mov_rcx_from(src)); // mov rcx,<src>
     s.extend_from_slice(&[0x48, 0xB8]); // mov rax,imm64
     s.extend_from_slice(&(callback as u64).to_le_bytes());
     s.extend_from_slice(&[0xFF, 0xD0]); // call rax
@@ -75,6 +76,14 @@ pub fn count_hook_stub(callback: usize, resume: usize, replay: &[u8]) -> Vec<u8>
     s.extend_from_slice(&(resume as u64).to_le_bytes());
     s.extend_from_slice(&[0xFF, 0xE0]); // jmp rax
     s
+}
+
+/// `mov rcx,<src>` as `REX.W(+R) 89 /r`: `src` in ModRM.reg, rcx in ModRM.rm.
+/// `src = 15` is `4C 89 F9` (`mov rcx,r15`), `src = 6` is `48 89 F1`
+/// (`mov rcx,rsi`).
+fn mov_rcx_from(src: u8) -> [u8; 3] {
+    let src = src & 0x0F;
+    [0x48 | ((src >> 3) << 2), 0x89, 0xC0 | ((src & 7) << 3) | 1]
 }
 
 /// Build a stub for a prologue hook that may **skip** the original function.
@@ -192,7 +201,7 @@ mod tests {
     fn count_hook_stub_matches_the_disassembly() {
         // The real site's second stolen instruction: lea rdx,[rbp+0x1d0].
         let replay = [0x48, 0x8D, 0x95, 0xD0, 0x01, 0x00, 0x00];
-        let s = count_hook_stub(0xDEAD_BEEF, 0x1_4000_1234, &replay);
+        let s = count_hook_stub(0xDEAD_BEEF, 0x1_4000_1234, &replay, 15);
         assert_eq!(s.len(), 0x26 + replay.len());
 
         assert_eq!(&s[0x00..0x04], &[0x48, 0x83, 0xEC, 0x20], "sub rsp,0x20");
@@ -262,11 +271,24 @@ mod tests {
         const { assert!(GATE_PREFIX + MAX_STOLEN + 12 <= 0xA0) };
     }
 
+    /// `mov rcx,<src>` for every register, against objdump's encodings
+    /// (`mov rcx,rbx` = `48 89 D9`, `mov rcx,rsi` = `48 89 F1`, `mov rcx,rdi`
+    /// = `48 89 F9`, `mov rcx,r12` = `4C 89 E1`, `mov rcx,r15` = `4C 89 F9`).
+    #[test]
+    fn the_source_register_is_encoded() {
+        assert_eq!(mov_rcx_from(3), [0x48, 0x89, 0xD9]);
+        assert_eq!(mov_rcx_from(6), [0x48, 0x89, 0xF1]);
+        assert_eq!(mov_rcx_from(7), [0x48, 0x89, 0xF9]);
+        assert_eq!(mov_rcx_from(12), [0x4C, 0x89, 0xE1]);
+        assert_eq!(mov_rcx_from(15), [0x4C, 0x89, 0xF9]);
+    }
+
     #[test]
     fn count_hook_stub_takes_an_empty_replay() {
         // Degenerate but legal: the replaced instruction was the only stolen
         // one, so the stub jumps straight back.
-        let s = count_hook_stub(1, 2, &[]);
+        let s = count_hook_stub(1, 2, &[], 6);
+        assert_eq!(&s[0x04..0x07], &[0x48, 0x89, 0xF1], "mov rcx,rsi");
         assert_eq!(s.len(), 0x26);
         assert_eq!(&s[0x17..0x1A], &[0x41, 0x89, 0xC0]);
         assert_eq!(&s[0x1A..0x1C], &[0x48, 0xB8]);

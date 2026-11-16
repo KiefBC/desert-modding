@@ -1,6 +1,6 @@
 # Desert Tooling
 
-**Version 0.16.1**, for Crimson Desert Enhanced, Steam build **26480954**.
+**Version 0.16.2**, for Crimson Desert Enhanced, Steam build **26636972**.
 [Changelog](CHANGELOG.md) · [versioning](../VERSIONING.md).
 
 One `.asi` plugin with three subsystems: **harvest** (auto-loot and the
@@ -561,7 +561,9 @@ read-only and nothing here acts on either.
 If a game update moves the code they are found by, the line says `not found by
 signature on this build` in place of the address, and the warning below stands as
 it is. On 26361232 both gates resolved at the addresses above and both read `0`. On
-26480954 the first launch (2026-11-06) resolved them at `0x715A1D8` and `0x7131ED8`.
+26480954 the first launch (2026-11-06) resolved them at `0x715A1D8` and `0x7131ED8`. On
+26636972 they are at `0x71DED98` (deferred-reward) and `0x71B6768` (surplus-worker),
+found offline and not yet seen in a launch.
 
 **Check that line after a game update**, because these are the kind of switch an
 update can flip, and it is the only thing that would tell you.
@@ -601,7 +603,7 @@ than the next launch. Everything below is what that involves and what it looks
 like in the log.
 
 **What the game does at launch.** The gathering rules live in a data table
-called `gimmickinfo`: 14,210 records on build 26480954, as on 26423880 and 26361232 (13,941 on 25477059), 294 (unchanged since 26361232) of which this plugin multiplies: the gather nodes as the game's own data
+called `gimmickinfo`: 14,218 records on build 26636972 (14,210 on 26480954, 26423880 and 26361232; 13,941 on 25477059), 294 (unchanged since 26361232) of which this plugin multiplies: the gather nodes as the game's own data
 marks them, plus the water well, the wild rock honey, three stalactites and the
 three placed money records. Roughly
 nine seconds after the process starts, before the main menu is up, the game runs
@@ -744,10 +746,10 @@ Nothing here is a hard-coded address. The auto-loot half resolves ten byte
 signatures and finds the actor manager through its RTTI vtable. The yield half
 scans the
 running image for the accessor that names the `gimmickinfo` table and follows it
-to the record-loading function, then refuses to patch unless the twelve bytes it
+to the record-loading function, then refuses to patch unless the fifteen bytes it
 is about to overwrite are exactly the prologue it expects; inside each record,
 the yield numbers are found by walking the resource-output lists and matching
-the fixed 68-byte block layout that carries them. The Overlay looks up no game
+the fixed 69-byte block layout that carries them. The Overlay looks up no game
 address at all.
 
 That covers records and functions moving, which is what usually happens on a

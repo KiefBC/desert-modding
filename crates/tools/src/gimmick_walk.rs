@@ -7,8 +7,8 @@
 //! sub-readers), its `drop_entry()` and its `interaction_flags()`.
 //!
 //! [`gimmick`] stops after `tags`, which is all `gen-containers` needs; three
-//! checks stand in there for the record-end check, on every one of the 14210
-//! records of build 26361232:
+//! checks stand in there for the record-end check, on every one of the 14218
+//! records of build 26636972 (14210 on 26361232..26480954):
 //!
 //! - `gimmickName`, the localised string right after the overrides and the
 //!   property list, carries the table key `(record key << 32) | 0x200`, so a
@@ -192,6 +192,19 @@ fn cond_fields(st: u16) -> Option<(&'static [F], bool)> {
     })
 }
 
+/// A leaf's on-disk subtype in the numbering [`cond_fields`] is written in
+/// (26361232..26480954, as `gimmick_tail.py`'s `COND`): 26636972 inserted one
+/// subtype at 0x90, which no table uses, so every on-disk subtype from 0x91
+/// up is one higher (0x9F reads as 0x9E CheckFriendlyLevel, 0x10F as 0x10E
+/// Macro, 0x16C as 0x16B); 0x84 and 0x8F stay. `gimmick_tail.cond_subtype`.
+fn cond_subtype(st: u16) -> Option<u16> {
+    match st {
+        0x90 => None,
+        0x91.. => Some(st - 1),
+        _ => Some(st),
+    }
+}
+
 /// The condition-tree factory `0x142631AF0`: `u8 kind`; 0 and 1 two
 /// children, 2 one, 3 a leaf (`u16 subtype`, the subtype's `+0x80` reader,
 /// then its `+0x98` reader: `u8 present` + string, 8 bytes, three `u8`).
@@ -206,8 +219,10 @@ pub fn cond_node(r: &mut R, depth: usize) -> Result<(), Stop> {
         }
         2 => cond_node(r, depth + 1),
         3 => {
-            let st = r.u16()?;
-            let (fields, s98) = cond_fields(st).ok_or_else(|| format!("condition subtype 0x{st:X}"))?;
+            let disk = r.u16()?;
+            let (st, (fields, s98)) = cond_subtype(disk)
+                .and_then(|st| Some((st, cond_fields(st)?)))
+                .ok_or_else(|| format!("condition subtype 0x{disk:X} on disk"))?;
             if st == 0x84 {
                 // 0x14243A1D0 = 0x14172BD00: a u16 regioninfo list.
                 let n = r.n()?;
@@ -408,7 +423,8 @@ pub fn drop_entry(r: &mut R) -> Result<DropEntry, Stop> {
     r.i64()?;
     let min = r.i64()?;
     let max = r.i64()?;
-    r.u16()?;
+    r.u16()?; // enchantLevel
+    r.u8()?; // unnamed, parsed +0x61; new in 26636972 (shares enchantLevel's error string)
     match kind {
         0..=6 | 9 | 12 => r.skip(4)?,
         // 0x1416F1860: 8 bytes, u32, u32 character, u8, u8, u32 interaction,
@@ -812,9 +828,19 @@ pub fn full(rec: &[u8], key: u32) -> Result<Full, Stop> {
         r.s()?;
         r.skip(12)
     })?;
-    if r.opt()? {
-        faction_structure(&mut r)?; // +0x1F8
+    // 26636972: autoTargetingConstraintDataList and gimmickConstraintDataList,
+    // two optional lists (parsed +0x1F8, +0x200) absent on all 14218 records;
+    // their element reader is not decoded, so a present one fails the record
+    // (`gimmick_tail.constraint_list`).
+    for field in ["autoTargetingConstraintDataList", "gimmickConstraintDataList"] {
+        if r.opt()? {
+            return Err(format!("present: {field}"));
+        }
     }
+    if r.opt()? {
+        faction_structure(&mut r)?; // +0x208 (+0x1F8 through 26480954)
+    }
+    // The parsed offsets below are 26480954's; every one is +0x10 on 26636972.
     let mut product_dropset = None;
     if r.opt()? {
         // +0x200 productData: list (u32, i64), u32, i64, i64, dropset, u32.
@@ -968,7 +994,7 @@ mod tests {
         o.extend_from_slice(&le(42));
         o.push(0); // no +0x98
         o.extend_from_slice(&[2, 3]);
-        o.extend_from_slice(&0x104u16.to_le_bytes());
+        o.extend_from_slice(&0x105u16.to_le_bytes()); // IsCrimeTarget, 0x104 before 26636972
         o.push(1); // a +0x98: string, 11 bytes
         s(&mut o, b"x");
         o.extend_from_slice(&[0; 11]);
@@ -1040,6 +1066,38 @@ mod tests {
         r.extend_from_slice(&0x0FFu16.to_le_bytes());
         assert!(cond_node(&mut R::new(&r, 0), 0).is_err());
         assert!(cond_node(&mut R::new(&[9], 0), 0).is_err());
+        // The subtype 26636972 inserted is in no table.
+        let mut r = vec![3];
+        r.extend_from_slice(&0x090u16.to_le_bytes());
+        assert!(cond_node(&mut R::new(&r, 0), 0).is_err());
+    }
+
+    #[test]
+    fn subtypes_from_0x91_on_disk_are_one_higher() {
+        assert_eq!(cond_subtype(0x84), Some(0x84));
+        assert_eq!(cond_subtype(0x8F), Some(0x8F));
+        assert_eq!(cond_subtype(0x90), None);
+        assert_eq!(cond_subtype(0x9F), Some(0x9E));
+        assert_eq!(cond_subtype(0x10F), Some(0x10E));
+        assert_eq!(cond_subtype(0x16C), Some(0x16B));
+    }
+
+    #[test]
+    fn a_drop_entry_reads_the_u8_after_enchant_level() {
+        // i64, kind 0, 16 bytes, weight, i64, min, max, u16 enchantLevel,
+        // u8 (26636972), u32 item.
+        let mut e = vec![0u8; 8];
+        e.push(0);
+        e.extend_from_slice(&[0; 16]);
+        for v in [100i64, 0, 2, 5] {
+            e.extend_from_slice(&v.to_le_bytes());
+        }
+        e.extend_from_slice(&[0xFF, 0xFF, 0]);
+        e.extend_from_slice(&le(22008));
+        let mut r = R::new(&e, 0);
+        let d = drop_entry(&mut r).unwrap();
+        assert_eq!((d.kind, d.weight, d.min, d.max), (DROP_KIND_ITEM, 100, 2, 5));
+        assert_eq!(r.o, e.len(), "the walk ends on the entry's last byte");
     }
 
     #[test]

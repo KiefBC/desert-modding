@@ -17,7 +17,7 @@ use desert_tools::paths;
 const BIN: &str = env!("CARGO_BIN_EXE_gen-collect-names");
 /// The water well's output list in the calibrated body (`table.rs`
 /// `CALIBRATION`'s second anchor): 3374134 on 26361232, 4382086 on 25477059.
-const WELL_LIST: usize = 3374134;
+const WELL_LIST: usize = 3379211; // 3374134 through 26480954
 /// The four tables the generator reads.
 const TABLES: [&str; 4] = ["gimmickinfo", "iteminfo", "interactioninfo", "knowledgeinfo"];
 
@@ -54,13 +54,13 @@ fn copy_tables(dir: &Path, edit: impl FnOnce(&mut Vec<u8>)) {
 }
 
 /// Point the well's one block at `item`, both copies (`+1` and its echo at
-/// `+60`), so the block stays one the detector admits and the walk still
+/// `+61`), so the block stays one the detector admits and the walk still
 /// calibrates.
 fn set_well_item(body: &mut [u8], item: u32) {
     let block = WELL_LIST + 4;
     assert_eq!(u32::from_le_bytes(body[block + 1..block + 5].try_into().unwrap()), 22008);
     body[block + 1..block + 5].copy_from_slice(&item.to_le_bytes());
-    body[block + 60..block + 64].copy_from_slice(&item.to_le_bytes());
+    body[block + 61..block + 65].copy_from_slice(&item.to_le_bytes());
 }
 
 fn run(args: &[&std::ffi::OsStr]) -> Output {
@@ -80,7 +80,7 @@ fn the_archives_regenerate_collect_rs_byte_for_byte() {
     assert!(o.status.success(), "{}", stderr(&o));
     let stdout = String::from_utf8_lossy(&o.stdout);
     assert!(stdout.contains("source: the archives under"), "{stdout}");
-    assert!(stdout.contains("calibrated: 14210 records, 581 lists, 904 blocks"), "{stdout}");
+    assert!(stdout.contains("calibrated: 14218 records, 581 lists, 904 blocks"), "{stdout}");
     assert_eq!(fs::read_to_string(&out).unwrap(), committed_collect_rs());
 }
 

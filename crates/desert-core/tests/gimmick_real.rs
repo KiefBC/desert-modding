@@ -11,7 +11,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use desert_core::creature::{CATCH_BYTES, CATCH_SITE, CATCH_STOLEN};
+use desert_core::creature::{self, CATCH_BYTES, CATCH_CALL_END, CATCH_SITE, CATCH_STOLEN};
 use desert_core::gimmick::{self, LOADER_PROLOGUE, LOADER_STOLEN};
 use desert_core::pattern::{Found, Pattern};
 use desert_core::pe;
@@ -76,30 +76,30 @@ fn skipped(what: &str) {
     println!("{bar}\n");
 }
 
-/// RVA of the `gimmickinfo` record loader on Steam build 26480954 (`0x3D8FA0`
-/// on 26423880, `0x3D89A0` on 26361232, 26356046 and 26345091, where it was re-derived; was
-/// `0x38BA40`, `FUN_14038ba40`, on 25477059, `0x385CD0` on 25246367 and
-/// `FUN_1403856b0` on the build before that; the function is the same, the
-/// address is not).
-const LOADER_RVA: usize = 0x3D9280;
+/// RVA of the `gimmickinfo` record loader on Steam build 26636972 (`0x3D9280`
+/// on 26480954, `0x3D8FA0` on 26423880, `0x3D89A0` on 26361232, 26356046 and
+/// 26345091, where it was re-derived; was `0x38BA40`, `FUN_14038ba40`, on
+/// 25477059, `0x385CD0` on 25246367 and `FUN_1403856b0` on the build before
+/// that; the function is the same, the address is not).
+const LOADER_RVA: usize = 0x3DC7F0;
 
-/// RVAs of the two `*InfoManager` global pointer slots on Steam build 26480954
-/// (`0x71BEE70` and `0x71BEE98` on 26423880, `0x71B7BD0` and `0x71B7BF8` on 26361232 and 26356046, `0x71B6C20` and `0x71B6C48` on 26345091, `0x6D69AA8` and `0x6D69AC8`
-/// on 25477059, `0x6C2E2E8` and `0x6C2E308` on 25246367).
-/// These are the oracle for `gimmick::resolve_manager_slot`, and are the values
-/// `crates/desert-harvest/src/looter/tables.rs` used to carry as hard-coded constants before
-/// the slots were resolved by content at startup.
-const ITEM_INFO_SLOT_RVA: usize = 0x71C1080;
-const GIMMICK_INFO_SLOT_RVA: usize = 0x71C10A8;
+/// RVAs of the two `*InfoManager` global pointer slots on Steam build 26636972
+/// (`0x71C1080` and `0x71C10A8` on 26480954, `0x71BEE70` and `0x71BEE98` on
+/// 26423880, `0x71B7BD0` and `0x71B7BF8` on 26361232 and 26356046, `0x71B6C20`
+/// and `0x71B6C48` on 26345091, `0x6D69AA8` and `0x6D69AC8` on 25477059,
+/// `0x6C2E2E8` and `0x6C2E308` on 25246367). These are the oracle for
+/// `gimmick::resolve_manager_slot`, and are the values
+/// `crates/desert-harvest/src/looter/tables.rs` used to carry as hard-coded
+/// constants before the slots were resolved by content at startup.
+const ITEM_INFO_SLOT_RVA: usize = 0x7246370;
+const GIMMICK_INFO_SLOT_RVA: usize = 0x7246398;
 
 /// RVA of the `mov r8d,1` inside the catch-count function on Steam build
-/// 26480954, file offset `0x2DDBFD8` (was `0x2DDBF68`, file `0x2DDB368`, on
-/// 26423880, `0x2DD6728`, file `0x2DD5B28`, on
-/// 26361232, `0x2DD6778`, file `0x2DD5B78`, on
-/// 26356046, `0x2DD6448`, file `0x2DD5848`, on 26345091, `0x2B42FB1` on 25477059, `0x2A75891`
-/// on 25246367, inside `FUN_142a73c20` on the build before that;
-/// `docs/reference-internals.md` section 17.4).
-const CATCH_RVA: usize = 0x2DDCBD8;
+/// 26636972 (`0x2DDCBD8` on 26480954, `0x2DDBF68` on 26423880, `0x2DD6728` on
+/// 26361232, `0x2DD6778` on 26356046, `0x2DD6448` on 26345091, `0x2B42FB1` on
+/// 25477059, `0x2A75891` on 25246367, inside `FUN_142a73c20` on the build
+/// before that; `docs/reference-internals.md` section 17.4).
+const CATCH_RVA: usize = 0x2E43AF8;
 
 #[test]
 #[ignore]
@@ -128,8 +128,8 @@ fn resolves_the_record_loader_in_the_game_exe() {
 }
 
 /// The looter's two info-manager slots, resolved by content instead of by
-/// the two constants the plugin used to carry. Each is the `mov rbx,[rip+disp]`
-/// a short way before the accessor copy that names the table.
+/// the two constants the plugin used to carry. Each is the `mov rcx,[rip+disp]`
+/// in the getters that call the accessor function naming the table.
 #[test]
 #[ignore]
 fn resolves_the_info_manager_slots_in_the_game_exe() {
@@ -170,6 +170,15 @@ fn finds_the_catch_count_site_in_the_game_exe() {
     let stolen = img.get(at..at + CATCH_STOLEN).expect("stolen bytes in image");
     println!("stolen bytes  = {}", hex(stolen));
     assert_eq!(stolen, &CATCH_BYTES[..]);
+
+    // The register the stub hands the callback as the creature actor, read
+    // off the `mov rdx,[reg+0x68]` past the call: rsi on 26636972 (r15
+    // through 26480954, which is what left every catch at 1x on 0.16.2's
+    // first launch).
+    let after = img.get(at + CATCH_CALL_END..at + CATCH_CALL_END + 8).expect("past the call");
+    let reg = creature::catch_actor_register(after);
+    println!("actor in      = {} ({})", reg.map_or("?", creature::reg_name), hex(after));
+    assert_eq!(reg, Some(6), "rsi");
 }
 
 /// The `[slot]` line the looter logs, printed here for the same reason.
@@ -232,13 +241,12 @@ fn locate_records(table: &[u8], wanted: &BTreeSet<Record>) -> Result<BTreeMap<Re
 /// One shared scan answers exactly what a scan per call answers, on the real
 /// exe.
 ///
-/// `AccessorSites` exists because finding the 154 template copies does not
-/// depend on which table is being asked about, so `desert-dispatch` can resolve
-/// `FactionNode` and `dropsetinfo` from four passes over the 363 MB image
-/// instead of eight - measured 2.0x, 1.0 s down to 0.49 s. The synthetic-image
-/// test in `gimmick.rs` proves the equivalence on a five-site fixture; this
-/// proves it on the 154 real ones, which is where a filtering mistake that the
-/// fixture is too small to expose would show up.
+/// `AccessorSites` exists because finding the getters and accessor functions
+/// does not depend on which table is being asked about, so `desert-dispatch`
+/// can resolve every table it wants from one pass over the image. The
+/// synthetic-image test in `gimmick.rs` proves the equivalence on a five-site
+/// fixture; this proves it on the 151 real ones, which is where a filtering
+/// mistake that the fixture is too small to expose would show up.
 #[test]
 #[ignore]
 fn one_shared_scan_answers_what_a_scan_per_call_answers() {
@@ -269,8 +277,8 @@ fn one_shared_scan_answers_what_a_scan_per_call_answers() {
         println!("{name:<12} agrees: slot {:X?}", sites.manager_slot(&img, table));
     }
 
-    // The base-less scan the looter makes: two encodings searched instead of
-    // four, and the same answers for the two tables it wants.
+    // The base-less scan the looter makes: the `lea` encoding only, and the
+    // same answers for the two tables it wants.
     let lea = gimmick::AccessorSites::scan(&img, None).expect("the patterns are well formed");
     for table in [gimmick::GIMMICK_TABLE, gimmick::ITEM_TABLE] {
         assert_eq!(
@@ -283,7 +291,9 @@ fn one_shared_scan_answers_what_a_scan_per_call_answers() {
 }
 
 /// Every independently found min/max field in a record: a `u32` count of
-/// 1..=64 at any offset, followed by that many 68-byte blocks with flag 1 at
+/// 1..=64 at any offset, followed by that many 69-byte blocks (68 through
+/// 26480954; spelled as a literal so this stays independent of
+/// `gimmick::BLOCK`) with flag 1 at
 /// `+0` and `FF FF` at `+58`, the minimum at `+42` and the maximum at `+50`.
 /// Looser than `gimmick::block_ok` on purpose (no range check, no item or pad
 /// clause, every start tried), so an edit `multiply` makes anywhere but a
@@ -295,9 +305,9 @@ fn block_scalar_offsets(rec: &[u8]) -> BTreeSet<usize> {
         if !(1..=64).contains(&count) {
             continue;
         }
-        let blocks: Vec<usize> = (0..count as usize).map(|k| at + 4 + k * 68).collect();
+        let blocks: Vec<usize> = (0..count as usize).map(|k| at + 4 + k * 69).collect();
         let shaped = blocks.iter().all(|&b| {
-            rec.get(b) == Some(&1) && rec.get(b + 58) == Some(&0xFF) && rec.get(b + 59) == Some(&0xFF) && b + 68 <= rec.len()
+            rec.get(b) == Some(&1) && rec.get(b + 58) == Some(&0xFF) && rec.get(b + 59) == Some(&0xFF) && b + 69 <= rec.len()
         });
         if shaped {
             for b in blocks {
@@ -317,7 +327,8 @@ fn block_scalar_offsets(rec: &[u8]) -> BTreeSet<usize> {
 /// is the check that every row is one the hook can actually multiply.
 ///
 /// Records are cut out of the body by the archive's own offsets table, the
-/// same split the game's manager keeps at `mgr+0x28`, and each slice is
+/// same split the game's manager keeps in its entries (`mgr+0x20`, the file
+/// offset at `entry+4`), and each slice is
 /// exactly what the record-loader hook is handed.
 #[test]
 #[ignore]
@@ -328,7 +339,7 @@ fn multiply_doubles_every_collect_record_from_the_archive_table() {
     };
     println!("table: {} ({} bytes)", table_path().display(), table.len());
     let ranges = record_ranges(&header, table.len()).expect("the header splits the body");
-    assert_eq!(ranges.len(), 14210, "records on builds 26361232, 26423880 and 26480954");
+    assert_eq!(ranges.len(), 14218, "records on build 26636972 (14210 on 26361232 through 26480954)");
     let shape = gimmick::detect_header_shape(&table).expect("the first record has one header shape");
 
     let (mut records, mut blocks, mut scalars, mut most) = (0usize, 0usize, 0usize, 0usize);
@@ -356,7 +367,7 @@ fn multiply_doubles_every_collect_record_from_the_archive_table() {
     }
     println!("{records} records, {blocks} blocks, {scalars} scalars doubled; at most {most} blocks in one record");
     // Build 26361232, measured 2026-11-02 against the archive's table; the same
-    // on 26423880 and 26480954.
+    // on 26423880, 26480954 and (with the 69-byte block) 26636972.
     assert_eq!((records, blocks, scalars), (294, 606, 1212));
     // `desert_harvest::gatherer::remember` keeps at most 8 blocks a record.
     assert!(most <= 8, "a row has {most} blocks");
@@ -567,6 +578,10 @@ fn output_blocks_read_the_item_id_the_table_actually_carries() {
     let all = gimmick::output_blocks(&table);
     let lists = gimmick::output_lists(&table).len();
     println!("whole body: {lists} output lists, {} blocks", all.len());
+    // 26636972, with the 69-byte block: the same population 68 bytes found
+    // before the insert (573/896 on 25246367's clean body). With 68/60 this
+    // body has 0.
+    assert_eq!((lists, all.len()), (581, 904));
     assert!(all.len() > 800, "expected the whole body's blocks, got {}", all.len());
     let zero = all.iter().filter(|b| b.item == 0).count();
     assert_eq!(zero, 0, "{zero} of {} blocks have item id 0", all.len());
@@ -577,6 +592,8 @@ fn output_blocks_read_the_item_id_the_table_actually_carries() {
         let tail = u32_at(&table, b.offset + gimmick::ITEM_TAIL_AT).expect("item echo");
         assert_eq!((head, tail), (b.item, b.item), "block at {}", b.offset);
         assert_eq!(u32_at(&table, b.offset + gimmick::PAD_AT), Some(0), "pad at {}", b.offset);
+        // The byte 26636972 inserted after the `FF FF`.
+        assert_eq!(table.get(b.offset + 60), Some(&0), "inserted byte at {}", b.offset);
         assert_eq!(
             u32_at(&table, b.offset + gimmick::PAD_TAIL_AT),
             Some(0),
@@ -584,12 +601,12 @@ fn output_blocks_read_the_item_id_the_table_actually_carries() {
             b.offset
         );
     }
-    println!("all {} blocks: item at +1 == item at +60 != 0, both pads zero", all.len());
+    println!("all {} blocks: item at +1 == item at +61 != 0, both pads zero, +60 zero", all.len());
 }
 
 /// The installed build's table body is a `NameFirst` table: its first
 /// record validates as that shape and no other, a strict scan in that shape
-/// finds 14210 headers with 14210 distinct keys (one per record the game's
+/// finds 14218 headers with 14218 distinct keys (14210 on 26361232 through 26480954) (one per record the game's
 /// manager counts), and the well and the 26361232 example record (both
 /// unmoved on 26423880 and 26480954) sit where
 /// they always have. On 25477059 and before the same body was `KeyFirst`; the
@@ -616,13 +633,15 @@ fn the_table_body_is_name_first_with_one_header_per_record() {
         m
     });
     println!("NameFirst headers: {} ({} distinct keys), flags {flags:?}", headers.len(), keys.len());
-    assert_eq!(headers.len(), 14210);
-    assert_eq!(keys.len(), 14210);
-    assert_eq!(flags, BTreeMap::from([(0, 11511), (1, 2699)]));
+    assert_eq!(headers.len(), 14218);
+    assert_eq!(keys.len(), 14218);
+    // 26636972; `(0, 11511), (1, 2699)` on 26361232 through 26480954.
+    assert_eq!(flags, BTreeMap::from([(0, 11519), (1, 2699)]));
     let (first, h0) = &headers[0];
     assert_eq!((*first, h0.key, h0.name.as_str()), (0, 1003051, "operator_gimmickcomplete_00"));
     let well = headers.iter().find(|(_, h)| h.key == 1001081).expect("the well");
-    assert_eq!((well.0, well.1.name.as_str()), (0x33795b, "gimmick_well_0001_parts01"));
+    // 0x33795b on 26361232 through 26480954.
+    assert_eq!((well.0, well.1.name.as_str()), (0x338D30, "gimmick_well_0001_parts01"));
     // Every path is rooted; exactly one is not a `/object` path.
     let odd: Vec<&str> = headers
         .iter()
@@ -639,24 +658,24 @@ fn u32_at(b: &[u8], o: usize) -> Option<u32> {
 // ---------------------------------------------------------------------------
 // The accessor census and the tables resolved through it.
 //
-// These three touch `desert_core::gimmick` and nothing else - two of the
+// These four touch `desert_core::gimmick` and nothing else - two of the
 // tables they name are `desert-dispatch`'s, none of them is the looter's - so
 // they live here rather than in `crates/desert-harvest/tests/game_exe.rs`, where they
 // were first written. `just test-game` runs both files.
 // ---------------------------------------------------------------------------
 
 /// The two tables that are reachable only through the **indirect** accessor
-/// template (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
+/// encoding (`mov r8,[rip+cell]`, the cell holding the name's VA), resolved by
 /// `gimmick::resolve_manager_slot_based`. `FactionNode` is the one
-/// `desert-dispatch` walks. RVAs on build 26480954 (`0x71C1938` and
-/// `0x71BEED0` on 26423880, `0x71BA698` and
-/// `0x71B7C30` on 26356046 and 26361232, `0x71B96E8` and
-/// `0x71B6C80` on 26345091); on 25477059 they were
-/// `0x6D6BE70` and `0x6D69AF0`, and on 25246367 `0x6C30308` and `0x6C2E330`,
-/// the values the offline census in `docs/findings/2026-09-10-dispatch.md`
-/// records.
+/// `desert-dispatch` walks. RVAs on build 26636972 (`0x71C3B58` and
+/// `0x71C10E0` on 26480954, `0x71C1938` and `0x71BEED0` on 26423880,
+/// `0x71BA698` and `0x71B7C30` on 26356046 and 26361232, `0x71B96E8` and
+/// `0x71B6C80` on 26345091); on 25477059 they were `0x6D6BE70` and
+/// `0x6D69AF0`, and on 25246367 `0x6C30308` and `0x6C2E330`, the values the
+/// offline census in `docs/findings/2026-09-10-dispatch.md` records.
 const PTR_TEMPLATE_SLOTS: &[(&[u8], usize)] =
-    &[(gimmick::FACTION_NODE_TABLE, 0x71C3B58), (b"Skill", 0x71C10E0)];
+    &[(gimmick::FACTION_NODE_TABLE, 0x7248518), (b"Skill", SKILL_SLOT)];
+const SKILL_SLOT: usize = 0x72463D0;
 
 #[test]
 #[ignore]
@@ -675,16 +694,16 @@ fn indirect_template_tables_resolve_uniquely() {
             }
             Err(e) => panic!("{name}: {e}"),
         }
-        // These two are exactly the ones the direct-template resolver cannot
-        // see; if that ever changes, the second template stopped being needed.
+        // These two are exactly the ones the base-less resolver cannot see; if
+        // that ever changes, the second encoding stopped being needed.
         assert!(
             gimmick::resolve_manager_slot(&img, table).is_err(),
-            "{name} is reachable through the direct template after all"
+            "{name} is reachable through the lea encoding after all"
         );
     }
 
-    // And the new resolver is a superset: every table the old one finds, it
-    // finds too, with the same answer.
+    // And the based resolver is a superset: every table the base-less one
+    // finds, it finds too, with the same answer.
     for table in [gimmick::GIMMICK_TABLE, gimmick::ITEM_TABLE] {
         assert_eq!(
             gimmick::resolve_manager_slot_based(&img, base, table),
@@ -695,117 +714,111 @@ fn indirect_template_tables_resolve_uniquely() {
     }
 }
 
-/// The accessor head in all four encodings the compiler emitted, with the
-/// copy count each has in builds 26345091, 26356046 and 26361232 (98, 13, 31 and 7 on
-/// 25477059).
-/// `desert_core::gimmick` carries the same four privately; they are spelled
-/// out again here on purpose, so this test is an oracle for that scan rather
-/// than a mirror of it.
+/// The getter's slot load and bounds check, `mov rcx,[rip+slot]; cmp
+/// r8d,[rcx+0x28]`, counted exe-wide: every hit is a getter. Spelled out again
+/// here rather than taken from `gimmick::GETTER_PATTERN`, so this test is an
+/// oracle for the scan rather than a mirror of it.
+const GETTER: &str = "48 8B 0D ?? ?? ?? ?? 44 3B 41 28";
+
+/// The accessor head in both encodings the compiler emits on 26636972, with
+/// the copy count each has exe-wide, and the `45 31 C9` forms earlier builds
+/// also used, which are gone. Spelled out again for the same reason.
 ///
-/// `45 33 C9` and `45 31 C9` are the same `xor r9d,r9d`; `lea r8,[rip+name]`
-/// names the table directly and `mov r8,[rip+cell]` through a pointer cell
-/// holding the name's VA. The head stops at `mov rdx,[rbx+0x10]`; the tail
-/// after it is `lea rcx,[r11+0x10]` on every copy of this build.
+/// `lea r8,[rip+name]` names the table directly and `mov r8,[rip+cell]`
+/// through a pointer cell holding the name's VA. The head stops at `mov
+/// rdx,[rcx+0x8]`; the tail after it is `lea rcx,[rbp+0x40]` on every copy.
 const ACCESSOR_ENCODINGS: &[(&str, &str, usize)] = &[
-    ("45 33 C9 + lea r8", "45 33 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10", 132),
-    ("45 33 C9 + mov r8", "45 33 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10", 20),
-    ("45 31 C9 + lea r8", "45 31 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 53 10", 2),
-    ("45 31 C9 + mov r8", "45 31 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 53 10", 0),
+    ("lea r8", "45 33 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 51 08", 131),
+    ("mov r8", "45 33 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 51 08", 20),
+    ("45 31 C9 + lea r8", "45 31 C9 4C 8D 05 ?? ?? ?? ?? 48 8B 51 08", 0),
+    ("45 31 C9 + mov r8", "45 31 C9 4C 8B 05 ?? ?? ?? ?? 48 8B 51 08", 0),
 ];
 
-/// The number of accessor copies, one per static-info table, each passing a
-/// different name: 149 through 25477059, 154 on 26345091, 26356046 and 26361232.
-const ACCESSOR_COPIES: usize = 154;
+/// The number of accessor functions, one per static-info table, each passing
+/// a different name: 151 on 26636972 (154 on 26345091 through 26480954, 149
+/// through 25477059, when they were not functions of their own).
+const ACCESSOR_COPIES: usize = 151;
 
-/// The tail every copy has on 26345091: `lea rcx,[r11+0x10]; call`.
-const R11_TAIL: [u8; 5] = [0x49, 0x8D, 0x4B, 0x10, 0xE8];
+/// The tail every copy has on 26636972: `lea rcx,[rbp+0x40]; call`.
+const RBP_TAIL: [u8; 5] = [0x48, 0x8D, 0x4D, 0x40, 0xE8];
 
-/// The call to the record loader, counted exe-wide in the shapes 26345091,
-/// 26356046 and 26361232 use. On 26345091 the second row read 1 (`tribeinfo`'s,
-/// whose accessor was obfuscated code on 26356046, where the row read 0); on
-/// 26361232 it reads 2, `characterinfo`'s and `tribeinfo`'s. A canary, not a census: these count every match in the image, not
-/// only those inside an accessor, and the template fixes which arguments reach
-/// the call, not how the compiler schedules the instructions that set them up.
-/// On 25477059 the two old shapes (`movzx r8d,di` inside the run-up and a disp8
-/// `lea rdx`) matched 90 and 30; both are 0 now.
+/// The call to the record loader, counted exe-wide in the three index loads
+/// 26636972 uses, and the old rsp-relative shape of 26345091 through 26480954.
+/// A canary, not a census: these count every match in the image, not only
+/// those inside an accessor.
 const LOADER_CALL_ENCODINGS: &[(&str, &str, usize)] = &[
-    ("disp32 + 48 8B CB", "4C 8D 4C 24 30 48 8D 94 24 ?? ?? 00 00 48 8B CB E8", 127),
-    ("disp32 + 48 89 D9", "4C 8D 4C 24 30 48 8D 94 24 ?? ?? 00 00 48 89 D9 E8", 2),
-    ("mov r8d + disp32 + 48 8B CB", "4C 8D 4C 24 30 44 8B ?? 48 8D 94 24 ?? ?? 00 00 48 8B CB E8", 25),
-    ("old movzx + disp8 + 48 8B CB", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 8B CB E8", 0),
-    ("old movzx + disp8 + 48 89 D9", "4C 8D 4C 24 30 44 0F B7 C7 48 8D 54 24 70 48 89 D9 E8", 0),
+    ("movzx r8d,r14w", "4C 8D 4D D0 45 0F B7 C6 48 8B D7 48 8B CE E8", 126),
+    ("mov r8d,r14d", "4C 8D 4D D0 45 8B C6 48 8B D7 48 8B CE E8", 24),
+    ("movzx r8d,r14b", "4C 8D 4D D0 45 0F B6 C6 48 8B D7 48 8B CE E8", 1),
+    ("old rsp + 48 8B CB", "4C 8D 4C 24 30 48 8D 94 24 ?? ?? 00 00 48 8B CB E8", 0),
 ];
 
 /// Accessors whose loader call `AccessorSites::census` does not resolve on
-/// 26361232, and why. Both have a loader call of the template's shape, but it
-/// lands on a `jmp` thunk rather than on a function opening with
-/// `LOADER_PROLOGUE`. Neither is a table this workspace reads. Sorted by name.
-///
-/// On 26356046 `characterinfo` and `tribeinfo` were here too, as `no loader
-/// call`: their accessors were obfuscated code with no call of the template's
-/// shape at all (`tribeinfo`'s was the one `48 89 D9` call on 26345091, which
-/// had only the first three rows). On 26361232 both have the call again, with
-/// the `48 89 D9` encoding and no index load.
+/// 26636972, and why: the call is there, but it lands on a `jmp` thunk rather
+/// than on a function opening with `LOADER_PREFIX`. Neither is a table this
+/// workspace reads. Sorted by name. (`AutoSpawnFilterInfo` and `KeyMap` were
+/// the two through 26480954.)
 const NO_LOADER: &[(&str, &str)] = &[
-    ("AutoSpawnFilterInfo", "does not open with LOADER_PROLOGUE"),
-    ("KeyMap", "does not open with LOADER_PROLOGUE"),
+    ("AutoSpawnFilterInfo", "does not open with LOADER_PREFIX"),
+    ("KeyMap", "does not open with LOADER_PREFIX"),
 ];
 
-/// Names the accessors pass that `crates/tools/static-info-names.txt` (as extracted on
-/// 25116796) does not list, even allowing for its `<name>Info` class names and
-/// its case: the five tables new on 26345091, and `KeyMap`, whose registry
-/// name is `KeyMapSettingListInfo`.
+/// Names the accessors pass that `crates/tools/static-info-names.txt` (as
+/// extracted on 25116796) does not list, even allowing for its `<name>Info`
+/// class names and its case: the five tables new on 26345091, `KeyMap`, whose
+/// registry name is `KeyMapSettingListInfo`, and the two new on 26636972.
 const UNLISTED_NAMES: &[&str] = &[
+    "GameBalanceGroup",
     "HousingObjectGroupInfo",
     "KeyMap",
     "ManagementNeedsSynergyInfo",
     "NpcNameInfo",
+    "gamebalanceinfo",
     "managementbuffinfo",
     "statchangeInfo",
 ];
 
 /// `(table, manager slot RVA, record loader RVA)` for every table the workspace
-/// resolves by name, one per accessor encoding and then some. `dropsetinfo` is
-/// the dispatch-mission reward table and a `45 33 C9 + lea` copy on this build
-/// (`45 31 C9 + lea` on 25477059).
+/// resolves by name, both encodings and then some.
 ///
-/// Values are build 26480954's. On 26423880 the rows read, in this order,
-/// `(0x71BEE98, 0x3D8FA0)`, `(0x71BEE70, 0x3D7EB0)`, `(0x71C1938, 0x4D5740)`,
-/// `(0x71BEED0, 0x3D9260)`, `(0x71C3EF8, 0x551AF0)`, `(0x71C72F8, 0x73E750)`,
-/// `(0x71BEEC8, 0x3D86F0)`. On 26361232, the same as 26356046, the rows
-/// read, in this order, `(0x71B7BF8, 0x3D89A0)`, `(0x71B7BD0, 0x3D78B0)`,
+/// Values are build 26636972's. On 26480954 the rows read, in this order,
+/// `(0x71C10A8, 0x3D9280)`, `(0x71C1080, 0x3D8190)`, `(0x71C3B58, 0x4D5DA0)`,
+/// `(0x71C10E0, 0x3D9540)`, `(0x71C6110, 0x552150)`, `(0x71C9500, 0x73EDB0)`,
+/// `(0x71C10D8, 0x3D89D0)`; on 26423880 `(0x71BEE98, 0x3D8FA0)`, `(0x71BEE70,
+/// 0x3D7EB0)`, `(0x71C1938, 0x4D5740)`, `(0x71BEED0, 0x3D9260)`, `(0x71C3EF8,
+/// 0x551AF0)`, `(0x71C72F8, 0x73E750)`, `(0x71BEEC8, 0x3D86F0)`; on 26361232,
+/// the same as 26356046, `(0x71B7BF8, 0x3D89A0)`, `(0x71B7BD0, 0x3D78B0)`,
 /// `(0x71BA698, 0x4D4ED0)`, `(0x71B7C30, 0x3D8C60)`, `(0x71BCC70, 0x5511D0)`,
-/// `(0x71C0040, 0x73DE10)`, `(0x71B7C28, 0x3D80F0)`. Those loaders were
-/// 26345091's too; its slots were
-/// `0x71B6C48`, `0x71B6C20`, `0x71B96E8`, `0x71B6C80`, `0x71BBCC0`,
-/// `0x71BF090` and `0x71B6C78`. On 25477059 the rows read, in the same order:
+/// `(0x71C0040, 0x73DE10)`, `(0x71B7C28, 0x3D80F0)`. On 25477059 they read
 /// `(0x6D69AC8, 0x38BA40)`, `(0x6D69AA8, 0x38AE70)`, `(0x6D6BE70, 0x433880)`,
 /// `(0x6D69AF0, 0x38CF30)`, `(0x6D6E428, 0x4A6760)`, `(0x6D71E60, 0x671370)`,
 /// `(0x6D69AE8, 0x584C70)`.
 const TABLES: &[(&[u8], usize, usize)] = &[
-    (gimmick::GIMMICK_TABLE, 0x71C10A8, 0x3D9280),
-    (gimmick::ITEM_TABLE, 0x71C1080, 0x3D8190),
-    (gimmick::FACTION_NODE_TABLE, 0x71C3B58, 0x4D5DA0),
-    (b"Skill", 0x71C10E0, 0x3D9540),
-    (gimmick::DROPSET_TABLE, 0x71C6110, 0x552150),
-    (gimmick::BUFF_TABLE, 0x71C9500, 0x73EDB0),
-    (gimmick::STATUS_TABLE, 0x71C10D8, 0x3D89D0),
+    (gimmick::GIMMICK_TABLE, 0x7246398, 0x3DC7F0),
+    (gimmick::ITEM_TABLE, 0x7246370, 0x3DB670),
+    (gimmick::FACTION_NODE_TABLE, 0x7248518, 0x4FFB90),
+    (b"Skill", SKILL_SLOT, 0x3DCAA0),
+    (gimmick::DROPSET_TABLE, 0x724AD60, 0x57D0E0),
+    (gimmick::BUFF_TABLE, 0x724E130, 0x76B6C0),
+    (gimmick::STATUS_TABLE, 0x72463C8, 0x3DBEB0),
+    (gimmick::CHARACTER_TABLE, 0x7246310, 0x3DB930),
 ];
 
-/// The `gimmickinfo` accessor on 26480954: its head, its slot load, and the
-/// distance from the head to the loader call's `E8`. On 26423880 the head was
-/// `0x3DDFA8` and the slot load `0x3DDF75`; on 26361232 (and 26356046
-/// and 26345091) the head was `0x3DD9A8` and the slot load `0x3DD975`, the
-/// same 0x9C to the `E8`.
-const GIMMICK_HEAD: usize = 0x3DE288;
-const GIMMICK_SLOT_LOAD: usize = 0x3DE255;
-const GIMMICK_LOADER_E8_FROM_HEAD: usize = 0x9C;
+/// The `gimmickinfo` accessor on 26636972: its function, its head, its getter's
+/// slot load, and the distance from the head to the loader call's `E8`. On
+/// 26480954 there was no getter: the head was inline at `0x3DE288`, the slot
+/// load `0x3DE255` before it, and the `E8` 0x9C past the head (`0x3DDFA8`,
+/// `0x3DDF75` on 26423880; `0x3DD9A8`, `0x3DD975` on 26361232).
+const GIMMICK_FUNC: usize = 0x3E0CC0;
+const GIMMICK_HEAD: usize = 0x3E0CF1;
+const GIMMICK_SLOT_LOAD: usize = 0x3DAC78;
+const GIMMICK_LOADER_E8_FROM_HEAD: usize = 0x9B;
 
 /// The stream layout the `gimmickinfo` accessor fills in before its loader
-/// call on 26361232, as `gimmick::parse_stream_fill` reads it: buffer `+0x20`,
-/// size `+0x28`, cursor `+0x2c`. Through 25477059 it was `(0x10, 0x18, 0x1c)`
-/// (`StreamLayout::OLD`), the offsets `desert-harvest`'s hook hard-coded until
-/// a dry run on 26361232 read a zero buffer and a zero size there.
+/// call, as `gimmick::parse_stream_fill` reads it: buffer `+0x20`, size
+/// `+0x28`, cursor `+0x2c`, since 26361232 and unchanged on 26636972 (where
+/// the fill went rbp-relative). Through 25477059 it was `(0x10, 0x18, 0x1c)`
+/// (`StreamLayout::OLD`).
 const STREAM_LAYOUT: gimmick::StreamLayout = gimmick::StreamLayout::NEW;
 
 fn c_str(img: &[u8], rva: usize) -> Option<&[u8]> {
@@ -830,10 +843,13 @@ fn accessor_census_covers_every_static_info_type() {
     let img = pe::file_to_image(&file).expect("image layout");
     let base = pe::parse(&file).expect("PE32+ headers").image_base as usize;
 
-    // The oracle: the four heads counted with plain patterns, and every hit's
-    // tail checked by hand.
+    // The oracle: the getters and the heads counted with plain patterns, and
+    // every head's tail checked by hand.
+    let getters = Pattern::parse(GETTER).expect("getter pattern").find_all(&img, 4096);
+    println!("getters              = {:3}", getters.len());
+    assert_eq!(getters.len(), gimmick::CENSUS_GETTERS);
     let mut total = 0usize;
-    let mut want_counts = [0usize; 4];
+    let mut want_counts = [0usize; 2];
     for (i, (label, text, want)) in ACCESSOR_ENCODINGS.iter().enumerate() {
         let p = Pattern::parse(text).expect("accessor pattern");
         let hits = p.find_all(&img, 4096);
@@ -842,56 +858,70 @@ fn accessor_census_covers_every_static_info_type() {
         for h in &hits {
             assert_eq!(
                 img.get(h + gimmick::A_HEAD_LEN..h + gimmick::A_HEAD_LEN + 5),
-                Some(&R11_TAIL[..]),
+                Some(&RBP_TAIL[..]),
                 "{label} at +0x{h:X}: tail"
             );
         }
-        want_counts[i] = *want;
+        if let Some(c) = want_counts.get_mut(i) {
+            *c = *want;
+        }
         total += hits.len();
     }
     assert_eq!(total, ACCESSOR_COPIES, "the census no longer covers every table");
+    assert_eq!(want_counts, gimmick::CENSUS_SITES);
 
-    // The module's scan agrees, and recognises every tail.
+    // The module's scan agrees, recognises every tail and follows every getter.
     let sites = gimmick::AccessorSites::scan(&img, Some(base)).expect("patterns parse");
     assert_eq!(sites.counts(), want_counts);
+    assert_eq!(sites.getters().len(), gimmick::CENSUS_GETTERS);
+    assert_eq!(sites.orphans(), &[] as &[usize], "getters that reach no accessor head");
     assert_eq!(sites.rejected(), &[] as &[usize], "heads with an unknown tail");
     let census = sites.census(&img).expect("same image");
     assert_eq!(census.len(), ACCESSOR_COPIES);
 
     let mut tails: BTreeMap<String, usize> = BTreeMap::new();
-    let mut slot_dist: BTreeMap<usize, usize> = BTreeMap::new();
-    let mut slot_dist_first: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut head_off: BTreeMap<usize, usize> = BTreeMap::new();
+    let mut per_accessor: BTreeMap<usize, usize> = BTreeMap::new();
     let mut shapes: BTreeMap<String, usize> = BTreeMap::new();
     let mut call_dist: BTreeMap<usize, usize> = BTreeMap::new();
     let mut no_loader: Vec<(String, String)> = Vec::new();
     let mut names: BTreeSet<String> = BTreeSet::new();
     let mut streams: BTreeMap<String, usize> = BTreeMap::new();
     let mut no_stream: Vec<String> = Vec::new();
+    let mut prologues: BTreeMap<String, usize> = BTreeMap::new();
+    let mut found: BTreeMap<String, (usize, usize)> = BTreeMap::new();
+    let mut layouts: BTreeMap<String, usize> = BTreeMap::new();
+    let mut not_24: Vec<String> = Vec::new();
     for r in &census {
         *tails.entry(format!("{:?}", r.site.tail)).or_default() += 1;
+        *head_off.entry(r.site.at - r.site.func).or_default() += 1;
+        *per_accessor.entry(r.getters).or_default() += 1;
         let name = String::from_utf8_lossy(
             c_str(&img, r.name_rva.expect("every name readable with a base")).expect("NUL"),
         )
         .into_owned();
         assert!(names.insert(name.clone()), "{name} passed by two accessors");
-
-        let (load, _) = r.slot.clone().unwrap_or_else(|e| panic!("{name}: slot: {e}"));
-        *slot_dist.entry(r.site.at - load).or_default() += 1;
-        if r.encoding == 0 {
-            *slot_dist_first.entry(r.site.at - load).or_default() += 1;
+        *layouts.entry(format!("{:?}", r.entries)).or_default() += 1;
+        if r.entries != Some(gimmick::EntryLayout::MANAGER) {
+            not_24.push(name.clone());
         }
-        // `cmp edx,[rbx+0x8]` on every copy of this build.
-        assert_eq!(img.get(load + 7..load + 10), Some(&[0x3B, 0x53, 0x08][..]), "{name}: cmp");
+
+        let (load, slot) = r.slot.clone().unwrap_or_else(|e| panic!("{name}: slot: {e}"));
+        // `cmp r8d,[rcx+0x28]` after every slot load.
+        assert_eq!(img.get(load + 7..load + 11), Some(&[0x44, 0x3B, 0x41, 0x28][..]), "{name}: cmp");
 
         match &r.loader {
             Ok((b, call, target)) => {
-                *shapes.entry(format!("{:?}/{}/{}", call.index, call.rdx_disp32, call.rcx_89)).or_default() += 1;
+                *shapes.entry(format!("{:?}/{}", call.index, call.r9_disp)).or_default() += 1;
                 *call_dist.entry(b - r.site.call_at).or_default() += 1;
                 assert_eq!(
-                    img.get(*target..*target + LOADER_STOLEN),
-                    Some(&LOADER_PROLOGUE[..]),
-                    "{name}: loader prologue"
+                    img.get(*target..*target + gimmick::LOADER_PREFIX.len()),
+                    Some(&gimmick::LOADER_PREFIX[..]),
+                    "{name}: loader prefix"
                 );
+                let p = img.get(*target..*target + LOADER_STOLEN).expect("prologue in image");
+                *prologues.entry(hex(p)).or_default() += 1;
+                found.insert(name.clone(), (slot, *target));
             }
             Err(e) => no_loader.push((name.clone(), e.clone())),
         }
@@ -903,6 +933,7 @@ fn accessor_census_covers_every_static_info_type() {
 
         if name == "gimmickinfo" {
             assert_eq!(r.stream, Some(STREAM_LAYOUT), "gimmickinfo's stream fill");
+            assert_eq!(r.site.func, GIMMICK_FUNC);
             assert_eq!(r.site.at, GIMMICK_HEAD);
             assert_eq!(load, GIMMICK_SLOT_LOAD);
             let (b, call, target) = r.loader.clone().expect("gimmickinfo loader call");
@@ -911,29 +942,56 @@ fn accessor_census_covers_every_static_info_type() {
         }
     }
     println!("tails             = {tails:?}");
-    println!("slot distance     = {:X?} (45 33 C9 + lea only: {:X?})", slot_dist, slot_dist_first);
+    println!("head offset       = {head_off:X?}");
+    println!("getters/accessor  = {per_accessor:?}");
     println!("loader-call shape = {shapes:?}");
     println!("call distance     = {call_dist:X?}");
+    println!("loader prologues  = {prologues:#?}");
     println!("no loader         = {no_loader:?}");
+    not_24.sort();
+    println!("entry layouts     = {layouts:?} (not 24/+8: {not_24:?})");
+    println!("readable slots    = {}", sites.readable_slots().len());
+    // 155 getters index 24-byte entries with the object at +8; 4 getters, of
+    // three tables, 32-byte entries with the object at +0x10. Those three are
+    // the slots `desert_core::manager` must never be handed.
+    assert_eq!(not_24, ["AIEventTableInfo", "NpcFriendlyInfo", "characterappearanceindexinfo"]);
+    assert_eq!(layouts.values().sum::<usize>(), ACCESSOR_COPIES);
+    assert_eq!(
+        sites.getters().iter().filter(|g| g.entries == Some(gimmick::EntryLayout::MANAGER)).count(),
+        155
+    );
+    assert_eq!(
+        sites.getters().iter().filter(|g| g.entries == Some(gimmick::EntryLayout { stride: 32, object: 0x10 })).count(),
+        4
+    );
+    assert_eq!(sites.readable_slots().len(), ACCESSOR_COPIES - not_24.len());
     no_stream.sort();
     println!("stream fill       = {streams:?} (no fill parsed: {no_stream:?})");
+    for t in ["gimmickinfo", "iteminfo", "FactionNode", "Skill", "dropsetinfo", "buffinfo", "statusinfo", "characterinfo"] {
+        println!("{t:<14} slot/loader = {:X?}", found.get(t));
+    }
 
-    assert_eq!(tails, BTreeMap::from([("R11Disp8(16)".to_owned(), ACCESSOR_COPIES)]));
-    assert_eq!(slot_dist, BTreeMap::from([(0x33, 130), (0x3B, 24)]));
-    assert_eq!(slot_dist_first, BTreeMap::from([(0x33, 110), (0x3B, 22)]));
+    assert_eq!(tails, BTreeMap::from([("RbpDisp8(64)".to_owned(), ACCESSOR_COPIES)]));
+    assert_eq!(head_off, BTreeMap::from([(0x30, 24), (0x31, 127)]));
+    assert_eq!(per_accessor, BTreeMap::from([(1, 146), (2, 3), (3, 1), (4, 1)]));
+    assert_eq!(per_accessor.iter().map(|(n, c)| n * c).sum::<usize>(), gimmick::CENSUS_GETTERS);
     assert_eq!(
         shapes,
         BTreeMap::from([
-            ("Mov/true/false".to_owned(), 25),
-            ("None/true/false".to_owned(), 125),
-            ("None/true/true".to_owned(), 2),
+            ("Movzx/-48".to_owned(), 124),
+            ("Mov/-48".to_owned(), 24),
+            ("MovzxByte/-48".to_owned(), 1),
         ])
     );
     assert_eq!(shapes.values().sum::<usize>(), ACCESSOR_COPIES - NO_LOADER.len());
     // The widest observed distance is what `gimmick::B_WINDOW` is set from.
     let widest = *call_dist.keys().next_back().expect("some loader calls");
     assert!(widest < gimmick::B_WINDOW, "widest 0x{widest:X} vs B_WINDOW");
-    assert_eq!(widest, 0x7E);
+    assert_eq!(widest, 0x7B);
+    // `gimmickinfo` is one of the six loaders whose 15 bytes are the stolen
+    // prologue; the other 143 continue `push rbp; push rsi` after the prefix.
+    assert_eq!(prologues.get(&hex(&LOADER_PROLOGUE)), Some(&6));
+    assert_eq!(prologues.values().sum::<usize>(), ACCESSOR_COPIES - NO_LOADER.len());
     // Every site with a resolved loader call fills the stream the same way;
     // the two without one are the only two whose fill is not read.
     assert_eq!(
@@ -988,8 +1046,8 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
     // is what lets an accessor be identified by the name it passes at all. The
     // reward table is here because it was the first one resolved this way; the
     // buff and stat tables because the census in `desert-dispatch` now is.
-    // NUL on both sides: on 26345091 `"buffinfo\0"` is also the tail of the
-    // new `"managementbuffinfo\0"`, which is a different literal.
+    // NUL on both sides: since 26345091 `"buffinfo\0"` is also the tail of
+    // `"managementbuffinfo\0"`, which is a different literal.
     for want in [&b"\0dropsetinfo\0"[..], b"\0buffinfo\0", b"\0statusinfo\0"] {
         let once = img.windows(want.len()).filter(|w| *w == want).count();
         assert_eq!(once, 1, "{:?} is no longer a unique string", String::from_utf8_lossy(want));
@@ -1007,27 +1065,24 @@ fn every_named_table_resolves_to_its_documented_slot_and_loader() {
             Ok(base + *loader),
             "{name} record loader"
         );
-        // Whatever it resolved to is a loader: same prologue every time, which
-        // is also the check the gatherer makes before patching one.
+        // Whatever it resolved to is a loader.
         assert_eq!(
-            img.get(*loader..*loader + gimmick::LOADER_STOLEN),
-            Some(&gimmick::LOADER_PROLOGUE[..]),
-            "{name} loader prologue"
+            img.get(*loader..*loader + gimmick::LOADER_PREFIX.len()),
+            Some(&gimmick::LOADER_PREFIX[..]),
+            "{name} loader prefix"
         );
-        println!("{name:<12} slot = +0x{slot:X}  loader = +0x{loader:X}");
+        println!("{name:<14} slot = +0x{slot:X}  loader = +0x{loader:X}");
     }
 
-    // The gatherer's table-less entry point is unchanged by the widening.
-    // Build 26480954 values; on 26423880 the dropset slot was 0x71C3EF8, on
-    // 26361232 and 26356046
-    // 0x71BCC70, on 26345091 0x71BBCC0, and on
-    // 25477059 they were 0x38BA40, 0x6D69AC8, 0x6D69AA8 and 0x6D6E428.
+    // The gatherer's table-less entry point, and the stolen prologue it checks.
     assert_eq!(gimmick::resolve_record_loader(&img, base), Ok(base + LOADER_RVA));
-    // And so are the two slots the looter resolves without an image base.
+    assert_eq!(img.get(LOADER_RVA..LOADER_RVA + LOADER_STOLEN), Some(&LOADER_PROLOGUE[..]));
+    // And the slots the looter resolves without an image base.
     assert_eq!(
         gimmick::resolve_manager_slot(&img, gimmick::GIMMICK_TABLE),
         Ok(GIMMICK_INFO_SLOT_RVA)
     );
     assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::ITEM_TABLE), Ok(ITEM_INFO_SLOT_RVA));
-    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x71C6110));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::DROPSET_TABLE), Ok(0x724AD60));
+    assert_eq!(gimmick::resolve_manager_slot(&img, gimmick::CHARACTER_TABLE), Ok(0x7246310));
 }

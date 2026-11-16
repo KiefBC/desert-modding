@@ -157,7 +157,7 @@ pub fn show(it: &Value, w: &mut dyn Write) -> Result<()> {
                 .collect::<Vec<_>>()
                 .join(",");
             if sv(s, "visibility") == "loose-only" {
-                format!("  [{}, +64={keys}]", sv(s, "visibility"))
+                format!("  [{}, +65={keys}]", sv(s, "visibility"))
             } else {
                 format!("  [{}]", sv(s, "visibility"))
             }
@@ -287,7 +287,7 @@ pub fn query(args: &Args, d: &Value, w: &mut dyn Write) -> Result<()> {
         for (it, s) in &hits {
             let tag = if s.get("visibility").and_then(|v| v.as_str()) == Some("loose-only") {
                 format!(
-                    "   LOOSE-ONLY, +64={}",
+                    "   LOOSE-ONLY, +65={}",
                     av(s, "entry_keys").iter().map(|k| k.to_string()).collect::<Vec<_>>().join(",")
                 )
             } else {

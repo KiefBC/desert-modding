@@ -13,16 +13,17 @@ use desert_tools::paths;
 
 const BIN: &str = env!("CARGO_BIN_EXE_dmm-pack");
 
-/// One 68-byte output block paying `item`, `min..=max`.
+/// One 69-byte output block paying `item`, `min..=max` (build 26636972: the
+/// byte at +60, after the `FF FF`, is new and 0; the tail item id moved to +61).
 fn block(item: u32, min: u64, max: u64) -> Vec<u8> {
-    let mut b = vec![0u8; 68];
+    let mut b = vec![0u8; 69];
     b[0] = 1;
     b[1..5].copy_from_slice(&item.to_le_bytes());
     b[42..50].copy_from_slice(&min.to_le_bytes());
     b[50..58].copy_from_slice(&max.to_le_bytes());
     b[58] = 0xFF;
     b[59] = 0xFF;
-    b[60..64].copy_from_slice(&item.to_le_bytes());
+    b[61..65].copy_from_slice(&item.to_le_bytes());
     b
 }
 

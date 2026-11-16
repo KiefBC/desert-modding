@@ -73,12 +73,26 @@ fn every_signature_still_hits_exactly_once() {
     }
 }
 
+/// The names in `static-info-names.txt`, counted the way `sigscan` reads it.
+/// Read rather than pinned, for the reason the signature count above is: the
+/// list is re-pinned on a game update (221 on 26345091..26480954, 217 on
+/// 26636972) and this test is about every listed name being NUL-unique.
+fn name_count() -> usize {
+    std::fs::read_to_string(repo_root().join("crates/tools/static-info-names.txt"))
+        .expect("cannot read static-info-names.txt")
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .count()
+}
+
 #[test]
 #[ignore = "needs the installed CrimsonDesert.exe"]
 fn the_static_info_registry_is_unchanged() {
     let (stdout, _) = run_in(&repo_root());
+    let n = name_count();
     assert!(
-        stdout.contains("221/221 type names still occur exactly once"),
+        stdout.contains(&format!("{n}/{n} type names still occur exactly once")),
         "static-info name check changed:\n{}",
         stdout.split("--- static-info type names ---").nth(1).unwrap_or("(missing)")
     );
@@ -100,7 +114,8 @@ fn a_substring_name_and_a_nul_delimited_one_answer_differently() {
         .find(|l| l.contains("iteminfo ") && l.contains("first @"))
         .expect("no iteminfo line");
     assert_eq!(line[..4].trim(), "2", "substring hits: {line}");
-    assert!(stdout.contains("221/221"), "and all 221 are NUL-unique");
+    let n = name_count();
+    assert!(stdout.contains(&format!("{n}/{n}")), "and all {n} are NUL-unique");
 }
 
 #[test]

@@ -118,16 +118,18 @@ use crate::remember::{Mission, Reward};
 /// write gate in `scan.rs` are for: nothing is written until a vanilla census
 /// on this launch says LOOKS RIGHT.
 pub mod parsed {
-    /// `u32` record count at `manager+0x08`, and the array of record-object
-    /// pointers at `manager+0x58` - one `usize` per record, indexed by record
-    /// index, null where the game has not parsed that record yet.
+    /// `u32` record count at `manager+0x28`, and the entries at
+    /// `manager+0x20` - 24 bytes per record, indexed by record index, the
+    /// parsed object at `+8`, null where the game has not parsed that record
+    /// yet (since 26636972; through 26480954 the count was at `+0x08` and the
+    /// objects a pointer array at `+0x58`).
     ///
-    /// Re-exported from [`desert_core::manager`] rather than declared again:
-    /// the gatherer reads the same two offsets out of the same manager shape,
-    /// and two copies of a stride is a table walked wrong in one subsystem and
-    /// right in the other. The name is unchanged, so every `parsed::MGR_COUNT`
-    /// in this crate still resolves.
-    pub use desert_core::manager::{MGR_COUNT, MGR_RECORDS};
+    /// Re-exported from [`desert_core::manager`] rather than declared again,
+    /// and only for the log lines that name them: every read goes through
+    /// `desert_core::manager`'s `view_of` / `slot` / `record`, which the
+    /// gatherer and the looter read their managers through as well, so a
+    /// stride cannot be right in one subsystem and wrong in another.
+    pub use desert_core::manager::{MGR_COUNT, MGR_ENTRIES};
 
     /// `u32` at `record+0x08`. **Not** the FactionNodeKey, whatever this
     /// comment used to say: a vanilla dump reads 2115 distinct values over 2808
@@ -312,8 +314,9 @@ pub mod parsed {
     /// [`REWARD_NONE`] means the mission pays no items from that set.
     ///
     /// The index is the **manager row directly**: the game's accessor is
-    /// `if (key < mgr[+0x08]) rec = ((void**)mgr[+0x58])[key]`, with no hash
-    /// step in between, which is why the reward pass needs neither a loader
+    /// `if (key < mgr[+0x28]) rec = mgr[+0x20][key].object` (`mgr[+0x08]` and
+    /// `((void**)mgr[+0x58])[key]` through 26480954), with no hash step in
+    /// between, which is why the reward pass needs neither a loader
     /// hook nor a key table - see `docs/reference-internals.md` section 20.17.
     ///
     /// At `entry+0xA0` on 26345091/26356046 (`0xA8` through 25477059).
@@ -343,7 +346,8 @@ pub mod parsed {
     ///
     /// The manager pair is the same shape as every other static-info manager's
     /// and is not repeated here: the reward pass reads the dropset manager
-    /// through [`super::MGR_COUNT`] and [`super::MGR_RECORDS`].
+    /// through `desert_core::manager` ([`super::MGR_COUNT`],
+    /// [`super::MGR_ENTRIES`]).
     ///
     /// **Every offset below was decompilation-only until 2026-09-10**, when a
     /// vanilla capture of 219 rows and 725 entries read all of them at once.
@@ -526,8 +530,8 @@ pub mod parsed {
 /// two bare RVAs measured on build 25116796 (`0x6BC6AA8` and `0x6BA07C8`) and
 /// never re-derived; on 26345091 the signatures resolve them to `0x714FE68` and
 /// `0x7127CF8`, on 26356046 to `0x7150E18` and `0x7128CA8`, on 26361232 to
-/// the same two, on 26423880 to `0x71580B8` and `0x712FDB8`, and on 26480954
-/// to `0x715A1D8` and `0x7131ED8`. Because **nothing acts on either value**, a signature that does
+/// the same two, on 26423880 to `0x71580B8` and `0x712FDB8`, on 26480954
+/// to `0x715A1D8` and `0x7131ED8`, and on 26636972 to `0x71DED98` and `0x71B6768`. Because **nothing acts on either value**, a signature that does
 /// not resolve costs one log line saying so, never a write.
 ///
 /// They were read to settle whether the `AnyOperatorCount` warning describes
@@ -549,7 +553,8 @@ pub mod parsed {
 /// on the repeating flag and before the `mov r8b,1; ...; call` that builds the
 /// stored-reward list, whose callee is the same function `FUN_14038d1d0` was.
 /// The rate global still sits 0xA0 below the surplus gate on 25116796,
-/// 26345091, 26356046, 26361232, 26423880 and 26480954.
+/// 26345091, 26356046, 26361232, 26423880, 26480954 and 26636972 (the reward
+/// function is `0x2AF41F0` there).
 pub mod globals {
     use desert_core::pattern::{self, Found, Pattern};
 
@@ -558,8 +563,10 @@ pub mod globals {
     /// hit is the `38` opcode (any REX before it is outside the pattern), so
     /// the `cmp` is [`GATE_CMP_LEN`] bytes from the hit. `+0x2A8A6F6` on
     /// 26345091, `+0x2A8AA26` on 26356046, `+0x2A8A9D6` on 26361232,
-    /// `+0x2A90156` on 26423880, `+0x2A90DA6` on 26480954.
-    pub const SURPLUS_GATE_SIG: &str = "38 ?? ?? ?? ?? ?? 74 ?? ?? 8B ?? ?? ?? 00 00 48 8B ?? ?? 48 2B ?? 48 39 ?? ?? ?? 0F 46 ?? 48 63 05 ?? ?? ?? ?? 48 0F AF ?? 48 69 ?? 10 27 00 00";
+    /// `+0x2A90156` on 26423880, `+0x2A90DA6` on 26480954, `+0x2AF4EC5` on
+    /// 26636972, where the operator-count load lost its REX byte
+    /// (`8B 83 B0 00 00 00`), so the run after the `je` is one byte shorter.
+    pub const SURPLUS_GATE_SIG: &str = "38 ?? ?? ?? ?? ?? 74 ?? 8B ?? ?? ?? 00 00 48 8B ?? ?? 48 2B ?? 48 39 ?? ?? ?? 0F 46 ?? 48 63 05 ?? ?? ?? ?? 48 0F AF ?? 48 69 ?? 10 27 00 00";
     /// Where the `38` of the surplus read sits in a [`SURPLUS_GATE_SIG`] hit.
     pub const SURPLUS_GATE_CMP_AT: usize = 0;
     /// The deferred-reward read: the repeating flag's `je rel32`, then
@@ -567,8 +574,10 @@ pub mod globals {
     /// stored-reward list build (`mov rax,[r+0x10]; lea rdx,[rax+8];
     /// test rax,rax; cmovz; mov r8b,1`). `+0x2A8A84C` on 26345091, `+0x2A8AB7C`
     /// on 26356046, `+0x2A8AB2C` on 26361232, `+0x2A902AC` on 26423880,
-    /// `+0x2A90EFC` on 26480954.
-    pub const DEFERRED_GATE_SIG: &str = "0F 84 ?? ?? ?? ?? ?? 38 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? ?? 8B ?? ?? 10 48 8D 50 08 48 85 C0 ?? 0F 44 ?? ?? B0 01";
+    /// `+0x2A90EFC` on 26480954, `+0x2AF501A` on 26636972, where the list
+    /// build's first load became `mov rax,[r13+0x10]` (`49 8B 45 10`, one
+    /// byte shorter).
+    pub const DEFERRED_GATE_SIG: &str = "0F 84 ?? ?? ?? ?? ?? 38 ?? ?? ?? ?? ?? 0F 84 ?? ?? ?? ?? ?? 8B ?? 10 48 8D 50 08 48 85 C0 ?? 0F 44 ?? ?? B0 01";
     /// Where the `38` of the deferred read sits in a [`DEFERRED_GATE_SIG`] hit
     /// (after the 6-byte `je` and one REX byte).
     pub const DEFERRED_GATE_CMP_AT: usize = 7;
@@ -3966,7 +3975,7 @@ mod tests {
         }
     }
 
-    /// The two gate reads laid out the way build 26345091 assembles them,
+    /// The two gate reads laid out the way build 26636972 assembles them,
     /// resolved by signature: each RIP-relative `cmp` lands on its own byte.
     #[test]
     fn the_banking_gates_resolve_by_signature() {
@@ -3974,10 +3983,10 @@ mod tests {
         let mut img = vec![0u8; 0x400];
         // Surplus read at 0x100: 44 38 3D disp32, then the arithmetic.
         let surplus: &[u8] = &[
-            0x44, 0x38, 0x3D, 0, 0, 0, 0, 0x74, 0x31, 0x41, 0x8B, 0x86, 0xB0, 0x00, 0x00, 0x00,
-            0x48, 0x8B, 0x4D, 0xC0, 0x48, 0x2B, 0xC8, 0x48, 0x39, 0x45, 0xC0, 0x49, 0x0F, 0x46,
-            0xCF, 0x48, 0x63, 0x05, 0, 0, 0, 0, 0x48, 0x0F, 0xAF, 0xC1, 0x48, 0x69, 0xC8, 0x10,
-            0x27, 0x00, 0x00,
+            0x44, 0x38, 0x3D, 0, 0, 0, 0, 0x74, 0x30, 0x8B, 0x83, 0xB0, 0x00, 0x00, 0x00, 0x48,
+            0x8B, 0x4D, 0xC8, 0x48, 0x2B, 0xC8, 0x48, 0x39, 0x45, 0xC8, 0x49, 0x0F, 0x46, 0xCF,
+            0x48, 0x63, 0x05, 0, 0, 0, 0, 0x48, 0x0F, 0xAF, 0xC1, 0x48, 0x69, 0xC8, 0x10, 0x27,
+            0x00, 0x00,
         ];
         img[0x100..0x100 + surplus.len()].copy_from_slice(surplus);
         let cmp = 0x101;
@@ -3985,8 +3994,8 @@ mod tests {
         // Deferred read at 0x200: je rel32, 44 38 3D disp32, je rel32, list build.
         let deferred: &[u8] = &[
             0x0F, 0x84, 0xAA, 0, 0, 0, 0x44, 0x38, 0x3D, 0, 0, 0, 0, 0x0F, 0x84, 0x9D, 0, 0, 0,
-            0x49, 0x8B, 0x44, 0x24, 0x10, 0x48, 0x8D, 0x50, 0x08, 0x48, 0x85, 0xC0, 0x49, 0x0F,
-            0x44, 0xD7, 0x41, 0xB0, 0x01,
+            0x49, 0x8B, 0x45, 0x10, 0x48, 0x8D, 0x50, 0x08, 0x48, 0x85, 0xC0, 0x49, 0x0F, 0x44,
+            0xD7, 0x41, 0xB0, 0x01,
         ];
         img[0x200..0x200 + deferred.len()].copy_from_slice(deferred);
         let cmp = 0x200 + DEFERRED_GATE_CMP_AT;

@@ -157,11 +157,11 @@ fn on_game_thread() -> bool {
 
 /// The record object of `row`, if the game has loaded it.
 fn record(row: u16) -> Option<usize> {
-    let (count, records) = manager::view(character_slot_addr()?)?;
+    let (count, entries) = manager::view(character_slot_addr()?)?;
     if u32::from(row) >= count.min(MAX_RECORDS) {
         return None;
     }
-    match manager::slot(records, usize::from(row)) {
+    match manager::slot(entries, usize::from(row)) {
         Slot::Loaded(rec) => Some(rec),
         _ => None,
     }
@@ -181,14 +181,14 @@ pub fn name(row: u16) -> Option<String> {
 /// `(row, record)` for every loaded `characterinfo` record, rows past the
 /// `u16` range left out (a species row cannot name them).
 fn loaded() -> Option<(u32, Vec<(u16, usize)>)> {
-    let (count, records) = manager::view(character_slot_addr()?)?;
+    let (count, entries) = manager::view(character_slot_addr()?)?;
     if count == 0 || count >= MAX_RECORDS {
         return None;
     }
     let n = (count as usize).min(SPECIES_ROWS);
     let mut out = Vec::new();
     for i in 0..n {
-        let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+        let Slot::Loaded(rec) = manager::slot(entries, i) else { continue };
         let Ok(row) = u16::try_from(i) else { break };
         out.push((row, rec));
     }

@@ -19,9 +19,10 @@ pub use desert_tools::outputs::{BLOCK, ITEM_AT, MAX_AT, MIN_AT, PAD_AT, PAD_TAIL
 /// `PAD_TAIL_AT` is the second half of `block_ok`'s pad clause, and calling it
 /// a pad is only true of the population that clause admits. What the
 /// deserialiser says it is: `FUN_141a37180`, the block parser, consumes exactly
-/// `+0..+63` and never reads these four bytes. The list loop `FUN_1414a7cc0`
-/// reads them after each block and stores them at `entry+0x08` of its 0x10
-/// -stride entries, so `+64` is **the list entry's own key field** - zero on
+/// `+0..+64` (`+0..+63` through 26480954) and never reads these four bytes.
+/// The list loop `FUN_1414a7cc0` reads them after each block and stores them
+/// at `entry+0x08` of its 0x10-stride entries, so `+65` (`+64` through
+/// 26480954) is **the list entry's own key field** - zero on
 /// every gather record, populated on the records only `--loose` can see. It is
 /// not a pad, not the high half of a wide item id, and not the variant tag at
 /// `+9` (both populations carry tags 0 and 4). `PAD_AT` (`+5`) really is zero
@@ -269,9 +270,9 @@ mod tests {
     use super::*;
     use desert_tools::outputs::{ITEM_TAIL_AT, MAX_QTY};
 
-    /// A 68-byte output block. The named offsets are the point of the test:
-    /// the item id lives at `+1` and is echoed at `+60`, `+5` is the only real
-    /// pad, and `+64` is the list entry's own key field.
+    /// A 69-byte output block. The named offsets are the point of the test:
+    /// the item id lives at `+1` and is echoed at `+61`, `+5` is the only real
+    /// pad, and `+65` is the list entry's own key field.
     fn block(item: u32, mn: u64, mx: u64, pad: u32, entry_key: u32) -> [u8; BLOCK] {
         let mut b = [0u8; BLOCK];
         b[0] = 1;

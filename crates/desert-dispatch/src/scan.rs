@@ -17,8 +17,8 @@
 //! damage anything, whatever the ini says.
 //!
 //! The pass repeats, because a one-shot pass races the game. The manager
-//! reports its full record count as soon as the table is mapped, but the object
-//! array at `+0x58` is filled in later. The first build dumped once, at about
+//! reports its full record count as soon as the table is mapped, but the
+//! entries' object pointers (`+0x58` through 26480954) are filled in later. The first build dumped once, at about
 //! 15 s, and found 1119 records with 1119 null slots; the next session had all
 //! 1119 filled before 12 s. They arrive **all at once**, not one at a time, so
 //! this is a race against a step in the game's own loading and not lazy
@@ -152,7 +152,7 @@ fn wait_for_manager(slot: usize) -> Option<(usize, u32)> {
     loop {
         if let Some(mgr) = safe::read_ptr(slot) {
             if node::plausible(mgr) {
-                if let Some(count) = safe::read::<u32>(mgr + parsed::MGR_COUNT) {
+                if let Some(count) = manager::count(mgr) {
                     if count > 0 {
                         return Some((mgr, count));
                     }
@@ -487,7 +487,7 @@ fn dump_raw_row(row: u16, obj: usize, entries: usize, budget: &mut Budget) {
     }
 }
 
-/// `(record count, record-object array)` of the `dropsetinfo` manager, or
+/// `(record count, entries)` of the `dropsetinfo` manager, or
 /// `None` while it is not there yet. The same manager shape every static-info
 /// table has, read through the same two offsets.
 pub(crate) fn dropset_manager(slot: usize) -> Option<(usize, usize)> {
@@ -895,16 +895,16 @@ pub fn start() {
     );
 
     // By content, never by address: the 0.2 milestone rule in VERSIONING.md.
-    // `FactionNode` is reachable only through the indirect accessor template,
-    // which is what `resolve_manager_slot_based` adds over the resolver the
-    // looter and the gatherer use.
+    // `FactionNode` is reachable only through the indirect (`mov r8`) accessor
+    // encoding, which is what `resolve_manager_slot_based` adds over the
+    // resolver the looter and the gatherer use.
     //
-    // Both tables are resolved through one scan. Finding the 149 template
-    // copies costs one pass per encoding over the whole 363 MB image, and the
-    // table name is only consulted afterwards - so the two lookups below were
-    // scanning the same image for the same four patterns twice, eight passes
-    // and 0.88 to 1.81 s of startup measured over six launches. `AccessorSites`
-    // is those four passes, kept.
+    // Every table is resolved through one scan. Finding the getters and
+    // accessor functions is a pass over the whole 363 MB image, and the table
+    // name is only consulted afterwards - so one lookup per table scanned the
+    // same image again each time (eight passes and 0.88 to 1.81 s of startup
+    // measured over six launches on 25246367). `AccessorSites` is one pass,
+    // kept.
     let sites = match gimmick::AccessorSites::scan(module.bytes(), Some(module.base)) {
         Ok(sites) => sites,
         Err(e) => {
@@ -1006,7 +1006,7 @@ pub fn start() {
     watch(mgr, cfg, &ini_path, dropset_slot, &module, buff_slot, status_slot);
 }
 
-/// `(record count, record-object array)` of the `FactionNode` manager as they
+/// `(record count, entries)` of the `FactionNode` manager as they
 /// are **right now**, or `None` if either would not read.
 ///
 /// Read together, and re-read on every poll rather than cached at startup. The
@@ -1515,7 +1515,11 @@ fn watch(
     status_slot: Option<usize>,
 ) {
     let Some((count, _)) = manager_view(mgr) else {
-        crate::log!("the manager's record array at +0x{:X} would not read", parsed::MGR_RECORDS);
+        crate::log!(
+            "the manager's count (+0x{:X}) or entries (+0x{:X}) would not read",
+            parsed::MGR_COUNT,
+            parsed::MGR_ENTRIES
+        );
         return;
     };
     crate::log!(

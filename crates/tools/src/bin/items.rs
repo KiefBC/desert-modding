@@ -32,7 +32,7 @@
 //! and 8):
 //!
 //!   * Blocks are found by the detector `desert_core::gimmick::output_lists`
-//!     uses: a `u32 count` followed by `count` well-formed 68-byte blocks,
+//!     uses: a `u32 count` followed by `count` well-formed 69-byte blocks (68 through 26480954),
 //!     walked greedily and non-overlapping. The item id is read at
 //!     **block+1**, not +5.
 //!   * A block is attributed to its record by the echo discriminator: a real
