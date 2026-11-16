@@ -1,6 +1,6 @@
 {
   "name": "Foraging - 2X",
-  "version": "1.5",
+  "version": "1.6",
   "author": "KiefBC",
   "description": "Multiplies foraging node minimum and maximum yields by 2. Select no more than one Foraging rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,7 +10,7 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Foraging - 2X",
-    "version": "1.5",
+    "version": "1.6",
     "author": "KiefBC",
     "description": "2x yields for foraging nodes.",
     "allow_partial_apply": true

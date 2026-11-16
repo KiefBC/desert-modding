@@ -30,7 +30,7 @@ Before that, Steam build **26361232**, installed 2026-11-01 about 16:55 UTC, the
 | `desert-harvest` | 0.10.1 | `crates/desert-harvest/Cargo.toml` (the merge of `desert-looter` 0.5.0 and `desert-gatherer` 0.4.0) |
 | `desert-overlay` | 0.3.0 | `crates/desert-overlay/Cargo.toml` |
 | `desert-dispatch` | 0.5.1 | `crates/desert-dispatch/Cargo.toml` |
-| DMM pack | 1.5 (generated on 26636972, untagged) | `desert-gatherer-dmm/dmm_pack.json` |
+| DMM pack | 1.6 (generated on 26636972, untagged; 1.5 was the 26480954 pack) | `desert-gatherer-dmm/dmm_pack.json` |
 
 `just check-versions` prints the same list from the sources and is the answer to trust over this table.
 

@@ -33,7 +33,7 @@ These activities may appear similar in-game, but changing one family does not af
 
 ## Installation
 
-1. Import or drag `DesertGatherer-DMM-1.5.zip` into Definitive Mod Manager.
+1. Import or drag `DesertGatherer-DMM-1.6.zip` into Definitive Mod Manager.
 2. Check the desired module(s), using at most one rate per category.
 3. Mount mods.
 
@@ -45,7 +45,7 @@ Disable DMM's built-in gathering multiplier preset if it is mounted; it edits th
 
 This pack changes the minimum and maximum item quantities produced by genuine foraging, logging, mining, and ore collection nodes. It does not alter enemy loot, chests, fishing, skinning, quests, Abyss objects, artifacts, gates, or fast travel.
 
-Built against Crimson Desert Enhanced Steam build 26636972 (pack version 1.5, 2026-11-13), from the game's own `gimmickinfo` table read straight out of its archives (17,664,283 bytes, sha256 `6527338db94b995f23bb8097c365c85b94454965e031d01429f032b77493e6da`, 14,218 records). It patches the same records with the same values as 1.4, but **at new offsets**: build 26636972 added one byte to every drop entry in the table, so each output block is 69 bytes where it was 68 and nearly every patch offset moved (below). A copy of this pack generated for an earlier build will write into the wrong bytes on 26636972; use only the one built for the build you run.
+Built against Crimson Desert Enhanced Steam build 26636972 (pack version 1.6, 2026-11-16), from the game's own `gimmickinfo` table read straight out of its archives (17,664,283 bytes, sha256 `6527338db94b995f23bb8097c365c85b94454965e031d01429f032b77493e6da`, 14,218 records). It patches the same records with the same values as 1.4 and 1.5, but **at new offsets**: build 26636972 added one byte to every drop entry in the table, so each output block is 69 bytes where it was 68 and nearly every patch offset moved (below). Version 1.5 (and anything older) will write into the wrong bytes on 26636972; use 1.6 on that build, and 1.5 only on 26423880 or 26480954.
 
 Version 1.4 was built against Steam build 26361232 (2026-11-02), from that build's table (17,621,227 bytes, sha256 `3aba0954725e6fc91ca490a5e1afde21357190d58aee112dc9944872ef26bf1b`, 14,210 records). The game build and the table were the same as 1.3's; what changed is where the record list comes from. Every module is now generated from the records the DesertTooling plugin multiplies, which `gen-collect-names` derives from the game's own records, so the pack and the plugin cover exactly the same nodes and the same output blocks:
 
@@ -58,9 +58,9 @@ Every record 1.3 already patched is patched at the same offsets with the same va
 
 Steam build 26423880 (2026-11-04) changed `gimmickinfo` only in place: the same 14,210 records, 254 of them with a same-size shift in string-pool offsets, and 3 armour drop boxes whose loot now names the re-keyed Goblin Merchant items; no gather node's yield changed in the catalogue. `just dmm-pack` on the 26423880 table regenerates every module and `VERIFICATION.txt` with identical offsets and values; only the build stamp, the pack version (1.5) and the hashes changed.
 
-Steam build 26480954 (2026-11-06) changed 32 `gimmickinfo` records, puzzles, doors and devices with no output list; one of them grew 1,082 bytes, and every change sits past the last gather record, so no patch offset moved. `just dmm-pack` on the 26480954 table again regenerates every module and `VERIFICATION.txt` with identical offsets and values; only the build stamp and the hashes changed, and the version stays 1.5 because 1.5 was never released.
+Steam build 26480954 (2026-11-06) changed 32 `gimmickinfo` records, puzzles, doors and devices with no output list; one of them grew 1,082 bytes, and every change sits past the last gather record, so no patch offset moved. `just dmm-pack` on the 26480954 table again regenerates every module and `VERIFICATION.txt` with identical offsets and values; only the build stamp and the hashes changed, and the version stayed 1.5, which was released for 26480954 on 2026-11-06.
 
-Steam build 26636972 (2026-11-13) changed the table's layout. Every drop entry gained a one-byte field after its enchant level, so each output block grew from 68 to 69 bytes, and every `gimmickinfo` record gained two optional lists, absent in all of them, which add two bytes. Nine records were added and one removed, none of them a gather node. The pack patches the same 291 records, the same output blocks and the same values as on 26480954; only the offsets changed. `just dmm-pack` regenerates every module and `VERIFICATION.txt`, and the version stays 1.5 because 1.5 was never released.
+Steam build 26636972 (2026-11-13) changed the table's layout. Every drop entry gained a one-byte field after its enchant level, so each output block grew from 68 to 69 bytes, and every `gimmickinfo` record gained two optional lists, absent in all of them, which add two bytes. Nine records were added and one removed, none of them a gather node. The pack patches the same 291 records, the same output blocks and the same values as on 26480954; only the offsets changed. `just dmm-pack` regenerates every module and `VERIFICATION.txt`. Because 1.5 had already shipped for 26480954 at the old offsets, this is version **1.6**.
 
 Version 1.3 targeted the same build 26361232. That build changed the table more than any before it: each record's header starts with its name and carries the key after it, and inside every record the output lists sit 120 to 320 bytes nearer the start of the record than in 1.2, so every list had to be found again rather than carried across. Version 1.2 targeted build 25477059; inside each record nothing had moved since 1.1, so that rebase changed only absolute offsets. Version 1.1 targeted build 25116796 and also applied unchanged on build 25246367. Version 1.0 targeted build 24994088. None of 1.0 to 1.2 applies on 26361232.
 
