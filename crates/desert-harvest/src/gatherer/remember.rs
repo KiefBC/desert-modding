@@ -225,7 +225,7 @@ mod tests {
         specs
             .iter()
             .enumerate()
-            .map(|(n, &(item, min, max))| OutputBlock { offset: n * 68, item, min, max })
+            .map(|(n, &(item, min, max))| OutputBlock { offset: n * desert_core::gimmick::BLOCK, item, min, max })
             .collect()
     }
 

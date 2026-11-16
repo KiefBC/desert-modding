@@ -1948,7 +1948,7 @@ mod tests {
     }
 
     /// A pass that read nothing must not be able to say the layout is right.
-    /// This is the condition that would hide a wrong `manager+0x58` walk.
+    /// This is the condition that would hide a wrong manager-entries walk.
     #[test]
     fn an_empty_pass_looks_wrong() {
         let sum = Summary::new();

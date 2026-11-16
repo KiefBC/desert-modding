@@ -14,13 +14,17 @@ use anyhow::Result;
 use crate::{census, peinfo, triage, Exe};
 
 /// Returns `true` when every non-optional signature hits once, no accessor
-/// tail was rejected, the `gimmickinfo` site has a slot load and a loader
-/// call whose target opens with the loader prologue, its stream fill parses
-/// (the hook reads the stream at those offsets), every name a site passes
-/// is in the list, and the appmanifest build is the pinned one. A loader
-/// target without the prologue elsewhere is not a failure: two tables
-/// (`KeyMap`, `AutoSpawnFilterInfo`) call a loader of another shape on every
-/// build measured, and the plugin only hooks the `gimmickinfo` one.
+/// tail was rejected, the `gimmickinfo` accessor is reached by a getter with
+/// one slot and has a loader call whose target opens with `LOADER_PROLOGUE`,
+/// its stream fill parses (the hook reads the stream at those offsets), no
+/// accessor's getters disagree on a slot and no table name has two, every
+/// getter reads the record count and the entries pointer at the same
+/// manager offsets (the entry stride is per table), every name a site passes
+/// is in the list, and the appmanifest build is the pinned one. A loader target
+/// without the 15-byte prologue elsewhere is not a failure: most loaders
+/// open with a different spill sequence on 26636972 (and on every build
+/// some tables call a loader of another shape), and the plugin only hooks
+/// the `gimmickinfo` one.
 pub fn run(out: &mut impl Write, exe: &Exe, sigs: &Path, names: &Path) -> Result<bool> {
     let rows = triage::run(exe, sigs)?;
     let c = census::measure(exe, 0x400, names)?;
@@ -56,7 +60,7 @@ pub fn run(out: &mut impl Write, exe: &Exe, sigs: &Path, names: &Path) -> Result
         writeln!(out, "To re-derive: {}. Run `retarget triage` for the remnants, then `calls`, `callers` and `prologue` on what is left.\n", dead.join(", "))?;
     }
 
-    writeln!(out, "## Accessor template\n\n```text")?;
+    writeln!(out, "## Accessor chain\n\n```text")?;
     census::print(out, &c, false, false)?;
     writeln!(out, "```\n")?;
 
@@ -64,31 +68,62 @@ pub fn run(out: &mut impl Write, exe: &Exe, sigs: &Path, names: &Path) -> Result
     writeln!(out, "| constant | where | measured |")?;
     writeln!(out, "| --- | --- | --- |")?;
     let hc = c.head_counts();
-    writeln!(out, "| `ACCESSORS` census | `gimmick_real.rs`, `expect.rs` | {} = {} + {} + {} + {} |", c.sites.len(), hc[0], hc[1], hc[2], hc[3])?;
+    writeln!(out, "| accessor heads (`ACCESSORS`) | `gimmick.rs`, `gimmick_real.rs`, `expect.rs` | {} = {} + {} + {} + {} |", c.sites.len(), hc[0], hc[1], hc[2], hc[3])?;
     let tails: Vec<String> = c.tails().iter().map(|(k, v)| format!("{k} x{v}")).collect();
-    writeln!(out, "| `parse_accessor_tail` shapes | `gimmick.rs` | {} |", tails.join(", "))?;
-    let slots: Vec<String> = c.slot_hist().iter().map(|(k, v)| format!("{k:#x} x{v}")).collect();
-    let regs: Vec<String> = c.slot_regs().iter().map(|(k, v)| format!("{k} x{v}")).collect();
-    writeln!(out, "| `SLOT_WINDOW` / `is_slot_cmp` | `gimmick.rs` | distances {}; registers {} |", slots.join(", "), regs.join(", "))?;
+    writeln!(out, "| accessor tail | `gimmick.rs` | {} |", tails.join(", "))?;
+    let offs: Vec<String> = c.head_offsets().iter().map(|(k, v)| format!("{k:#x} x{v}")).collect();
+    writeln!(out, "| head offset into the accessor | `gimmick.rs` | {} |", offs.join(", "))?;
+    let regs: Vec<String> = c.getter_regs().iter().map(|((s, r), v)| format!("mov {s} / cmp {r} x{v}")).collect();
+    let dists: Vec<String> = c.getter_call_dists().iter().map(|(k, v)| format!("{k:#x} x{v}")).collect();
+    writeln!(
+        out,
+        "| getter slot load | `gimmick.rs`, `expect.rs` | {} getters; {}; slot load -> call {}; {} accessor(s) without a getter, {} slot disagreement(s), {} name(s) without one slot |",
+        c.getters.len(),
+        regs.join(", "),
+        dists.join(", "),
+        c.sites_without_getter().len(),
+        c.slot_disagreements().len(),
+        c.names_without_one_slot().len()
+    )?;
+    let mgr: Vec<String> = c.manager_layouts().iter().map(|(m, v)| format!("{} x{v}", m.label())).collect();
+    writeln!(out, "| manager offsets | `manager.rs`, `gimmick.rs` (hook), `expect.rs` | {} |", mgr.join("; "))?;
+    let hd: Vec<String> = c.loader_head_dist_hist().iter().map(|(k, v)| format!("{k:#x} x{v}")).collect();
     match c.loader_dist_range() {
         Some((lo, hi)) => writeln!(
             out,
-            "| `B_WINDOW` | `gimmick.rs` | {} of {} sites have a loader call, {lo:#x}..{hi:#x} past the accessor's call; suggested {:#x} |",
+            "| `B_WINDOW` | `gimmick.rs` | {} of {} sites have a loader call, head+{}; {lo:#x}..{hi:#x} past the accessor's call; suggested {:#x} |",
             c.loaders_found(),
             c.sites.len(),
+            hd.join(", "),
             c.suggested_b_window().unwrap_or(0)
         )?,
         None => writeln!(out, "| `B_WINDOW` | `gimmick.rs` | NO loader call found at any site |")?,
     }
-    writeln!(out, "| `LOADER_PROLOGUE` | `gimmick.rs` | present at {} of {} loader targets |", c.loaders_with_prologue(), c.loaders_found())?;
+    let pro: Vec<String> = c.loader_prologues().iter().map(|(p, v)| format!("`{}` x{v}", p.label())).collect();
+    writeln!(
+        out,
+        "| `LOADER_PROLOGUE` ({} bytes) | `gimmick.rs` | present at {} of {} loader targets; {} |",
+        census::LOADER_PROLOGUE.len(),
+        c.loaders_with_prologue(),
+        c.loaders_found(),
+        pro.join(", ")
+    )?;
+    let opt = |v: Option<u32>| v.map(|x| format!("+{x:#x}")).unwrap_or_else(|| "none".into());
     match c.site_named("gimmickinfo") {
         Some(g) => writeln!(
             out,
-            "| `gimmickinfo` | `gimmick_real.rs`, `expect.rs` | accessor `+{:#x}`, slot load `{}`, loader call `{}` -> loader `{}` |",
+            "| `gimmickinfo` | `gimmick_real.rs`, `expect.rs` | getter slot load {}, slot {}, accessor `{}` head `+{:#x}`, loader call `{}` -> loader `{}` ({}) |",
+            c.getters_of("gimmickinfo").iter().map(|x| format!("`+{:#x}`", x.at)).collect::<Vec<_>>().join(", "),
+            opt(g.slot()),
+            opt(g.fn_start),
             g.at,
-            g.slot.as_ref().map(|s| format!("+{:#x}", s.at)).unwrap_or_else(|| "none".into()),
-            g.loader.as_ref().map(|l| format!("+{:#x}", l.call_at)).unwrap_or_else(|| "none".into()),
-            g.loader.as_ref().map(|l| format!("+{:#x}", l.target)).unwrap_or_else(|| "none".into())
+            opt(g.loader.as_ref().map(|l| l.call_at)),
+            opt(g.loader.as_ref().map(|l| l.target)),
+            match &g.loader {
+                Some(l) if l.prologue_ok => "prologue matches".to_string(),
+                Some(l) => format!("prologue `{}`", l.prologue.label()),
+                None => "no loader".to_string(),
+            }
         )?,
         None => writeln!(out, "| `gimmickinfo` | `gimmick_real.rs` | NO accessor passes the name |")?,
     }
@@ -116,7 +151,7 @@ pub fn run(out: &mut impl Write, exe: &Exe, sigs: &Path, names: &Path) -> Result
 
     let gimmick_ok = c
         .site_named("gimmickinfo")
-        .is_some_and(|g| g.slot.is_some() && g.loader.as_ref().is_some_and(|l| l.prologue_ok));
+        .is_some_and(|g| g.slot().is_some() && g.loader.as_ref().is_some_and(|l| l.prologue_ok));
     let mut why = Vec::new();
     if !dead.is_empty() {
         why.push(format!("{} signature(s) not exactly once", dead.len()));
@@ -125,7 +160,20 @@ pub fn run(out: &mut impl Write, exe: &Exe, sigs: &Path, names: &Path) -> Result
         why.push(format!("{} accessor tail(s) of an unknown shape", c.rejected_tails().len()));
     }
     if !gimmick_ok {
-        why.push("the gimmickinfo site has no slot load or no loader call with the prologue".to_string());
+        why.push("the gimmickinfo accessor has no getter with one slot, or no loader call opening with LOADER_PROLOGUE".to_string());
+    }
+    if !c.slot_disagreements().is_empty() || !c.names_without_one_slot().is_empty() {
+        why.push(format!(
+            "{} accessor(s) whose getters disagree on the slot, {} name(s) without exactly one slot",
+            c.slot_disagreements().len(),
+            c.names_without_one_slot().len()
+        ));
+    }
+    if c.manager_heads().len() != 1 || c.manager_heads().keys().any(|(_, e)| e.is_none()) {
+        why.push(format!(
+            "the getters do not agree on one manager count/entries pair ({} seen, or entries unparsed)",
+            c.manager_heads().len()
+        ));
     }
     if gimmick_ok && gimmick_stream.is_none() {
         why.push(

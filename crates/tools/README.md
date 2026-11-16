@@ -244,7 +244,7 @@ required file not found". Job outputs survive a re-run of `nexus` alone.
 
 ### `sigscan` + `reference-signatures.txt` (`just sigscan`)
 Scans the installed `CrimsonDesert.exe` for every byte signature the
-plugins resolve at load (thirteen on build 26480954, as on 26423880 and 26361232: the looter's ten, the
+plugins resolve at load (thirteen on build 26636972, as on 26480954, 26423880 and 26361232: the looter's ten, the
 catch site and the two `[banking]` gate reads), plus a handful of class and event names. Each
 signature must hit **exactly once**; more than one hit means the pattern is no
 longer unique and the plugin could bind to the wrong function. Run it after a
@@ -255,10 +255,12 @@ game update. Not in CI, because CI has no copy of the game.
 signature deliberately matches `0xF` bytes into its function rather than at the
 entry point, and the comment says so.
 
-It also checks `static-info-names.txt`, 221 names on 26480954, 26423880 and 26361232: the 216 names
+It also checks `static-info-names.txt`, 217 names on 26636972: the 216 names
 of the game's 149 static-info types as of 25116796 (149 class names plus the
-67 lowercase table names that differ), less `reviepointinfo` and plus the six
-table names 26345091 added, extracted from `FUN_1424fef70` and recorded in
+67 lowercase table names that differ), less `reviepointinfo`, plus the six
+table names 26345091 added (221 through 26480954), less the eight names of the
+five types 26636972 removed and plus the four of the two it added (see the
+file's header), extracted from `FUN_1424fef70` and recorded in
 `docs/reference-internals.md` section 19. Each must still occur **exactly once**
 as a NUL-delimited literal; output is a single summary line plus any name that
 went missing or gained a second hit. A change there means the game's type
@@ -393,10 +395,13 @@ extra for `evidence` and nothing else.
 
 **None of them may select a PE section by name, and there is a test asserting
 it.** This exe's twelve section names are scrambled on every build, hotfixes
-included. On 26480954 they are `.text1 .arch .rodata .sdata .edata .tls
-.ecode .tls$ .rsrc .reloc .xpdata .shared`, the 89 MB code section every
-signature hits is `.text1` (RVA `0x1000`), `.tls$` is the 200 MB shielded code
-section at RVA `0x7a44000`, and the exception directory is all of `.shared`.
+included. On 26636972 they are `.reloc .00cfg .sxdata .debug$P .tls$ .srdata
+.ecode .data1 .sbss .xcode .trace .rodata`, the 90 MB code section every
+signature hits is `.reloc` (RVA `0x1000`), `.data1` is the 200 MB shielded code
+section at RVA `0x7ac4000`, and the exception directory is all of `.rodata`.
+On 26480954 they were `.text1 .arch .rodata .sdata .edata .tls .ecode .tls$
+.rsrc .reloc .xpdata .shared`, the code in `.text1`, the shielded section
+`.tls$` at RVA `0x7a44000`, and the exception directory all of `.shared`.
 On 26423880 they were `.rsrc .tls$ .data .xdata .shared .ecode .idata .text
 .debug$P .text1 .debug .edata`, the code in `.rsrc`, the shielded section
 `.text` at RVA `0x7a41000`, and the exception directory all of `.edata`. On 26361232 they were `.sxdata .xtls .udata .debug$P .reloc .data
@@ -442,18 +447,40 @@ straight in.
   function start a suffix implies. **Exit 1** if any signature not marked
   `[optional]` in its name line is not exactly once: unlike `sigscan`, this
   one is a gate.
-* `census` measures the accessor template (`crates/desert-core/src/gimmick.rs`): the
-  four heads, the tail after each, the slot load and its bounds-check
-  register, the loader-call shape and distance, `LOADER_PROLOGUE` at the
-  target, the stream fill (the three stores that put the stream's buffer,
-  size and cursor into the stack stream before `lea r9,[rsp+0x30]`: `stream
-  fill: buffer +0x20 size +0x28 cursor +0x2c at 154 of 154 sites` on 26480954, 26423880 and 26361232,
-  plus a `stream fill:` line for `gimmickinfo` alone, and a `fill` column under
-  `--sites`), and each passed name against `static-info-names.txt`. Its constants
-  mirror `gimmick.rs` with a comment saying so, because `crates/tools/` does not
-  depend on `desert-core`; `expect.rs` pins the 26480954 figures (including
-  `STREAM_LAYOUT` 0x20 / 0x28 / 0x2c and `STREAM_SITES` 154) and
-  `crates/desert-core/tests/gimmick_real.rs` asserts the same ones.
+* `census` measures the static-info access chain (`crates/desert-core/src/gimmick.rs`
+  and `manager.rs`), in the getter / accessor / loader shape 26636972 introduced:
+  * **getters**: every `mov r64,[rip+slot]; cmp r32,[r64+d8]` whose first call
+    within 0x60 lands on an accessor function (159 on 26636972, all
+    `mov rcx` / `cmp r8d`), with the slot-load-to-call distance, the prologue
+    (the bytes from the `.pdata` function start, or `inlined`), and the manager
+    offsets read off the getter body rather than hard-coded: `count +0x28,
+    entries +0x20, stride 24, object +0x8` on 155, `stride 32, object +0x10` on
+    the four getters of `AIEventTableInfo`, `NpcFriendlyInfo` and
+    `characterappearanceindexinfo`;
+  * **accessors**: the four head encodings (`xor r9d,r9d; lea|mov r8,<name>;
+    mov rdx,[rcx+8]`, 131 + 20 + 0 + 0), the head's offset into its function
+    (0x30 or 0x31), the tail (`lea rcx,[rbp+0x40]; E8`), and one slot per
+    accessor and per table name across its getters;
+  * **loader calls**: the shape (`lea r9,[rbp-0x30]`, the index load, `mov rdx`
+    / `mov rcx`), the distance from the head (0x8C/0x8D) and from the
+    accessor's call, the distinct prologues at the targets (6 open with the
+    15-byte `LOADER_PROLOGUE`, `gimmickinfo`'s among them; 143 with another
+    spill order; 2 are `E9` jumps);
+  * the **stream fill** (the rbp-relative stores that put the stream's buffer,
+    size and cursor into the stack stream before `lea r9`: `stream fill:
+    buffer +0x20 size +0x28 cursor +0x2c at 151 of 151 sites` on 26636972),
+    plus a `stream fill:` line for `gimmickinfo` alone and a `fill` column
+    under `--sites` (one row per accessor);
+  * each passed name against `static-info-names.txt`.
+
+  Its constants mirror `gimmick.rs` with a comment saying so, because
+  `crates/tools/` does not depend on `desert-core`; `expect.rs` pins the
+  26636972 figures and `crates/desert-core/tests/gimmick_real.rs` asserts the
+  same ones. Through 26480954 there was no getter: the slot load
+  (`mov rbx,[rip+slot]; cmp edx,[rbx+8]`) sat 0x33/0x3B before the head inside
+  the accessor's own function, the head ended `mov rdx,[rbx+0x10]`, the fill
+  was rsp-relative and the census was 154 sites; the module docs of
+  `census.rs` keep that history.
 * `calls` lists every `E8`/`E9` target in a range with its `.pdata` status,
   first bytes, an auto-wildcarded pattern (rel32, RIP disp32 and imm32
   masked) and that pattern's exe-wide count; import thunks print their import
@@ -472,7 +499,9 @@ straight in.
   count.
 * `report` is triage, census and pe as one markdown page plus a table of the
   constants to update, ending `Verdict: clean` (exit 0) or `Verdict: work to
-  do: <reasons>` (exit 1). The constants table has a `StreamLayout` row, and a
+  do: <reasons>` (exit 1). Getters disagreeing on a slot, a table name with
+  two slots, or getters reading the count or the entries at different manager
+  offsets are verdict reasons. The constants table has a `StreamLayout` row, and a
   `gimmickinfo` fill that does not parse is a verdict reason of its own: on
   26361232 the stream layout moved while every signature still hit, and only a
   launch caught it (`docs/findings/2026-11-01-build-26345091-retarget.md` §7.7).
@@ -554,8 +583,10 @@ instruction - the `4C 8D 05` at `+0x1529527`, reported once at the REX byte as
 `+0x57AFC28`, the cell at `+0x59792A8`, and the one instruction reads as `lea`
 at `+0x15BBA17` and `lea32` at `+0x15BBA18`. On build 26356046 the literal is
 at `+0x5B58050`, the cell at `+0x5D2E048`, and the instruction at `+0x17E03B7`.
-On 26480954 the literal is at `+0x5B5FE28`, the cell at `+0x5D358A8`, and the
-instruction at `+0x17E2257` (`tests/xrefs_cli.rs` pins it).
+On 26480954 the literal was at `+0x5B5FE28`, the cell at `+0x5D358A8`, and the
+instruction at `+0x17E2257`. On 26636972 the literal is at `+0x5BDC030`, the
+cell at `+0x5DB15B8`, and the instruction at `+0x1849D97`
+(`tests/xrefs_cli.rs` pins it).
 
 **It takes an RVA. `sigscan` prints file offsets.** The two are not directly
 composable: feeding a `sigscan` offset to `xrefs` will usually report zero
@@ -564,7 +595,9 @@ table (`desert_tools::pe`) first.
 
 ### `fieldnames`
 Recovers the **field names of every static-info record class** from the
-shipped exe - 5037 `(class, field)` pairs on build 26480954, as on 26423880 (the two new
+shipped exe - 5045 pairs across 579 classes on build 26636972 (five tables
+gone, two new, and the record-layout changes, itemised at `EXPECT_PAIRS`),
+5037 on 26480954, as on 26423880 (the two new
 `ItemInfo` sound fields and `SpawningPoolAutoSpawnInfo.useSceneCollectSpawn`),
 5034 across 581 classes on 26361232, as on 26345091 and 26356046 (4712 across 537 on 25477059, 4675 across 536 on 25246367) - and
 writes them to
@@ -731,8 +764,10 @@ and both cost an earlier investigation a wrong answer:
 
 Every run re-checks the five numbers and three offset anchors that were
 confirmed three independent ways on build 25246367, re-measured on 25477059,
-again on 26361232, on 26423880 and on 26480954 (`paths::CALIBRATED_BUILD`) - now
-581 output lists, 904 blocks, 220 distinct item ids and 14210 records on 26480954, unchanged from 26423880 and 26361232 (25477059: 572, 895, 215,
+again on 26361232, on 26423880, on 26480954 and on 26636972
+(`paths::CALIBRATED_BUILD`) - now 581 output lists, 904 blocks, 220 distinct
+item ids and 14218 records (69-byte blocks), unchanged but for 8 records from
+26480954, 26423880 and 26361232 (14210 records; 25477059: 572, 895, 215,
 13447), and the known item names - and prints `FAIL` for any that
 moved. On 26361232 the `--loose` walk is 597 lists / 1047 blocks / 317 items,
 the loose-only part 16 lists / 143 blocks / 97 items, the 9 implausible ids
@@ -874,7 +909,7 @@ the rule already covers is a refusal. Item 1 is money and the rule on it is
 two-way: every family but `Money` refuses a record that pays it, and `Money`
 refuses a record that pays anything else. Nothing is decoded unless the body
 reproduces `CALIBRATION` in `gen-collect-names/table.rs` exactly - table-wide
-counts and three anchor records, taken on build 26480954 (unchanged from 26423880 and 26361232: 14210 records, 581 lists, 904 blocks; anchors firewood_0001 (10136473) +1796, gimmick_well_0001_parts01 (3374134) +731, Background_Breakable_66 (807359) +1393; on 26361232 581 lists / 904
+counts and three anchor records, taken on build 26636972 (14218 records, 581 lists, 904 blocks; anchors firewood_0001 (10164968) +1796, gimmick_well_0001_parts01 (3379211) +731, Background_Breakable_66 (808668) +1393; 26480954, 26423880 and 26361232 had 14210 records and the lists at 10136473, 3374134 and 807359; on 26361232 581 lists / 904
 blocks / 14210 records; `firewood_0001`'s list at table offset 10136473, +1796
 from its record start, `gimmick_well_0001_parts01` at 3374134, +731,
 `Background_Breakable_66` at 807359, +1393) - and a refusal names that build
@@ -918,10 +953,10 @@ error.
 `staticinfo::split` handles more header shapes than `staticinfo.py` did (a
 `u16` or `u32` count and a `u32` key): on 26361232 the count is also a `u8`
 once, and the key is a `u16` on 40 tables, a `u8` on 7, a `u64` once and 12
-bytes once. All 137 tables split. `tests/paz_real.rs` (ignored, so
-`just tools-check-game`) checks all 274 extracted files byte for byte against
-`analysis/tables/`, the `gimmickinfo` entries against the listing, its 14210
-records, and that an encrypted entry is refused. `extract-tables` takes about
+bytes once. All 136 tables split (137 through 26480954). `tests/paz_real.rs` (ignored, so
+`just tools-check-game`) checks all 272 extracted files (26636972; 274
+through 26480954) byte for byte against `analysis/tables/`, the `gimmickinfo`
+entries against the listing, its 14218 records, and that an encrypted entry is refused. `extract-tables` takes about
 1.3 s.
 
 ## Known defects

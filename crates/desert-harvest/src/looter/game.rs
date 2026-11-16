@@ -34,17 +34,22 @@ pub const LOOT_GRANT_SIG: &str = "loot_grant";
 /// its size is 0x7AB against 0x7C4 for `FUN_142ab4ee0` on 25116796, and it has
 /// the same five callers in three functions (two, one, two) as the evidence
 /// export records for that build. `+0x2E1F340` on the 26356046 hotfix and
-/// `+0x2E1F2F0` on 26361232, `+0x2E24BA0` on 26423880 and `+0x2E25810` on
-/// 26480954; was
+/// `+0x2E1F2F0` on 26361232, `+0x2E24BA0` on 26423880, `+0x2E25810` on
+/// 26480954 and `+0x2E8CFC0` on 26636972.
+///
+/// Build 26636972 dropped the `mov [rsp+0x10],rdx` spill again (the prologue
+/// is the 25477059 one, two spills then the pushes) and the 26480954 pattern
+/// died on it; identity on 26636972: the same body opening, the same five
+/// callers in three functions (two, one, two). Was
 /// `+0x2B84650` on 25477059 and `+0x2AB6F20` on 25246367.
-pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9";
+pub const LOOT_GRANT_PATTERN: &str = "48 89 5C 24 08 4C 89 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B F9 4C 8B E2 4C 8B E9";
 
 /// The name [`SIGNATURES`] gives the HUD item-log line builder, so
 /// [`crate::looter::itemlog`] and the table cannot come to spell it differently.
 pub const ITEM_LOG_SIG: &str = "item_log";
 
 /// The HUD side item log's line builder, `(this, const Grant*, u16 source,
-/// ...)`, RVA `0x116A5B0` on 26361232 (`0x116B800` on 26423880, `0x116BFB0` on 26480954), reached only through a `jmp` thunk in
+/// ...)`, RVA `0x116A5B0` on 26361232 (`0x116B800` on 26423880, `0x116BFB0` on 26480954, `0x11A43C0` on 26636972), reached only through a `jmp` thunk in
 /// the UI notification manager's handler table. Found in game 2026-11-03: the
 /// only `ItemLogData` builder that fired on pickups. Named separately because
 /// `crate::looter::itemlog` holds its stolen bytes to being a literal prefix
@@ -56,7 +61,12 @@ pub const ITEM_LOG_SIG: &str = "item_log";
 /// `source` switch's first two cases (`sub r9d,7; je`, `sub r9d,0x11; je`),
 /// which are what make it this function. The frame size, the flag's stack
 /// offset and the branch displacements are wildcarded.
-pub const ITEM_LOG_PATTERN: &str = "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84";
+///
+/// Build 26636972 reordered the spills (`rbx, rsi, rdi, rcx`, then `push rbp`
+/// and `mov rbp,rsp`), so the flag is read `[rbp+d8]` and the grant's `u16`
+/// index (`movzx eax,[rdx+8]`, the `GRANT_INDEX` the hook reads) is now loaded
+/// before the switch; the pattern carries both.
+pub const ITEM_LOG_PATTERN: &str = "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 48 89 4C 24 08 55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 7D ?? 00 0F 85 ?? ?? ?? ?? 0F B7 42 08 66 89 45 ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84";
 
 /// The `enqueue` signature, named separately because `crate::looter::entry`
 /// holds its stolen bytes to being a literal prefix of it. Function start,
@@ -69,21 +79,22 @@ pub const ENQUEUE_PATTERN: &str =
     "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00";
 
 /// The `own_check_site` signature: `mov rcx,[rcx+0x120]; call steal_check;
-/// test al,al; je +5; mov dil,2`. Named separately because
+/// test al,al; je +4; mov bl,2`. Named separately because
 /// [`OWN_CHECK_LAYOUT`] describes it and `crate::looter::events::resolve`
 /// reads it through that layout.
 ///
 /// RVA `0x2D35585` on 26345091 (`0x2D358B5` on 26356046, `0x2D35865` on 26361232,
-/// `0x2D3B0A5` on 26423880, `0x2D3BD15` on 26480954), inside the function at
-/// `0x2D35230` (`0x2D35510` on 26361232, `0x2D3AD50` on 26423880, `0x2D3B9C0`
-/// on 26480954) that calls the steal check twice, as `FUN_1429db730` did on
-/// 25116796. The steal check itself (`0x2801700`; `0x2801A10` on 26356046,
-/// `0x28019C0` on 26361232, `0x2805550` on 26423880, `0x28061C0` on 26480954)
-/// has nine callers in both builds, in the same address
-/// order; this is the seventh. `mov bl,2` became `mov dil,2` (`40 B7 02`),
-/// which is what killed the old pattern; the old tail `84 C0 74 04 B3 02`
-/// still hits twice, both elsewhere.
-pub const OWN_CHECK_PATTERN: &str = "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02";
+/// `0x2D3B0A5` on 26423880, `0x2D3BD15` on 26480954, `0x2DA26DA` on 26636972),
+/// inside the function at `0x2D35230` (`0x2D35510` on 26361232, `0x2D3AD50` on
+/// 26423880, `0x2D3B9C0` on 26480954, `0x2DA2380` on 26636972) that calls the
+/// steal check twice, as `FUN_1429db730` did on 25116796. The steal check itself
+/// (`0x2801700`; `0x2801A10` on 26356046, `0x28019C0` on 26361232, `0x2805550`
+/// on 26423880, `0x28061C0` on 26480954, `0x2865990` on 26636972) has nine
+/// callers in every build, in the same address order; this is the seventh.
+/// `mov bl,2` became `mov dil,2` (`74 05 40 B7 02`) on 26345091, which killed
+/// the pattern once, and went back to `mov bl,2` (`74 04 B3 02`) on 26636972,
+/// which killed it again; the 26480954 form hits nowhere on 26636972.
+pub const OWN_CHECK_PATTERN: &str = "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 04 B3 02";
 
 /// Where things are inside an [`OWN_CHECK_PATTERN`] hit.
 pub struct OwnCheckLayout {
@@ -101,34 +112,39 @@ pub const OWN_CHECK_LAYOUT: OwnCheckLayout = OwnCheckLayout { call_at: 7, lea_r9
 /// ours; the comment says what the hit is and its RVA on build 26345091, where
 /// they were re-derived, then on the 26356046 hotfix, then on 26361232 (every
 /// hit exactly 0x50 lower than on 26356046), then on 26423880 (each moved up
-/// by its own amount, no pattern changed), then on 26480954 (the same again).
-/// The RVAs below end with the 26480954 one.
+/// by its own amount, no pattern changed), then on 26480954 (the same again),
+/// then on 26636972 (five patterns re-derived, the rest moved).
+/// The RVAs below end with the 26636972 one.
 pub const SIGNATURES: &[(&str, &str)] = &[
     // Function start, 0x161AFD0: the `call` at `desc_mask+queue_site`+0x22,
     // 68 callers, allocates 0x80 bytes behind the `gs:[0x58]` pool check.
-    // Unmoved on 26356046; 0x161AF80 on 26361232, 0x161C490 on 26423880, 0x161CCB0 on 26480954.
+    // Unmoved on 26356046; 0x161AF80 on 26361232, 0x161C490 on 26423880, 0x161CCB0 on 26480954,
+    // 0x165D9C0 on 26636972.
     ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00"),
     ("enqueue", ENQUEUE_PATTERN),
     // 0x3B539AF, 0xF into the function; 0x3B53D6F on 26356046, 0x3B53C9F on 26361232,
-    // 0x3B596FF on 26423880, 0x3B5A4AF on 26480954.
+    // 0x3B596FF on 26423880, 0x3B5A4AF on 26480954, 0x3BD3FAF on 26636972.
     ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B"),
     ("own_check_site", OWN_CHECK_PATTERN),
-    // 0x1937610 on both; 0x19375C0 on 26361232, 0x1938D70 on 26423880, 0x19399B0 on 26480954.
+    // 0x1937610 on both; 0x19375C0 on 26361232, 0x1938D70 on 26423880, 0x19399B0 on 26480954,
+    // 0x199F370 on 26636972.
     ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01"),
     // 0x29A97C3; 0x29A9AF3 on 26356046, 0x29A9AA3 on 26361232, 0x29AD633 on 26423880,
-    // 0x29AE283 on 26480954.
+    // 0x29AE283 on 26480954, 0x2A108B3 on 26636972.
     ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25"),
-    // 0x22D6A50 on both; 0x22D6A00 on 26361232, 0x22D9620 on 26423880, 0x22DA260 on 26480954.
+    // 0x22D6A50 on both; 0x22D6A00 on 26361232, 0x22D9620 on 26423880, 0x22DA260 on 26480954,
+    // 0x234ABA0 on 26636972.
     ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??"),
-    // 0x22D6D70 on both (0x22D6D20 on 26361232, 0x22D9940 on 26423880, 0x22DA580 on 26480954), the function right after `interaction_fn` (0x310 after it on
+    // 0x22D6D70 on both (0x22D6D20 on 26361232, 0x22D9940 on 26423880, 0x22DA580 on 26480954, 0x234AEC0 on 26636972), the function right after `interaction_fn` (0x310 after it on
     // 25477059, 0x320 on 26345091), with `call [rax+0x818]` (`FF 90 imm32`)
     // inside. Scanned and never consumed. `movzx esi,dl` became
     // `movzx r13d,dl` (`44 0F B6 EA`) on 26345091.
     ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9"),
     // 0x2E1F010; 0x2E1F340 on 26356046, 0x2E1F2F0 on 26361232, 0x2E24BA0 on 26423880,
-    // 0x2E25810 on 26480954.
+    // 0x2E25810 on 26480954, 0x2E8CFC0 on 26636972.
     (LOOT_GRANT_SIG, LOOT_GRANT_PATTERN),
-    // 0x116A5B0 on 26361232, 0x116B800 on 26423880, 0x116BFB0 on 26480954: the item-log line builder, gated by
+    // 0x116A5B0 on 26361232, 0x116B800 on 26423880, 0x116BFB0 on 26480954, 0x11A43C0 on 26636972:
+    // the item-log line builder, gated by
     // `crate::looter::itemlog`.
     (ITEM_LOG_SIG, ITEM_LOG_PATTERN),
 ];
@@ -644,13 +660,19 @@ fn qwords(addr: usize, n: usize) -> String {
 /// Raw look at the first records of a data table and at a gimmick component's
 /// two side objects, to pin down where the record key lives.
 pub fn dump_table_records(m: &MainModule, label: &str, slot_rva: usize, n: usize) {
-    use crate::safe;
     let Some(mgr) = crate::looter::tables::manager_at(m, slot_rva) else { return };
-    let count: u32 = safe::read(mgr + 8).unwrap_or(0);
-    let Some(arr) = safe::read_ptr(mgr + 0x58) else { return };
-    crate::log!("[table] {label}: manager=0x{mgr:X} count={count} records=0x{arr:X}; manager qwords: {}", qwords(mgr, 14));
-    for i in 0..n {
-        let Some(rec) = safe::read_ptr(arr + i * 8) else { continue };
+    let Some((count, entries)) = desert_core::manager::view_of(mgr) else {
+        crate::log!("[table] {label}: manager=0x{mgr:X} count/entries unreadable; manager qwords: {}", qwords(mgr, 14));
+        return;
+    };
+    crate::log!(
+        "[table] {label}: manager=0x{mgr:X} count(+0x{:X})={count} entries(+0x{:X})=0x{entries:X}; manager qwords: {}",
+        desert_core::manager::MGR_COUNT,
+        desert_core::manager::MGR_ENTRIES,
+        qwords(mgr, 14)
+    );
+    for i in 0..n.min(count as usize) {
+        let Some(rec) = desert_core::manager::record(entries, i) else { continue };
         let name = crate::looter::tables::name(m, slot_rva, i as u32).unwrap_or_else(|| "?".into());
         crate::log!("[table]   [{i}] rec=0x{rec:X} name={name}: {}", qwords(rec, 10));
     }
@@ -703,8 +725,11 @@ pub fn dump_value_object(m: &MainModule, key: u32, obj: usize) {
 
 pub fn dump_record_bytes(m: &MainModule, label: &str, slot_rva: usize, idx: usize) {
     let Some(mgr) = crate::looter::tables::manager_at(m, slot_rva) else { return };
-    let Some(arr) = crate::safe::read_ptr(mgr + 0x58) else { return };
-    let Some(rec) = crate::safe::read_ptr(arr + idx * 8) else { return };
+    let Some((count, entries)) = desert_core::manager::view_of(mgr) else { return };
+    if idx >= count as usize {
+        return;
+    }
+    let Some(rec) = desert_core::manager::record(entries, idx) else { return };
     for line in 0..4 {
         crate::log!("[table] {label}[{idx}] +0x{:02X}: {}", line * 32, hexascii(rec + line * 32, 32));
     }

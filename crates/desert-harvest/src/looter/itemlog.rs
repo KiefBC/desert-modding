@@ -73,25 +73,26 @@ use crate::looter::logfilter::{self, Decision, ItemFacts, COUNTERS, LIVE, QUEST_
 use crate::looter::{game, tables};
 use crate::module::MainModule;
 
-/// Bytes the hook steals from the handler's prologue (build 26361232; the
-/// same on 26423880 and 26480954):
+/// Bytes the hook steals from the handler's prologue (build 26636972):
 ///
 /// ```text
 /// 48 89 5C 24 10        mov  [rsp+0x10],rbx
-/// 48 89 6C 24 18        mov  [rsp+0x18],rbp
-/// 48 89 74 24 20        mov  [rsp+0x20],rsi
+/// 48 89 74 24 18        mov  [rsp+0x18],rsi
+/// 48 89 7C 24 20        mov  [rsp+0x20],rdi
 /// ```
 ///
 /// Three whole instructions, none RIP-relative and none a branch
-/// (`retarget prologue 116a5b0`: 15 is a safe count). The gate stub replays
+/// (`retarget prologue 11a43c0`: 15 is a safe count). 26361232 through
+/// 26480954 spilled `rbx, rbp, rsi` here; 26636972 spills `rbx, rsi, rdi` and
+/// sets up `rbp` as a frame pointer after the pushes. The gate stub replays
 /// them at the entry `rsp`, so the spills land where the original puts them.
 pub const ITEM_LOG_STOLEN: usize = 15;
 
 /// The bytes those [`ITEM_LOG_STOLEN`] must be, checked before patching.
 pub const ITEM_LOG_PROLOGUE: [u8; ITEM_LOG_STOLEN] = [
     0x48, 0x89, 0x5C, 0x24, 0x10, // mov [rsp+0x10],rbx
-    0x48, 0x89, 0x6C, 0x24, 0x18, // mov [rsp+0x18],rbp
-    0x48, 0x89, 0x74, 0x24, 0x20, // mov [rsp+0x20],rsi
+    0x48, 0x89, 0x74, 0x24, 0x18, // mov [rsp+0x18],rsi
+    0x48, 0x89, 0x7C, 0x24, 0x20, // mov [rsp+0x20],rdi
 ];
 
 /// Where the `u16` item index sits in the grant the handler is given.
@@ -117,11 +118,11 @@ fn may_log() -> bool {
 /// looter's accessor scan resolved. `None` on any failed or implausible read.
 fn item_record(idx: u16) -> Option<usize> {
     let slot = tables::item_slot_addr()?;
-    let (count, records) = manager::view(slot)?;
+    let (count, entries) = manager::view(slot)?;
     if u32::from(idx) >= count {
         return None;
     }
-    match manager::slot(records, usize::from(idx)) {
+    match manager::slot(entries, usize::from(idx)) {
         Slot::Loaded(rec) => Some(rec),
         Slot::Empty | Slot::Unreadable => None,
     }
@@ -227,7 +228,7 @@ pub fn tick() {
     if !tables::item_layout_latched() {
         return;
     }
-    let Some((count, records)) = tables::item_slot_addr().and_then(manager::view) else { return };
+    let Some((count, entries)) = tables::item_slot_addr().and_then(manager::view) else { return };
     let total = count as usize;
     if total > logfilter::QUEST_MAP_RECORDS {
         st.refused = true;
@@ -244,7 +245,7 @@ pub fn tick() {
             examined += 1;
             continue;
         }
-        let Slot::Loaded(rec) = manager::slot(records, i) else { continue };
+        let Slot::Loaded(rec) = manager::slot(entries, i) else { continue };
         let Some(key) = tables::item_record_key(rec) else { continue };
         QUEST_MAP.record(i, desert_core::quest_items::contains(key));
         examined += 1;

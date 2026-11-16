@@ -5,7 +5,7 @@
 //! retarget calls    <rva> <len> [--n 16] [--callers]   every E8/E9 target in a range
 //! retarget callers  <rva>                         references grouped by enclosing function
 //! retarget prologue <rva> [bytes] [--stolen K] [--tokens]   safe stolen-byte counts
-//! retarget census   [--b-window 0x400] [--sites]  the accessor template, slot loads, loader calls
+//! retarget census   [--b-window 0x400] [--sites]  the getter / accessor / loader chain
 //! retarget pe                                     headers, sections, data directories
 //! retarget report                                 triage + census + pe as a markdown checklist
 //! ```
@@ -107,7 +107,7 @@ enum Cmd {
         #[arg(long)]
         tokens: bool,
     },
-    /// The accessor-template census the gatherer and dispatch depend on.
+    /// The getter / accessor / loader census the gatherer and dispatch depend on.
     Census {
         /// How far past the accessor's call the loader call is looked for.
         #[arg(long, default_value = "0x400")]

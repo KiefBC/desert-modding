@@ -81,6 +81,72 @@ pub const CATCH_BYTES: [u8; CATCH_STOLEN] = [
     0x48, 0x8D, 0x95, 0xD0, 0x01, 0x00, 0x00, // lea rdx,[rbp+0x1d0] - replayed
 ];
 
+/// Bytes from the start of a [`CATCH_SITE`] hit to the end of its `call
+/// rel32`: the 21-byte pattern (which ends on the `E8`) plus the 4-byte
+/// displacement. [`catch_actor_register`] reads from here.
+pub const CATCH_CALL_END: usize = 25;
+
+/// Which register holds the creature actor at the catch site, read off the
+/// game's own code just past the call: the handler reloads the actor's
+/// component there with `mov r64,[base+0x68]` (after an optional `nop`), and
+/// `base` is the actor. Returns the register number in the x86-64 encoding
+/// (0 = rax .. 15 = r15).
+///
+/// The register is **not** stable across builds, which is why this exists:
+/// it was `r15` through 26480954 and is `rsi` on 26636972, where a stub that
+/// still passed `r15` handed the callback `0x1FE` on every catch and left
+/// every catch at 1x. Only a callee-saved register is accepted (rbx, rbp,
+/// rsi, rdi, r12-r15): the read is *after* the call, so only a register the
+/// call must preserve is proof of what it held *before* it, at the patch
+/// site. Anything else, or any other instruction there, is `None`, and the
+/// hook refuses to install.
+pub fn catch_actor_register(after_call: &[u8]) -> Option<u8> {
+    let b = match after_call.first()? {
+        0x90 => after_call.get(1..)?,
+        _ => after_call,
+    };
+    let rex = *b.first()?;
+    // REX.W set (a 64-bit load); REX.X must be clear, there is no index.
+    if rex & 0xF8 != 0x48 || rex & 0x02 != 0 {
+        return None;
+    }
+    if *b.get(1)? != 0x8B {
+        return None;
+    }
+    let modrm = *b.get(2)?;
+    if modrm >> 6 != 0b01 {
+        return None; // [base+disp8] only
+    }
+    let rm = modrm & 7;
+    let disp_at = if rm == 4 {
+        // rm=100 needs a SIB; the only no-index form is 0x24 (base=100).
+        if *b.get(3)? != 0x24 {
+            return None;
+        }
+        4
+    } else {
+        3
+    };
+    if *b.get(disp_at)? != ACTOR_COMPONENT_OFF {
+        return None;
+    }
+    let base = rm | ((rex & 1) << 3);
+    matches!(base, 3 | 5 | 6 | 7 | 12..=15).then_some(base)
+}
+
+/// The actor field the handler reloads past the call, `actor+0x68`: the
+/// same `ACTOR_SUB` the catch callback reads through.
+const ACTOR_COMPONENT_OFF: u8 = 0x68;
+
+/// The register's name, for the log line.
+pub fn reg_name(r: u8) -> &'static str {
+    const NAMES: [&str; 16] = [
+        "rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi", "r8", "r9", "r10", "r11", "r12",
+        "r13", "r14", "r15",
+    ];
+    NAMES.get(usize::from(r)).copied().unwrap_or("?")
+}
+
 /// A creature the player can catch by hand, as told by its species record
 /// ([`catch_class_by_species`]) or, failing that, its interaction category
 /// byte and, for a fish, its type byte. There is deliberately no `Unknown`
@@ -558,6 +624,36 @@ pub fn is_catchable_type(actor: usize) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_actor_register_comes_from_the_reload_past_the_call() {
+        // 26636972: nop; mov rdx,[rsi+0x68]
+        assert_eq!(catch_actor_register(&[0x90, 0x48, 0x8B, 0x56, 0x68, 0x48]), Some(6));
+        // Through 26480954: mov rdx,[r15+0x68]
+        assert_eq!(catch_actor_register(&[0x90, 0x49, 0x8B, 0x57, 0x68]), Some(15));
+        // No nop; rbx; and r12, which needs the 0x24 SIB.
+        assert_eq!(catch_actor_register(&[0x48, 0x8B, 0x53, 0x68]), Some(3));
+        assert_eq!(catch_actor_register(&[0x49, 0x8B, 0x54, 0x24, 0x68]), Some(12));
+        assert_eq!(reg_name(6), "rsi");
+        assert_eq!(reg_name(15), "r15");
+    }
+
+    #[test]
+    fn anything_but_a_callee_saved_reload_is_refused() {
+        // A volatile base (rax, r8): the call may have changed it.
+        assert_eq!(catch_actor_register(&[0x90, 0x48, 0x8B, 0x50, 0x68]), None);
+        assert_eq!(catch_actor_register(&[0x90, 0x49, 0x8B, 0x50, 0x68]), None);
+        // rsp as base.
+        assert_eq!(catch_actor_register(&[0x48, 0x8B, 0x54, 0x24, 0x68]), None);
+        // The wrong field, the wrong opcode, a 32-bit load, disp32, an index.
+        assert_eq!(catch_actor_register(&[0x90, 0x48, 0x8B, 0x56, 0x70]), None);
+        assert_eq!(catch_actor_register(&[0x90, 0x48, 0x89, 0x56, 0x68]), None);
+        assert_eq!(catch_actor_register(&[0x90, 0x8B, 0x56, 0x68]), None);
+        assert_eq!(catch_actor_register(&[0x48, 0x8B, 0x96, 0x68, 0, 0, 0]), None);
+        assert_eq!(catch_actor_register(&[0x4A, 0x8B, 0x54, 0x24, 0x68]), None);
+        assert_eq!(catch_actor_register(&[]), None);
+        assert_eq!(catch_actor_register(&[0x90]), None);
+    }
 
     #[test]
     fn the_recorded_classes_map_and_nothing_else_does() {

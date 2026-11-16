@@ -227,9 +227,9 @@ pub fn render_doc(d: &Value) -> String {
     if loose {
         l.a("* Blocks come from the plugin's detector");
         l.a("  (`desert_core::gimmick::output_lists`) **with its pad clause");
-        l.a("  removed**: a `u32 count` then `count` 68-byte blocks, walked");
+        l.a("  removed**: a `u32 count` then `count` 69-byte blocks, walked");
         l.a("  greedily and non-overlapping, item id read at **`block+1`** and");
-        l.a("  required to match its copy at `+60`. The shipped detector also");
+        l.a("  required to match its copy at `+61`. The shipped detector also");
         l.a("  requires `+5` to equal `+64`. Dropping that one clause takes the");
         l.a(format!(
             "  walk from {EXPECT_LISTS} lists / {EXPECT_BLOCKS} blocks / {EXPECT_ITEMS} items to **{} /",
@@ -263,8 +263,8 @@ pub fn render_doc(d: &Value) -> String {
     } else {
         l.a("* Blocks come from the same detector the plugin uses");
         l.a("  (`desert_core::gimmick::output_lists`): a `u32 count` then `count`");
-        l.a("  68-byte blocks, walked greedily and non-overlapping. The item id is");
-        l.a("  read at **`block+1`**, echoed at `+60` - not `+5`/`+64`, which are");
+        l.a("  69-byte blocks, walked greedily and non-overlapping. The item id is");
+        l.a("  read at **`block+1`**, echoed at `+61` - not `+5`/`+65`, which are");
         l.a(format!(
             "  zero padding on all {EXPECT_BLOCKS} blocks (findings section 5). Both of the"
         ));

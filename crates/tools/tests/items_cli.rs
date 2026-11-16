@@ -14,9 +14,10 @@ use std::process::{Command, Output};
 
 use serde_json::Value;
 
-const BLOCK: usize = 68;
+const BLOCK: usize = 69;
 
-/// A 68-byte output block. `entry_key` is the `+64` field - zero on a block the
+/// A 69-byte output block (68 through 26480954, before the u8 at `+60`).
+/// `entry_key` is the `+65` field - zero on a block the
 /// shipped detector admits, nonzero on one only `--loose` sees.
 fn block(item: u32, mn: u64, mx: u64, entry_key: u32) -> Vec<u8> {
     let mut b = vec![0u8; BLOCK];
@@ -26,8 +27,8 @@ fn block(item: u32, mn: u64, mx: u64, entry_key: u32) -> Vec<u8> {
     b[50..58].copy_from_slice(&mx.to_le_bytes());
     b[58] = 0xFF;
     b[59] = 0xFF;
-    b[60..64].copy_from_slice(&item.to_le_bytes());
-    b[64..68].copy_from_slice(&entry_key.to_le_bytes());
+    b[61..65].copy_from_slice(&item.to_le_bytes());
+    b[65..69].copy_from_slice(&entry_key.to_le_bytes());
     b
 }
 
@@ -43,7 +44,7 @@ fn record(out: &mut Vec<u8>, key: u32, name: &str) {
 }
 
 /// Two records: one whose single block the plugin can see, one whose block
-/// carries a nonzero `+64` and so exists only for the loose detector.
+/// carries a nonzero `+65` and so exists only for the loose detector.
 fn fixture() -> Vec<u8> {
     let mut b = vec![0u8; 16];
     record(&mut b, 500001, "synthetic_peony_01");
@@ -100,7 +101,7 @@ fn a_cache_built_by_the_other_detector_is_ignored() {
     assert!(shipped.get("detector").is_none());
     assert_eq!(loose["detector"]["name"], "loose");
     // The synthetic body is built so the two populations differ: the chest's
-    // block carries a nonzero `+64`.
+    // block carries a nonzero `+65`.
     assert_eq!(shipped["totals"]["distinct_items"], 1);
     assert_eq!(loose["totals"]["distinct_items"], 2);
 
@@ -183,7 +184,7 @@ fn the_shipped_walk_still_finds_581_904_220() {
     assert_eq!(d["totals"]["output_lists"], 581);
     assert_eq!(d["totals"]["blocks"], 904);
     assert_eq!(d["totals"]["distinct_items"], 220);
-    assert_eq!(d["totals"]["records_in_table"], 14210);
+    assert_eq!(d["totals"]["records_in_table"], 14218); // 14210 through 26480954
 }
 
 /// The loose walk is a *superset*, not a different answer: its own three counts

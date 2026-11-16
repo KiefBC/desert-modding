@@ -50,16 +50,17 @@ fn a_rebuild_passes_every_self_check() {
         !text.contains("FAIL"),
         "a self-check moved; explain it before trusting the inventory:\n{text}"
     );
-    // Builds 26423880 and 26480954: three pairs more than 26345091, 26356046 and 26361232
-    // (5034). On 25477059 these were 4712 pairs and 537 classes, and on
+    // Build 26636972: 5045 pairs, 579 classes (itemised at `EXPECT_PAIRS` in
+    // the tool). Builds 26423880 and 26480954: 5037 / 581, three pairs more
+    // than 26345091, 26356046 and 26361232 (5034). On 25477059 these were 4712 pairs and 537 classes, and on
     // 25246367 4675 and 536; the growth is schema change, itemised at
     // `EXPECT_PAIRS` in the tool.
     assert!(
-        text.contains("5037 (class, field) pairs, expected 5037"),
+        text.contains("5045 (class, field) pairs, expected 5045"),
         "{text}"
     );
     assert!(
-        text.contains("581 distinct classes, expected 581"),
+        text.contains("579 distinct classes, expected 579"),
         "{text}"
     );
     assert!(dir.path().join("analysis/fieldnames.json").is_file());
@@ -95,7 +96,7 @@ fn every_rva_matches_an_independent_section_walk() {
         .collect();
 
     let pairs = doc["pairs"].as_array().unwrap();
-    assert_eq!(pairs.len(), 5037); // builds 26423880 and 26480954; 5034 on 26345091, 26356046 and 26361232, 4712 on 25477059, 4675 on 25246367
+    assert_eq!(pairs.len(), 5045); // build 26636972; 5037 on 26423880 and 26480954, 5034 on 26345091, 26356046 and 26361232, 4712 on 25477059, 4675 on 25246367
     for p in pairs {
         let off = p["message_off"].as_u64().unwrap() as u32;
         let want = secs
@@ -141,9 +142,10 @@ fn a_lookup_answers_from_the_json_without_the_exe() {
         "{}",
         String::from_utf8_lossy(&out.stderr)
     );
-    // Builds 26345091, 26356046 and 26361232: 220. It was 213 on 25477059 and 211 on
-    // 25246367; the fields that moved are listed at `EXPECT_PAIRS` in the tool.
-    assert!(text.contains("GimmickInfo  (220 fields)"), "{text}");
+    // Build 26636972: 222 (the two constraint lists). 220 on 26345091 through
+    // 26480954, 213 on 25477059 and 211 on 25246367; the fields that moved are
+    // listed at `EXPECT_PAIRS` in the tool.
+    assert!(text.contains("GimmickInfo  (222 fields)"), "{text}");
 }
 
 /// A missing exe with no inventory to fall back on is the one failure a user

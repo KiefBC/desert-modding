@@ -40,8 +40,9 @@ fn block(item: u32, min: u64, max: u64) -> Vec<u8> {
     b.extend_from_slice(&min.to_le_bytes()); // +42  min
     b.extend_from_slice(&max.to_le_bytes()); // +50  max
     b.extend_from_slice(&[0xFF, 0xFF]); // +58
-    b.extend_from_slice(&item.to_le_bytes()); // +60  item again
-    b.extend_from_slice(&[0; 4]); // +64  padding
+    b.push(0); // +60  the byte 26636972 inserted
+    b.extend_from_slice(&item.to_le_bytes()); // +61  item again
+    b.extend_from_slice(&[0; 4]); // +65  padding
     b
 }
 
@@ -426,104 +427,96 @@ proptest! {
 }
 
 // ---------------------------------------------------------------------------
-// gimmick: the accessor tail, the slot bounds check, the loader call
+// gimmick: the accessor tail, the loader call, the stream fill
 // ---------------------------------------------------------------------------
 
 /// One loader call in the grammar `parse_loader_call` reads, built from its
-/// choices: the index load (0 none, 1 movzx, 2 mov) and its source register,
-/// the `lea rdx` width and displacement, the `mov rcx,rbx` encoding. Returns the
-/// bytes and the offset of the `E8`.
-fn loader_call(index: u8, src: u8, disp32: bool, disp: u32, rcx_89: bool) -> (Vec<u8>, usize) {
-    let mut b = vec![0x4C, 0x8D, 0x4C, 0x24, 0x30];
-    match index % 3 {
-        1 => b.extend_from_slice(&[0x44, 0x0F, 0xB7, 0xC0 | (src & 7)]),
-        2 => b.extend_from_slice(&[0x44, 0x8B, 0xC0 | (src & 7)]),
+/// choices: the `lea r9,[rbp+d8]` displacement, the index load (0 none, 1
+/// movzx, 2 movzx byte, 3 mov) with its REX (`44`/`45`) and source register,
+/// and the source registers of `mov rdx` and `mov rcx` with their REX
+/// (`48`/`49`). Returns the bytes and the offset of the `E8`.
+fn loader_call(r9: u8, index: u8, rex_b: bool, src: u8, rdx: u8, rcx: u8) -> (Vec<u8>, usize) {
+    let mut b = vec![0x4C, 0x8D, 0x4D, r9];
+    let rex = if rex_b { 0x45 } else { 0x44 };
+    match index % 4 {
+        1 => b.extend_from_slice(&[rex, 0x0F, 0xB7, 0xC0 | (src & 7)]),
+        2 => b.extend_from_slice(&[rex, 0x0F, 0xB6, 0xC0 | (src & 7)]),
+        3 => b.extend_from_slice(&[rex, 0x8B, 0xC0 | (src & 7)]),
         _ => {}
     }
-    if disp32 {
-        b.extend_from_slice(&[0x48, 0x8D, 0x94, 0x24]);
-        b.extend_from_slice(&disp.to_le_bytes());
-    } else {
-        b.extend_from_slice(&[0x48, 0x8D, 0x54, 0x24, disp as u8]);
-    }
-    b.extend_from_slice(if rcx_89 { &[0x48, 0x89, 0xD9] } else { &[0x48, 0x8B, 0xCB] });
+    b.extend_from_slice(&[0x48 | (rdx >> 3 & 1), 0x8B, 0xD0 | (rdx & 7)]);
+    b.extend_from_slice(&[0x48 | (rcx >> 3 & 1), 0x8B, 0xC8 | (rcx & 7)]);
     let e8 = b.len();
     b.push(0xE8);
     (b, e8)
 }
 
 /// The stream fill `parse_stream_fill` reads, synthesised: the buffer and size
-/// off one holder (`holder` 1 = rcx, 2 = rdx), the cursor in one of the three
-/// load forms seen on 26361232 (`form` 0 `[rdx+4]`, 1 `[r9+8]`, 2
-/// `[rdx+r15+4]`), each store at `r9 + offset`, `nop` filler of the given
-/// lengths in front of each pair.
-fn stream_fill(holder: u8, form: u8, r9: u8, offs: [u8; 3], pad: [usize; 3]) -> Vec<u8> {
+/// off one holder (`holder` 1 = rcx, 2 = rdx, 3 = rbx), the cursor in one of
+/// two load forms (`form` 0 `[rdx+4]`, 1 `[rdx+r15+4]`), each store at
+/// `[rbp + r9 + offset]`, `nop` filler of the given lengths in front of each
+/// pair.
+fn stream_fill(holder: u8, form: u8, r9: i8, offs: [u8; 3], pad: [usize; 3]) -> Vec<u8> {
+    let at = |o: u8| (i16::from(r9) + i16::from(o)) as i8 as u8;
     let mut b = vec![0x90; pad[0]];
-    b.extend_from_slice(&[0x48, 0x8B, holder, 0x48, 0x89, 0x44, 0x24, r9 + offs[0]]);
+    b.extend_from_slice(&[0x48, 0x8B, holder, 0x48, 0x89, 0x45, at(offs[0])]);
     b.extend(std::iter::repeat_n(0x90, pad[1]));
-    b.extend_from_slice(&[0x8B, 0x40 | holder, 0x0C, 0x89, 0x44, 0x24, r9 + offs[1]]);
+    b.extend_from_slice(&[0x8B, 0x40 | holder, 0x0C, 0x89, 0x45, at(offs[1])]);
     b.extend(std::iter::repeat_n(0x90, pad[2]));
-    match form % 3 {
+    match form % 2 {
         0 => b.extend_from_slice(&[0x8B, 0x42, 0x04]),
-        1 => b.extend_from_slice(&[0x41, 0x8B, 0x41, 0x08]),
         _ => b.extend_from_slice(&[0x42, 0x8B, 0x44, 0x3A, 0x04]),
     }
-    b.extend_from_slice(&[0x89, 0x44, 0x24, r9 + offs[2]]);
+    b.extend_from_slice(&[0x89, 0x45, at(offs[2])]);
     b
 }
 
 proptest! {
     #![proptest_config(cfg())]
 
-    /// The tail parser never panics, and what it accepts is one of the two
-    /// shapes with the `E8` exactly where it says.
+    /// The tail parser never panics, and what it accepts is the one shape
+    /// with the `E8` exactly where it says.
     #[test]
     fn accessor_tail_parse_is_exact(bytes in prop::collection::vec(any::<u8>(), 0..16)) {
         if let Some((tail, e8)) = gimmick::parse_accessor_tail(&bytes) {
             prop_assert_eq!(bytes.get(e8), Some(&0xE8));
-            match tail {
-                gimmick::AccessorTail::RspDisp8(d) => {
-                    prop_assert_eq!(e8, 5);
-                    prop_assert_eq!(&bytes[..5], &[0x48, 0x8D, 0x4C, 0x24, d][..]);
-                }
-                gimmick::AccessorTail::R11Disp8(d) => {
-                    prop_assert_eq!(e8, 4);
-                    prop_assert_eq!(&bytes[..4], &[0x49, 0x8D, 0x4B, d][..]);
-                }
-            }
+            let gimmick::AccessorTail::RbpDisp8(d) = tail;
+            prop_assert_eq!(e8, 4);
+            prop_assert_eq!(&bytes[..4], &[0x48, 0x8D, 0x4D, d][..]);
         }
     }
 
-    /// Both tail shapes round-trip for every displacement, whatever follows.
+    /// The tail round-trips for every displacement, whatever follows.
     #[test]
-    fn accessor_tails_round_trip(d in any::<u8>(), r11 in any::<bool>(), rest in prop::collection::vec(any::<u8>(), 0..8)) {
-        let (mut b, want) = if r11 {
-            (vec![0x49, 0x8D, 0x4B, d, 0xE8], (gimmick::AccessorTail::R11Disp8(d), 4))
-        } else {
-            (vec![0x48, 0x8D, 0x4C, 0x24, d, 0xE8], (gimmick::AccessorTail::RspDisp8(d), 5))
-        };
+    fn accessor_tails_round_trip(d in any::<u8>(), rest in prop::collection::vec(any::<u8>(), 0..8)) {
+        let mut b = vec![0x48, 0x8D, 0x4D, d, 0xE8];
         b.extend_from_slice(&rest);
-        prop_assert_eq!(gimmick::parse_accessor_tail(&b), Some(want));
+        prop_assert_eq!(gimmick::parse_accessor_tail(&b), Some((gimmick::AccessorTail::RbpDisp8(d), 4)));
     }
 
-    /// The slot bounds check is `cmp r32,[rbx+8]` for exactly the eight
-    /// 32-bit registers and nothing else.
+    /// The catch site's actor-register parser never panics, only ever names
+    /// a callee-saved register, and only accepts a `mov r64,[base+0x68]`
+    /// (after an optional `nop`).
     #[test]
-    fn slot_cmp_is_exactly_the_eight_registers(b in any::<[u8; 3]>()) {
-        let want = b[0] == 0x3B
-            && [0x43, 0x4B, 0x53, 0x5B, 0x63, 0x6B, 0x73, 0x7B].contains(&b[1])
-            && b[2] == 0x08;
-        prop_assert_eq!(gimmick::is_slot_cmp(&b), want);
+    fn catch_actor_register_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..10)) {
+        if let Some(r) = desert_core::creature::catch_actor_register(&bytes) {
+            prop_assert!(matches!(r, 3 | 5 | 6 | 7 | 12..=15), "register {}", r);
+            let b = if bytes[0] == 0x90 { &bytes[1..] } else { &bytes[..] };
+            prop_assert_eq!(b[0] & 0xF8, 0x48);
+            prop_assert_eq!(b[1], 0x8B);
+            prop_assert!(b[3] == 0x68 || (b[3] == 0x24 && b[4] == 0x68));
+        }
     }
 
     /// The loader-call parser never panics on arbitrary bytes, and whatever it
-    /// accepts starts with `lea r9,[rsp+0x30]` and has its `E8` in range.
+    /// accepts starts with `lea r9,[rbp+d8]` and has its `E8` in range.
     #[test]
     fn loader_call_parse_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..40)) {
         if let Some(c) = gimmick::parse_loader_call(&bytes) {
-            prop_assert_eq!(&bytes[..5], &[0x4C, 0x8D, 0x4C, 0x24, 0x30][..]);
+            prop_assert_eq!(&bytes[..3], &[0x4C, 0x8D, 0x4D][..]);
+            prop_assert_eq!(c.r9_disp, bytes[3] as i8);
             prop_assert_eq!(bytes.get(c.call_at), Some(&0xE8));
-            prop_assert!((13..=24).contains(&c.call_at), "E8 at {}", c.call_at);
+            prop_assert!((10..=14).contains(&c.call_at), "E8 at {}", c.call_at);
         }
     }
 
@@ -532,23 +525,25 @@ proptest! {
     /// and every truncation before the `E8` is refused.
     #[test]
     fn loader_calls_round_trip(
-        index in 0u8..3,
+        r9 in any::<u8>(),
+        index in 0u8..4,
+        rex_b in any::<bool>(),
         src in 0u8..8,
-        disp32 in any::<bool>(),
-        disp in any::<u32>(),
-        rcx_89 in any::<bool>(),
+        rdx in 0u8..16,
+        rcx in 0u8..16,
         rest in prop::collection::vec(any::<u8>(), 0..8),
     ) {
-        let (mut b, e8) = loader_call(index, src, disp32, disp, rcx_89);
+        let (mut b, e8) = loader_call(r9, index, rex_b, src, rdx, rcx);
         b.extend_from_slice(&rest);
         let want_index = match index {
             1 => gimmick::IndexLoad::Movzx,
-            2 => gimmick::IndexLoad::Mov,
+            2 => gimmick::IndexLoad::MovzxByte,
+            3 => gimmick::IndexLoad::Mov,
             _ => gimmick::IndexLoad::None,
         };
         prop_assert_eq!(
             gimmick::parse_loader_call(&b),
-            Some(gimmick::LoaderCall { index: want_index, rdx_disp32: disp32, rcx_89, call_at: e8 })
+            Some(gimmick::LoaderCall { index: want_index, r9_disp: r9 as i8, call_at: e8 })
         );
         for n in 0..=e8 {
             prop_assert_eq!(gimmick::parse_loader_call(&b[..n]), None);
@@ -556,24 +551,24 @@ proptest! {
     }
 
     /// The stream-fill parser never panics on arbitrary bytes, and whatever it
-    /// accepts is three positive disp8 stores at or past the object's start.
+    /// accepts is three stores at or past the object's start, inside a disp8.
     #[test]
-    fn stream_fill_parse_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..160), r9 in any::<u8>()) {
+    fn stream_fill_parse_never_panics(bytes in prop::collection::vec(any::<u8>(), 0..160), r9 in any::<i8>()) {
         if let Some(l) = gimmick::parse_stream_fill(&bytes, r9) {
             for o in [l.buf, l.size, l.cursor] {
-                prop_assert!(o + u32::from(r9) < 0x80, "{l:?} r9 0x{r9:X}");
+                prop_assert!(i64::from(o) + i64::from(r9) <= 0x7F, "{l:?} r9 {r9}");
             }
         }
     }
 
     /// Every synthesised fill round-trips to the offsets it was built from,
     /// whichever holder and cursor form it uses, for any r9 displacement that
-    /// keeps the stores positive.
+    /// keeps the stores inside a disp8.
     #[test]
     fn stream_fills_round_trip(
-        holder in 1u8..3,
-        form in 0u8..3,
-        r9 in 0u8..0x40,
+        holder in 1u8..4,
+        form in 0u8..2,
+        r9 in -0x40i8..0x3F,
         offs in prop::array::uniform3(0u8..0x40),
         pad in prop::array::uniform3(0usize..12),
     ) {
@@ -584,7 +579,7 @@ proptest! {
         );
         // Shifting the object's start past a store takes that field away.
         let lowest = offs.iter().min().copied().unwrap_or(0);
-        prop_assert_eq!(gimmick::parse_stream_fill(&b, r9 + lowest + 1), None);
+        prop_assert_eq!(gimmick::parse_stream_fill(&b, (i16::from(r9) + i16::from(lowest) + 1) as i8), None);
     }
 
     /// A scan of arbitrary bytes never panics, its census stays inside the
@@ -592,11 +587,15 @@ proptest! {
     #[test]
     fn accessor_census_stays_inside(bytes in prop::collection::vec(any::<u8>(), 0..4096)) {
         let sites = gimmick::AccessorSites::scan(&bytes, Some(0x1_4000_0000)).expect("patterns parse");
+        for g in sites.getters() {
+            prop_assert!(g.at < bytes.len() && g.slot < bytes.len() && g.accessor < bytes.len());
+        }
         for r in sites.census(&bytes).expect("same image") {
             prop_assert!(r.site.call_at < bytes.len());
             prop_assert_eq!(bytes.get(r.site.call_at), Some(&0xE8));
+            prop_assert!(r.site.at >= r.site.func && r.site.at - r.site.func <= gimmick::HEAD_WINDOW);
             if let Ok((load, slot)) = r.slot {
-                prop_assert!(load < r.site.at && slot < bytes.len());
+                prop_assert!(load < bytes.len() && slot < bytes.len());
             }
             if let Ok((b, c, target)) = r.loader {
                 prop_assert!(b >= r.site.call_at && b - r.site.call_at < gimmick::B_WINDOW);

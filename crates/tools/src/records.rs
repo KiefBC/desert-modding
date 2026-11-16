@@ -9,8 +9,8 @@
 //!
 //! **Mirrors `desert_core::gimmick::{HeaderShape, parse_header_as}`**; `crates/tools/`
 //! does not depend on `desert-core`, deliberately, and
-//! `crates/desert-core/tests/gimmick_real.rs` asserts the same 14210 records off the
-//! same table body.
+//! `crates/desert-core/tests/gimmick_real.rs` asserts the same records off the
+//! same table body (14218 on 26636972, 14210 on 26361232..26480954).
 //!
 //! The two shapes are told apart by probing the table's first record, never by
 //! scanning for either: a strict `KeyFirst` scan of the 26361232 body finds

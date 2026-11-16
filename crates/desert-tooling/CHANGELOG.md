@@ -9,6 +9,48 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
+## [0.16.2] - 2026-11-16
+
+Game build **26636972** (the Steam update of 2026-11-13). **Seen in game on 2026-11-16**, over
+two launches: every hook installed, the yield multipliers patched every gather record at load
+and the live re-apply rewrote them when a slider moved, both dispatch verdicts read right, and,
+after the catch fix below, 40 of 40 bug and fish catches at x10 paid x10. Nothing you set changes and there is no new key, so a
+PATCH. 0.16.1 on this build installed some hooks and then did nothing useful: the yield
+multipliers patched no record, the dispatch levers and the looter's table reads found no table,
+and three of the looter's hooks (Hunting, the item-log filter, the steal check) and the
+`[banking]` line could not find their code.
+
+### Changed
+
+- **Supported game build 26636972**, up from 26480954 (`docs/findings/2026-11-13-build-26636972-retarget.md`,
+  local). Unlike the last two updates this one changed how the game reaches its data tables, so
+  the plugin needed new code, not only re-pinned figures:
+  - **The table lookup moved.** Each table used to be reached through one block of code that
+    loaded the table's manager and named the table; the game now splits that into a small getter
+    (which loads the manager) and a separate function (which names the table and loads its
+    records). The plugin finds all 151 tables through the new pair, by content as before.
+  - **The table manager changed shape.** The record count moved, and the record offsets and the
+    loaded records now share one array of 24-byte entries instead of two arrays. Every reader in
+    harvest and dispatch now goes through one place (`desert_core::manager`), and three tables
+    the plugin never uses, which the game lays out with 32-byte entries, are refused rather
+    than misread.
+  - **The gathering table's output blocks grew by one byte** (69 where they were 68): every
+    drop entry gained a field. The yield multipliers walk the new size; they find the same 581
+    output lists and 904 blocks, and the same 294 gather records, as on 26480954.
+  - **The record loader's first instructions changed**, so the hook now takes 15 bytes, not 12.
+  - **Five code patterns were re-derived**: the loot grant (Hunting), the item-log line builder,
+    the steal check's call site and the two `[banking]` reads. All 13 still hit exactly once.
+    The Hunting hook takes 13 bytes now (it was 15).
+  - **The catch hook (Bugs, Fish, Critters) looked for the creature in the wrong register.** The
+    game now keeps it in a different register at the spot the hook patches, so every catch was
+    handed a garbage pointer and stayed at 1x (`[catch] debug: actor=0x1FE type=?`). The hook
+    now reads which register it is from the game's own code next to that spot, and refuses to
+    install, rather than guessing, if that code ever stops looking the way it does.
+- The gathering table has 14,218 records (9 added, 1 removed, none a gather node), and every
+  record gained two empty lists. Dispatch reward rows gained a byte that none of the plugin's
+  fields sit on. None of the generated tables changed a row (collect.rs 294, species 6864,
+  containers 71, dropsets 103, quest items 1194); 98 dropset rows have a new record index.
+
 ## [0.16.1] - 2026-11-06
 
 Game build **26480954** (the Steam update of 2026-11-06). **Seen in game on 26480954**: one

@@ -76,21 +76,21 @@ use crate::looter::config::HUNTING_RANGE;
 use crate::looter::game;
 use crate::module::MainModule;
 
-/// Bytes the hook steals from the grant's prologue (build 26345091; the same
-/// on 26356046, 26361232, 26423880 and 26480954):
+/// Bytes the hook steals from the grant's prologue (build 26636972):
 ///
 /// ```text
 /// 48 89 5C 24 08        mov  [rsp+0x08],rbx
 /// 4C 89 4C 24 20        mov  [rsp+0x20],r9
-/// 48 89 54 24 10        mov  [rsp+0x10],rdx
+/// 55 56 57              push rbp; push rsi; push rdi
 /// ```
 ///
-/// Three whole instructions, none RIP-relative and none a branch, which is what
-/// the trampoline needs. Fifteen is the first whole-instruction boundary at or
-/// past the twelve a `mov rax,imm64; jmp rax` patch takes (ten falls short).
-/// It was thirteen through 25477059, when the two spills were followed by
-/// `push rbp; push rsi; push rdi`.
-pub const GRANT_STOLEN: usize = 15;
+/// Five whole instructions, none RIP-relative and none a branch, which is what
+/// the trampoline needs (`retarget prologue 2e8cfc0`: 12, 13 and 15 are all
+/// safe counts). Thirteen takes the whole run of the first three pushes, as
+/// through 25477059, when the prologue had this same shape. It was fifteen on
+/// 26345091 through 26480954, three spills (the third `mov [rsp+0x10],rdx`,
+/// which 26636972 dropped again).
+pub const GRANT_STOLEN: usize = 13;
 
 /// The bytes those [`GRANT_STOLEN`] must be, checked before patching. A wrong
 /// patch here is a crash to desktop; a refusal is a plugin whose carcasses pay
@@ -98,7 +98,7 @@ pub const GRANT_STOLEN: usize = 15;
 pub const GRANT_PROLOGUE: [u8; GRANT_STOLEN] = [
     0x48, 0x89, 0x5C, 0x24, 0x08, // mov [rsp+0x08],rbx
     0x4C, 0x89, 0x4C, 0x24, 0x20, // mov [rsp+0x20],r9
-    0x48, 0x89, 0x54, 0x24, 0x10, // mov [rsp+0x10],rdx
+    0x55, 0x56, 0x57, // push rbp; push rsi; push rdi
 ];
 
 /// The live multiplier, read by the callback on every method-0 grant.

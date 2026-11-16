@@ -8,18 +8,20 @@
 //! `desert_core::gimmick::resolve_record_loader`, never hard-coded. Two
 //! callers reach it (the per-record accessor and a load-everything path) and
 //! both only call it when the record is *not* loaded yet
-//! (`mgr->records[idx] == null`). It allocates the record object and then
+//! (`entries[idx].object == null`). It allocates the record object and then
 //! calls the deserializer, which reads the record sequentially out of the
 //! stream. Our hook runs before that, while the bytes are still raw.
 //!
 //! `idx` arrives in `r8w`: the upper 48 bits are garbage, so it is masked
-//! with `0xFFFF` exactly as the game does (`(param_3 & 0xffff) * 8`).
+//! with `0xFFFF` exactly as the game does (`movzx eax,r8w`).
 //!
 //! ```text
-//! Manager (mgr)
-//!   +0x08  u32   record_count
-//!   +0x28  ptr   offsets table, 8-byte entries, u32 file_offset at entry+4
-//!   +0x58  ptr   array of record_count object pointers (null = not loaded)
+//! Manager (mgr), build 26636972 (desert_core::manager)
+//!   +0x20  ptr   entries, 24 bytes each: u32 file_offset at +4,
+//!                parsed object at +8 (null = not loaded)
+//!   +0x28  u32   record_count
+//!                (through 26480954: count +0x08, offsets table +0x28 with
+//!                8-byte entries, object-pointer array +0x58)
 //!
 //! Stream (StreamLayout::NEW on 26361232; StreamLayout::OLD through 25477059)
 //!   +0x20  ptr   buffer: the raw table body, byte-identical to the archive's (+0x10)
@@ -54,7 +56,7 @@
 //! [`set_stream_layout`] before the hook goes in. If that parse fails, the
 //! first call probes the known layouts against the live stream instead
 //! ([`desert_core::gimmick::choose_layout`]: a non-null buffer, a size in
-//! range, a cursor equal to the offsets table's entry), and if neither
+//! range, a cursor equal to the record's entry), and if neither
 //! validates the hook stays inert for the session and says so once.
 //!
 //! Records are contiguous in index order, so entry[idx+1] ends record idx and
@@ -444,7 +446,7 @@ pub fn describe_layout(l: &StreamLayout) -> String {
 /// touching anything until [`STREAM`] is set, and for good once the probe has
 /// failed.
 fn first_call(mgr: usize, count: usize, idx: usize, stream: usize) {
-    let entry = safe::read_ptr(mgr + 0x28).and_then(|t| safe::read::<u32>(t + idx * 8 + 4));
+    let entry = manager::view_of(mgr).and_then(|(_, entries)| manager::file_offset(entries, idx));
     let layout = match STREAM.get() {
         Some(l) => Some(*l),
         None => probe_layout(stream, entry),
@@ -452,7 +454,7 @@ fn first_call(mgr: usize, count: usize, idx: usize, stream: usize) {
     let Some(l) = layout else {
         crate::log!(
             "[gimmick] first call: mgr=0x{mgr:X} count={count} idx={idx} stream=0x{stream:X} \
-             stream layout unknown table[idx]=0x{:X}",
+             stream layout unknown entry[idx].file_offset=0x{:X}",
             entry.unwrap_or(0)
         );
         return;
@@ -462,7 +464,7 @@ fn first_call(mgr: usize, count: usize, idx: usize, stream: usize) {
     let cursor = safe::read::<u32>(stream + l.cursor as usize).unwrap_or(0);
     crate::log!(
         "[gimmick] first call: mgr=0x{mgr:X} count={count} idx={idx} stream=0x{stream:X} \
-         buf=0x{buf:X} size=0x{size:X} cursor=0x{cursor:X} table[idx]=0x{:X} ({})",
+         buf=0x{buf:X} size=0x{size:X} cursor=0x{cursor:X} entry[idx].file_offset=0x{:X} ({})",
         entry.unwrap_or(0),
         describe_layout(&l)
     );
@@ -484,7 +486,7 @@ fn probe_layout(stream: usize, entry: Option<u32>) -> Option<StreamLayout> {
     });
     let chosen = match entry {
         Some(expected) => gimmick::choose_layout(&readings, expected, dump::MAX_DUMP as u32),
-        None => Err("the offsets table entry for this record is unreadable".to_string()),
+        None => Err("the manager entry for this record is unreadable".to_string()),
     };
     match chosen {
         Ok((l, why)) => {
@@ -508,18 +510,16 @@ fn probe_layout(stream: usize, entry: Option<u32>) -> Option<StreamLayout> {
 ///
 /// Returns `None` for every reason the record must be left alone: no stream
 /// layout, a read that failed, an index out of range, a record already loaded,
-/// or an offsets table that disagrees with the stream cursor.
+/// or a manager entry that disagrees with the stream cursor.
 fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>)> {
-    // The offsets are `desert_core::manager`'s, the reads are not: this function
-    // must read the count *before* the first-call diagnostic below and the
-    // records array *after* it, and it wants the `records[idx] == 0` reading
-    // rather than the object, so `manager::view_of` and `manager::slot` would
-    // both change what happens here. Only the two strides are shared.
+    // The count comes first and alone, *before* the first-call diagnostic
+    // below; the entries array is read after it. Every address is
+    // `desert_core::manager`'s: this file computes none.
     let unread = || {
         STREAM_UNREAD.fetch_add(1, Ordering::Relaxed);
         None
     };
-    let Some(count) = safe::read::<u32>(mgr + manager::MGR_COUNT) else { return unread() };
+    let Some(count) = manager::count(mgr) else { return unread() };
     let count = count as usize;
     if !FIRST_CALL_LOGGED.swap(true, Ordering::Relaxed) {
         first_call(mgr, count, idx, stream);
@@ -530,17 +530,17 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
     if idx >= count {
         return unread();
     }
-    // The two callers only reach the loader when the slot is null. If it is
-    // not, the game will not parse anything and a patch would be pointless
-    // (and, since the buffer may hold a different record's bytes, wrong).
-    // Not a failure, so not counted.
-    let Some(records) = safe::read_ptr(mgr + manager::MGR_RECORDS) else { return unread() };
-    match safe::read::<usize>(records + idx * 8) {
-        Some(0) => {}
-        Some(_) => return None,
-        None => return unread(),
+    let Some((_, entries)) = manager::view_of(mgr) else { return unread() };
+    // The two callers only reach the loader when the entry's object is null.
+    // If it is not, the game will not parse anything and a patch would be
+    // pointless (and, since the buffer may hold a different record's bytes,
+    // wrong). Not a failure, so not counted.
+    match manager::slot(entries, idx) {
+        manager::Slot::Empty => {}
+        manager::Slot::Loaded(_) => return None,
+        manager::Slot::Unreadable => return unread(),
     }
-    match stream_record(mgr, idx, count, stream, layout) {
+    match stream_record(entries, idx, count, stream, layout) {
         Some(r) => {
             STREAM_READ.fetch_add(1, Ordering::Relaxed);
             Some(r)
@@ -550,9 +550,10 @@ fn record_bytes(mgr: usize, idx: usize, stream: usize) -> Option<(usize, Vec<u8>
 }
 
 /// The record's bytes out of the stream buffer at `layout`, checked against
-/// the offsets table; `None` (counted as unread by the caller) on any doubt.
+/// the manager's entries; `None` (counted as unread by the caller) on any
+/// doubt.
 fn stream_record(
-    mgr: usize,
+    entries: usize,
     idx: usize,
     count: usize,
     stream: usize,
@@ -568,20 +569,19 @@ fn stream_record(
     // entry[idx].file_offset must be exactly where the stream is parked. If it
     // is not, our model of the manager is wrong on this build: say so once and
     // never guess at a record boundary.
-    let offsets = safe::read_ptr(mgr + 0x28)?;
-    let expected = safe::read::<u32>(offsets + idx * 8 + 4)? as usize;
+    let expected = manager::file_offset(entries, idx)? as usize;
     if expected != cursor {
         if !CURSOR_MISMATCH_LOGGED.swap(true, Ordering::Relaxed) {
             crate::log!(
-                "[gimmick] idx {idx}: stream cursor 0x{cursor:X} != offsets table 0x{expected:X}; \
-                 not patching anything (logged once)"
+                "[gimmick] idx {idx}: stream cursor 0x{cursor:X} != entry[idx].file_offset \
+                 0x{expected:X}; not patching anything (logged once)"
             );
         }
         return None;
     }
 
     let end = if idx + 1 < count {
-        safe::read::<u32>(offsets + (idx + 1) * 8 + 4)? as usize
+        manager::file_offset(entries, idx + 1)? as usize
     } else {
         size
     };
@@ -721,8 +721,8 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// one first.
 ///
 /// ```text
-/// mgr+0x08    u32   record_count
-/// mgr+0x58    ptr   array of record pointers (null = not loaded)
+/// mgr+0x08    u32   record_count            (mgr+0x28 since 26636972)
+/// mgr+0x58    ptr   array of record pointers (entries+idx*24+8 since 26636972)
 /// rec+0x08    u32   key, the same one the raw record header carries
 /// rec+0x278   ptr   output list data: entries of 16 bytes
 /// rec+0x280   u32   entry count
@@ -739,11 +739,11 @@ pub unsafe extern "system" fn on_record_load(mgr: usize, status: usize, idx: usi
 /// count. The raw scanner has never touched it, so neither does this: the two
 /// paths must produce the same yields or a session's numbers would depend on
 /// when the ini was last edited.
-// The manager pair itself is not here: `mgr+0x08` and `mgr+0x58` are
-// `desert_core::manager`'s MGR_COUNT and MGR_RECORDS, which `desert_dispatch`
-// reads the faction-node and dropset managers through as well. One
+// The manager itself is not here: the count and the entries are
+// `desert_core::manager`'s (`view_of`, `slot`, `file_offset`), which
+// `desert_dispatch` and the looter read their managers through as well. One
 // definition, so a stride cannot be right in one subsystem and wrong in the
-// other.
+// other - which is what made the 26636972 move one file.
 //
 // The rest of the table above was `mod parsed`'s constants through 0.10.0 and
 // is `gimmick::ParsedLayout::OLD` now. Two notes from it stay true:
@@ -896,7 +896,7 @@ fn find_and_dump(s: &gimmick::ParsedSample) {
 /// the first pass with loaded remembered records (logged once, either way).
 /// `None` once the probe has failed: the pass is skipped, and the load path
 /// still multiplies every record the game loads later.
-fn parsed_layout(records: usize, count: usize, debug: bool) -> Option<gimmick::ParsedLayout> {
+fn parsed_layout(entries: usize, count: usize, debug: bool) -> Option<gimmick::ParsedLayout> {
     if let Some(&l) = PARSED.get() {
         return Some(l);
     }
@@ -906,7 +906,7 @@ fn parsed_layout(records: usize, count: usize, debug: bool) -> Option<gimmick::P
     let samples: Vec<gimmick::ParsedSample> = remember::snapshot()
         .into_iter()
         .filter(|r| (r.idx as usize) < count)
-        .filter_map(|r| match manager::slot(records, r.idx as usize) {
+        .filter_map(|r| match manager::slot(entries, r.idx as usize) {
             manager::Slot::Loaded(obj) => Some(gimmick::ParsedSample { key: r.key, obj, blocks: r.blocks }),
             _ => None,
         })
@@ -1138,19 +1138,16 @@ pub fn reapply() -> Outcome {
     let dry = LIVE.dry_run();
     let debug = LIVE.debug();
 
-    // `manager::view_of` is the same three steps this block used to spell out:
-    // read the `u32` count at MGR_COUNT, read the array pointer at MGR_RECORDS,
-    // and require it to be `plausible` - so `records + idx * 8`, with a `u16`
-    // index adding at most 0x7FFF8, cannot wrap. Every failure lands on the same
-    // `manager_unreadable` flag it did before. The one difference is that a
-    // count that will not read no longer attempts the array read beside it,
-    // which nothing can observe: `safe::read` has no effect but its answer.
-    let Some((count, records)) = manager::view_of(mgr) else {
+    // `manager::view_of` reads the `u32` count and the entries pointer and
+    // requires the pointer to be `plausible`, so an entry address, with a
+    // `u16` index adding at most 0x17FFE8, cannot wrap. Every failure lands on
+    // the `manager_unreadable` flag.
+    let Some((count, entries)) = manager::view_of(mgr) else {
         out.manager_unreadable = true;
         return out;
     };
     let count = count as usize;
-    let Some(layout) = parsed_layout(records, count, debug) else {
+    let Some(layout) = parsed_layout(entries, count, debug) else {
         out.layout_unknown = true;
         return out;
     };
@@ -1163,11 +1160,9 @@ pub fn reapply() -> Outcome {
             out.skip_index += 1;
             continue;
         }
-        // The same three readings this block used to spell out, in the same
-        // order - read, null, `plausible` - and charged to the same two
-        // counters. `manager::slot` is where `desert_dispatch` walks its two
-        // managers through as well.
-        let obj = match manager::slot(records, idx) {
+        // Read, null, `plausible`, charged to two counters. `manager::slot` is
+        // where `desert_dispatch` walks its managers through as well.
+        let obj = match manager::slot(entries, idx) {
             manager::Slot::Loaded(p) => p,
             manager::Slot::Empty => {
                 // The slot was never filled: the lazy loader will fill it

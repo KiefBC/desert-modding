@@ -38,9 +38,11 @@
 //! jumps back to `site + 13`.
 //!
 //! Three facts about the site make that stub legal, all read off the
-//! disassembly: `r15` holds the creature actor there (the instructions just
-//! past the call reload `[r15+0x68]` for the same component this callback
-//! reads), every volatile register is dead because the very next thing is a
+//! disassembly: a callee-saved register holds the creature actor there (the
+//! instructions just past the call reload `[reg+0x68]` for the same component
+//! this callback reads; `r15` through 26480954, `rsi` on 26636972, so the
+//! hook reads which one off that reload with
+//! [`desert_core::creature::catch_actor_register`] and refuses if it cannot), every volatile register is dead because the very next thing is a
 //! call whose only arguments (rcx, rdx, r8) are all set after this point,
 //! and `rsp` is 16-byte aligned because that call is about to happen. The one
 //! branch that reaches this range (`je 0x2a75891` at `0x2a75771`) targets its
@@ -62,7 +64,9 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use desert_core::creature::{self, CATCH_BYTES, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN};
+use desert_core::creature::{
+    self, CATCH_BYTES, CATCH_CALL_END, CATCH_REPLACED, CATCH_SITE, CATCH_STOLEN,
+};
 use desert_core::pattern::{Found, Pattern};
 use desert_core::safe;
 use desert_core::trampoline;
@@ -79,7 +83,7 @@ pub use desert_core::hook::{hex, install_raw, CountCallback, Hook};
 /// is the interaction category byte (`docs/reference-internals.md` sections
 /// 15.6 and 17.3). The `+0x20` slot is the game's own constant here: the
 /// instructions right after the patched call read the same component the same
-/// way (`mov rdx,[r15+0x68]; mov rax,[rdx+0x20]`), so this is not the RTTI
+/// way (`mov rdx,[rsi+0x68]` on 26636972, `[r15+0x68]` before; `mov rax,[rdx+0x20]`), so this is not the RTTI
 /// component lookup the auto-loot half does: it is what this function does. That
 /// is why this stays local while the byte it leads to, and the type byte in
 /// front of it, are `desert_core::creature`'s.
@@ -364,8 +368,9 @@ fn count_for(actor: usize) -> u32 {
 /// once per creature granted, and its return value is the count.
 ///
 /// # Safety
-/// Called from a [`trampoline::count_hook_stub`] stub with `r15` in `rcx`,
-/// which at that site is the creature actor. It only reads through
+/// Called from a [`trampoline::count_hook_stub`] stub with the creature
+/// actor in `rcx` (copied from the register [`creature::catch_actor_register`]
+/// read off the site: `r15` through 26480954, `rsi` on 26636972). It only reads through
 /// `desert_core::safe`, writes nothing anywhere, calls no game function and
 /// returns a value in `MULT_MIN..=MULT_MAX`.
 pub unsafe extern "system" fn on_catch_count(actor: usize) -> u32 {
@@ -383,8 +388,8 @@ pub fn install_catch_hook(module: &MainModule) -> bool {
         crate::log!("[catch] the catch-site pattern is malformed; catch multipliers off");
         return false;
     };
-    let target = match pat.find_unique(module.bytes()) {
-        Found::Unique(off) => module.base + off,
+    let (target, off) = match pat.find_unique(module.bytes()) {
+        Found::Unique(off) => (module.base + off, off),
         Found::None => {
             crate::log!("[catch] signature not found; catch multipliers off");
             return false;
@@ -413,6 +418,24 @@ pub fn install_catch_hook(module: &MainModule) -> bool {
         return false;
     }
 
+    // Which register holds the creature actor here is read off the game's
+    // own reload of its component just past the call (`mov r64,[base+0x68]`):
+    // it was r15 through 26480954 and is rsi on 26636972, and the stub that
+    // still passed r15 there handed the callback 0x1FE on every catch.
+    let after = module
+        .bytes()
+        .get(off + CATCH_CALL_END..off + CATCH_CALL_END + 8)
+        .unwrap_or(&[]);
+    let Some(actor_reg) = creature::catch_actor_register(after) else {
+        crate::log!(
+            "[catch] no `mov r64,[actor+0x68]` past the call at +0x{:X} ({}); the actor \
+             register is unknown, NOT hooking",
+            module.rva(target),
+            hex(after)
+        );
+        return false;
+    };
+
     // The tail of the stolen bytes: everything the stub replays, which is
     // every stolen instruction except the `mov r8d,imm32` it replaces.
     let Some(replay) = CATCH_BYTES.get(CATCH_REPLACED..) else {
@@ -424,14 +447,15 @@ pub fn install_catch_hook(module: &MainModule) -> bool {
     // and it is what stops the cast being a bare function-item-to-integer.
     let callback: CountCallback = on_catch_count;
     let stub_code =
-        trampoline::count_hook_stub(callback as usize, target + CATCH_STOLEN, replay);
+        trampoline::count_hook_stub(callback as usize, target + CATCH_STOLEN, replay, actor_reg);
 
     // SAFETY: `target` is the unique `CATCH_SITE` hit inside the running
     // image and its 13 bytes were just read back and compared byte for byte
     // with `CATCH_BYTES`, so they are the whole, position-independent
     // `mov r8d,1` and `lea rdx,[rbp+0x1d0]` of section 17.4 and nothing
     // branches into the middle of them. `stub_code` calls `on_catch_count`
-    // with `r15` (the creature actor at that site), puts its `u32` result in
+    // with `actor_reg` (the creature actor at that site, read off the game's
+    // own `[reg+0x68]` reload past the call), puts its `u32` result in
     // `r8d` in place of the replaced immediate, replays the `lea` and jumps
     // to `target + CATCH_STOLEN`, so the game's own code continues from the
     // next instruction with every non-volatile register untouched; the
@@ -442,10 +466,11 @@ pub fn install_catch_hook(module: &MainModule) -> bool {
     match unsafe { install_raw(target, CATCH_STOLEN, &stub_code) } {
         Ok(h) => {
             crate::log!(
-                "[catch] hook at +0x{:X} -> stub 0x{:X}; original bytes: {}",
+                "[catch] hook at +0x{:X} -> stub 0x{:X}; original bytes: {}; actor in {}",
                 module.rva(h.target),
                 h.stub,
-                hex(&h.original)
+                hex(&h.original),
+                creature::reg_name(actor_reg)
             );
             true
         }
@@ -473,7 +498,7 @@ mod tests {
     fn the_stub_jumps_back_past_every_stolen_byte() {
         let site = 0x1_4000_0000usize;
         let replay = CATCH_BYTES.get(CATCH_REPLACED..).expect("replay tail");
-        let s = trampoline::count_hook_stub(0xCAFE, site + CATCH_STOLEN, replay);
+        let s = trampoline::count_hook_stub(0xCAFE, site + CATCH_STOLEN, replay, 6);
         // The stub ends with `mov rax,imm64` (10 bytes) then `jmp rax` (2).
         let tail = s.len() - 12;
         assert_eq!(s.get(tail..tail + 2), Some(&[0x48u8, 0xB8][..]));

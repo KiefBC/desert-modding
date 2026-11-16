@@ -12,7 +12,7 @@ const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/Cri
 
 /// `desert_harvest::looter::game::SIGNATURES`, spelled out again because that
 /// module is Windows-only and these tests run natively, with the RVA each one
-/// hits on Steam build 26480954. All ten, `loot_grant` and `item_log` included
+/// hits on Steam build 26636972. All ten, `loot_grant` and `item_log` included
 /// (`item_log` was added on 26361232 and has no older RVA). The patterns
 /// were re-derived on 26345091, whose RVAs were, in this order: 0x161AFD0,
 /// 0x29A8370, 0x3B539AF, 0x2D35585, 0x1937610, 0x29A97C3, 0x22D6A50, 0x22D6D70,
@@ -24,32 +24,36 @@ const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/Cri
 /// +0x1250 (`item_log`) to +0x5A60 (`area_sweep`): 0x161C490, 0x29AC1E0,
 /// 0x3B596FF, 0x2D3B0A5, 0x1938D70, 0x29AD633, 0x22D9620, 0x22D9940,
 /// 0x2E24BA0 and 0x116B800. On 26480954 they moved up again, by +0x7B0
-/// (`item_log`) to +0xDB0 (`area_sweep`).
+/// (`item_log`) to +0xDB0 (`area_sweep`): 0x161CCB0, 0x29ACE30, 0x3B5A4AF,
+/// 0x2D3BD15, 0x19399B0, 0x29AE283, 0x22DA260, 0x22DA580, 0x2E25810 and
+/// 0x116BFB0. On 26636972 everything moved and three patterns were
+/// re-derived (`own_check_site`, `loot_grant`, `item_log`; the 26480954 forms
+/// hit nowhere).
 const SIGNATURES: &[(&str, &str, usize)] = &[
-    ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00", 0x161CCB0),
-    ("enqueue", "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00", 0x29ACE30),
-    ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B", 0x3B5A4AF),
-    ("own_check_site", "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 05 40 B7 02", 0x2D3BD15),
-    ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01", 0x19399B0),
-    ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25", 0x29AE283),
-    ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??", 0x22DA260),
-    ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9", 0x22DA580),
-    ("loot_grant", "48 89 5C 24 08 4C 89 4C 24 20 48 89 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B E1 4C 8B EA 4C 8B F9", 0x2E25810),
-    ("item_log", "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 48 89 4C 24 08 57 41 54 41 55 41 56 41 57 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 BC 24 ?? ?? ?? ?? 00 0F 85 ?? ?? ?? ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84", 0x116BFB0),
+    ("alloc_event", "48 89 5C 24 ?? 48 89 74 24 ?? 4C 89 44 24 ?? 48 89 4C 24 ?? 57 48 83 EC 30 8B F2 E8 ?? ?? ?? ?? BA ?? ?? 00 00 65 48 8B 04 25 58 00 00 00", 0x165D9C0),
+    ("enqueue", "48 89 5C 24 08 48 89 74 24 20 57 48 83 EC 20 48 8B ?? 38 65 48 8B 04 25 58 00 00 00", 0x2A0F460),
+    ("area_sweep+0xF", "55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC 50 C5 F8 29 74 24 40 4C 8B ?? 48 8B ?? 48 8B ?? 44 8B", 0x3BD3FAF),
+    ("own_check_site", "48 8B 89 20 01 00 00 E8 ?? ?? ?? ?? 84 C0 74 04 B3 02", 0x2DA26DA),
+    ("get_pos", "40 53 48 83 EC 50 48 8B 41 68 48 8B 88 ?? 01 00 00 48 8B 01", 0x199F370),
+    ("desc_mask+queue_site", "E8 ?? ?? ?? ?? 44 8B 05 ?? ?? ?? ?? 0F B7 54 24 ?? E8 ?? ?? ?? ?? 4C 8B 25", 0x2A108B3),
+    ("interaction_fn", "88 54 24 10 48 89 4C 24 08 53 55 56 57 41 54 41 55 41 56 41 57 48 83 EC 58 49 8B ?? 44 0F B6 ?? 4C 8B ??", 0x234ABA0),
+    ("category_fn", "48 89 5C 24 18 88 54 24 10 55 56 57 41 54 41 55 41 56 41 57 48 8B EC 48 81 EC ?? ?? ?? ?? 41 8B D9 4D 8B F0 44 0F B6 EA 4C 8B F9", 0x234AEC0),
+    ("loot_grant", "48 89 5C 24 08 4C 89 4C 24 20 55 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 4D 8B F9 4C 8B E2 4C 8B E9", 0x2E8CFC0),
+    ("item_log", "48 89 5C 24 10 48 89 74 24 18 48 89 7C 24 20 48 89 4C 24 08 55 41 54 41 55 41 56 41 57 48 8B EC 48 83 EC ?? 41 0F B7 F9 45 0F B7 F8 4C 8B EA 4C 8B E1 80 7D ?? 00 0F 85 ?? ?? ?? ?? 0F B7 42 08 66 89 45 ?? 45 8B CF 41 83 E9 07 0F 84 ?? ?? ?? ?? 41 83 E9 11 0F 84", 0x11A43C0),
 ];
 
 /// The steal check `own_check_site`'s call lands on, and the context static
-/// its `lea r9` loads 0xE bytes before the site, on 26480954 (`0x2805550` and
-/// `0x58F2958` on 26423880; `0x28019C0` and
+/// its `lea r9` loads 0xE bytes before the site, on 26636972 (`0x28061C0` and
+/// `0x58F4960` on 26480954, `0x2805550` and `0x58F2958` on 26423880; `0x28019C0` and
 /// `0x58EC918` on 26361232; `0x2801700` and `0x58EB918` on 26345091; on
 /// 26356046 the check was `0x2801A10` and the context `0x58EC918`).
-const STEAL_CHECK_RVA: usize = 0x28061C0;
-const STEAL_CTX_RVA: usize = 0x58F4960;
+const STEAL_CHECK_RVA: usize = 0x2865990;
+const STEAL_CTX_RVA: usize = 0x5970AE8;
 
-/// RVA of the catch-count patch site on 26480954, file offset `0x2DDBFD8`
-/// (`0x2DDBF68`, file `0x2DDB368`, on 26423880; `0x2DD6728`, file `0x2DD5B28`, on 26361232; `0x2DD6778`, file `0x2DD5B78`,
+/// RVA of the catch-count patch site on 26636972 (`0x2DDCBD8`, file offset
+/// `0x2DDBFD8`, on 26480954; `0x2DDBF68`, file `0x2DDB368`, on 26423880; `0x2DD6728`, file `0x2DD5B28`, on 26361232; `0x2DD6778`, file `0x2DD5B78`,
 /// on 26356046; `0x2DD6448`, file `0x2DD5848`, on 26345091).
-const CATCH_RVA: usize = 0x2DDCBD8;
+const CATCH_RVA: usize = 0x2E43AF8;
 
 /// Where the `call rel32` at `e8` lands, `None` if there is no call there.
 fn rel32_target(img: &[u8], e8: usize) -> Option<usize> {
@@ -109,7 +113,7 @@ fn all_signatures_unique_and_actor_manager_vtable_found() {
     let il = rva("item_log");
     assert_eq!(
         &img[il..il + 15],
-        &[0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x6C, 0x24, 0x18, 0x48, 0x89, 0x74, 0x24, 0x20]
+        &[0x48, 0x89, 0x5C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x48, 0x89, 0x7C, 0x24, 0x20]
     );
 }
 

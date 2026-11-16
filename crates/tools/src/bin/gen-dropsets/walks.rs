@@ -30,7 +30,8 @@ fn end(r: &R, rec: &[u8]) -> Result<(), Stop> {
 }
 
 /// One `dropsetinfo` row, walked to its end (FINDINGS 2.7): `u8 isBlocked`,
-/// `u8 isEqualPercent`, `u8 dropRollType`, `u16 neeSlotCount`, `u32
+/// `u8 isEqualPercent`, `u8 isToVehicle` (new in 26636972), `u8
+/// dropRollType`, `u16 neeSlotCount`, `u32
 /// dropTagNameHash`, `u32 dropRollCount`, `u32 n` x (`u8 present` + drop
 /// entry), `i64 needWeight`, `i64 totalDropRate`, `i64 rollDiceSkipRate`, `u32
 /// dropConditionString`, string `originalString`.
@@ -47,7 +48,7 @@ pub struct Dropset {
 
 pub fn dropset(rec: &[u8], key: u32) -> Result<Dropset, Stop> {
     let mut r = at_key(rec, key)?;
-    r.skip(3 + 2 + 4 + 4)?;
+    r.skip(4 + 2 + 4 + 4)?; // 3 + 2 + 4 + 4 through 26480954, before isToVehicle
     let declared = r.n()?;
     let mut entries = Vec::with_capacity(declared);
     for _ in 0..declared {

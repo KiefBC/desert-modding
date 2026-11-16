@@ -3,25 +3,27 @@
 //!
 //! The `[banking]` line's two gates, found by signature the way the plugin
 //! finds them at startup (`node::globals::resolve_gates`), pinned to Steam
-//! build 26480954. The signatures were derived on 26345091; the gates resolved
-//! to the same two addresses on 26356046 and 26361232 and moved on 26423880
-//! and again on 26480954.
+//! build 26636972. The signatures were derived on 26345091 and re-derived on
+//! 26636972; the gates resolved to the same two addresses on 26356046 and
+//! 26361232 and moved on 26423880, 26480954 and 26636972.
 
 use desert_core::pe;
 use desert_dispatch::node::globals;
 
 const EXE: &str = "/mnt/f/SteamLibrary/steamapps/common/Crimson Desert/bin64/CrimsonDesert.exe";
 
-/// The deferred-reward and surplus-worker gates on 26480954 (`0x71580B8` and
+/// The deferred-reward and surplus-worker gates on 26636972 (`0x715A1D8` and
+/// `0x7131ED8` on 26480954, `0x71580B8` and
 /// `0x712FDB8` on 26423880, `0x7150E18` and
 /// `0x7128CA8` on 26361232 and 26356046, `0x714FE68` and
 /// `0x7127CF8` on 26345091; `0x6BC6AA8` and `0x6BA07C8` on 25116796, never
 /// re-derived on the builds between).
-const DEFERRED_GATE_RVA: usize = 0x715A1D8;
-const SURPLUS_GATE_RVA: usize = 0x7131ED8;
+const DEFERRED_GATE_RVA: usize = 0x71DED98;
+const SURPLUS_GATE_RVA: usize = 0x71B6768;
 /// The surplus-worker rate global the same arithmetic multiplies by: 0xA0
 /// below the surplus gate on 25116796 (`0x6BA0728`), on 26345091, on
-/// 26361232, on 26423880 (`0x712FD18`) and on 26480954 (`0x7131E38`).
+/// 26361232, on 26423880 (`0x712FD18`), on 26480954 (`0x7131E38`) and on
+/// 26636972 (`0x71B66C8`).
 const RATE_BELOW_SURPLUS: usize = 0xA0;
 
 #[test]
@@ -39,13 +41,14 @@ fn the_banking_gates_resolve_once_each_to_zero_initialised_data() {
     assert_eq!(img.get(SURPLUS_GATE_RVA), Some(&0));
 
     // The surplus read's arithmetic still names the rate global the old build
-    // kept at the same distance: `movsxd rax,[rip+rate]` 0x1E past the `38`.
+    // kept at the same distance: `movsxd rax,[rip+rate]` 0x1D past the `38`
+    // (0x1E through 26480954, before the operator-count load lost its REX).
     let p = desert_core::pattern::Pattern::parse(globals::SURPLUS_GATE_SIG).unwrap();
     let hit = match p.find_unique(&img) {
         desert_core::pattern::Found::Unique(h) => h,
         other => panic!("{other:?}"),
     };
-    let movsxd = hit + 0x1E;
+    let movsxd = hit + 0x1D;
     assert_eq!(&img[movsxd..movsxd + 3], &[0x48, 0x63, 0x05]);
     let rate = desert_core::pattern::resolve_rip(&img, movsxd, 3, 7).unwrap();
     assert_eq!(rate, SURPLUS_GATE_RVA - RATE_BELOW_SURPLUS);

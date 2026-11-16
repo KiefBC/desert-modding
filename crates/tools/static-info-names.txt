@@ -10,6 +10,11 @@
 # 67 lowercase table names that differ from their class name) through build 25477059.
 # 2026-11-01, build 26345091: `reviepointinfo` is gone from the exe (the class name
 # RevivePointInfo stays), so 215 names.
+# 2026-11-13, build 26636972: five types left the exe with their table names
+# (DetectDetailInfo/detectdetailinfo, GameConditionInfo, ItemMeshGroupInfo/
+# itemmeshgroupinfo, LightDataInfo, TextGuideInfo/textguideInfo: eight names, none
+# of them in the archive any more) and two arrived (the block at the end), so
+# 221 - 8 + 4 = 217 names.
 
 AIActionAttributeInfo
 AIDialogStringInfo
@@ -41,7 +46,6 @@ ContentsPhaseInfo
 CraftToolGroupInfo
 CraftToolInfo
 DailyRoutineInfo
-DetectDetailInfo
 DetectInfo
 DetectReactionInfo
 DialogSetInfo
@@ -73,7 +77,6 @@ FormationInfo
 FrameEventAttrGroupInfo
 GameAdviceGroupInfo
 GameAdviceInfo
-GameConditionInfo
 GameEventHandlerInfo
 GameGlobalEffectInfo
 GameLevelInfo
@@ -96,7 +99,6 @@ InteractionInfo
 InventoryInfo
 ItemGroupInfo
 ItemInfo
-ItemMeshGroupInfo
 ItemUseInfo
 JobInfo
 KeyMapSettingListInfo
@@ -104,7 +106,6 @@ KnowledgeGroupInfo
 KnowledgeInfo
 LevelActionPointInfo
 LevelGimmickSceneObjectInfo
-LightDataInfo
 LocalStringInfo
 MaterialBloodDecalInfo
 MaterialMatchInfo
@@ -153,7 +154,6 @@ SubLevelInfo
 TerrainRegionAutoSpawnInfo
 TerrainRegionNaviInfo
 TerritoryInfo
-TextGuideInfo
 TradeMarketItemInfo
 TribeInfo
 TriggerRegionInfo
@@ -174,7 +174,6 @@ characterappearanceindexinfo
 charactergroupinfo
 characterinfo
 conditioninfo
-detectdetailinfo
 detectinfo
 dialogsetinfo
 dialogvoiceinfo
@@ -191,7 +190,6 @@ gimmickgateinfo
 gimmickinfo
 interactioninfo
 iteminfo
-itemmeshgroupinfo
 itemuseinfo
 jobinfo
 knowledgeInfo
@@ -220,7 +218,6 @@ stringinfo
 sublevelinfo
 terrainregionautospawninfo
 territoryinfo
-textguideInfo
 trademarketiteminfo
 tribeinfo
 uifiltergroupinfo
@@ -236,3 +233,11 @@ KeyMap
 managementbuffinfo
 statchangeInfo
 NpcNameInfo
+
+# 2026-11-13, build 26636972: two new types, GameBalanceInfo and GameBalanceGroupInfo,
+# whose accessors pass gamebalanceinfo and GameBalanceGroup. Neither is in the archive
+# (no .staticinfobody); each name occurs once in the exe.
+GameBalanceInfo
+GameBalanceGroupInfo
+GameBalanceGroup
+gamebalanceinfo

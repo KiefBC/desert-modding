@@ -4,9 +4,10 @@
 //! Ignored by default: the game is not on a CI runner. `just tools-check-game`
 //! runs every ignored test in this workspace, this file's with them.
 //!
-//! The oracle is `analysis/tables/`, the 274 static-info files the Python
-//! reader (`analysis/pamt.py`, `lz4block.py`) extracted on build 26480954:
-//! every one must come out of the archive byte for byte.
+//! The oracle is `analysis/tables/`, the 272 static-info files `just
+//! extract-tables` wrote on build 26636972 (274 on 26480954, before
+//! `detectdetailinfo` left the archive): every one must come out of the
+//! archive byte for byte.
 
 use std::path::PathBuf;
 
@@ -40,7 +41,7 @@ fn every_static_info_file_matches_the_extracted_copy() {
         assert!(got == want, "{} differs from analysis/tables/{}", e.path(), e.name);
         n += 1;
     }
-    assert_eq!(n, 274);
+    assert_eq!(n, 272);
 }
 
 #[test]
@@ -49,14 +50,16 @@ fn gimmickinfo_entries_are_what_the_listing_says() {
     let a = archive();
     let (group, body) = a.find(&staticinfo::archive_path("gimmickinfo", BODY_EXT)).unwrap();
     assert_eq!(group, "0008");
-    // 26480954: the body grew 1082 bytes (one record, 32 changed) and
-    // compresses to 1_361_087. On 26423880 it was the same size as on
+    // 26636972: 17_664_283 bytes (8 records more, one byte more per drop
+    // entry), compressed to 1_362_511. 26480954: the body grew 1082 bytes
+    // (one record, 32 changed) to 17_622_309 and compressed to 1_361_087. On 26423880 it was the same size as on
     // 26361232, 17_621_227 bytes (336 bytes differ inside it), and compressed
     // to 1_360_869 (1_360_890 on 26361232).
-    assert_eq!((body.flags, body.size, body.comp_size, body.paz()), (0x0802_0001, 17_622_309, 1_361_087, 1));
+    assert_eq!((body.flags, body.size, body.comp_size, body.paz()), (0x0802_0001, 17_664_283, 1_362_511, 1));
     assert_eq!((body.compression(), body.encryption()), (2, 0));
     let (_, header) = a.find(&staticinfo::archive_path("gimmickinfo", HEADER_EXT)).unwrap();
-    assert_eq!((header.flags, header.size, header.comp_size), (0x0900_0001, 113_682, 113_682));
+    // 14218 x 8 + 2 (113_682 = 14210 x 8 + 2 through 26480954).
+    assert_eq!((header.flags, header.size, header.comp_size), (0x0900_0001, 113_746, 113_746));
     assert_eq!(header.compression(), 0);
 }
 
@@ -66,7 +69,7 @@ fn gimmickinfo_splits_into_its_records() {
     let a = archive();
     let t = staticinfo::read_from_archive(&a, "gimmickinfo").unwrap();
     let recs = t.split().unwrap();
-    assert_eq!(recs.len(), 14210);
+    assert_eq!(recs.len(), 14218); // 14210 on 26361232..26480954
     // Record 0's own header names the key the offsets table gives it.
     let shape = records::probe(&t.body).expect("record header shape");
     let h = records::header_at(&t.body, recs[0].offset, shape).expect("record 0 header");
@@ -102,5 +105,5 @@ fn every_extracted_table_splits() {
         }
     }
     assert!(failed.is_empty(), "{} of {} tables do not split:\n{}", failed.len(), n + failed.len(), failed.join("\n"));
-    assert_eq!(n, 137);
+    assert_eq!(n, 136); // 137 through 26480954, before detectdetailinfo left
 }

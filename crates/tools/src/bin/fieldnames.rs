@@ -49,7 +49,7 @@
 //!   * The class names are the **logical** CamelCase names (`GimmickInfo`,
 //!     `DropSetInfo`), not the lowercase table names the accessor census keys
 //!     on (`gimmickinfo`, `dropsetinfo`). Section 19.2's inventory carries both.
-//!   * 581 classes appear here against about 150 static-info **tables**, because
+//!   * 579 classes (26636972) appear here against about 150 static-info **tables**, because
 //!     nested record types (`DropInfoData` inside `GimmickInfo`) get their own
 //!     messages and are not tables of their own.
 //!   * A name is evidence of a field the deserializer reads, nothing more. It
@@ -75,7 +75,7 @@ use serde::{Deserialize, Serialize};
 const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1,80})\xeb\xa5\xbc";
 
 /// Anchors re-checked on every rebuild. The two counts are this walk's own
-/// numbers on build 26480954; the four relations under them are the ones that
+/// numbers on build 26636972; the four relations under them are the ones that
 /// made the inventory worth keeping, and each is independently checkable.
 ///
 /// Build 25246367 had 4675 pairs and 536 classes. The 25477059 growth is real
@@ -100,8 +100,20 @@ const MSG_RE: &str = r"(?-u)([A-Za-z0-9_:\-]{2,80})\xec\x9d\x98 _([A-Za-z0-9_]{1
 /// `soundSocketNameOnMaxCharged` and `SpawningPoolAutoSpawnInfo`'s
 /// `useSceneCollectSpawn`, and none gone. Build 26480954 (2026-11-06) has the
 /// same 5037 pairs, pair for pair.
-const EXPECT_PAIRS: usize = 5037;
-const EXPECT_CLASSES: usize = 581;
+///
+/// Build 26636972 (2026-11-13) has 5045 pairs and 579 classes: 29 pairs gone
+/// and 37 new. Five tables left with their classes (`DetectDetailInfo`,
+/// `GameConditionInfo`, `ItemMeshGroupInfo` with `ItemMeshGroupData`,
+/// `LightDataInfo`, `TextGuideInfo`), and two arrived (`GameBalanceInfo`,
+/// `GameBalanceGroupInfo`), with `DetectDetailData` (now under `DetectInfo`)
+/// and `StageGameEventData`. Among the rest: `DropSetInfo.isToVehicle`,
+/// `GimmickInfo`'s `autoTargetingConstraintDataList` and
+/// `gimmickConstraintDataList` (the record-layout changes the walks read),
+/// `SkillInfo`/`SkillGroupInfo`'s key lists renamed, and new
+/// `BitmapPositionInfo`, `FrameEventAttribute`, `PatrolGroupSetData` and
+/// `UIMapTextureInfo` fields. The four relations below all still hold.
+const EXPECT_PAIRS: usize = 5045;
+const EXPECT_CLASSES: usize = 579;
 
 /// (description, class, fields that must be present)
 const ANCHORS: &[(&str, &str, &[&str])] = &[
