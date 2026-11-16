@@ -9,7 +9,7 @@ Desert Gatherer and Desert Overlay. Their histories are kept below the 0.3.0 ent
 each, because the code did not change when they became subsystems and the reasons behind it are
 still the reasons. Only `## [x.y.z]` headings name a release of *this* package.
 
-## [0.16.2] - 2026-11-13
+## [0.16.2] - 2026-11-16
 
 Game build **26636972** (the Steam update of 2026-11-13). **Seen in game on 2026-11-16**, over
 two launches: every hook installed, the yield multipliers patched every gather record at load
