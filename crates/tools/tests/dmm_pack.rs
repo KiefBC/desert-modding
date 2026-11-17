@@ -204,12 +204,13 @@ fn twelve_modules_in_the_pack_shape() {
     assert_eq!(changes[1]["offset"], first_list + 4 + 50);
     for c in changes {
         let keys: Vec<&str> = c.as_object().unwrap().keys().map(String::as_str).collect();
-        assert_eq!(keys, ["offset", "record_key", "record_rel_offset", "entry", "rel_offset", "label", "original", "patched"]);
+        assert_eq!(keys, ["offset", "record_key", "record_rel_offset", "record_name", "label", "original", "patched"]);
         let off = c["offset"].as_u64().unwrap() as usize;
         assert_eq!(c["record_key"], 300);
-        assert_eq!(c["entry"], "mine_x");
+        // DMM's keys for a record-relative change, which its 2.04 runtime mount refuses.
+        assert!(c.get("entry").is_none() && c.get("rel_offset").is_none() && c.get("type").is_none());
+        assert_eq!(c["record_name"], "mine_x");
         assert_eq!(c["record_rel_offset"].as_u64().unwrap() as usize, off - p.key_at);
-        assert_eq!(c["rel_offset"].as_u64().unwrap() as usize, off - (p.body - 1));
         assert!(off > p.start);
     }
     assert_eq!(changes[2]["original"], "0400000000000000");

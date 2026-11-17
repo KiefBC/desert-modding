@@ -1,6 +1,6 @@
 {
   "name": "Ore Nodes - 2X",
-  "version": "1.6",
+  "version": "1.7",
   "author": "KiefBC",
   "description": "Multiplies ore nodes node minimum and maximum yields by 2. Select no more than one Ore Nodes rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,7 +10,7 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Ore Nodes - 2X",
-    "version": "1.6",
+    "version": "1.7",
     "author": "KiefBC",
     "description": "2x yields for ore nodes nodes.",
     "allow_partial_apply": true
@@ -28,8 +28,7 @@
           "offset": 10526401,
           "record_key": 17080001,
           "record_rel_offset": 1449,
-          "entry": "ore_RedStone_01",
-          "rel_offset": 1360,
+          "record_name": "ore_RedStone_01",
           "label": "Ore Nodes: ore_RedStone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -38,8 +37,7 @@
           "offset": 10526409,
           "record_key": 17080001,
           "record_rel_offset": 1457,
-          "entry": "ore_RedStone_01",
-          "rel_offset": 1368,
+          "record_name": "ore_RedStone_01",
           "label": "Ore Nodes: ore_RedStone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -48,8 +46,7 @@
           "offset": 10528279,
           "record_key": 17080002,
           "record_rel_offset": 1451,
-          "entry": "ore_GreenStone_01",
-          "rel_offset": 1360,
+          "record_name": "ore_GreenStone_01",
           "label": "Ore Nodes: ore_GreenStone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -58,8 +55,7 @@
           "offset": 10528287,
           "record_key": 17080002,
           "record_rel_offset": 1459,
-          "entry": "ore_GreenStone_01",
-          "rel_offset": 1368,
+          "record_name": "ore_GreenStone_01",
           "label": "Ore Nodes: ore_GreenStone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -68,8 +64,7 @@
           "offset": 10530155,
           "record_key": 17080003,
           "record_rel_offset": 1450,
-          "entry": "ore_BlueStone_01",
-          "rel_offset": 1360,
+          "record_name": "ore_BlueStone_01",
           "label": "Ore Nodes: ore_BlueStone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -78,8 +73,7 @@
           "offset": 10530163,
           "record_key": 17080003,
           "record_rel_offset": 1458,
-          "entry": "ore_BlueStone_01",
-          "rel_offset": 1368,
+          "record_name": "ore_BlueStone_01",
           "label": "Ore Nodes: ore_BlueStone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -88,8 +82,7 @@
           "offset": 10532033,
           "record_key": 17080004,
           "record_rel_offset": 1451,
-          "entry": "ore_WhiteStone_01",
-          "rel_offset": 1360,
+          "record_name": "ore_WhiteStone_01",
           "label": "Ore Nodes: ore_WhiteStone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -98,8 +91,7 @@
           "offset": 10532041,
           "record_key": 17080004,
           "record_rel_offset": 1459,
-          "entry": "ore_WhiteStone_01",
-          "rel_offset": 1368,
+          "record_name": "ore_WhiteStone_01",
           "label": "Ore Nodes: ore_WhiteStone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -108,8 +100,7 @@
           "offset": 10533903,
           "record_key": 17080005,
           "record_rel_offset": 1447,
-          "entry": "ore_copper_01",
-          "rel_offset": 1360,
+          "record_name": "ore_copper_01",
           "label": "Ore Nodes: ore_copper_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -118,8 +109,7 @@
           "offset": 10533911,
           "record_key": 17080005,
           "record_rel_offset": 1455,
-          "entry": "ore_copper_01",
-          "rel_offset": 1368,
+          "record_name": "ore_copper_01",
           "label": "Ore Nodes: ore_copper_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -128,8 +118,7 @@
           "offset": 10535775,
           "record_key": 17080006,
           "record_rel_offset": 1448,
-          "entry": "ore_diamond_01",
-          "rel_offset": 1360,
+          "record_name": "ore_diamond_01",
           "label": "Ore Nodes: ore_diamond_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -138,8 +127,7 @@
           "offset": 10535783,
           "record_key": 17080006,
           "record_rel_offset": 1456,
-          "entry": "ore_diamond_01",
-          "rel_offset": 1368,
+          "record_name": "ore_diamond_01",
           "label": "Ore Nodes: ore_diamond_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -148,8 +136,7 @@
           "offset": 10537641,
           "record_key": 17080007,
           "record_rel_offset": 1445,
-          "entry": "ore_gold_01",
-          "rel_offset": 1360,
+          "record_name": "ore_gold_01",
           "label": "Ore Nodes: ore_gold_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -158,8 +145,7 @@
           "offset": 10537649,
           "record_key": 17080007,
           "record_rel_offset": 1453,
-          "entry": "ore_gold_01",
-          "rel_offset": 1368,
+          "record_name": "ore_gold_01",
           "label": "Ore Nodes: ore_gold_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -168,8 +154,7 @@
           "offset": 10539507,
           "record_key": 17080009,
           "record_rel_offset": 1445,
-          "entry": "ore_ruby_01",
-          "rel_offset": 1360,
+          "record_name": "ore_ruby_01",
           "label": "Ore Nodes: ore_ruby_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -178,8 +163,7 @@
           "offset": 10539515,
           "record_key": 17080009,
           "record_rel_offset": 1453,
-          "entry": "ore_ruby_01",
-          "rel_offset": 1368,
+          "record_name": "ore_ruby_01",
           "label": "Ore Nodes: ore_ruby_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -188,8 +172,7 @@
           "offset": 10541377,
           "record_key": 170800011,
           "record_rel_offset": 1446,
-          "entry": "ore_bismuth_01",
-          "rel_offset": 1361,
+          "record_name": "ore_bismuth_01",
           "label": "Ore Nodes: ore_bismuth_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -198,8 +181,7 @@
           "offset": 10541385,
           "record_key": 170800011,
           "record_rel_offset": 1454,
-          "entry": "ore_bismuth_01",
-          "rel_offset": 1369,
+          "record_name": "ore_bismuth_01",
           "label": "Ore Nodes: ore_bismuth_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -208,8 +190,7 @@
           "offset": 10543262,
           "record_key": 17070001,
           "record_rel_offset": 1464,
-          "entry": "ore_iron_01",
-          "rel_offset": 1379,
+          "record_name": "ore_iron_01",
           "label": "Ore Nodes: ore_iron_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -218,8 +199,7 @@
           "offset": 10543270,
           "record_key": 17070001,
           "record_rel_offset": 1472,
-          "entry": "ore_iron_01",
-          "rel_offset": 1387,
+          "record_name": "ore_iron_01",
           "label": "Ore Nodes: ore_iron_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -228,8 +208,7 @@
           "offset": 10545149,
           "record_key": 1001256,
           "record_rel_offset": 1465,
-          "entry": "ore_stone_01",
-          "rel_offset": 1379,
+          "record_name": "ore_stone_01",
           "label": "Ore Nodes: ore_stone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -238,8 +217,7 @@
           "offset": 10545157,
           "record_key": 1001256,
           "record_rel_offset": 1473,
-          "entry": "ore_stone_01",
-          "rel_offset": 1387,
+          "record_name": "ore_stone_01",
           "label": "Ore Nodes: ore_stone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -248,8 +226,7 @@
           "offset": 10547036,
           "record_key": 1001728,
           "record_rel_offset": 1465,
-          "entry": "ore_stone_02",
-          "rel_offset": 1379,
+          "record_name": "ore_stone_02",
           "label": "Ore Nodes: ore_stone_02 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -258,8 +235,7 @@
           "offset": 10547044,
           "record_key": 1001728,
           "record_rel_offset": 1473,
-          "entry": "ore_stone_02",
-          "rel_offset": 1387,
+          "record_name": "ore_stone_02",
           "label": "Ore Nodes: ore_stone_02 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -268,8 +244,7 @@
           "offset": 10548923,
           "record_key": 1001739,
           "record_rel_offset": 1465,
-          "entry": "ore_stone_03",
-          "rel_offset": 1379,
+          "record_name": "ore_stone_03",
           "label": "Ore Nodes: ore_stone_03 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -278,8 +253,7 @@
           "offset": 10548931,
           "record_key": 1001739,
           "record_rel_offset": 1473,
-          "entry": "ore_stone_03",
-          "rel_offset": 1387,
+          "record_name": "ore_stone_03",
           "label": "Ore Nodes: ore_stone_03 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -288,8 +262,7 @@
           "offset": 10550858,
           "record_key": 1000889,
           "record_rel_offset": 1507,
-          "entry": "ore_sulfurstone_01",
-          "rel_offset": 1415,
+          "record_name": "ore_sulfurstone_01",
           "label": "Ore Nodes: ore_sulfurstone_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -298,8 +271,7 @@
           "offset": 10550866,
           "record_key": 1000889,
           "record_rel_offset": 1515,
-          "entry": "ore_sulfurstone_01",
-          "rel_offset": 1423,
+          "record_name": "ore_sulfurstone_01",
           "label": "Ore Nodes: ore_sulfurstone_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -308,8 +280,7 @@
           "offset": 10552794,
           "record_key": 170800010,
           "record_rel_offset": 1513,
-          "entry": "ore_silver_01",
-          "rel_offset": 1426,
+          "record_name": "ore_silver_01",
           "label": "Ore Nodes: ore_silver_01 output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -318,8 +289,7 @@
           "offset": 10552802,
           "record_key": 170800010,
           "record_rel_offset": 1521,
-          "entry": "ore_silver_01",
-          "rel_offset": 1434,
+          "record_name": "ore_silver_01",
           "label": "Ore Nodes: ore_silver_01 output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -328,8 +298,7 @@
           "offset": 10554692,
           "record_key": 1004936,
           "record_rel_offset": 1464,
-          "entry": "Rare_Collect_Stalactites",
-          "rel_offset": 1374,
+          "record_name": "Rare_Collect_Stalactites",
           "label": "Ore Nodes: Rare_Collect_Stalactites output 1.1 minimum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"
@@ -338,8 +307,7 @@
           "offset": 10554700,
           "record_key": 1004936,
           "record_rel_offset": 1472,
-          "entry": "Rare_Collect_Stalactites",
-          "rel_offset": 1382,
+          "record_name": "Rare_Collect_Stalactites",
           "label": "Ore Nodes: Rare_Collect_Stalactites output 1.1 maximum (1 -> 2)",
           "original": "0100000000000000",
           "patched": "0200000000000000"

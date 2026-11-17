@@ -54,7 +54,7 @@ Grab the zip from the latest release, or build it yourself, then copy
 `DesertTooling.asi` and `DesertTooling.ini` into the game's `bin64`.
 
 - **Desert Tooling**: [desert-tooling-v0.16.2](https://github.com/KiefBC/desert-modding/releases/tag/desert-tooling-v0.16.2)
-- **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.6](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.6)
+- **Desert Gatherer (DMM pack)**: [desert-gatherer-dmm-v1.7](https://github.com/KiefBC/desert-modding/releases/tag/desert-gatherer-dmm-v1.7)
 
 Older versions are on the [releases page](https://github.com/KiefBC/desert-modding/releases).
 
