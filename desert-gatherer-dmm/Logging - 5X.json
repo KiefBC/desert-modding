@@ -1,6 +1,6 @@
 {
   "name": "Logging - 5X",
-  "version": "1.6",
+  "version": "1.7",
   "author": "KiefBC",
   "description": "Multiplies logging node minimum and maximum yields by 5. Select no more than one Logging rate in DMM.",
   "game": "Crimson Desert Enhanced",
@@ -10,7 +10,7 @@
   "allow_partial_apply": true,
   "modinfo": {
     "name": "Logging - 5X",
-    "version": "1.6",
+    "version": "1.7",
     "author": "KiefBC",
     "description": "5x yields for logging nodes.",
     "allow_partial_apply": true
@@ -28,8 +28,7 @@
           "offset": 10158212,
           "record_key": 1003241,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_index01",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index01",
           "label": "Logging: firewood_0001_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -38,8 +37,7 @@
           "offset": 10158220,
           "record_key": 1003241,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index01",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index01",
           "label": "Logging: firewood_0001_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -48,8 +46,7 @@
           "offset": 10160486,
           "record_key": 1006736,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index01_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index01_Fine",
           "label": "Logging: firewood_0001_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -58,8 +55,7 @@
           "offset": 10160494,
           "record_key": 1006736,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index01_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index01_Fine",
           "label": "Logging: firewood_0001_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -68,8 +64,7 @@
           "offset": 10162766,
           "record_key": 1006737,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index01_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index01_Premium",
           "label": "Logging: firewood_0001_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -78,8 +73,7 @@
           "offset": 10162774,
           "record_key": 1006737,
           "record_rel_offset": 1849,
-          "entry": "firewood_0001_index01_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index01_Premium",
           "label": "Logging: firewood_0001_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -88,8 +82,7 @@
           "offset": 10165014,
           "record_key": 1002971,
           "record_rel_offset": 1825,
-          "entry": "firewood_0001",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001",
           "label": "Logging: firewood_0001 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -98,8 +91,7 @@
           "offset": 10165022,
           "record_key": 1002971,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001",
           "label": "Logging: firewood_0001 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -108,8 +100,7 @@
           "offset": 10167272,
           "record_key": 1006738,
           "record_rel_offset": 1830,
-          "entry": "firewood_0001_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_Fine",
           "label": "Logging: firewood_0001_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -118,8 +109,7 @@
           "offset": 10167280,
           "record_key": 1006738,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_Fine",
           "label": "Logging: firewood_0001_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -128,8 +118,7 @@
           "offset": 10169536,
           "record_key": 1006739,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_Premium",
           "label": "Logging: firewood_0001_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -138,8 +127,7 @@
           "offset": 10169544,
           "record_key": 1006739,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_Premium",
           "label": "Logging: firewood_0001_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -148,8 +136,7 @@
           "offset": 10171800,
           "record_key": 1003243,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_index03",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index03",
           "label": "Logging: firewood_0001_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -158,8 +145,7 @@
           "offset": 10171808,
           "record_key": 1003243,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index03",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index03",
           "label": "Logging: firewood_0001_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -168,8 +154,7 @@
           "offset": 10174074,
           "record_key": 1006740,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index03_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index03_Fine",
           "label": "Logging: firewood_0001_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -178,8 +163,7 @@
           "offset": 10174082,
           "record_key": 1006740,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index03_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index03_Fine",
           "label": "Logging: firewood_0001_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -188,8 +172,7 @@
           "offset": 10176354,
           "record_key": 1006741,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index03_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index03_Premium",
           "label": "Logging: firewood_0001_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -198,8 +181,7 @@
           "offset": 10176362,
           "record_key": 1006741,
           "record_rel_offset": 1849,
-          "entry": "firewood_0001_index03_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index03_Premium",
           "label": "Logging: firewood_0001_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -208,8 +190,7 @@
           "offset": 10178618,
           "record_key": 1010009,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_index04",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index04",
           "label": "Logging: firewood_0001_index04 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -218,8 +199,7 @@
           "offset": 10178626,
           "record_key": 1010009,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index04",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index04",
           "label": "Logging: firewood_0001_index04 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -228,8 +208,7 @@
           "offset": 10180892,
           "record_key": 1010010,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index04_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index04_Fine",
           "label": "Logging: firewood_0001_index04_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -238,8 +217,7 @@
           "offset": 10180900,
           "record_key": 1010010,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index04_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index04_Fine",
           "label": "Logging: firewood_0001_index04_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -248,8 +226,7 @@
           "offset": 10183172,
           "record_key": 1010011,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index04_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index04_Premium",
           "label": "Logging: firewood_0001_index04_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -258,8 +235,7 @@
           "offset": 10183180,
           "record_key": 1010011,
           "record_rel_offset": 1849,
-          "entry": "firewood_0001_index04_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index04_Premium",
           "label": "Logging: firewood_0001_index04_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -268,8 +244,7 @@
           "offset": 10185436,
           "record_key": 1010268,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_index05",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index05",
           "label": "Logging: firewood_0001_index05 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -278,8 +253,7 @@
           "offset": 10185444,
           "record_key": 1010268,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index05",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index05",
           "label": "Logging: firewood_0001_index05 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -288,8 +262,7 @@
           "offset": 10187710,
           "record_key": 1010269,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index05_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index05_Fine",
           "label": "Logging: firewood_0001_index05_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -298,8 +271,7 @@
           "offset": 10187718,
           "record_key": 1010269,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index05_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index05_Fine",
           "label": "Logging: firewood_0001_index05_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -308,8 +280,7 @@
           "offset": 10189990,
           "record_key": 1010270,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index05_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index05_Premium",
           "label": "Logging: firewood_0001_index05_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -318,8 +289,7 @@
           "offset": 10189998,
           "record_key": 1010270,
           "record_rel_offset": 1849,
-          "entry": "firewood_0001_index05_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index05_Premium",
           "label": "Logging: firewood_0001_index05_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -328,8 +298,7 @@
           "offset": 10192254,
           "record_key": 1010271,
           "record_rel_offset": 1833,
-          "entry": "firewood_0001_index06",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index06",
           "label": "Logging: firewood_0001_index06 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -338,8 +307,7 @@
           "offset": 10192262,
           "record_key": 1010271,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index06",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index06",
           "label": "Logging: firewood_0001_index06 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -348,8 +316,7 @@
           "offset": 10194528,
           "record_key": 1010272,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index06_Fine",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index06_Fine",
           "label": "Logging: firewood_0001_index06_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -358,8 +325,7 @@
           "offset": 10194536,
           "record_key": 1010272,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index06_Fine",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index06_Fine",
           "label": "Logging: firewood_0001_index06_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -368,8 +334,7 @@
           "offset": 10196808,
           "record_key": 1010273,
           "record_rel_offset": 1841,
-          "entry": "firewood_0001_index06_Premium",
-          "rel_offset": 1749,
+          "record_name": "firewood_0001_index06_Premium",
           "label": "Logging: firewood_0001_index06_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -378,8 +343,7 @@
           "offset": 10196816,
           "record_key": 1010273,
           "record_rel_offset": 1849,
-          "entry": "firewood_0001_index06_Premium",
-          "rel_offset": 1757,
+          "record_name": "firewood_0001_index06_Premium",
           "label": "Logging: firewood_0001_index06_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -388,8 +352,7 @@
           "offset": 10199069,
           "record_key": 1003242,
           "record_rel_offset": 1830,
-          "entry": "firewood_0001_index02",
-          "rel_offset": 1746,
+          "record_name": "firewood_0001_index02",
           "label": "Logging: firewood_0001_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -398,8 +361,7 @@
           "offset": 10199077,
           "record_key": 1003242,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index02",
-          "rel_offset": 1754,
+          "record_name": "firewood_0001_index02",
           "label": "Logging: firewood_0001_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -408,8 +370,7 @@
           "offset": 10201340,
           "record_key": 1006742,
           "record_rel_offset": 1835,
-          "entry": "firewood_0001_index02_Fine",
-          "rel_offset": 1746,
+          "record_name": "firewood_0001_index02_Fine",
           "label": "Logging: firewood_0001_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -418,8 +379,7 @@
           "offset": 10201348,
           "record_key": 1006742,
           "record_rel_offset": 1843,
-          "entry": "firewood_0001_index02_Fine",
-          "rel_offset": 1754,
+          "record_name": "firewood_0001_index02_Fine",
           "label": "Logging: firewood_0001_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -428,8 +388,7 @@
           "offset": 10203617,
           "record_key": 1006743,
           "record_rel_offset": 1838,
-          "entry": "firewood_0001_index02_Premium",
-          "rel_offset": 1746,
+          "record_name": "firewood_0001_index02_Premium",
           "label": "Logging: firewood_0001_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -438,8 +397,7 @@
           "offset": 10203625,
           "record_key": 1006743,
           "record_rel_offset": 1846,
-          "entry": "firewood_0001_index02_Premium",
-          "rel_offset": 1754,
+          "record_name": "firewood_0001_index02_Premium",
           "label": "Logging: firewood_0001_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -448,8 +406,7 @@
           "offset": 10205891,
           "record_key": 1010558,
           "record_rel_offset": 1838,
-          "entry": "gimmick_wood_firewood_0001",
-          "rel_offset": 1762,
+          "record_name": "gimmick_wood_firewood_0001",
           "label": "Logging: gimmick_wood_firewood_0001 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -458,8 +415,7 @@
           "offset": 10205899,
           "record_key": 1010558,
           "record_rel_offset": 1846,
-          "entry": "gimmick_wood_firewood_0001",
-          "rel_offset": 1770,
+          "record_name": "gimmick_wood_firewood_0001",
           "label": "Logging: gimmick_wood_firewood_0001 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -468,8 +424,7 @@
           "offset": 10209060,
           "record_key": 1003244,
           "record_rel_offset": 1843,
-          "entry": "firewood_0002",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002",
           "label": "Logging: firewood_0002 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -478,8 +433,7 @@
           "offset": 10209068,
           "record_key": 1003244,
           "record_rel_offset": 1851,
-          "entry": "firewood_0002",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002",
           "label": "Logging: firewood_0002 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -488,8 +442,7 @@
           "offset": 10211374,
           "record_key": 1006744,
           "record_rel_offset": 1886,
-          "entry": "firewood_0002_Fine",
-          "rel_offset": 1805,
+          "record_name": "firewood_0002_Fine",
           "label": "Logging: firewood_0002_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -498,8 +451,7 @@
           "offset": 10211382,
           "record_key": 1006744,
           "record_rel_offset": 1894,
-          "entry": "firewood_0002_Fine",
-          "rel_offset": 1813,
+          "record_name": "firewood_0002_Fine",
           "label": "Logging: firewood_0002_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -508,8 +460,7 @@
           "offset": 10213694,
           "record_key": 1006745,
           "record_rel_offset": 1889,
-          "entry": "firewood_0002_Premium",
-          "rel_offset": 1805,
+          "record_name": "firewood_0002_Premium",
           "label": "Logging: firewood_0002_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -518,8 +469,7 @@
           "offset": 10213702,
           "record_key": 1006745,
           "record_rel_offset": 1897,
-          "entry": "firewood_0002_Premium",
-          "rel_offset": 1813,
+          "record_name": "firewood_0002_Premium",
           "label": "Logging: firewood_0002_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -528,8 +478,7 @@
           "offset": 10215976,
           "record_key": 1003245,
           "record_rel_offset": 1851,
-          "entry": "firewood_0002_index01",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index01",
           "label": "Logging: firewood_0002_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -538,8 +487,7 @@
           "offset": 10215984,
           "record_key": 1003245,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index01",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index01",
           "label": "Logging: firewood_0002_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -548,8 +496,7 @@
           "offset": 10218268,
           "record_key": 1006746,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index01_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index01_Fine",
           "label": "Logging: firewood_0002_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -558,8 +505,7 @@
           "offset": 10218276,
           "record_key": 1006746,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index01_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index01_Fine",
           "label": "Logging: firewood_0002_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -568,8 +514,7 @@
           "offset": 10220566,
           "record_key": 1006747,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index01_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index01_Premium",
           "label": "Logging: firewood_0002_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -578,8 +523,7 @@
           "offset": 10220574,
           "record_key": 1006747,
           "record_rel_offset": 1867,
-          "entry": "firewood_0002_index01_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index01_Premium",
           "label": "Logging: firewood_0002_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -588,8 +532,7 @@
           "offset": 10222832,
           "record_key": 1003247,
           "record_rel_offset": 1843,
-          "entry": "firewood_0003",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003",
           "label": "Logging: firewood_0003 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -598,8 +541,7 @@
           "offset": 10222840,
           "record_key": 1003247,
           "record_rel_offset": 1851,
-          "entry": "firewood_0003",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003",
           "label": "Logging: firewood_0003 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -608,8 +550,7 @@
           "offset": 10225108,
           "record_key": 1006748,
           "record_rel_offset": 1848,
-          "entry": "firewood_0003_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003_Fine",
           "label": "Logging: firewood_0003_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -618,8 +559,7 @@
           "offset": 10225116,
           "record_key": 1006748,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003_Fine",
           "label": "Logging: firewood_0003_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -628,8 +568,7 @@
           "offset": 10227390,
           "record_key": 1006749,
           "record_rel_offset": 1851,
-          "entry": "firewood_0003_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003_Premium",
           "label": "Logging: firewood_0003_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -638,8 +577,7 @@
           "offset": 10227398,
           "record_key": 1006749,
           "record_rel_offset": 1859,
-          "entry": "firewood_0003_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003_Premium",
           "label": "Logging: firewood_0003_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -648,8 +586,7 @@
           "offset": 10229672,
           "record_key": 1003248,
           "record_rel_offset": 1851,
-          "entry": "firewood_0003_index01",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003_index01",
           "label": "Logging: firewood_0003_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -658,8 +595,7 @@
           "offset": 10229680,
           "record_key": 1003248,
           "record_rel_offset": 1859,
-          "entry": "firewood_0003_index01",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003_index01",
           "label": "Logging: firewood_0003_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -668,8 +604,7 @@
           "offset": 10231964,
           "record_key": 1006750,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_index01_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003_index01_Fine",
           "label": "Logging: firewood_0003_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -678,8 +613,7 @@
           "offset": 10231972,
           "record_key": 1006750,
           "record_rel_offset": 1864,
-          "entry": "firewood_0003_index01_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003_index01_Fine",
           "label": "Logging: firewood_0003_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -688,8 +622,7 @@
           "offset": 10234262,
           "record_key": 1006751,
           "record_rel_offset": 1859,
-          "entry": "firewood_0003_index01_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_0003_index01_Premium",
           "label": "Logging: firewood_0003_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -698,8 +631,7 @@
           "offset": 10234270,
           "record_key": 1006751,
           "record_rel_offset": 1867,
-          "entry": "firewood_0003_index01_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_0003_index01_Premium",
           "label": "Logging: firewood_0003_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -708,8 +640,7 @@
           "offset": 10236528,
           "record_key": 1003206,
           "record_rel_offset": 1843,
-          "entry": "firewood_1002",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002",
           "label": "Logging: firewood_1002 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -718,8 +649,7 @@
           "offset": 10236536,
           "record_key": 1003206,
           "record_rel_offset": 1851,
-          "entry": "firewood_1002",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002",
           "label": "Logging: firewood_1002 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -728,8 +658,7 @@
           "offset": 10238804,
           "record_key": 1006752,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002_Fine",
           "label": "Logging: firewood_1002_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -738,8 +667,7 @@
           "offset": 10238812,
           "record_key": 1006752,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002_Fine",
           "label": "Logging: firewood_1002_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -748,8 +676,7 @@
           "offset": 10241086,
           "record_key": 1006753,
           "record_rel_offset": 1851,
-          "entry": "firewood_1002_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002_Premium",
           "label": "Logging: firewood_1002_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -758,8 +685,7 @@
           "offset": 10241094,
           "record_key": 1006753,
           "record_rel_offset": 1859,
-          "entry": "firewood_1002_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002_Premium",
           "label": "Logging: firewood_1002_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -768,8 +694,7 @@
           "offset": 10243365,
           "record_key": 1003250,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index01",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index01",
           "label": "Logging: firewood_1002_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -778,8 +703,7 @@
           "offset": 10243373,
           "record_key": 1003250,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index01",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index01",
           "label": "Logging: firewood_1002_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -788,8 +712,7 @@
           "offset": 10245654,
           "record_key": 1006754,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index01_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index01_Fine",
           "label": "Logging: firewood_1002_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -798,8 +721,7 @@
           "offset": 10245662,
           "record_key": 1006754,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index01_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index01_Fine",
           "label": "Logging: firewood_1002_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -808,8 +730,7 @@
           "offset": 10247949,
           "record_key": 1006755,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index01_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index01_Premium",
           "label": "Logging: firewood_1002_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -818,8 +739,7 @@
           "offset": 10247957,
           "record_key": 1006755,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index01_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index01_Premium",
           "label": "Logging: firewood_1002_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -828,8 +748,7 @@
           "offset": 10250228,
           "record_key": 1003251,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index02",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index02",
           "label": "Logging: firewood_1002_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -838,8 +757,7 @@
           "offset": 10250236,
           "record_key": 1003251,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index02",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index02",
           "label": "Logging: firewood_1002_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -848,8 +766,7 @@
           "offset": 10252517,
           "record_key": 1006756,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index02_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index02_Fine",
           "label": "Logging: firewood_1002_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -858,8 +775,7 @@
           "offset": 10252525,
           "record_key": 1006756,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index02_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index02_Fine",
           "label": "Logging: firewood_1002_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -868,8 +784,7 @@
           "offset": 10254812,
           "record_key": 1006757,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index02_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index02_Premium",
           "label": "Logging: firewood_1002_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -878,8 +793,7 @@
           "offset": 10254820,
           "record_key": 1006757,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index02_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index02_Premium",
           "label": "Logging: firewood_1002_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -888,8 +802,7 @@
           "offset": 10257104,
           "record_key": 1009163,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index03",
-          "rel_offset": 1777,
+          "record_name": "firewood_1002_index03",
           "label": "Logging: firewood_1002_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -898,8 +811,7 @@
           "offset": 10257112,
           "record_key": 1009163,
           "record_rel_offset": 1869,
-          "entry": "firewood_1002_index03",
-          "rel_offset": 1785,
+          "record_name": "firewood_1002_index03",
           "label": "Logging: firewood_1002_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -908,8 +820,7 @@
           "offset": 10259406,
           "record_key": 1006758,
           "record_rel_offset": 1866,
-          "entry": "firewood_1002_index03_Fine",
-          "rel_offset": 1777,
+          "record_name": "firewood_1002_index03_Fine",
           "label": "Logging: firewood_1002_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -918,8 +829,7 @@
           "offset": 10259414,
           "record_key": 1006758,
           "record_rel_offset": 1874,
-          "entry": "firewood_1002_index03_Fine",
-          "rel_offset": 1785,
+          "record_name": "firewood_1002_index03_Fine",
           "label": "Logging: firewood_1002_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -928,8 +838,7 @@
           "offset": 10261714,
           "record_key": 1006759,
           "record_rel_offset": 1869,
-          "entry": "firewood_1002_index03_Premium",
-          "rel_offset": 1777,
+          "record_name": "firewood_1002_index03_Premium",
           "label": "Logging: firewood_1002_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -938,8 +847,7 @@
           "offset": 10261722,
           "record_key": 1006759,
           "record_rel_offset": 1877,
-          "entry": "firewood_1002_index03_Premium",
-          "rel_offset": 1785,
+          "record_name": "firewood_1002_index03_Premium",
           "label": "Logging: firewood_1002_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -948,8 +856,7 @@
           "offset": 10263996,
           "record_key": 1007827,
           "record_rel_offset": 1851,
-          "entry": "firewood_1002_index04",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002_index04",
           "label": "Logging: firewood_1002_index04 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -958,8 +865,7 @@
           "offset": 10264004,
           "record_key": 1007827,
           "record_rel_offset": 1859,
-          "entry": "firewood_1002_index04",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002_index04",
           "label": "Logging: firewood_1002_index04 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -968,8 +874,7 @@
           "offset": 10266288,
           "record_key": 1007828,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index04_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002_index04_Fine",
           "label": "Logging: firewood_1002_index04_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -978,8 +883,7 @@
           "offset": 10266296,
           "record_key": 1007828,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index04_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002_index04_Fine",
           "label": "Logging: firewood_1002_index04_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -988,8 +892,7 @@
           "offset": 10268586,
           "record_key": 1007829,
           "record_rel_offset": 1859,
-          "entry": "firewood_1002_index04_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1002_index04_Premium",
           "label": "Logging: firewood_1002_index04_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -998,8 +901,7 @@
           "offset": 10268594,
           "record_key": 1007829,
           "record_rel_offset": 1867,
-          "entry": "firewood_1002_index04_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1002_index04_Premium",
           "label": "Logging: firewood_1002_index04_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1008,8 +910,7 @@
           "offset": 10270865,
           "record_key": 1010012,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index05",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index05",
           "label": "Logging: firewood_1002_index05 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1018,8 +919,7 @@
           "offset": 10270873,
           "record_key": 1010012,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index05",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index05",
           "label": "Logging: firewood_1002_index05 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1028,8 +928,7 @@
           "offset": 10273154,
           "record_key": 1010013,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index05_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index05_Fine",
           "label": "Logging: firewood_1002_index05_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1038,8 +937,7 @@
           "offset": 10273162,
           "record_key": 1010013,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index05_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index05_Fine",
           "label": "Logging: firewood_1002_index05_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1048,8 +946,7 @@
           "offset": 10275449,
           "record_key": 1010014,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index05_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index05_Premium",
           "label": "Logging: firewood_1002_index05_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1058,8 +955,7 @@
           "offset": 10275457,
           "record_key": 1010014,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index05_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index05_Premium",
           "label": "Logging: firewood_1002_index05_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1068,8 +964,7 @@
           "offset": 10277728,
           "record_key": 1010068,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index06",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index06",
           "label": "Logging: firewood_1002_index06 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1078,8 +973,7 @@
           "offset": 10277736,
           "record_key": 1010068,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index06",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index06",
           "label": "Logging: firewood_1002_index06 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1088,8 +982,7 @@
           "offset": 10280017,
           "record_key": 1010069,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index06_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index06_Fine",
           "label": "Logging: firewood_1002_index06_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1098,8 +991,7 @@
           "offset": 10280025,
           "record_key": 1010069,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index06_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index06_Fine",
           "label": "Logging: firewood_1002_index06_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1108,8 +1000,7 @@
           "offset": 10282312,
           "record_key": 1010070,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index06_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index06_Premium",
           "label": "Logging: firewood_1002_index06_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1118,8 +1009,7 @@
           "offset": 10282320,
           "record_key": 1010070,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index06_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index06_Premium",
           "label": "Logging: firewood_1002_index06_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1128,8 +1018,7 @@
           "offset": 10284591,
           "record_key": 1010071,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index07",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index07",
           "label": "Logging: firewood_1002_index07 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1138,8 +1027,7 @@
           "offset": 10284599,
           "record_key": 1010071,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index07",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index07",
           "label": "Logging: firewood_1002_index07 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1148,8 +1036,7 @@
           "offset": 10286880,
           "record_key": 1010072,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index07_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index07_Fine",
           "label": "Logging: firewood_1002_index07_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1158,8 +1045,7 @@
           "offset": 10286888,
           "record_key": 1010072,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index07_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index07_Fine",
           "label": "Logging: firewood_1002_index07_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1168,8 +1054,7 @@
           "offset": 10289175,
           "record_key": 1010073,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index07_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index07_Premium",
           "label": "Logging: firewood_1002_index07_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1178,8 +1063,7 @@
           "offset": 10289183,
           "record_key": 1010073,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index07_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index07_Premium",
           "label": "Logging: firewood_1002_index07_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1188,8 +1072,7 @@
           "offset": 10291454,
           "record_key": 1010074,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index08",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index08",
           "label": "Logging: firewood_1002_index08 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1198,8 +1081,7 @@
           "offset": 10291462,
           "record_key": 1010074,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index08",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index08",
           "label": "Logging: firewood_1002_index08 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1208,8 +1090,7 @@
           "offset": 10293743,
           "record_key": 1010075,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index08_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index08_Fine",
           "label": "Logging: firewood_1002_index08_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1218,8 +1099,7 @@
           "offset": 10293751,
           "record_key": 1010075,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index08_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index08_Fine",
           "label": "Logging: firewood_1002_index08_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1228,8 +1108,7 @@
           "offset": 10296038,
           "record_key": 1010076,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index08_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index08_Premium",
           "label": "Logging: firewood_1002_index08_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1238,8 +1117,7 @@
           "offset": 10296046,
           "record_key": 1010076,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index08_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index08_Premium",
           "label": "Logging: firewood_1002_index08_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1248,8 +1126,7 @@
           "offset": 10298317,
           "record_key": 1010274,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index09",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index09",
           "label": "Logging: firewood_1002_index09 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1258,8 +1135,7 @@
           "offset": 10298325,
           "record_key": 1010274,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index09",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index09",
           "label": "Logging: firewood_1002_index09 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1268,8 +1144,7 @@
           "offset": 10300606,
           "record_key": 1010275,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index09_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index09_Fine",
           "label": "Logging: firewood_1002_index09_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1278,8 +1153,7 @@
           "offset": 10300614,
           "record_key": 1010275,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index09_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index09_Fine",
           "label": "Logging: firewood_1002_index09_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1288,8 +1162,7 @@
           "offset": 10302901,
           "record_key": 1010276,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index09_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index09_Premium",
           "label": "Logging: firewood_1002_index09_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1298,8 +1171,7 @@
           "offset": 10302909,
           "record_key": 1010276,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index09_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index09_Premium",
           "label": "Logging: firewood_1002_index09_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1308,8 +1180,7 @@
           "offset": 10305180,
           "record_key": 1010277,
           "record_rel_offset": 1848,
-          "entry": "firewood_1002_index10",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index10",
           "label": "Logging: firewood_1002_index10 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1318,8 +1189,7 @@
           "offset": 10305188,
           "record_key": 1010277,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index10",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index10",
           "label": "Logging: firewood_1002_index10 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1328,8 +1198,7 @@
           "offset": 10307469,
           "record_key": 1010278,
           "record_rel_offset": 1853,
-          "entry": "firewood_1002_index10_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index10_Fine",
           "label": "Logging: firewood_1002_index10_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1338,8 +1207,7 @@
           "offset": 10307477,
           "record_key": 1010278,
           "record_rel_offset": 1861,
-          "entry": "firewood_1002_index10_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index10_Fine",
           "label": "Logging: firewood_1002_index10_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1348,8 +1216,7 @@
           "offset": 10309764,
           "record_key": 1010279,
           "record_rel_offset": 1856,
-          "entry": "firewood_1002_index10_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_1002_index10_Premium",
           "label": "Logging: firewood_1002_index10_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1358,8 +1225,7 @@
           "offset": 10309772,
           "record_key": 1010279,
           "record_rel_offset": 1864,
-          "entry": "firewood_1002_index10_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_1002_index10_Premium",
           "label": "Logging: firewood_1002_index10_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1368,8 +1234,7 @@
           "offset": 10312030,
           "record_key": 1010015,
           "record_rel_offset": 1843,
-          "entry": "firewood_2001",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001",
           "label": "Logging: firewood_2001 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1378,8 +1243,7 @@
           "offset": 10312038,
           "record_key": 1010015,
           "record_rel_offset": 1851,
-          "entry": "firewood_2001",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001",
           "label": "Logging: firewood_2001 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1388,8 +1252,7 @@
           "offset": 10314306,
           "record_key": 1010016,
           "record_rel_offset": 1848,
-          "entry": "firewood_2001_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_Fine",
           "label": "Logging: firewood_2001_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1398,8 +1261,7 @@
           "offset": 10314314,
           "record_key": 1010016,
           "record_rel_offset": 1856,
-          "entry": "firewood_2001_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_Fine",
           "label": "Logging: firewood_2001_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1408,8 +1270,7 @@
           "offset": 10316588,
           "record_key": 1010017,
           "record_rel_offset": 1851,
-          "entry": "firewood_2001_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_Premium",
           "label": "Logging: firewood_2001_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1418,8 +1279,7 @@
           "offset": 10316596,
           "record_key": 1010017,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_Premium",
           "label": "Logging: firewood_2001_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1428,8 +1288,7 @@
           "offset": 10318870,
           "record_key": 1010018,
           "record_rel_offset": 1851,
-          "entry": "firewood_2001_index01",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index01",
           "label": "Logging: firewood_2001_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1438,8 +1297,7 @@
           "offset": 10318878,
           "record_key": 1010018,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index01",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index01",
           "label": "Logging: firewood_2001_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1448,8 +1306,7 @@
           "offset": 10321162,
           "record_key": 1010019,
           "record_rel_offset": 1856,
-          "entry": "firewood_2001_index01_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index01_Fine",
           "label": "Logging: firewood_2001_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1458,8 +1315,7 @@
           "offset": 10321170,
           "record_key": 1010019,
           "record_rel_offset": 1864,
-          "entry": "firewood_2001_index01_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index01_Fine",
           "label": "Logging: firewood_2001_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1468,8 +1324,7 @@
           "offset": 10323460,
           "record_key": 1010020,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index01_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index01_Premium",
           "label": "Logging: firewood_2001_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1478,8 +1333,7 @@
           "offset": 10323468,
           "record_key": 1010020,
           "record_rel_offset": 1867,
-          "entry": "firewood_2001_index01_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index01_Premium",
           "label": "Logging: firewood_2001_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1488,8 +1342,7 @@
           "offset": 10325742,
           "record_key": 1010021,
           "record_rel_offset": 1851,
-          "entry": "firewood_2001_index02",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index02",
           "label": "Logging: firewood_2001_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1498,8 +1351,7 @@
           "offset": 10325750,
           "record_key": 1010021,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index02",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index02",
           "label": "Logging: firewood_2001_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1508,8 +1360,7 @@
           "offset": 10328034,
           "record_key": 1010022,
           "record_rel_offset": 1856,
-          "entry": "firewood_2001_index02_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index02_Fine",
           "label": "Logging: firewood_2001_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1518,8 +1369,7 @@
           "offset": 10328042,
           "record_key": 1010022,
           "record_rel_offset": 1864,
-          "entry": "firewood_2001_index02_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index02_Fine",
           "label": "Logging: firewood_2001_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1528,8 +1378,7 @@
           "offset": 10330332,
           "record_key": 1010023,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index02_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index02_Premium",
           "label": "Logging: firewood_2001_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1538,8 +1387,7 @@
           "offset": 10330340,
           "record_key": 1010023,
           "record_rel_offset": 1867,
-          "entry": "firewood_2001_index02_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index02_Premium",
           "label": "Logging: firewood_2001_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1548,8 +1396,7 @@
           "offset": 10332614,
           "record_key": 1010280,
           "record_rel_offset": 1851,
-          "entry": "firewood_2001_index03",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index03",
           "label": "Logging: firewood_2001_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1558,8 +1405,7 @@
           "offset": 10332622,
           "record_key": 1010280,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index03",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index03",
           "label": "Logging: firewood_2001_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1568,8 +1414,7 @@
           "offset": 10334906,
           "record_key": 1010281,
           "record_rel_offset": 1856,
-          "entry": "firewood_2001_index03_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index03_Fine",
           "label": "Logging: firewood_2001_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1578,8 +1423,7 @@
           "offset": 10334914,
           "record_key": 1010281,
           "record_rel_offset": 1864,
-          "entry": "firewood_2001_index03_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index03_Fine",
           "label": "Logging: firewood_2001_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1588,8 +1432,7 @@
           "offset": 10337204,
           "record_key": 1010282,
           "record_rel_offset": 1859,
-          "entry": "firewood_2001_index03_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_2001_index03_Premium",
           "label": "Logging: firewood_2001_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1598,8 +1441,7 @@
           "offset": 10337212,
           "record_key": 1010282,
           "record_rel_offset": 1867,
-          "entry": "firewood_2001_index03_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_2001_index03_Premium",
           "label": "Logging: firewood_2001_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1608,8 +1450,7 @@
           "offset": 10339476,
           "record_key": 1003252,
           "record_rel_offset": 1849,
-          "entry": "firewood_2002",
-          "rel_offset": 1773,
+          "record_name": "firewood_2002",
           "label": "Logging: firewood_2002 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1618,8 +1459,7 @@
           "offset": 10339484,
           "record_key": 1003252,
           "record_rel_offset": 1857,
-          "entry": "firewood_2002",
-          "rel_offset": 1781,
+          "record_name": "firewood_2002",
           "label": "Logging: firewood_2002 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1628,8 +1468,7 @@
           "offset": 10341758,
           "record_key": 1006760,
           "record_rel_offset": 1854,
-          "entry": "firewood_2002_Fine",
-          "rel_offset": 1773,
+          "record_name": "firewood_2002_Fine",
           "label": "Logging: firewood_2002_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1638,8 +1477,7 @@
           "offset": 10341766,
           "record_key": 1006760,
           "record_rel_offset": 1862,
-          "entry": "firewood_2002_Fine",
-          "rel_offset": 1781,
+          "record_name": "firewood_2002_Fine",
           "label": "Logging: firewood_2002_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1648,8 +1486,7 @@
           "offset": 10344046,
           "record_key": 1006761,
           "record_rel_offset": 1857,
-          "entry": "firewood_2002_Premium",
-          "rel_offset": 1773,
+          "record_name": "firewood_2002_Premium",
           "label": "Logging: firewood_2002_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1658,8 +1495,7 @@
           "offset": 10344054,
           "record_key": 1006761,
           "record_rel_offset": 1865,
-          "entry": "firewood_2002_Premium",
-          "rel_offset": 1781,
+          "record_name": "firewood_2002_Premium",
           "label": "Logging: firewood_2002_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1668,8 +1504,7 @@
           "offset": 10346325,
           "record_key": 1003253,
           "record_rel_offset": 1848,
-          "entry": "firewood_2002_index01",
-          "rel_offset": 1764,
+          "record_name": "firewood_2002_index01",
           "label": "Logging: firewood_2002_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1678,8 +1513,7 @@
           "offset": 10346333,
           "record_key": 1003253,
           "record_rel_offset": 1856,
-          "entry": "firewood_2002_index01",
-          "rel_offset": 1772,
+          "record_name": "firewood_2002_index01",
           "label": "Logging: firewood_2002_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1688,8 +1522,7 @@
           "offset": 10348614,
           "record_key": 1006762,
           "record_rel_offset": 1853,
-          "entry": "firewood_2002_index01_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_2002_index01_Fine",
           "label": "Logging: firewood_2002_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1698,8 +1531,7 @@
           "offset": 10348622,
           "record_key": 1006762,
           "record_rel_offset": 1861,
-          "entry": "firewood_2002_index01_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_2002_index01_Fine",
           "label": "Logging: firewood_2002_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1708,8 +1540,7 @@
           "offset": 10350909,
           "record_key": 1006763,
           "record_rel_offset": 1856,
-          "entry": "firewood_2002_index01_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_2002_index01_Premium",
           "label": "Logging: firewood_2002_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1718,8 +1549,7 @@
           "offset": 10350917,
           "record_key": 1006763,
           "record_rel_offset": 1864,
-          "entry": "firewood_2002_index01_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_2002_index01_Premium",
           "label": "Logging: firewood_2002_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1728,8 +1558,7 @@
           "offset": 10353191,
           "record_key": 1010024,
           "record_rel_offset": 1851,
-          "entry": "firewood_2002_index02",
-          "rel_offset": 1767,
+          "record_name": "firewood_2002_index02",
           "label": "Logging: firewood_2002_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1738,8 +1567,7 @@
           "offset": 10353199,
           "record_key": 1010024,
           "record_rel_offset": 1859,
-          "entry": "firewood_2002_index02",
-          "rel_offset": 1775,
+          "record_name": "firewood_2002_index02",
           "label": "Logging: firewood_2002_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1748,8 +1576,7 @@
           "offset": 10355483,
           "record_key": 1010025,
           "record_rel_offset": 1856,
-          "entry": "firewood_2002_index02_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_2002_index02_Fine",
           "label": "Logging: firewood_2002_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1758,8 +1585,7 @@
           "offset": 10355491,
           "record_key": 1010025,
           "record_rel_offset": 1864,
-          "entry": "firewood_2002_index02_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_2002_index02_Fine",
           "label": "Logging: firewood_2002_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1768,8 +1594,7 @@
           "offset": 10357781,
           "record_key": 1010026,
           "record_rel_offset": 1859,
-          "entry": "firewood_2002_index02_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_2002_index02_Premium",
           "label": "Logging: firewood_2002_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1778,8 +1603,7 @@
           "offset": 10357789,
           "record_key": 1010026,
           "record_rel_offset": 1867,
-          "entry": "firewood_2002_index02_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_2002_index02_Premium",
           "label": "Logging: firewood_2002_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1788,8 +1612,7 @@
           "offset": 10360067,
           "record_key": 1010077,
           "record_rel_offset": 1855,
-          "entry": "firewood_2002_index03",
-          "rel_offset": 1771,
+          "record_name": "firewood_2002_index03",
           "label": "Logging: firewood_2002_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1798,8 +1621,7 @@
           "offset": 10360075,
           "record_key": 1010077,
           "record_rel_offset": 1863,
-          "entry": "firewood_2002_index03",
-          "rel_offset": 1779,
+          "record_name": "firewood_2002_index03",
           "label": "Logging: firewood_2002_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1808,8 +1630,7 @@
           "offset": 10362363,
           "record_key": 1010078,
           "record_rel_offset": 1860,
-          "entry": "firewood_2002_index03_Fine",
-          "rel_offset": 1771,
+          "record_name": "firewood_2002_index03_Fine",
           "label": "Logging: firewood_2002_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1818,8 +1639,7 @@
           "offset": 10362371,
           "record_key": 1010078,
           "record_rel_offset": 1868,
-          "entry": "firewood_2002_index03_Fine",
-          "rel_offset": 1779,
+          "record_name": "firewood_2002_index03_Fine",
           "label": "Logging: firewood_2002_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1828,8 +1648,7 @@
           "offset": 10364665,
           "record_key": 1010079,
           "record_rel_offset": 1863,
-          "entry": "firewood_2002_index03_Premium",
-          "rel_offset": 1771,
+          "record_name": "firewood_2002_index03_Premium",
           "label": "Logging: firewood_2002_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1838,8 +1657,7 @@
           "offset": 10364673,
           "record_key": 1010079,
           "record_rel_offset": 1871,
-          "entry": "firewood_2002_index03_Premium",
-          "rel_offset": 1779,
+          "record_name": "firewood_2002_index03_Premium",
           "label": "Logging: firewood_2002_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1848,8 +1666,7 @@
           "offset": 10366944,
           "record_key": 1003246,
           "record_rel_offset": 1848,
-          "entry": "firewood_0002_index02",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index02",
           "label": "Logging: firewood_0002_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1858,8 +1675,7 @@
           "offset": 10366952,
           "record_key": 1003246,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index02",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index02",
           "label": "Logging: firewood_0002_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1868,8 +1684,7 @@
           "offset": 10369233,
           "record_key": 1006764,
           "record_rel_offset": 1853,
-          "entry": "firewood_0002_index02_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index02_Fine",
           "label": "Logging: firewood_0002_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1878,8 +1693,7 @@
           "offset": 10369241,
           "record_key": 1006764,
           "record_rel_offset": 1861,
-          "entry": "firewood_0002_index02_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index02_Fine",
           "label": "Logging: firewood_0002_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1888,8 +1702,7 @@
           "offset": 10371528,
           "record_key": 1006765,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index02_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index02_Premium",
           "label": "Logging: firewood_0002_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1898,8 +1711,7 @@
           "offset": 10371536,
           "record_key": 1006765,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index02_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index02_Premium",
           "label": "Logging: firewood_0002_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1908,8 +1720,7 @@
           "offset": 10373813,
           "record_key": 1010027,
           "record_rel_offset": 1854,
-          "entry": "firewood_0002_index03",
-          "rel_offset": 1770,
+          "record_name": "firewood_0002_index03",
           "label": "Logging: firewood_0002_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1918,8 +1729,7 @@
           "offset": 10373821,
           "record_key": 1010027,
           "record_rel_offset": 1862,
-          "entry": "firewood_0002_index03",
-          "rel_offset": 1778,
+          "record_name": "firewood_0002_index03",
           "label": "Logging: firewood_0002_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1928,8 +1738,7 @@
           "offset": 10376108,
           "record_key": 1010028,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index03_Fine",
-          "rel_offset": 1770,
+          "record_name": "firewood_0002_index03_Fine",
           "label": "Logging: firewood_0002_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1938,8 +1747,7 @@
           "offset": 10376116,
           "record_key": 1010028,
           "record_rel_offset": 1867,
-          "entry": "firewood_0002_index03_Fine",
-          "rel_offset": 1778,
+          "record_name": "firewood_0002_index03_Fine",
           "label": "Logging: firewood_0002_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1948,8 +1756,7 @@
           "offset": 10378409,
           "record_key": 1010029,
           "record_rel_offset": 1862,
-          "entry": "firewood_0002_index03_Premium",
-          "rel_offset": 1770,
+          "record_name": "firewood_0002_index03_Premium",
           "label": "Logging: firewood_0002_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1958,8 +1765,7 @@
           "offset": 10378417,
           "record_key": 1010029,
           "record_rel_offset": 1870,
-          "entry": "firewood_0002_index03_Premium",
-          "rel_offset": 1778,
+          "record_name": "firewood_0002_index03_Premium",
           "label": "Logging: firewood_0002_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1968,8 +1774,7 @@
           "offset": 10380691,
           "record_key": 1010030,
           "record_rel_offset": 1851,
-          "entry": "firewood_0002_index04",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index04",
           "label": "Logging: firewood_0002_index04 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1978,8 +1783,7 @@
           "offset": 10380699,
           "record_key": 1010030,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index04",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index04",
           "label": "Logging: firewood_0002_index04 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1988,8 +1792,7 @@
           "offset": 10382983,
           "record_key": 1010031,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index04_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index04_Fine",
           "label": "Logging: firewood_0002_index04_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -1998,8 +1801,7 @@
           "offset": 10382991,
           "record_key": 1010031,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index04_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index04_Fine",
           "label": "Logging: firewood_0002_index04_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2008,8 +1810,7 @@
           "offset": 10385281,
           "record_key": 1010032,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index04_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index04_Premium",
           "label": "Logging: firewood_0002_index04_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2018,8 +1819,7 @@
           "offset": 10385289,
           "record_key": 1010032,
           "record_rel_offset": 1867,
-          "entry": "firewood_0002_index04_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index04_Premium",
           "label": "Logging: firewood_0002_index04_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2028,8 +1828,7 @@
           "offset": 10387563,
           "record_key": 1010033,
           "record_rel_offset": 1851,
-          "entry": "firewood_0002_index05",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index05",
           "label": "Logging: firewood_0002_index05 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2038,8 +1837,7 @@
           "offset": 10387571,
           "record_key": 1010033,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index05",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index05",
           "label": "Logging: firewood_0002_index05 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2048,8 +1846,7 @@
           "offset": 10389855,
           "record_key": 1010034,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index05_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index05_Fine",
           "label": "Logging: firewood_0002_index05_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2058,8 +1855,7 @@
           "offset": 10389863,
           "record_key": 1010034,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index05_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index05_Fine",
           "label": "Logging: firewood_0002_index05_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2068,8 +1864,7 @@
           "offset": 10392153,
           "record_key": 1010035,
           "record_rel_offset": 1859,
-          "entry": "firewood_0002_index05_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_0002_index05_Premium",
           "label": "Logging: firewood_0002_index05_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2078,8 +1873,7 @@
           "offset": 10392161,
           "record_key": 1010035,
           "record_rel_offset": 1867,
-          "entry": "firewood_0002_index05_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_0002_index05_Premium",
           "label": "Logging: firewood_0002_index05_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2088,8 +1882,7 @@
           "offset": 10394432,
           "record_key": 1010080,
           "record_rel_offset": 1848,
-          "entry": "firewood_0002_index06",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index06",
           "label": "Logging: firewood_0002_index06 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2098,8 +1891,7 @@
           "offset": 10394440,
           "record_key": 1010080,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index06",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index06",
           "label": "Logging: firewood_0002_index06 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2108,8 +1900,7 @@
           "offset": 10396721,
           "record_key": 1010081,
           "record_rel_offset": 1853,
-          "entry": "firewood_0002_index06_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index06_Fine",
           "label": "Logging: firewood_0002_index06_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2118,8 +1909,7 @@
           "offset": 10396729,
           "record_key": 1010081,
           "record_rel_offset": 1861,
-          "entry": "firewood_0002_index06_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index06_Fine",
           "label": "Logging: firewood_0002_index06_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2128,8 +1918,7 @@
           "offset": 10399016,
           "record_key": 1010082,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index06_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index06_Premium",
           "label": "Logging: firewood_0002_index06_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2138,8 +1927,7 @@
           "offset": 10399024,
           "record_key": 1010082,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index06_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index06_Premium",
           "label": "Logging: firewood_0002_index06_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2148,8 +1936,7 @@
           "offset": 10401295,
           "record_key": 1010083,
           "record_rel_offset": 1848,
-          "entry": "firewood_0002_index07",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index07",
           "label": "Logging: firewood_0002_index07 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2158,8 +1945,7 @@
           "offset": 10401303,
           "record_key": 1010083,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index07",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index07",
           "label": "Logging: firewood_0002_index07 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2168,8 +1954,7 @@
           "offset": 10403584,
           "record_key": 1010084,
           "record_rel_offset": 1853,
-          "entry": "firewood_0002_index07_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index07_Fine",
           "label": "Logging: firewood_0002_index07_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2178,8 +1963,7 @@
           "offset": 10403592,
           "record_key": 1010084,
           "record_rel_offset": 1861,
-          "entry": "firewood_0002_index07_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index07_Fine",
           "label": "Logging: firewood_0002_index07_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2188,8 +1972,7 @@
           "offset": 10405879,
           "record_key": 1010085,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index07_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index07_Premium",
           "label": "Logging: firewood_0002_index07_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2198,8 +1981,7 @@
           "offset": 10405887,
           "record_key": 1010085,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index07_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index07_Premium",
           "label": "Logging: firewood_0002_index07_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2208,8 +1990,7 @@
           "offset": 10408158,
           "record_key": 1010123,
           "record_rel_offset": 1848,
-          "entry": "firewood_0002_index08",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index08",
           "label": "Logging: firewood_0002_index08 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2218,8 +1999,7 @@
           "offset": 10408166,
           "record_key": 1010123,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index08",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index08",
           "label": "Logging: firewood_0002_index08 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2228,8 +2008,7 @@
           "offset": 10410447,
           "record_key": 1010124,
           "record_rel_offset": 1853,
-          "entry": "firewood_0002_index08_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index08_Fine",
           "label": "Logging: firewood_0002_index08_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2238,8 +2017,7 @@
           "offset": 10410455,
           "record_key": 1010124,
           "record_rel_offset": 1861,
-          "entry": "firewood_0002_index08_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index08_Fine",
           "label": "Logging: firewood_0002_index08_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2248,8 +2026,7 @@
           "offset": 10412742,
           "record_key": 1010125,
           "record_rel_offset": 1856,
-          "entry": "firewood_0002_index08_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0002_index08_Premium",
           "label": "Logging: firewood_0002_index08_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2258,8 +2035,7 @@
           "offset": 10412750,
           "record_key": 1010125,
           "record_rel_offset": 1864,
-          "entry": "firewood_0002_index08_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0002_index08_Premium",
           "label": "Logging: firewood_0002_index08_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2268,8 +2044,7 @@
           "offset": 10415021,
           "record_key": 1003249,
           "record_rel_offset": 1848,
-          "entry": "firewood_0003_index02",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index02",
           "label": "Logging: firewood_0003_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2278,8 +2053,7 @@
           "offset": 10415029,
           "record_key": 1003249,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_index02",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index02",
           "label": "Logging: firewood_0003_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2288,8 +2062,7 @@
           "offset": 10417310,
           "record_key": 1006766,
           "record_rel_offset": 1853,
-          "entry": "firewood_0003_index02_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index02_Fine",
           "label": "Logging: firewood_0003_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2298,8 +2071,7 @@
           "offset": 10417318,
           "record_key": 1006766,
           "record_rel_offset": 1861,
-          "entry": "firewood_0003_index02_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index02_Fine",
           "label": "Logging: firewood_0003_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2308,8 +2080,7 @@
           "offset": 10419605,
           "record_key": 1006767,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_index02_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index02_Premium",
           "label": "Logging: firewood_0003_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2318,8 +2089,7 @@
           "offset": 10419613,
           "record_key": 1006767,
           "record_rel_offset": 1864,
-          "entry": "firewood_0003_index02_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index02_Premium",
           "label": "Logging: firewood_0003_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2328,8 +2098,7 @@
           "offset": 10421884,
           "record_key": 1010086,
           "record_rel_offset": 1848,
-          "entry": "firewood_0003_index03",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index03",
           "label": "Logging: firewood_0003_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2338,8 +2107,7 @@
           "offset": 10421892,
           "record_key": 1010086,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_index03",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index03",
           "label": "Logging: firewood_0003_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2348,8 +2116,7 @@
           "offset": 10424173,
           "record_key": 1010087,
           "record_rel_offset": 1853,
-          "entry": "firewood_0003_index03_Fine",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index03_Fine",
           "label": "Logging: firewood_0003_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2358,8 +2125,7 @@
           "offset": 10424181,
           "record_key": 1010087,
           "record_rel_offset": 1861,
-          "entry": "firewood_0003_index03_Fine",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index03_Fine",
           "label": "Logging: firewood_0003_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2368,8 +2134,7 @@
           "offset": 10426468,
           "record_key": 1010088,
           "record_rel_offset": 1856,
-          "entry": "firewood_0003_index03_Premium",
-          "rel_offset": 1764,
+          "record_name": "firewood_0003_index03_Premium",
           "label": "Logging: firewood_0003_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2378,8 +2143,7 @@
           "offset": 10426476,
           "record_key": 1010088,
           "record_rel_offset": 1864,
-          "entry": "firewood_0003_index03_Premium",
-          "rel_offset": 1772,
+          "record_name": "firewood_0003_index03_Premium",
           "label": "Logging: firewood_0003_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2388,8 +2152,7 @@
           "offset": 10428743,
           "record_key": 1003254,
           "record_rel_offset": 1852,
-          "entry": "firewood_2003",
-          "rel_offset": 1776,
+          "record_name": "firewood_2003",
           "label": "Logging: firewood_2003 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2398,8 +2161,7 @@
           "offset": 10428751,
           "record_key": 1003254,
           "record_rel_offset": 1860,
-          "entry": "firewood_2003",
-          "rel_offset": 1784,
+          "record_name": "firewood_2003",
           "label": "Logging: firewood_2003 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2408,8 +2170,7 @@
           "offset": 10431028,
           "record_key": 1006768,
           "record_rel_offset": 1857,
-          "entry": "firewood_2003_Fine",
-          "rel_offset": 1776,
+          "record_name": "firewood_2003_Fine",
           "label": "Logging: firewood_2003_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2418,8 +2179,7 @@
           "offset": 10431036,
           "record_key": 1006768,
           "record_rel_offset": 1865,
-          "entry": "firewood_2003_Fine",
-          "rel_offset": 1784,
+          "record_name": "firewood_2003_Fine",
           "label": "Logging: firewood_2003_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2428,8 +2188,7 @@
           "offset": 10433319,
           "record_key": 1006769,
           "record_rel_offset": 1860,
-          "entry": "firewood_2003_Premium",
-          "rel_offset": 1776,
+          "record_name": "firewood_2003_Premium",
           "label": "Logging: firewood_2003_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2438,8 +2197,7 @@
           "offset": 10433327,
           "record_key": 1006769,
           "record_rel_offset": 1868,
-          "entry": "firewood_2003_Premium",
-          "rel_offset": 1784,
+          "record_name": "firewood_2003_Premium",
           "label": "Logging: firewood_2003_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2448,8 +2206,7 @@
           "offset": 10435585,
           "record_key": 1009553,
           "record_rel_offset": 1843,
-          "entry": "firewood_1003",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003",
           "label": "Logging: firewood_1003 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2458,8 +2215,7 @@
           "offset": 10435593,
           "record_key": 1009553,
           "record_rel_offset": 1851,
-          "entry": "firewood_1003",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003",
           "label": "Logging: firewood_1003 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2468,8 +2224,7 @@
           "offset": 10437861,
           "record_key": 1009554,
           "record_rel_offset": 1848,
-          "entry": "firewood_1003_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003_Fine",
           "label": "Logging: firewood_1003_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2478,8 +2233,7 @@
           "offset": 10437869,
           "record_key": 1009554,
           "record_rel_offset": 1856,
-          "entry": "firewood_1003_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003_Fine",
           "label": "Logging: firewood_1003_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2488,8 +2242,7 @@
           "offset": 10440143,
           "record_key": 1009555,
           "record_rel_offset": 1851,
-          "entry": "firewood_1003_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003_Premium",
           "label": "Logging: firewood_1003_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2498,8 +2251,7 @@
           "offset": 10440151,
           "record_key": 1009555,
           "record_rel_offset": 1859,
-          "entry": "firewood_1003_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003_Premium",
           "label": "Logging: firewood_1003_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2508,8 +2260,7 @@
           "offset": 10442425,
           "record_key": 1010283,
           "record_rel_offset": 1851,
-          "entry": "firewood_1003_index01",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003_index01",
           "label": "Logging: firewood_1003_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2518,8 +2269,7 @@
           "offset": 10442433,
           "record_key": 1010283,
           "record_rel_offset": 1859,
-          "entry": "firewood_1003_index01",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003_index01",
           "label": "Logging: firewood_1003_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2528,8 +2278,7 @@
           "offset": 10444717,
           "record_key": 1010284,
           "record_rel_offset": 1856,
-          "entry": "firewood_1003_index01_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003_index01_Fine",
           "label": "Logging: firewood_1003_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2538,8 +2287,7 @@
           "offset": 10444725,
           "record_key": 1010284,
           "record_rel_offset": 1864,
-          "entry": "firewood_1003_index01_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003_index01_Fine",
           "label": "Logging: firewood_1003_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2548,8 +2296,7 @@
           "offset": 10447015,
           "record_key": 1010285,
           "record_rel_offset": 1859,
-          "entry": "firewood_1003_index01_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1003_index01_Premium",
           "label": "Logging: firewood_1003_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2558,8 +2305,7 @@
           "offset": 10447023,
           "record_key": 1010285,
           "record_rel_offset": 1867,
-          "entry": "firewood_1003_index01_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1003_index01_Premium",
           "label": "Logging: firewood_1003_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2568,8 +2314,7 @@
           "offset": 10449285,
           "record_key": 1000674,
           "record_rel_offset": 1847,
-          "entry": "firewood_1001",
-          "rel_offset": 1771,
+          "record_name": "firewood_1001",
           "label": "Logging: firewood_1001 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2578,8 +2323,7 @@
           "offset": 10449293,
           "record_key": 1000674,
           "record_rel_offset": 1855,
-          "entry": "firewood_1001",
-          "rel_offset": 1779,
+          "record_name": "firewood_1001",
           "label": "Logging: firewood_1001 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2588,8 +2332,7 @@
           "offset": 10451565,
           "record_key": 1000877,
           "record_rel_offset": 1852,
-          "entry": "firewood_1001_Fine",
-          "rel_offset": 1771,
+          "record_name": "firewood_1001_Fine",
           "label": "Logging: firewood_1001_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2598,8 +2341,7 @@
           "offset": 10451573,
           "record_key": 1000877,
           "record_rel_offset": 1860,
-          "entry": "firewood_1001_Fine",
-          "rel_offset": 1779,
+          "record_name": "firewood_1001_Fine",
           "label": "Logging: firewood_1001_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2608,8 +2350,7 @@
           "offset": 10453851,
           "record_key": 1000973,
           "record_rel_offset": 1855,
-          "entry": "firewood_1001_Premium",
-          "rel_offset": 1771,
+          "record_name": "firewood_1001_Premium",
           "label": "Logging: firewood_1001_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2618,8 +2359,7 @@
           "offset": 10453859,
           "record_key": 1000973,
           "record_rel_offset": 1863,
-          "entry": "firewood_1001_Premium",
-          "rel_offset": 1779,
+          "record_name": "firewood_1001_Premium",
           "label": "Logging: firewood_1001_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2628,8 +2368,7 @@
           "offset": 10456133,
           "record_key": 1010036,
           "record_rel_offset": 1851,
-          "entry": "firewood_1001_index01",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index01",
           "label": "Logging: firewood_1001_index01 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2638,8 +2377,7 @@
           "offset": 10456141,
           "record_key": 1010036,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index01",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index01",
           "label": "Logging: firewood_1001_index01 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2648,8 +2386,7 @@
           "offset": 10458425,
           "record_key": 1010037,
           "record_rel_offset": 1856,
-          "entry": "firewood_1001_index01_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index01_Fine",
           "label": "Logging: firewood_1001_index01_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2658,8 +2395,7 @@
           "offset": 10458433,
           "record_key": 1010037,
           "record_rel_offset": 1864,
-          "entry": "firewood_1001_index01_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index01_Fine",
           "label": "Logging: firewood_1001_index01_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2668,8 +2404,7 @@
           "offset": 10460723,
           "record_key": 1010038,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index01_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index01_Premium",
           "label": "Logging: firewood_1001_index01_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2678,8 +2413,7 @@
           "offset": 10460731,
           "record_key": 1010038,
           "record_rel_offset": 1867,
-          "entry": "firewood_1001_index01_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index01_Premium",
           "label": "Logging: firewood_1001_index01_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2688,8 +2422,7 @@
           "offset": 10463005,
           "record_key": 1010126,
           "record_rel_offset": 1851,
-          "entry": "firewood_1001_index02",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index02",
           "label": "Logging: firewood_1001_index02 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2698,8 +2431,7 @@
           "offset": 10463013,
           "record_key": 1010126,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index02",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index02",
           "label": "Logging: firewood_1001_index02 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2708,8 +2440,7 @@
           "offset": 10465297,
           "record_key": 1010127,
           "record_rel_offset": 1856,
-          "entry": "firewood_1001_index02_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index02_Fine",
           "label": "Logging: firewood_1001_index02_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2718,8 +2449,7 @@
           "offset": 10465305,
           "record_key": 1010127,
           "record_rel_offset": 1864,
-          "entry": "firewood_1001_index02_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index02_Fine",
           "label": "Logging: firewood_1001_index02_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2728,8 +2458,7 @@
           "offset": 10467595,
           "record_key": 1010128,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index02_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index02_Premium",
           "label": "Logging: firewood_1001_index02_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2738,8 +2467,7 @@
           "offset": 10467603,
           "record_key": 1010128,
           "record_rel_offset": 1867,
-          "entry": "firewood_1001_index02_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index02_Premium",
           "label": "Logging: firewood_1001_index02_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2748,8 +2476,7 @@
           "offset": 10469877,
           "record_key": 1010286,
           "record_rel_offset": 1851,
-          "entry": "firewood_1001_index03",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index03",
           "label": "Logging: firewood_1001_index03 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2758,8 +2485,7 @@
           "offset": 10469885,
           "record_key": 1010286,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index03",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index03",
           "label": "Logging: firewood_1001_index03 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2768,8 +2494,7 @@
           "offset": 10472169,
           "record_key": 1010287,
           "record_rel_offset": 1856,
-          "entry": "firewood_1001_index03_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index03_Fine",
           "label": "Logging: firewood_1001_index03_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2778,8 +2503,7 @@
           "offset": 10472177,
           "record_key": 1010287,
           "record_rel_offset": 1864,
-          "entry": "firewood_1001_index03_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index03_Fine",
           "label": "Logging: firewood_1001_index03_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2788,8 +2512,7 @@
           "offset": 10474467,
           "record_key": 1010288,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index03_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index03_Premium",
           "label": "Logging: firewood_1001_index03_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2798,8 +2521,7 @@
           "offset": 10474475,
           "record_key": 1010288,
           "record_rel_offset": 1867,
-          "entry": "firewood_1001_index03_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index03_Premium",
           "label": "Logging: firewood_1001_index03_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2808,8 +2530,7 @@
           "offset": 10476749,
           "record_key": 1010289,
           "record_rel_offset": 1851,
-          "entry": "firewood_1001_index04",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index04",
           "label": "Logging: firewood_1001_index04 output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2818,8 +2539,7 @@
           "offset": 10476757,
           "record_key": 1010289,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index04",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index04",
           "label": "Logging: firewood_1001_index04 output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2828,8 +2548,7 @@
           "offset": 10479041,
           "record_key": 1010290,
           "record_rel_offset": 1856,
-          "entry": "firewood_1001_index04_Fine",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index04_Fine",
           "label": "Logging: firewood_1001_index04_Fine output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2838,8 +2557,7 @@
           "offset": 10479049,
           "record_key": 1010290,
           "record_rel_offset": 1864,
-          "entry": "firewood_1001_index04_Fine",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index04_Fine",
           "label": "Logging: firewood_1001_index04_Fine output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2848,8 +2566,7 @@
           "offset": 10481339,
           "record_key": 1010291,
           "record_rel_offset": 1859,
-          "entry": "firewood_1001_index04_Premium",
-          "rel_offset": 1767,
+          "record_name": "firewood_1001_index04_Premium",
           "label": "Logging: firewood_1001_index04_Premium output 1.1 minimum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"
@@ -2858,8 +2575,7 @@
           "offset": 10481347,
           "record_key": 1010291,
           "record_rel_offset": 1867,
-          "entry": "firewood_1001_index04_Premium",
-          "rel_offset": 1775,
+          "record_name": "firewood_1001_index04_Premium",
           "label": "Logging: firewood_1001_index04_Premium output 1.1 maximum (1 -> 5)",
           "original": "0100000000000000",
           "patched": "0500000000000000"

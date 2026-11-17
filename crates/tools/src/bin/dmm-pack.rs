@@ -27,12 +27,21 @@
 //!
 //! Every block gives two changes, the `u64` minimum at `+42` and the maximum
 //! at `+50`, each `original * rate`. Four categories times rates 2, 5 and 10
-//! make the twelve modules, written in the shape the pack has always had:
-//! `offset` is absolute in the table body, `record_rel_offset` counts from the
-//! record's `u32` key, `rel_offset` from the header's last byte (the flag byte
-//! on a `NameFirst` table, the name's NUL on a `KeyFirst` one), and the label's
-//! `output G.B` is list `G` of the record and block `B` of that list, both
-//! 1-based. Changes are in offset order. The module files and
+//! make the twelve modules: `offset` is absolute in the table body,
+//! `record_rel_offset` counts from the record's `u32` key, `record_name` is
+//! the record's name, and the label's `output G.B` is list `G` of the record
+//! and block `B` of that list, both 1-based. Changes are in offset order.
+//!
+//! `record_key`, `record_rel_offset` and `record_name` are this pack's own
+//! keys, for the oracle in `gimmick_real.rs` and for a reader; DMM ignores
+//! them. Through pack 1.6 the name was written as `entry` beside a
+//! `rel_offset`, which are DMM's keys for a record-relative change, and DMM
+//! 4.6.0 refuses those on game 2.04 (`[RUNTIME_BYTES] ...: inserts or
+//! record-relative changes, not applied`, then "old byte-patch mod, not
+//! supported on 2.04"). Its runtime mount only takes a change that is a plain
+//! `offset`/`original`/`patched`, which it reads against the game's own bytes
+//! into a field edit. **Never write `entry`, `rel_offset` or `type: insert`
+//! into a change.** The module files and
 //! `VERIFICATION.txt` are CRLF (they ship to Windows users), `dmm_pack.json`
 //! is only read.
 //!
@@ -124,8 +133,7 @@ struct Change {
     offset: usize,
     record_key: u32,
     record_rel_offset: usize,
-    entry: String,
-    rel_offset: usize,
+    record_name: String,
     list: usize,
     block: usize,
     is_min: bool,
@@ -296,8 +304,7 @@ fn categories(table: &Table, rows: &[CollectRow]) -> Result<Vec<Category>> {
                         offset,
                         record_key: row.key,
                         record_rel_offset: offset - h.key_at,
-                        entry: row.name.clone(),
-                        rel_offset: offset - (h.body - 1),
+                        record_name: row.name.clone(),
                         list: b.list,
                         block: b.block,
                         is_min,
@@ -345,9 +352,8 @@ fn module(c: &Category, rate: u64, build: &str, version: &str) -> Result<Module>
             "offset": ch.offset,
             "record_key": ch.record_key,
             "record_rel_offset": ch.record_rel_offset,
-            "entry": ch.entry,
-            "rel_offset": ch.rel_offset,
-            "label": format!("{}: {} output {}.{} {which} ({} -> {patched})", c.name, ch.entry, ch.list, ch.block, ch.original),
+            "record_name": ch.record_name,
+            "label": format!("{}: {} output {}.{} {which} ({} -> {patched})", c.name, ch.record_name, ch.list, ch.block, ch.original),
             "original": hex(&ch.original.to_le_bytes()),
             "patched": hex(&patched.to_le_bytes()),
         }));

@@ -382,7 +382,7 @@ const PACK: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../desert-gatherer-d
 /// Minimal JSON field reader: no serde, no new dependencies. The pack files are
 /// machine-written by `dmm-pack` (`crates/tools/src/bin/dmm-pack.rs`), so every
 /// change object has its fields in the same order (`offset`, `record_key`,
-/// `record_rel_offset`, `entry`, `rel_offset`, `label`, `original`, `patched`)
+/// `record_rel_offset`, `record_name`, `label`, `original`, `patched`)
 /// and plain string searching is enough.
 fn number_after(text: &str, key: &str, from: usize) -> Option<(u64, usize)> {
     let at = text.get(from..)?.find(key)? + from + key.len();
@@ -430,7 +430,7 @@ fn read_pack_family(text: &str) -> Option<PackFamily> {
     while let Some((_, at)) = number_after(text, "\"offset\":", cur) {
         let (key, at) = number_after(text, "\"record_key\":", at)?;
         let (rel, at) = number_after(text, "\"record_rel_offset\":", at)?;
-        let (entry, at) = string_after(text, "\"entry\":", at)?;
+        let (entry, at) = string_after(text, "\"record_name\":", at)?;
         let (old, at) = string_after(text, "\"original\":", at)?;
         let (new, at) = string_after(text, "\"patched\":", at)?;
         let prev = out.entry((u32::try_from(key).ok()?, entry)).or_default().insert(rel as usize, (le_hex(&old)?, le_hex(&new)?));
@@ -446,7 +446,7 @@ fn read_pack_family(text: &str) -> Option<PackFamily> {
 /// the game's own table.
 ///
 /// For every change in `desert-gatherer-dmm/* - 2X.json`, the record named by
-/// `record_key` and `entry` is cut out of the body by the archive's offsets
+/// `record_key` and `record_name` is cut out of the body by the archive's offsets
 /// table, `multiply(rec, 2)` is run over it, and the two must agree exactly:
 /// the same record-relative offsets (no edit missing, none extra) with the same
 /// old and new values. That is the property the pack exists to have - a DMM user

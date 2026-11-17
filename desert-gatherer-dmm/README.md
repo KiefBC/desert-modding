@@ -33,7 +33,7 @@ These activities may appear similar in-game, but changing one family does not af
 
 ## Installation
 
-1. Import or drag `DesertGatherer-DMM-1.6.zip` into Definitive Mod Manager.
+1. Import or drag `DesertGatherer-DMM-1.7.zip` into Definitive Mod Manager.
 2. Check the desired module(s), using at most one rate per category.
 3. Mount mods.
 
@@ -45,7 +45,9 @@ Disable DMM's built-in gathering multiplier preset if it is mounted; it edits th
 
 This pack changes the minimum and maximum item quantities produced by genuine foraging, logging, mining, and ore collection nodes. It does not alter enemy loot, chests, fishing, skinning, quests, Abyss objects, artifacts, gates, or fast travel.
 
-Built against Crimson Desert Enhanced Steam build 26636972 (pack version 1.6, 2026-11-16), from the game's own `gimmickinfo` table read straight out of its archives (17,664,283 bytes, sha256 `6527338db94b995f23bb8097c365c85b94454965e031d01429f032b77493e6da`, 14,218 records). It patches the same records with the same values as 1.4 and 1.5, but **at new offsets**: build 26636972 added one byte to every drop entry in the table, so each output block is 69 bytes where it was 68 and nearly every patch offset moved (below). Version 1.5 (and anything older) will write into the wrong bytes on 26636972; use 1.6 on that build, and 1.5 only on 26423880 or 26480954.
+Version 1.7 (2026-11-17) is 1.6 in a form DMM will mount on game 2.04: the same build 26636972, the same records, offsets and values. Since 2.04 the game signs its archive index, so DMM 4.5.0 and later no longer rewrite the game's files; a runtime plugin (`DmmRuntime.asi`) serves the modded table instead, and that route takes a byte patch only as a plain `offset` / `original` / `patched` change, which it reads against the game's own bytes at every mount. Through 1.6 every change also carried `entry` and `rel_offset`, DMM's keys for a change located relative to a record, and DMM 4.6.0 skips a module holding any of those: `mount_log.txt` says `[RUNTIME_BYTES] '<module>' gamedata/gimmickinfo.pabgb: inserts or record-relative changes, not applied`, and the app says `old byte-patch mod, not supported on 2.04. Needs a V3 version.` 1.7 drops both keys (the record's name stays, as `record_name`, which DMM ignores). **1.6 and older mount nothing on game 2.04; use 1.7.** It needs DMM 4.6.0 or later, which is the first to apply byte patches to the parts of a gimmick record these modules edit.
+
+Version 1.6 was built against Crimson Desert Enhanced Steam build 26636972 (2026-11-16), from the game's own `gimmickinfo` table read straight out of its archives (17,664,283 bytes, sha256 `6527338db94b995f23bb8097c365c85b94454965e031d01429f032b77493e6da`, 14,218 records). It patches the same records with the same values as 1.4 and 1.5, but **at new offsets**: build 26636972 added one byte to every drop entry in the table, so each output block is 69 bytes where it was 68 and nearly every patch offset moved (below). Version 1.5 (and anything older) will write into the wrong bytes on 26636972; use 1.6 on that build, and 1.5 only on 26423880 or 26480954.
 
 Version 1.4 was built against Steam build 26361232 (2026-11-02), from that build's table (17,621,227 bytes, sha256 `3aba0954725e6fc91ca490a5e1afde21357190d58aee112dc9944872ef26bf1b`, 14,210 records). The game build and the table were the same as 1.3's; what changed is where the record list comes from. Every module is now generated from the records the DesertTooling plugin multiplies, which `gen-collect-names` derives from the game's own records, so the pack and the plugin cover exactly the same nodes and the same output blocks:
 
